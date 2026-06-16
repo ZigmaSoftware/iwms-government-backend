@@ -1,0 +1,91 @@
+[project]
+name = "my-django-app"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "asgiref==3.10.0",
+    "Django==5.2.8",
+    "django-cors-headers==4.9.0",
+    "djangorestframework==3.16.1",
+    "gunicorn==23.0.0",
+    "packaging==25.0",
+    "sqlparse==0.5.3",
+    "Pillow==12.0.0",
+    "faker==38.2.0",
+    "djangorestframework_simplejwt==5.5.1",
+    "qrcode==7.4.2",
+    "python-dateutil==2.9.0.post0",
+    "requests==2.31.0",
+    "PyMySQL==1.1.1",
+    "drf-yasg==1.21.7",
+    "PyYAML>=6.0",
+    "inflection>=0.5.1",
+    "pytz>=2023.3",
+    "uritemplate>=4.1.1",
+    "setuptools<81",
+    "cryptography>=43.0.0",
+    "python-dotenv>=1.2.2",
+    "dotenv>=0.9.9",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "pytest-django>=4.12.0",
+]
+dev = [
+    { include-group = "test" },
+]
+
+# Unit test configuration
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.test_settings"
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+markers = [
+    "django_db: mark tests that need the Django test database",
+]
+addopts = [
+    "--tb=short",
+    "--strict-markers",
+    "-q",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/migrations/*",
+    "app/admin.py",
+    "app/apps.py",
+    "app/tests.py",
+    "app/management/*",
+    "app/signals/*",
+    "tests/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+sort = "Cover"
+precision = 2
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "pass",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

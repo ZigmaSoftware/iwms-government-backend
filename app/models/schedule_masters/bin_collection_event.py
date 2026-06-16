@@ -1,0 +1,137 @@
+from django.db import models
+from django.utils import timezone
+
+from app.models.assets.bins import Bins
+from app.models.schedule_masters.collection_point import Collection_point
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
+from app.models.superadmin_masters.company import Company
+from app.models.superadmin_masters.project import Project
+from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.schedule_masters.daily_trip_collection_point import (
+    DailyTripCollectionPoint,
+)
+from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.user_creations.staffcreation import Staffcreation
+from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.utils.base_models import BaseMaster
+from app.utils.comfun import generate_unique_id
+
+
+def generate_bin_collection_event_id():
+    return f"BCE-{generate_unique_id(length=10)}"
+
+
+class BinCollectionEvent(BaseMaster):
+    """One row per operator scan-and-submit. Permanent audit ledger."""
+
+    unique_id = models.CharField(
+        max_length=30,
+        primary_key=True,
+        default=generate_bin_collection_event_id,
+        editable=False,
+    )
+
+    company_id = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        db_column="company_id",
+        related_name="bin_collection_events",
+    )
+    project_id = models.ForeignKey(
+        Project,
+        on_delete=models.PROTECT,
+        db_column="project_id",
+        related_name="bin_collection_events",
+    )
+
+    trip_assignment_id = models.ForeignKey(
+        DailyTripAssignment,
+        on_delete=models.PROTECT,
+        db_column="trip_assignment_id",
+        to_field="unique_id",
+        related_name="bin_collection_events",
+    )
+    trip_collection_point_id = models.ForeignKey(
+        DailyTripCollectionPoint,
+        on_delete=models.PROTECT,
+        db_column="trip_collection_point_id",
+        to_field="unique_id",
+        related_name="bin_collection_event",
+    )
+
+    collection_point_id = models.ForeignKey(
+        Collection_point,
+        on_delete=models.PROTECT,
+        db_column="collection_point_id",
+        to_field="unique_id",
+        related_name="bin_collection_events",
+    )
+    bin_id = models.ForeignKey(
+        Bins,
+        on_delete=models.PROTECT,
+        db_column="bin_id",
+        to_field="unique_id",
+        related_name="bin_collection_events",
+    )
+    panchayat_id = models.ForeignKey(
+        Panchayat,
+        on_delete=models.PROTECT,
+        db_column="panchayat_id",
+        to_field="unique_id",
+        related_name="bin_collection_events",
+        null=True,
+        blank=True,
+    )
+    ward_id = models.ForeignKey(
+        Ward,
+        on_delete=models.PROTECT,
+        db_column="ward_id",
+        related_name="bin_collection_events",
+        null=True,
+        blank=True,
+    )
+    waste_type_id = models.ForeignKey(
+        WasteType,
+        on_delete=models.PROTECT,
+        db_column="waste_type_id",
+        to_field="unique_id",
+        related_name="bin_collection_events",
+    )
+    vehicle_id = models.ForeignKey(
+        VehicleCreation,
+        on_delete=models.PROTECT,
+        db_column="vehicle_id",
+        to_field="unique_id",
+        related_name="bin_collection_events",
+        null=True,
+        blank=True,
+    )
+
+
+
+    collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2)
+    collection_date = models.DateField(
+        default=timezone.localdate,
+        db_index=True,
+        help_text="Date on which this bin collection was performed.",
+    )
+    
+    driver_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    driver_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-collection_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["trip_assignment_id", "created_at"]),
+            models.Index(fields=["collection_date"]),
+            # models.Index(fields=["operator_id", "created_at"]),
+            # models.Index(fields=["panchayat_id", "created_at"]),
+        ]
+
+    def __str__(self):
+        return self.unique_id

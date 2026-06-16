@@ -1,0 +1,1 @@
+from .monthly_weight_report import MonthlyWeightReport

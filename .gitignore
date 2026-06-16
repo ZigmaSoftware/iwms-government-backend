@@ -1,0 +1,47 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# === Django Migrations ===
+**/migrations/
+!**/migrations/__init__.py
+!app/migrations/
+app/migrations/*
+app/migrations/__init__.py
+
+# Specifically ignore your API app migrations
+api/migrations/
+!api/migrations/__init__.py
+
+# === Virtual Environments ===
+venv/
+env/
+.venv/
+
+# === Django static/media ===
+media/
+staticfiles/
+static/
+
+# === Logs and database ===
+*.log
+db.sqlite3
+*.sqlite3
+
+# === Environment files ===
+.env
+.env.*
+
+# === IDE and System files ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# === Build and Dist ===
+build/
+dist/
+*.egg-info/

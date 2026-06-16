@@ -1,0 +1,84 @@
+uv venv
+source .venv/bin/activate
+uv sync
+uv add pkgname
+
+# remove pycache folders
+#for linux
+find . -name "__pycache__" -type d -exec rm -rf {} + 
+
+#for windows
+Get-ChildItem -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+
+#Run the application
+python3 manage.py makemigrations
+python3 manage.py migrate
+python3 manage.py runserver
+
+# Run everything
+python3 manage.py seed
+
+# One line commadn to run everything
+find . -name "__pycache__" -type d -exec rm -rf {} + && python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py seed && python3 manage.py runserver 0.0.0.0:8000
+
+
+# Run individual groups
+python3 manage.py seed --group masters
+python3 manage.py seed --group assets
+python3 manage.py seed --group role-assign
+python3 manage.py seed --group permission
+python3 manage.py seed --group customers
+python3 manage.py seed --group user-creation
+
+#To install the respected lib
+pip install -r ./requirements.txt
+pip install --upgrade setuptools
+
+
+local server:  python3 manage.py runserver 192.168.1.128:4216
+
+
+
+cd /home/administrator/iwms2/iwms-backend && uv run python -m pytest tests/ --cov=app --cov-report=term -q 2>&1 | grep "^app/" | grep -v "__init__\|__pycache__\|:[0-9]" | python3 -c "
+import sys, re
+from collections import defaultdict
+data = defaultdict(list)
+for line in sys.stdin:
+    m = re.match(r'^(app/(?:models|viewsets|serializers)/[^/]+)/', line)
+    p = re.search(r'(\d+\.\d+)%', line)
+    if m and p:
+        data[m.group(1)].append(float(p.group(1)))
+print(f'{'MODULE':<55} COVERAGE')
+print('-'*65)
+for k in sorted(data):
+    avg = sum(data[k])/len(data[k])
+    print(f'{k:<55} {avg:6.1f}%')
+"
+
+python -m pytest tests/ --cov=app --cov-report=term-missing -q
+python -m pytest tests/ --cov=app --cov-report=html -q && xdg-open htmlcov/index.html
+
+python -m pytest tests/ --cov=app --cov-report=xml -q
+
+
+https://api.qrserver.com/v1/create-qr-code/?data=QR-CP01-WET
+
+
+
+
+$apiUrl = "http://zigfly.in/attendance-api/api/sync/recognized?from_date=$today&to_date=$today";
+$API_KEY = 'ZIGFLY_SYNC_2025';
+
+
+
+python manage.py seed --group blue-planet
+
+https://erode.nic.in/elected-representatives/
+
+https://nallosai.tn.gov.in/index.php
+
+https://npp.gov.in/landing-home
+
+https://www.nseindia.com/get-quote/derivatives/NIFTY/NIFTY-50?identifier=OPTIDXNIFTY16-06-2026PE23400.00
+
+https://www.nseindia.com/

@@ -1,0 +1,54 @@
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework import status
+from rest_framework.response import Response
+
+from app.models.schedule_masters.trip_plan import TripPlan
+from app.serializers.schedule_masters.trip_plan_serializer import (
+    TripPlanSerializer,
+)
+from app.utils.audit_mixin import AuditViewSetMixin
+from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+
+
+class TripPlanViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+    queryset = TripPlan.objects.select_related(
+        "company_id",
+        "project_id",
+        "district_id",
+        "city_id",
+        "zone_id",
+        "panchayat_id",
+        "ward_id",
+        "staff_template_id",
+        "staff_template_id__driver_id",
+        "staff_template_id__operator_id",
+        "vehicle_id",
+        "supervisor_id",
+        "property_id",
+        "sub_property_id",
+        "waste_type_id",
+    ).prefetch_related("plan_collection_points").filter(is_deleted=False)
+
+    serializer_class = TripPlanSerializer
+    lookup_field = "unique_id"
+    swagger_tags = ["Desktop / Operations / Trip Plan"]
+    permission_resource = "TripPlan"
+    AUDIT_MODULE = "transport-masters"
+    AUDIT_ENDPOINT = "trip-plans"
+
+    @swagger_auto_schema(request_body=TripPlanSerializer)
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(request_body=TripPlanSerializer)
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.daily_trip_assignments.filter(is_deleted=False).exists():
+            return Response(
+                {"detail": "Trip plans with daily assignments cannot be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)

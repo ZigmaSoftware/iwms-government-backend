@@ -1,0 +1,193 @@
+from rest_framework import serializers
+
+from app.models.assets.bins import Bins
+from app.models.schedule_masters.collection_point import Collection_point
+from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.schedule_masters.daily_trip_collection_point import (
+    DailyTripCollectionPoint,
+)
+from app.models.user_creations.staffcreation import Staffcreation
+from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
+from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+
+
+class DailyTripCollectionPointSerializer(
+    TenancyReadSerializerMixin,
+    serializers.ModelSerializer,
+):
+    trip_assignment_id = UniqueIdOrPkField(
+        slug_field="unique_id",
+        queryset=DailyTripAssignment.objects.filter(is_deleted=False),
+    )
+    collection_point_id = UniqueIdOrPkField(
+        slug_field="unique_id",
+        queryset=Collection_point.objects.filter(is_deleted=False),
+    )
+    bin_id = UniqueIdOrPkField(
+        slug_field="unique_id",
+        queryset=Bins.objects.filter(is_deleted=False),
+    )
+    collected_by = UniqueIdOrPkField(
+        slug_field="staff_unique_id",
+        queryset=Staffcreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+
+    trip_assignment = serializers.SerializerMethodField()
+    collection_point = serializers.SerializerMethodField()
+    bin = serializers.SerializerMethodField()
+    collected_by_staff = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DailyTripCollectionPoint
+        fields = [
+            "unique_id",
+            "company_id",
+            "company_name",
+            "project_id",
+            "project_name",
+            "trip_assignment_id",
+            "trip_assignment",
+            "collection_point_id",
+            "collection_point",
+            "zone_id",
+            "ward_id",
+            "panchayat_id",
+            "bin_id",
+            "bin",
+            "sequence",
+            "is_collected",
+            "collected_at",
+            "collected_weight_kg",
+            "collected_by",
+            "collected_by_staff",
+            "status",
+            "created_by",
+            "updated_by",
+            "is_active",
+            "is_deleted",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "unique_id",
+            "company_id",
+            "company_name",
+            "project_id",
+            "project_name",
+            "zone_id",
+            "ward_id",
+            "panchayat_id",
+            "created_at",
+            "updated_at",
+        ]
+        validators = []
+
+    def get_trip_assignment(self, obj):
+        assignment = obj.trip_assignment_id
+        if not assignment:
+            return None
+        trip_plan = getattr(assignment, "trip_plan_id", None)
+        return {
+            "unique_id": assignment.unique_id,
+            "trip_date": assignment.trip_date,
+            "scheduled_time": assignment.scheduled_time,
+            "status": assignment.status,
+            "approval_status": assignment.approval_status,
+            "trip_plan_id": getattr(trip_plan, "unique_id", None),
+            "trip_plan_display_code": getattr(trip_plan, "display_code", None),
+        }
+
+    def get_collection_point(self, obj):
+        cp = obj.collection_point_id
+        if not cp:
+            return None
+        return {
+            "unique_id": cp.unique_id,
+            "cp_name": cp.cp_name,
+            "latitude": cp.latitude,
+            "longitude": cp.longitude,
+            "panchayat_id": getattr(cp.panchayat_id, "unique_id", None),
+            "panchayat_name": getattr(cp.panchayat_id, "panchayat_name", None),
+            "ward_id": getattr(cp.ward_id, "unique_id", None),
+            "ward_name": getattr(cp.ward_id, "ward_name", None),
+            "zone_id": getattr(getattr(cp.ward_id, "zone_id", None), "unique_id", None),
+            "zone_name": getattr(getattr(cp.ward_id, "zone_id", None), "zone_name", None),
+        }
+
+    def get_bin(self, obj):
+        bin_obj = obj.bin_id
+        if not bin_obj:
+            return None
+        waste_type = getattr(bin_obj, "wastetype_id", None)
+        return {
+            "unique_id": bin_obj.unique_id,
+            "bin_name": bin_obj.bin_name,
+            "bin_capacity": bin_obj.bin_capacity,
+            "bin_type": bin_obj.bin_type,
+            "bin_qr": bin_obj.bin_qr.url if bin_obj.bin_qr else None,
+            "waste_type": None if not waste_type else {
+                "unique_id": waste_type.unique_id,
+                "waste_type_name": waste_type.waste_type_name,
+            },
+        }
+
+    def get_collected_by_staff(self, obj):
+        staff = obj.collected_by
+        if not staff:
+            return None
+        return {
+            "unique_id": staff.staff_unique_id,
+            "employee_name": staff.employee_name,
+        }
+
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        assignment = attrs.get(
+            "trip_assignment_id",
+            getattr(instance, "trip_assignment_id", None),
+        )
+        collection_point = attrs.get(
+            "collection_point_id",
+            getattr(instance, "collection_point_id", None),
+        )
+        bin_obj = attrs.get("bin_id", getattr(instance, "bin_id", None))
+
+        if assignment and assignment.status == DailyTripAssignment.STATUS_CANCELLED:
+            raise serializers.ValidationError(
+                "Cannot add collection points to a cancelled trip assignment."
+            )
+
+        if bin_obj and collection_point and bin_obj.collection_point_id != collection_point:
+            raise serializers.ValidationError(
+                {"bin_id": "Selected bin does not belong to the collection point."}
+            )
+
+        if assignment and collection_point:
+            conflict = DailyTripCollectionPoint.objects.filter(
+                trip_assignment_id=assignment,
+                collection_point_id=collection_point,
+                is_deleted=False,
+            )
+            if instance:
+                conflict = conflict.exclude(pk=instance.pk)
+            if conflict.exists():
+                raise serializers.ValidationError(
+                    "This collection point is already added to the trip assignment."
+                )
+
+        is_collected = attrs.get(
+            "is_collected",
+            getattr(instance, "is_collected", False),
+        )
+        collected_at = attrs.get(
+            "collected_at",
+            getattr(instance, "collected_at", None),
+        )
+
+        if is_collected or collected_at is not None:
+            attrs["is_collected"] = True
+            attrs["status"] = DailyTripCollectionPoint.STATUS_COLLECTED
+
+        return attrs
