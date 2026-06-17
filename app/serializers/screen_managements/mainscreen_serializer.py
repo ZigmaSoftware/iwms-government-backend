@@ -1,9 +1,8 @@
 from django.db import transaction
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.screen_managements.mainscreen import MainScreen
 
-class MainScreenSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class MainScreenSerializer(serializers.ModelSerializer):
     mainscreentype_name = serializers.CharField(
         source="mainscreentype_id.type_name",
         read_only=True

@@ -34,21 +34,11 @@ class DailyWasteComparisonSerializer(serializers.ModelSerializer):
     waste_type_name = serializers.CharField(
         source="waste_type_id.waste_type_name", read_only=True
     )
-    company_name = serializers.CharField(
-        source="company_id.name", read_only=True, default=None
-    )
-    project_name = serializers.CharField(
-        source="project_id.name", read_only=True, default=None
-    )
 
     class Meta:
         model = DailyWasteComparison
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "panchayat_id",
             "panchayat_name",
             "collection_date",
@@ -64,8 +54,6 @@ class DailyWasteComparisonSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "unique_id",
-            "company_id",
-            "project_id",
             "variance_kg",
             "variance_percent",
             "report_status",

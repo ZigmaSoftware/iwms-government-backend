@@ -3,8 +3,6 @@ from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 
@@ -49,18 +47,6 @@ class StaffTemplate(BaseMaster):
         related_name="operator_templates",
         db_column="operator_id",
         to_field="staff_unique_id"
-    )
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="staff_templates",
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="staff_templates",
-        db_column="project_id",
     )
 
     extra_operator_id = models.JSONField(

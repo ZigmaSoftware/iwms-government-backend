@@ -25,8 +25,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     def get_queryset(self):
         queryset = (
             BinCollectionEvent.objects.select_related(
-                "company_id",
-                "project_id",
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
                 "trip_assignment_id__trip_plan_id__vehicle_id",

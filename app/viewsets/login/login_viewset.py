@@ -57,11 +57,9 @@ class LoginViewSet(ViewSet):
         generated_at = serializer.validated_data.get("generated_at")
         user_type = serializer.validated_data.get("user_type", "staff")
         profile_object = serializer.validated_data.get("profile_object")
-        company_unique_id = serializer.validated_data.get("company_unique_id")
         password_expired = serializer.validated_data.get("password_expired", False)
         staffusertype_unique_id = serializer.validated_data.get("staffusertype_id")
         contractorusertype_unique_id = serializer.validated_data.get("contractorusertype_id")
-        projects = serializer.validated_data.get("projects", [])
 
         # -------------------------
         # ROLE RESOLUTION
@@ -129,37 +127,12 @@ class LoginViewSet(ViewSet):
         if not user_unique_id and getattr(user, "pk", None) is not None:
             user_unique_id = str(user.pk)
 
-        company = None
-        if profile_object:
-            company = getattr(profile_object, "company_id", None)
-        if not company:
-            company = getattr(user, "company_id", None)
-
-        if company:
-            company_name = getattr(company, "name", None)
-            company_unique_id = company_unique_id or getattr(company, "unique_id", None)
-        else:
-            company_name = None
-
-        # Resolve company logo relative URL (e.g. /media/company_logos/xxx.jpg)
-        company_logo_url = None
-        if company:
-            logo_field = getattr(company, "company_logo", None)
-            if logo_field and getattr(logo_field, "name", None):
-                try:
-                    company_logo_url = logo_field.url
-                except Exception:
-                    company_logo_url = None
-
         profile_payload = {
             "user_type": user_type,
             "unique_id": user_unique_id,
             "name": name,
             "role": role,
             "email": email,
-            "company_unique_id": company_unique_id,
-            "company_name": company_name,
-            "company_logo": company_logo_url,
         }
 
         if user_type == "staff":
@@ -224,9 +197,6 @@ class LoginViewSet(ViewSet):
         # access["column_permissions"] = column_permissions
         access["emp_id"] = emp_id
         access["employee_id"] = employee_id
-        access["company_unique_id"] = company_unique_id
-        access["company_name"] = company_name
-        access["projects"] = projects
 
         iat = access["iat"]
         exp = access["exp"]
@@ -285,9 +255,6 @@ class LoginViewSet(ViewSet):
                 "email": email,
                 "emp_id": emp_id,
                 "employee_id": employee_id,
-                "company_unique_id": company_unique_id,
-                "company_name": company_name,
-                "projects": projects,
                 "profile": profile_payload,
                 "password_expired": password_expired,
             },

@@ -1,20 +1,15 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.user_creations.attendance import Recognized
 from django.conf import settings
 import os
 
 
-class AttendanceListSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class AttendanceListSerializer(serializers.ModelSerializer):
     captured_image = serializers.SerializerMethodField()
 
     class Meta:
         model = Recognized
         fields = [
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "id",
             "emp_id",
             "name",

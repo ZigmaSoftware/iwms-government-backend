@@ -4,11 +4,9 @@ from app.models.masters.panchayat import Panchayat
 
 
 @pytest.fixture
-def panchayat(db, company, project, state, district, city):
+def panchayat(db, state, district, city):
     return Panchayat.objects.create(
         panchayat_name="Test Panchayat",
-        company_id=company,
-        project_id=project,
         state_id=state,
         district_id=district,
         city_id=city,
@@ -17,11 +15,9 @@ def panchayat(db, company, project, state, district, city):
 
 @pytest.mark.django_db
 class TestPanchayatCreate:
-    def test_basic_create(self, company, project, state, district, city):
+    def test_basic_create(self, state, district, city):
         p = Panchayat.objects.create(
             panchayat_name="Village Council",
-            company_id=company,
-            project_id=project,
             state_id=state,
             district_id=district,
             city_id=city,
@@ -49,6 +45,7 @@ class TestPanchayatDefaults:
     def test_optional_geo_fields_null(self, panchayat):
         assert panchayat.latitude is None
         assert panchayat.longitude is None
+        assert panchayat.coordinates == []
 
     def test_agreed_weight_defaults(self, panchayat):
         assert panchayat.agreed_weight_kg == 0
@@ -81,3 +78,15 @@ class TestPanchayatUpdate:
         assert str(panchayat.agreed_weight_kg) == "1250.50"
         assert panchayat.weight_unit == "tonne"
         assert str(panchayat.effective_from) == "2026-05-01"
+
+    def test_update_coordinates(self, panchayat):
+        panchayat.geofencing_type = "polygon"
+        panchayat.coordinates = [
+            {"latitude": 12.9871, "longitude": 80.2184},
+            {"latitude": 12.9912, "longitude": 80.2253},
+            {"latitude": 12.9846, "longitude": 80.2311},
+        ]
+        panchayat.save()
+        panchayat.refresh_from_db()
+        assert panchayat.geofencing_type == "polygon"
+        assert len(panchayat.coordinates) == 3

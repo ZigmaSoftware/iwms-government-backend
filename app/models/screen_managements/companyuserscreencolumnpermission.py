@@ -6,8 +6,6 @@ from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -25,22 +23,6 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         editable=False,
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="userscreen_column_permissions",
-        to_field="unique_id",
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="userscreen_column_permissions",
-        to_field="unique_id",
-        db_column="project_id",
-        null=True,
-        blank=True,
-    )
     usertype_id = models.ForeignKey(
         UserType,
         on_delete=models.PROTECT,
@@ -95,16 +77,14 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         verbose_name = "Company User Screen Column Permission"
         verbose_name_plural = "Company User Screen Column Permissions"
         indexes = [
-            models.Index(fields=["company_id", "project_id", "userscreen_id"]),
-            models.Index(fields=["company_id", "staffusertype_id", "userscreen_id"]),
-            models.Index(fields=["company_id", "contractorusertype_id", "userscreen_id"]),
+            models.Index(fields=["userscreen_id"]),
+            models.Index(fields=["staffusertype_id", "userscreen_id"]),
+            models.Index(fields=["contractorusertype_id", "userscreen_id"]),
             models.Index(fields=["userscreen_id", "column_id", "is_active", "is_deleted"]),
         ]
         constraints = [
             UniqueConstraint(
                 fields=[
-                    "company_id",
-                    "project_id",
                     "usertype_id",
                     "staffusertype_id",
                     "contractorusertype_id",
@@ -112,7 +92,7 @@ class CompanyUserScreenColumnPermission(BaseMaster):
                     "column_id",
                     "is_deleted",
                 ],
-                name="uq_company_project_screen_column_perm",
+                name="uq_screen_column_perm",
             )
         ]
 
@@ -121,7 +101,7 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         return self.column_id
 
     def __str__(self):
-        return f"{self.company_id} - {self.userscreen_id} - {self.column_id}"
+        return f"{self.userscreen_id} - {self.column_id}"
 
     def delete(self, *args, **kwargs):
         self.is_active = False

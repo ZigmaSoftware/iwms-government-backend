@@ -4,13 +4,13 @@ from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat import Panchayat
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
+from app.models.user_creations.waste_collection_bluetooth import WasteType
 
 
 @pytest.fixture
-def panchayat(db, company, project, state, district, city):
+def panchayat(db, state, district, city):
     return Panchayat.objects.create(
         panchayat_name="Customer Panchayat",
-        company_id=company, project_id=project,
         state_id=state, district_id=district, city_id=city,
     )
 
@@ -26,21 +26,30 @@ def sub_prop(db, prop):
 
 
 @pytest.fixture
-def customer(db, company, project, continent, country, state, district, city, zone, ward, panchayat, prop, sub_prop):
-    return CustomerCreation.objects.create(
+def waste_types(db):
+    return [
+        WasteType.objects.create(waste_type_name="Wet Waste"),
+        WasteType.objects.create(waste_type_name="Dry Waste"),
+    ]
+
+
+@pytest.fixture
+def customer(db, continent, country, state, district, city, zone, ward, panchayat, prop, sub_prop, waste_types):
+    customer = CustomerCreation.objects.create(
         customer_name="Alice",
         contact_no="9876543210",
         pincode="600001",
         latitude="13.0827",
         longitude="80.2707",
-        id_proof_type="Aadhar",
+        id_proof_type="AADHAAR",
         id_no="1234-5678-9012",
-        company_id=company, project_id=project,
         country=country, state=state, district=district,
         city=city, zone=zone, ward=ward,
         panchayat_id=panchayat,
         property_ref=prop, sub_property=sub_prop,
     )
+    customer.waste_types.set(waste_types)
+    return customer
 
 
 @pytest.mark.django_db
@@ -51,8 +60,11 @@ class TestCustomerCreationCreate:
     def test_unique_id_prefix(self, customer):
         assert customer.unique_id.startswith("CUS-")
 
-    def test_foreign_key_company(self, customer, company):
-        assert customer.company_id == company
+    def test_multiple_waste_types(self, customer, waste_types):
+        assert list(customer.waste_types.order_by("waste_type_name")) == sorted(
+            waste_types,
+            key=lambda item: item.waste_type_name,
+        )
 
     def test_optional_fields_null(self, customer):
         assert customer.building_no is None

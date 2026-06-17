@@ -1,10 +1,7 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 class CommaSeparatedListField(serializers.ListField):
@@ -14,7 +11,7 @@ class CommaSeparatedListField(serializers.ListField):
         return super().to_internal_value(data)
 
 
-class StaffTemplateSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class StaffTemplateSerializer(serializers.ModelSerializer):
 
     driver_id = UniqueIdOrPkField(
         slug_field="staff_unique_id",
@@ -26,13 +23,7 @@ class StaffTemplateSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
         queryset=Staffcreation.objects.filter(is_deleted=False)
     )
 
-    company_id = serializers.PrimaryKeyRelatedField(
-        queryset=Company.objects.all()
-    )
 
-    project_id = serializers.PrimaryKeyRelatedField(
-        queryset=Project.objects.all()
-    )
 
 
     approved_by = UniqueIdOrPkField(
@@ -60,10 +51,6 @@ class StaffTemplateSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
         model = StaffTemplate
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
 
             "display_code",
 

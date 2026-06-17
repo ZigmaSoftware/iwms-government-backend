@@ -5,20 +5,8 @@ from app.validators.unique_name_validator import unique_name_validator
 
 class VehicleTypeCreationSerializer(serializers.ModelSerializer):
 
-    company_name = serializers.SerializerMethodField()
-    project_name = serializers.SerializerMethodField()
-    company_id = serializers.SerializerMethodField()   # ← read as ID in response
-    project_id = serializers.SerializerMethodField()   # ← read as ID in response
 
     # Write-only fields to accept IDs from frontend
-    company_id_input = serializers.CharField(
-        write_only=True, required=True, source="company_id"
-    )
-    project_id_input = serializers.CharField(
-        write_only=True, required=False,
-        allow_null=True, allow_blank=True,
-        source="project_id"
-    )
 
     class Meta:
         model = VehicleTypeCreation
@@ -27,12 +15,6 @@ class VehicleTypeCreationSerializer(serializers.ModelSerializer):
             "vehicleType",
             "description",
             "is_active",
-            "company_id",
-            "company_id_input",
-            "project_id",
-            "project_id_input",
-            "company_name",
-            "project_name",
         ]
         read_only_fields = ["unique_id"]
         validators = []
@@ -54,8 +36,6 @@ class VehicleTypeCreationSerializer(serializers.ModelSerializer):
         return getattr(project, "name", None)
 
     def validate(self, attrs):
-        attrs.pop("company_id", None)
-        attrs.pop("project_id", None)
 
         return unique_name_validator(
             Model=VehicleTypeCreation,

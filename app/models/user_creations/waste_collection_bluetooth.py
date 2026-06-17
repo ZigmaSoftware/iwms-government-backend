@@ -5,8 +5,6 @@ import string
 from app.utils.base_models import BaseMaster
 from django.conf import settings
 from django.db import models
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 
@@ -45,20 +43,6 @@ def upload_image(image):
 
 
 class WasteType(BaseMaster,models.Model):
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
     unique_id = models.CharField(
         max_length=100,
         primary_key=True,
@@ -70,20 +54,6 @@ class WasteType(BaseMaster,models.Model):
 
 
 class WasteCollectionSub(models.Model):
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
     unique_id = models.CharField(
         max_length=100,
         primary_key=True,
@@ -104,20 +74,6 @@ class WasteCollectionSub(models.Model):
 
 
 class WasteCollectionMain(models.Model):
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
     unique_id = models.CharField(
         max_length=100,
         primary_key=True,

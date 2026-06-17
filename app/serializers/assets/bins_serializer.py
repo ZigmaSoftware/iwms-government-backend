@@ -1,9 +1,8 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.assets.bins import Bins
 from app.validators.unique_name_validator import unique_name_validator
 
-class BinsSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class BinsSerializer(serializers.ModelSerializer):
 
     panchayat_name = serializers.CharField(source="collection_point_id.panchayat_id.panchayat_name", read_only = True)
     panchayat_id = serializers.CharField(source="collection_point_id.panchayat_id", read_only = True)
@@ -20,10 +19,6 @@ class BinsSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
         model = Bins
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "panchayat_id",
             "panchayat_name",
             "district_id",

@@ -1,8 +1,6 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id  # optional if you want prefixed IDs
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 def generate_fueltype_id():
     # Prefix for traceability inside the ERP ecosystem

@@ -1,8 +1,6 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.city import City
 from app.models.masters.district import District
@@ -30,19 +28,7 @@ class Bins(BaseMaster):
         editable=False
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="bin",
-        db_column="company_id",
-    )
 
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="bin",
-        db_column="project_id",
-    )
 
 
     collection_point_id = models.ForeignKey(

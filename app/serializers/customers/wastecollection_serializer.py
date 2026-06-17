@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.customers.wastecollection import WasteCollection
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
@@ -25,7 +24,7 @@ class CustomerField(serializers.SlugRelatedField):
                 raise serializers.ValidationError("Invalid customer reference")
 
 
-class WasteCollectionSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class WasteCollectionSerializer(serializers.ModelSerializer):
     customer = CustomerField(
         slug_field="unique_id",
         queryset=CustomerCreation.objects.all(),

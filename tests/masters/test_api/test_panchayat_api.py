@@ -17,12 +17,10 @@ class TestPanchayatAPIList:
 
 @pytest.mark.django_db
 class TestPanchayatAPICreate:
-    def test_create_returns_success(self, auth_client, company, project, state, city, district):
+    def test_create_returns_success(self, auth_client, state, city, district):
         resp = auth_client.post(
             BASE,
             {
-                "company_id": company.unique_id,
-                "project_id": project.unique_id,
                 "state_id": state.unique_id,
                 "city_id": city.unique_id,
                 "district_id": district.unique_id,
@@ -31,6 +29,11 @@ class TestPanchayatAPICreate:
                 "weight_unit": "kg",
                 "effective_from": "2026-05-01",
                 "geofencing_type": "polygon",
+                "coordinates": [
+                    {"latitude": 12.9871, "longitude": 80.2184},
+                    {"latitude": 12.9912, "longitude": 80.2253},
+                    {"latitude": 12.9846, "longitude": 80.2311},
+                ],
             },
             format="json",
         )
@@ -39,14 +42,14 @@ class TestPanchayatAPICreate:
         assert data["agreed_weight_kg"] == "2500.75"
         assert data["weight_unit"] == "kg"
         assert data["effective_from"] == "2026-05-01"
+        assert len(data["coordinates"]) == 3
 
 
 @pytest.mark.django_db
 class TestPanchayatAPIRetrieve:
-    def test_retrieve_returns_200(self, auth_client, company, project, state, city, district):
+    def test_retrieve_returns_200(self, auth_client, state, city, district):
         from app.models.masters.panchayat import Panchayat
         p = Panchayat.objects.create(
-            company_id=company, project_id=project,
             state_id=state, city_id=city, district_id=district,
             panchayat_name="Sample Panchayat",
             geofencing_type="circle",
@@ -57,10 +60,9 @@ class TestPanchayatAPIRetrieve:
 
 @pytest.mark.django_db
 class TestPanchayatAPIUpdate:
-    def test_patch_returns_success(self, auth_client, company, project, state, city, district):
+    def test_patch_returns_success(self, auth_client, state, city, district):
         from app.models.masters.panchayat import Panchayat
         p = Panchayat.objects.create(
-            company_id=company, project_id=project,
             state_id=state, city_id=city, district_id=district,
             panchayat_name="Old Name",
             geofencing_type="square",
@@ -72,6 +74,11 @@ class TestPanchayatAPIUpdate:
                 "agreed_weight_kg": "125.25",
                 "weight_unit": "tonne",
                 "effective_from": "2026-06-01",
+                "coordinates": [
+                    [12.9801, 80.2201],
+                    [12.9851, 80.2251],
+                    [12.9811, 80.2291],
+                ],
             },
             format="json"
         )
@@ -80,14 +87,14 @@ class TestPanchayatAPIUpdate:
         assert str(p.agreed_weight_kg) == "125.25"
         assert p.weight_unit == "tonne"
         assert str(p.effective_from) == "2026-06-01"
+        assert len(p.coordinates) == 3
 
 
 @pytest.mark.django_db
 class TestPanchayatAPIDelete:
-    def test_delete_returns_success(self, auth_client, company, project, state, city, district):
+    def test_delete_returns_success(self, auth_client, state, city, district):
         from app.models.masters.panchayat import Panchayat
         p = Panchayat.objects.create(
-            company_id=company, project_id=project,
             state_id=state, city_id=city, district_id=district,
             panchayat_name="Delete Me",
             geofencing_type="rectangle",

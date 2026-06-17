@@ -9,7 +9,6 @@ from app.models.role_assigns.userType import UserType
 from app.models.superadmin_masters.auth_user import User
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 
-from app.models.superadmin_masters.project import Project
 from app.utils.permission_response import finalize_permission_payload, resolve_permission_payload
 from app.utils.password_encryption import decrypt_password
 
@@ -187,20 +186,7 @@ class LoginSerializer(serializers.Serializer):
         if not role_usertype:
             raise serializers.ValidationError("Staff role not assigned")
 
-        company = getattr(staff_record, "company_id", None) or getattr(login_user, "company_id", None)
-        if not company:
-            raise serializers.ValidationError("Staff record has no company assigned")
-        
-        projects_queryset = Project.objects.filter(
-            company_id=company,
-            is_active=True,
-            is_deleted=False,
-        ).values("unique_id", "name", "gps_api_url", "weighment_api_url")
-
-        projects = list(projects_queryset)
-
         permission_payload = self._resolve_permission_payload(
-            company_unique_id=company.unique_id,
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
@@ -233,8 +219,6 @@ class LoginSerializer(serializers.Serializer):
             "user_type": "contractor" if contractor_usertype else "staff",
             "staffusertype_id": staff_usertype.unique_id if staff_usertype else None,
             "contractorusertype_id": contractor_usertype.unique_id if contractor_usertype else None,
-            "company_unique_id": company.unique_id,
-            "projects": projects,
             "profile_object": staff_record,
             "password_expired": password_expired,
         }
@@ -248,12 +232,7 @@ class LoginSerializer(serializers.Serializer):
         if not user_type:
             raise serializers.ValidationError("Customer user type is not configured")
 
-        company = getattr(customer_record, "company_id", None) or getattr(login_user, "company_id", None)
-        if not company:
-            raise serializers.ValidationError("Customer record has no company assigned")
-
         permission_payload = self._resolve_permission_payload(
-            company_unique_id=company.unique_id,
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=None,
             role_name="customer",
@@ -275,7 +254,6 @@ class LoginSerializer(serializers.Serializer):
             "generated_at": permission_payload["generated_at"],
             "user_type": "customer",
             "staffusertype_id": None,
-            "company_unique_id": company.unique_id,
             "profile_object": customer_record,
             "password_expired": password_expired,
         }
@@ -308,7 +286,6 @@ class LoginSerializer(serializers.Serializer):
             "generated_at": permission_payload["generated_at"],
             "user_type": "platform",
             "staffusertype_id": getattr(getattr(user, "staffusertype_id", None), "unique_id", None),
-            "company_unique_id": getattr(getattr(user, "company_id", None), "unique_id", None),
         }
 
     def _authenticate_customer(self, username, password):
@@ -339,7 +316,7 @@ class LoginSerializer(serializers.Serializer):
 
         queryset = (
             Staffcreation.objects
-            .select_related("user_type_id", "staffusertype_id", "contractorusertype_id", "personal_details", "company_id")
+            .select_related("user_type_id", "staffusertype_id", "contractorusertype_id", "personal_details")
             .filter(is_active=True, is_deleted=False)
             .filter(lookup_filters)
         )
@@ -351,7 +328,7 @@ class LoginSerializer(serializers.Serializer):
                 )
                 continue
 
-            if candidate.is_superuser and not candidate.company_id:
+            if candidate.is_superuser:
                 # Platform super admins live in a different table/path.
                 return None
 
@@ -380,12 +357,9 @@ class LoginSerializer(serializers.Serializer):
                 "staff_id__user_type_id",
                 "staff_id__staffusertype_id",
                 "staff_id__contractorusertype_id",
-                "staff_id__company_id",
                 "customer_id__user_type_id",
-                "customer_id__company_id",
                 "user_type_id",
                 "staffusertype_id",
-                "company_id",
             )
             .filter(username__iexact=username, is_active=True, is_deleted=False)
             .first()
@@ -396,7 +370,7 @@ class LoginSerializer(serializers.Serializer):
 
         staff_record = getattr(user, "staff_id", None)
         if staff_record:
-            if staff_record.is_superuser and not getattr(staff_record, "company_id", None):
+            if staff_record.is_superuser:
                 return self._build_platform_payload(user)
             return self._build_staff_payload(staff_record, login_user=user)
 
@@ -411,8 +385,6 @@ class LoginSerializer(serializers.Serializer):
 
     def _build_panchayat_leader_payload(self, leader):
         panchayat = leader.panchayat_id
-        company = leader.company_id or (panchayat.company_id if panchayat else None)
-        project = leader.project_id or (panchayat.project_id if panchayat else None)
 
         return {
             "user": leader,
@@ -427,15 +399,13 @@ class LoginSerializer(serializers.Serializer):
             "user_type": "panchayat_leader",
             "staffusertype_id": None,
             "contractorusertype_id": None,
-            "company_unique_id": company.unique_id if company else None,
-            "projects": [],
             "profile_object": leader,
         }
 
     def _authenticate_panchayat_leader(self, username, password):
         leader = (
             PanchayatLeaderLogin.objects
-            .select_related("panchayat_id", "company_id", "project_id")
+            .select_related("panchayat_id")
             .filter(is_active=True, is_deleted=False)
             .filter(Q(username__iexact=username) | Q(email__iexact=username))
             .first()

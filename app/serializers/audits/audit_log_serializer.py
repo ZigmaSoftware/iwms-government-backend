@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 from app.models.user_creations.auditlog import AuditLog
 from app.models.user_creations.staffcreation import Staffcreation
@@ -9,7 +8,7 @@ from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreenaction import UserScreenAction
 
 
-class AuditLogSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class AuditLogSerializer(serializers.ModelSerializer):
     user_id = serializers.SlugRelatedField(
         slug_field="staff_unique_id",
         queryset=Staffcreation.objects.all(),
@@ -41,10 +40,6 @@ class AuditLogSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer
         model = AuditLog
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "user_id",
             "staffusertype_id",
             "mainscreen_id",

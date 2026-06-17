@@ -1,9 +1,8 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.masters.district import District
 from app.validators.unique_name_validator import unique_name_validator
 
-class DistrictSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class DistrictSerializer(serializers.ModelSerializer):
     continent_name = serializers.CharField(source="continent_id.name", read_only=True)
     country_name   = serializers.CharField(source="country_id.name", read_only=True)
     state_name     = serializers.CharField(source="state_id.name", read_only=True)

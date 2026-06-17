@@ -8,32 +8,16 @@ from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.models.masters.zone import Zone
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
+from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 
 from django.contrib.auth.hashers import make_password
 
 
-class CustomerCreationSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
-    company_id = serializers.SlugRelatedField(
-        # source="company_id",
-        queryset=Company.objects.all(),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-        )
+class CustomerCreationSerializer(serializers.ModelSerializer):
 
-    project_id = serializers.SlugRelatedField(
-        # source="project_id",
-        queryset=Project.objects.all(),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
     ward_id = serializers.SlugRelatedField(
         source="ward",
         queryset=Ward.objects.all(),
@@ -89,6 +73,13 @@ class CustomerCreationSerializer(TenancyReadSerializerMixin, serializers.ModelSe
         queryset=SubProperty.objects.all(),
         slug_field="unique_id",
     )
+    waste_type_ids = serializers.SlugRelatedField(
+        source="waste_types",
+        queryset=WasteType.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        many=True,
+        required=False,
+    )
     panchayat_id = serializers.SlugRelatedField(
         # source="panchayat_id",
         queryset=Panchayat.objects.all(),
@@ -105,6 +96,7 @@ class CustomerCreationSerializer(TenancyReadSerializerMixin, serializers.ModelSe
     country_name = serializers.CharField(source="country.name", read_only=True)
     property_name = serializers.CharField(source="property_ref.property_name", read_only=True)
     sub_property_name = serializers.CharField(source="sub_property.sub_property_name", read_only=True)
+    waste_types = serializers.SerializerMethodField(read_only=True)
 
     apartment_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     block_no = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -125,10 +117,6 @@ class CustomerCreationSerializer(TenancyReadSerializerMixin, serializers.ModelSe
         model = CustomerCreation
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "customer_name",
             "contact_no",
             "building_no",
@@ -156,6 +144,8 @@ class CustomerCreationSerializer(TenancyReadSerializerMixin, serializers.ModelSe
             "id_no",
             "property_id",
             "sub_property_id",
+            "waste_type_ids",
+            "waste_types",
             "username",
             "email",
             "password",
@@ -252,3 +242,12 @@ class CustomerCreationSerializer(TenancyReadSerializerMixin, serializers.ModelSe
                     raise serializers.ValidationError("Industry name required")
 
         return attrs
+
+    def get_waste_types(self, obj):
+        return [
+            {
+                "unique_id": waste_type.unique_id,
+                "waste_type_name": waste_type.waste_type_name,
+            }
+            for waste_type in obj.waste_types.filter(is_deleted=False).order_by("waste_type_name")
+        ]

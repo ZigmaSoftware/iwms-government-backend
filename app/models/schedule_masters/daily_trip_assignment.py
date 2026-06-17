@@ -2,8 +2,6 @@ from django.db import models
 from django.utils import timezone
 
 from app.utils.base_models import BaseMaster
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.schedule_masters.staff_template import StaffTemplate
@@ -13,16 +11,14 @@ from app.models.masters.ward import Ward
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 
 
-def _generate_trip_assignment_unique_id(company_id, project_id):
+def _generate_trip_assignment_unique_id():
     """
-    Generates TRIP-YYYY-MM-NNN, where NNN is sequential per company+project+month.
+    Generates TRIP-YYYY-MM-NNN, where NNN is sequential per month.
     Inline import avoids circular-import at module load time.
     """
     today = timezone.localdate()
     prefix = f"TRIP-{today.year}-{today.month:02d}"
     count = DailyTripAssignment.objects.filter(
-        company_id=company_id,
-        project_id=project_id,
         unique_id__startswith=f"{prefix}-",
     ).count()
     return f"{prefix}-{count + 1:03d}"
@@ -67,19 +63,7 @@ class DailyTripAssignment(BaseMaster):
     # TENANCY
     # ------------------------------------------------------------------
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        db_column="company_id",
-        related_name="daily_trip_assignments",
-    )
 
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        db_column="project_id",
-        related_name="daily_trip_assignments",
-    )
 
     # ------------------------------------------------------------------
     # TRIP PLAN & STAFF
@@ -239,9 +223,7 @@ class DailyTripAssignment(BaseMaster):
             self.ward_id = self.ward_id or self.trip_plan_id.ward_id
             self.scheduled_time = self.scheduled_time or self.trip_plan_id.scheduled_time
         if not self.unique_id:
-            self.unique_id = _generate_trip_assignment_unique_id(
-                self.company_id, self.project_id
-            )
+            self.unique_id = _generate_trip_assignment_unique_id()
         super().save(*args, **kwargs)
 
     def __str__(self):

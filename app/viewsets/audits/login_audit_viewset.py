@@ -11,6 +11,5 @@ class LoginAuditViewSet(CompanyScopedViewSet):
     def get_queryset(self):
         return (
             LoginAudit.objects
-            .select_related("company_id", "project_id")
             .order_by("-timestamp")
         )

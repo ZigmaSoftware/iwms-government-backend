@@ -17,8 +17,6 @@ from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 def generate_trip_plan_id():
@@ -53,18 +51,6 @@ class TripPlan(BaseMaster):
     )
 
     # ---- tenancy ---------------------------------------------------
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="trip_plans",
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="trip_plans",
-        db_column="project_id",
-    )
 
     # ---- WHERE -----------------------------------------------------
     district_id = models.ForeignKey(

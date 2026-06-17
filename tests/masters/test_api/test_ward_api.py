@@ -16,12 +16,25 @@ class TestWardAPICreate:
     def test_create_returns_success(self, auth_client, state, district, city, zone):
         resp = auth_client.post(
             BASE,
-            {"ward_name": "New Ward", "state_id": state.unique_id,
-             "district_id": district.unique_id, "city_id": city.unique_id,
-             "zone_id": zone.unique_id},
+            {
+                "ward_name": "New Ward",
+                "state_id": state.unique_id,
+                "district_id": district.unique_id,
+                "city_id": city.unique_id,
+                "zone_id": zone.unique_id,
+                "geofencing_type": "polygon",
+                "coordinates": [
+                    {"latitude": 13.0808, "longitude": 80.2731},
+                    {"latitude": 13.0832, "longitude": 80.2775},
+                    {"latitude": 13.0796, "longitude": 80.2801},
+                ],
+            },
             format="json",
         )
         assert resp.status_code in (200, 201)
+        data = resp.json()
+        assert len(data["coordinates"]) == 3
+        assert data["coordinates"][0]["longitude"] == 80.2731
 
 
 @pytest.mark.django_db
@@ -34,8 +47,21 @@ class TestWardAPIRetrieve:
 @pytest.mark.django_db
 class TestWardAPIUpdate:
     def test_patch_returns_success(self, auth_client, ward):
-        resp = auth_client.patch(f"{BASE}{ward.unique_id}/", {"ward_name": "Updated Ward"}, format="json")
+        resp = auth_client.patch(
+            f"{BASE}{ward.unique_id}/",
+            {
+                "ward_name": "Updated Ward",
+                "coordinates": [
+                    {"lat": 13.0701, "lng": 80.2601},
+                    {"lat": 13.0751, "lng": 80.2641},
+                    {"lat": 13.0711, "lng": 80.2681},
+                ],
+            },
+            format="json",
+        )
         assert resp.status_code in (200, 204)
+        ward.refresh_from_db()
+        assert len(ward.coordinates) == 3
 
 
 @pytest.mark.django_db

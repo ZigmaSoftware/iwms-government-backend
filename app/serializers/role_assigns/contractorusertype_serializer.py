@@ -1,10 +1,9 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class ContractorUserTypeSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class ContractorUserTypeSerializer(serializers.ModelSerializer):
     usertype_name = serializers.CharField(
         source="usertype_id.name",
         read_only=True,

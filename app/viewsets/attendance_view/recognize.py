@@ -152,8 +152,6 @@ class RecognizeViewSet(ViewSet):
         punch_type = "OUT" if last and last.punch_type == "IN" else "IN"
 
         Recognized.objects.create(
-            company_id=employee.staff.company_id,
-            project_id=employee.staff.project_id,
             staff=employee.staff,
             emp_id=employee.emp_id,
             emp_id_raw=staff_unique_id,          # keep raw string too

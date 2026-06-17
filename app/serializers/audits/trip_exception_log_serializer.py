@@ -1,10 +1,9 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.audits.trip_exception_log import TripExceptionLog
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 
 
-class TripExceptionLogSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class TripExceptionLogSerializer(serializers.ModelSerializer):
 
     daily_trip_assignment_id = serializers.SlugRelatedField(
         source="daily_trip_assignment",
@@ -16,10 +15,6 @@ class TripExceptionLogSerializer(TenancyReadSerializerMixin, serializers.ModelSe
         model = TripExceptionLog
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "daily_trip_assignment_id",
             "exception_type",
             "remarks",

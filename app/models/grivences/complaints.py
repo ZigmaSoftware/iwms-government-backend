@@ -6,8 +6,6 @@ from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from django.utils import timezone
 from django.db.models import Max
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 def generate_complaint_id():
@@ -38,20 +36,6 @@ def complaint_upload_path(instance, filename):
 
 class Complaint(BaseMaster):
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
 
     class StatusChoices(models.TextChoices):
         PROGRESSING = "PROGRESSING", "Progressing"

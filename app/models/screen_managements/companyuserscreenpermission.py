@@ -6,31 +6,26 @@ from app.models.screen_managements.userscreen import UserScreen
 from app.models.role_assigns.userType import UserType
 from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.screen_managements.userscreenaction import UserScreenAction
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from django.db.models import Q, UniqueConstraint
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
 
 
+def generate_userscreenpermission_id():
+    return f"USERSCRNPERM-{generate_unique_id()}"
+
+
 def generate_companyuserscreenpermission_id():
-    return f"CMPUSERSCRNPERM-{generate_unique_id()}"
+    return generate_userscreenpermission_id()
 
 
-class CompanyUserScreenPermission(BaseMaster):
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
+class UserScreenPermission(BaseMaster):
 
     unique_id = models.CharField(
         max_length=60,
         primary_key=True,
         unique=True,
-        default=generate_companyuserscreenpermission_id,
+        default=generate_userscreenpermission_id,
         editable=False
     )
 
@@ -60,12 +55,6 @@ class CompanyUserScreenPermission(BaseMaster):
         blank=True
     )
     
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        to_field="unique_id", db_column="company_id",
-        related_name="userscreenpermissions"
-    )
     mainscreen_id = models.ForeignKey(
         MainScreen, on_delete=models.PROTECT,
         to_field="unique_id", db_column="mainscreen_id",
@@ -91,15 +80,17 @@ class CompanyUserScreenPermission(BaseMaster):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "app_companyuserscreenpermission"
         ordering = ["order_no"]
+        verbose_name = "User Screen Permission"
+        verbose_name_plural = "User Screen Permissions"
         indexes = [
-            models.Index(fields=["company_id", "staffusertype_id", "mainscreen_id"]),
-            models.Index(fields=["company_id", "contractorusertype_id", "mainscreen_id"]),
+            models.Index(fields=["staffusertype_id", "mainscreen_id"]),
+            models.Index(fields=["contractorusertype_id", "mainscreen_id"]),
         ]
         constraints = [
             UniqueConstraint(
                 fields=[
-                    "company_id",
                     "usertype_id",
                     "staffusertype_id",
                     "contractorusertype_id",
@@ -108,7 +99,7 @@ class CompanyUserScreenPermission(BaseMaster):
                     "userscreenaction_id",
                 ],
                 condition=Q(is_deleted=False),
-                name="uq_active_company_user_screen_permission",
+                name="uq_active_user_screen_permission",
             )
         ]
 
@@ -117,3 +108,6 @@ class CompanyUserScreenPermission(BaseMaster):
         self.is_active = False
         self.is_deleted = True
         self.save(update_fields=["is_active", "is_deleted"])
+
+
+CompanyUserScreenPermission = UserScreenPermission

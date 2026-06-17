@@ -5,12 +5,11 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
 class DailyTripHouseholdCollectionSerializer(
-    TenancyReadSerializerMixin,
+    
     serializers.ModelSerializer,
 ):
     trip_assignment_id = UniqueIdOrPkField(
@@ -31,10 +30,6 @@ class DailyTripHouseholdCollectionSerializer(
         model = DailyTripHouseholdCollection
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "trip_assignment_id",
             "trip_assignment",
             "customer_id",
@@ -55,10 +50,6 @@ class DailyTripHouseholdCollectionSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "zone_id",
             "ward_id",
             "panchayat_id",

@@ -17,8 +17,6 @@ class AuditLogViewSet(CompanyScopedViewSet):
                 "mainscreen_id",
                 "userscreen_id",
                 "userscreenaction_id",
-                "company_id",
-                "project_id",
             )
             .order_by("-timestamp")
         )

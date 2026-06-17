@@ -18,14 +18,8 @@ class WardViewSet(AuditViewSetMixin,CompanyScopedViewSet):
     def get_queryset(self):
         queryset = Ward.objects.filter(is_deleted=False)
 
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
 
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
 
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         zone_uid = self.request.query_params.get("zone") or self.request.query_params.get("zone_id")
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
