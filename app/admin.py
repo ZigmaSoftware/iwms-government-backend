@@ -1,7 +1,5 @@
 from django.contrib import admin
 
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 from app.models.customers.customercreation import CustomerCreation
 
@@ -27,15 +25,3 @@ class CustomerCreationAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "is_deleted")
     search_fields = ("customer_name", "contact_no", "username")
     ordering = ("customer_name",)
-
-
-@admin.register(Company)
-class CompanyAdmin(admin.ModelAdmin):
-    list_display = ("unique_id", "name", "is_active", "is_deleted")
-    search_fields = ("unique_id", "name")
-
-
-@admin.register(Project)
-class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("unique_id", "name", "company_id", "is_active", "is_deleted")
-    search_fields = ("unique_id", "name", "company_id__name")

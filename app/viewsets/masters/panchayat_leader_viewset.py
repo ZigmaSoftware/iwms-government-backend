@@ -10,8 +10,6 @@ from app.serializers.masters.panchayat_leader_serializer import PanchayatLeaderL
 class PanchayatLeaderLoginViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     queryset = PanchayatLeaderLogin.objects.select_related(
         "panchayat_id",
-        "company_id",
-        "project_id",
     ).filter(is_deleted=False)
 
     serializer_class = PanchayatLeaderLoginSerializer
@@ -27,7 +25,7 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, CompanyScopedViewSet):
 
     def get_queryset(self):
         qs = PanchayatLeaderLogin.objects.select_related(
-            "panchayat_id", "company_id", "project_id"
+            "panchayat_id"
         ).filter(is_deleted=False)
 
         panchayat_id = self.request.query_params.get("panchayat_id")

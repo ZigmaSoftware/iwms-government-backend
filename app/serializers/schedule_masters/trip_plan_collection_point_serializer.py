@@ -7,12 +7,11 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
 class TripPlanCollectionPointSerializer(
-    TenancyReadSerializerMixin,
+    
     serializers.ModelSerializer,
 ):
     trip_plan_id = UniqueIdOrPkField(
@@ -46,10 +45,6 @@ class TripPlanCollectionPointSerializer(
         model = TripPlanCollectionPoint
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "trip_plan_id",
             "collection_type",
             "collection_point_id",
@@ -69,10 +64,6 @@ class TripPlanCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "zone_id",
             "ward_id",
             "panchayat_id",

@@ -98,28 +98,12 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
 
         return None
 
-    # --------------------------------------------------
-    # CREATE (🔥 FRONTEND-DRIVEN COMPANY/PROJECT)
-    # --------------------------------------------------
-
     def perform_create(self, serializer):
         user = self._resolve_request_user()
-
-        company = serializer.validated_data.get("company_id")
-        project = serializer.validated_data.get("project_id")
-
-        # ✅ Strict validation
-        if not company or not project:
-            raise serializers.ValidationError({
-                "company_id": "Company is required",
-                "project_id": "Project is required"
-            })
 
         instance = serializer.save(
             approval_status="PENDING",
             # requested_by=user,  # can be None if allowed in model
-            company_id=company,
-            project_id=project,
         )
 
         new_data = self._serialize_instance(instance)
@@ -136,8 +120,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             action=StaffTemplateAuditLog.Action.CREATE,
             entity_id=instance.unique_id,
             remarks=instance.change_remarks,
-            company_id=instance.company_id,
-            project_id=instance.project_id,
         )
 
     def perform_update(self, serializer):
@@ -166,8 +148,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
                 action=StaffTemplateAuditLog.Action.MODIFY,
                 entity_id=instance.unique_id,
                 remarks=instance.change_remarks,
-                company_id=instance.company_id,
-                project_id=instance.project_id,
             )
 
     def update(self, request, *args, **kwargs):
@@ -200,6 +180,4 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             performed_by=user,
             performed_role=self._resolve_performed_role(user),
             change_remarks=remarks if isinstance(remarks, str) else None,
-            company_id=company_id or getattr(user, "company_id", None),
-            project_id=project_id or getattr(user, "project_id", None),
         )

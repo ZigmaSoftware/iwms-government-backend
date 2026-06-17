@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 from app.models.grivences.sub_category_citizenGrievance import SubCategory
 from app.models.grivences.main_category_citizenGrievance import MainCategory
@@ -19,7 +18,7 @@ class FlexibleMainCategoryField(serializers.PrimaryKeyRelatedField):
             self.fail("does_not_exist", pk_value=data)
 
 
-class SubCategorySerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class SubCategorySerializer(serializers.ModelSerializer):
     mainCategory = FlexibleMainCategoryField(
         queryset=MainCategory.objects.filter(is_deleted=False)
     )
@@ -31,10 +30,6 @@ class SubCategorySerializer(TenancyReadSerializerMixin, serializers.ModelSeriali
         model = SubCategory
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "name",
             "mainCategory",
             "mainCategory_name",

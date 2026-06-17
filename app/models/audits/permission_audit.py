@@ -4,7 +4,6 @@ from app.models.screen_managements.mainscreen import MainScreen
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreenaction import UserScreenAction
 from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.superadmin_masters.company import Company
 from app.models.user_creations.staffcreation import Staffcreation
 
 
@@ -17,14 +16,6 @@ class PermissionAuditLog(models.Model):
         ("DELETED", "Deleted"),
     ]
 
-    company= models.ForeignKey(
-        Company,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        to_field="unique_id",
-        db_column="company_id",
-    )
     staffusertype = models.ForeignKey(
         StaffUserType,
         on_delete=models.SET_NULL,

@@ -1,10 +1,10 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.masters.panchayat import Panchayat
+from app.serializers.masters.geofence import normalize_coordinates
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class PanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class PanchayatSerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     city_name = serializers.CharField(source="city_id.name", read_only=True)
@@ -18,10 +18,6 @@ class PanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSerialize
         model = Panchayat
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "state_id",
             "state_name",
             "city_id",
@@ -42,6 +38,7 @@ class PanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSerialize
             "geofencing_type",
             "latitude",
             "longitude",
+            "coordinates",
             "is_active",
             "created_at",
             "updated_at",
@@ -89,8 +86,6 @@ class PanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSerialize
                 Model=Panchayat,
                 name_field="panchayat_name",
                 scope_fields=[
-                    "company_id",
-                    "project_id",
                     "city_id",
                     "district_id",
                     "state_id"
@@ -98,3 +93,6 @@ class PanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSerialize
             )(self, attrs)
 
         return attrs
+
+    def validate_coordinates(self, value):
+        return normalize_coordinates(value)

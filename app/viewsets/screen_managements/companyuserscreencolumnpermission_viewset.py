@@ -12,7 +12,6 @@ from app.models.screen_managements.companyuserscreencolumnpermission import (
 )
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
-from app.models.superadmin_masters.company import Company
 from app.serializers.screen_managements.companyuserscreencolumnpermission_serializer import (
     UserScreenColumnPermissionSerializer,
     UserScreenColumnPermissionWriteSerializer,
@@ -52,8 +51,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
             is_deleted=False,
             can_view = True,
         ).select_related(
-            "company_id",
-            "project_id",
             "usertype_id",
             "staffusertype_id",
             "contractorusertype_id",
@@ -117,20 +114,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
         write_ser.is_valid(raise_exception=True)
         vd = write_ser.validated_data
 
-        # Resolve company
-        company = self._company()
-        if not company:
-            if self._is_platform_super_admin():
-                company_id_str = request.data.get("company_id")
-                company = Company.objects.filter(unique_id=company_id_str).first()
-                if not company:
-                    return Response(
-                        {"error": "Valid company_id is required for platform admin"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            else:
-                raise PermissionDenied("Company user required")
-
         # Resolve FK objects
         userscreen = UserScreen.objects.get(unique_id=vd["userscreen_id"])
         column = UserScreenColumn.objects.get(unique_id=vd["column_id"])
@@ -159,8 +142,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
 
         with transaction.atomic():
             instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
-                company_id=company,
-                project_id=project,
                 staffusertype_id=staffusertype,
                 contractorusertype_id=contractorusertype,
                 usertype_id=usertype,

@@ -3,8 +3,6 @@ from app.utils.base_models import BaseMaster
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 
@@ -13,20 +11,6 @@ def generate_wastecollection_id():
     return f"WASTE-{generate_unique_id()}"
 
 class WasteCollection(BaseMaster):
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
 
     unique_id = models.CharField(
         max_length=30,

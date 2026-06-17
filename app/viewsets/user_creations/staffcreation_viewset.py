@@ -13,8 +13,6 @@ from app.serializers.user_creations.staffcreation_serializer import (
     StaffApprovalActionSerializer,
     StaffcreationSerializer,
 )
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
@@ -229,63 +227,7 @@ class StaffcreationViewset(AuditViewSetMixin,CompanyScopedViewSet):
 
         if serializer.is_valid():
             with transaction.atomic():
-                # Handle platform superadmin vs company user
-                if self._is_platform_super_admin():
-                    # Get company from request data for platform superadmin
-                    company_unique_id = request.data.get("company_id")
-                    if not company_unique_id:
-                        from rest_framework.exceptions import ValidationError
-                        raise ValidationError({"company_id": "company_id is required"})
-                    
-                    company = Company.objects.filter(unique_id=company_unique_id).first()
-                    if not company:
-                        from rest_framework.exceptions import ValidationError
-                        raise ValidationError({"company_id": "Invalid company_id"})
-                    
-                    # Get project from request data
-                    project_unique_id = (
-                        request.headers.get(self.project_header)
-                        or request.data.get("project_id")
-                        or request.data.get("project_unique_id")
-                    )
-                    if project_unique_id:
-                        project = Project.objects.filter(
-                            unique_id=project_unique_id,
-                            company_id=company
-                        ).first()
-                        if not project:
-                            from rest_framework.exceptions import ValidationError
-                            raise ValidationError({"project_id": "Invalid project_id for this company"})
-                    else:
-                        # Get the first active project for the company as default
-                        project = Project.objects.filter(
-                            company_id=company,
-                            is_active=True,
-                            is_deleted=False
-                        ).first()
-                        if not project:
-                            from rest_framework.exceptions import ValidationError
-                            raise ValidationError({"project_id": "project_id is required - no active project found for this company"})
-                else:
-                    # Company user - use scoped methods
-                    company = self._company()
-                    if not company:
-                        from rest_framework.exceptions import PermissionDenied
-                        raise PermissionDenied("Company user required")
-                    
-                    project = self._project()
-                    if not project:
-                        from rest_framework.exceptions import ValidationError
-                        raise ValidationError({"project_id": "project_id is required"})
-
-                # serializer.save(
-                #     company_id=company,
-                #     project_id=project,
-                # )
-                instance = serializer.save(
-                company_id=company,
-                project_id=project,
-            )
+                instance = serializer.save()
 
             new_data = self._serialize_instance(instance)
 
@@ -315,18 +257,9 @@ class StaffcreationViewset(AuditViewSetMixin,CompanyScopedViewSet):
 
         if serializer.is_valid():
             with transaction.atomic():
-                company = getattr(instance, "company_id", None) or self._company()
-                project = getattr(instance, "project_id", None) or self._project()
-                # serializer.save(
-                #     company_id=company,
-                #     project_id=project,
-                # )
                 previous_data = self._serialize_instance(instance)
 
-            updated_instance = serializer.save(
-                company_id=company,
-                project_id=project,
-            )
+            updated_instance = serializer.save()
 
             new_data = self._serialize_instance(updated_instance)
 

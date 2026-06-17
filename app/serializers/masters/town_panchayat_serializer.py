@@ -1,10 +1,9 @@
 from rest_framework import serializers
 from app.models.masters.town_panchayat import TownPanchayat
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class TownPanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class TownPanchayatSerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
@@ -16,10 +15,6 @@ class TownPanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
         model = TownPanchayat
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "state_id",
             "state_name",
             "district_id",
@@ -45,8 +40,6 @@ class TownPanchayatSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
             "unique_id",
             "created_at",
             "updated_at",
-            "company_id",
-            "project_id",
         ]
 
     def validate(self, attrs):

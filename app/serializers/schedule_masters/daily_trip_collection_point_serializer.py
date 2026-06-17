@@ -7,12 +7,11 @@ from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
 from app.models.user_creations.staffcreation import Staffcreation
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
 class DailyTripCollectionPointSerializer(
-    TenancyReadSerializerMixin,
+    
     serializers.ModelSerializer,
 ):
     trip_assignment_id = UniqueIdOrPkField(
@@ -43,10 +42,6 @@ class DailyTripCollectionPointSerializer(
         model = DailyTripCollectionPoint
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "trip_assignment_id",
             "trip_assignment",
             "collection_point_id",
@@ -72,10 +67,6 @@ class DailyTripCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "zone_id",
             "ward_id",
             "panchayat_id",

@@ -7,8 +7,6 @@ from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.models.masters.zone import Zone
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -44,22 +42,6 @@ class DailyTripHouseholdCollection(BaseMaster):
         editable=False,
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="company_id",
-        null=True,
-        blank=True,
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="project_id",
-        null=True,
-        blank=True,
-    )
 
     trip_assignment_id = models.ForeignKey(
         DailyTripAssignment,
@@ -148,10 +130,6 @@ class DailyTripHouseholdCollection(BaseMaster):
         ]
 
     def save(self, *args, **kwargs):
-        if self.trip_assignment_id_id and not self.company_id_id:
-            assignment = self.trip_assignment_id
-            self.company_id = assignment.company_id
-            self.project_id = assignment.project_id
         # Denormalise location from customer
         if self.customer_id_id and not self.panchayat_id_id:
             customer = self.customer_id

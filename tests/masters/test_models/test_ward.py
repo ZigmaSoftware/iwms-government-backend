@@ -24,6 +24,9 @@ class TestWardDefaults:
     def test_is_deleted_default_false(self, ward):
         assert ward.is_deleted is False
 
+    def test_coordinates_default_empty_list(self, ward):
+        assert ward.coordinates == []
+
 
 @pytest.mark.django_db
 class TestWardSoftDelete:
@@ -40,3 +43,15 @@ class TestWardUpdate:
         ward.save()
         ward.refresh_from_db()
         assert ward.ward_name == "Renamed Ward"
+
+    def test_update_coordinates(self, ward):
+        ward.geofencing_type = "polygon"
+        ward.coordinates = [
+            {"latitude": 13.0808, "longitude": 80.2731},
+            {"latitude": 13.0832, "longitude": 80.2775},
+            {"latitude": 13.0796, "longitude": 80.2801},
+        ]
+        ward.save()
+        ward.refresh_from_db()
+        assert ward.geofencing_type == "polygon"
+        assert len(ward.coordinates) == 3

@@ -1,9 +1,8 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.grivences.complaints import Complaint
 
 
-class ComplaintSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class ComplaintSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
     customer_id = serializers.CharField(source="customer.unique_id", read_only=True)
     zone_id = serializers.CharField(source="zone.unique_id", read_only=True)

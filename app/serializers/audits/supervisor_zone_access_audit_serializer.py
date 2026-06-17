@@ -1,10 +1,9 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.audits.supervisor_zone_access_audit import SupervisorZoneAccessAudit
 from app.models.user_creations.staffcreation import Staffcreation
 
 
-class SupervisorZoneAccessAuditSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class SupervisorZoneAccessAuditSerializer(serializers.ModelSerializer):
     unique_id = serializers.CharField(read_only=True)
     supervisor_id = serializers.SlugRelatedField(
         source="supervisor",
@@ -21,10 +20,6 @@ class SupervisorZoneAccessAuditSerializer(TenancyReadSerializerMixin, serializer
         model = SupervisorZoneAccessAudit
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "supervisor_id",
             "old_zone_ids",
             "new_zone_ids",

@@ -1,11 +1,10 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.waste_types.subproperty import SubProperty
 from app.models.waste_types.property import Property
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class SubPropertySerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class SubPropertySerializer(serializers.ModelSerializer):
     # dropdown filtered only to active and not-deleted properties
     property_id = serializers.PrimaryKeyRelatedField(
         queryset=Property.objects.filter(is_active=True, is_deleted=False),

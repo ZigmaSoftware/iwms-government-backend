@@ -1,12 +1,10 @@
 from django.db import models
-from app.models.superadmin_masters.company import Company
 from app.utils.base_models import BaseMaster
 from ..common_masters.country import Country
 from ..common_masters.state import State
 from .district import District
 from ..common_masters.continent import Continent
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.project import Project
 
 
 
@@ -53,18 +51,6 @@ class City(BaseMaster):
 
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
-    company_id=models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="cities",
-        db_column="company_id",
-    )
-    project_id=models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="cities",
-        db_column="project_id",
-    )
 
     class Meta:
         ordering = ["name"]

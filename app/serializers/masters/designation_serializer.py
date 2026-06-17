@@ -2,10 +2,9 @@ from rest_framework import serializers
 
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 
-class DesignationSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class DesignationSerializer(serializers.ModelSerializer):
     status = serializers.ChoiceField(
         choices=(("active", "Active"), ("inactive", "Inactive")),
         write_only=True,
@@ -23,10 +22,6 @@ class DesignationSerializer(TenancyReadSerializerMixin, serializers.ModelSeriali
         model = Designation
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "department_id",
             "department_name",
             "designation_name",

@@ -115,27 +115,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# -------------------------------------------------------
-# Database (MySQL)
-# -------------------------------------------------------
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'iwmsdb',
-#         'USER': 'root',
-#         'PASSWORD': 'admin@123',
-#         'HOST': 'localhost',
-#         'PORT': '3306',
-#         'OPTIONS': {
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#         },
-#     }
-# }
-
 DATABASES = {   
     'default': {
         'ENGINE': os.getenv("DB_ENGINE", "django.db.backends.mysql"),
-        'NAME': os.getenv("DB_NAME", "iwmsdb"), 
+        'NAME': os.getenv("DB_NAME", "iwmsdb-government"), 
         'USER': os.getenv("DB_USER", "root"),
         'PASSWORD': os.getenv("DB_PASSWORD", "admin@123"),
         'HOST': os.getenv("DB_HOST", "localhost"),
