@@ -106,7 +106,9 @@ MODULE_RESOURCE_ALLOWLIST = {
         "MainScreen",
         "UserScreen",
         "UserScreenAction",
+        "UserScreenPermission",
         "CompanyUserScreenPermission",
+        "userscreenpermissions",
         "companywisescreenpermissions",
         "column-permissions",
     },
@@ -183,8 +185,9 @@ RESOURCE_PERMISSION_ALIASES = {
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
     "StaffTemplateCreation": ("StaffTemplate", "staff-templates"),
-    "companywisescreenpermissions": ("CompanyUserScreenPermission",),
-    "column-permissions": ("CompanyUserScreenPermission",),
+    "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "companywisescreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "column-permissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
 }
 
 
@@ -272,7 +275,7 @@ def _authenticate_request(request):
 
     # Panchayat leader (localbody portal)
     leader = PanchayatLeaderLogin.objects.select_related(
-        "panchayat_id", "company_id", "project_id"
+        "panchayat_id"
     ).filter(unique_id=unique_id).first()
     if leader:
         request.user = leader

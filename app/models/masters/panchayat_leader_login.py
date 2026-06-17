@@ -4,8 +4,6 @@ from django.contrib.auth.hashers import make_password
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.masters.panchayat import Panchayat
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 def generate_panchayat_leader_id():
@@ -34,23 +32,7 @@ class PanchayatLeaderLogin(BaseMaster):
         to_field="unique_id",
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="panchayat_leader_logins",
-        db_column="company_id",
-        null=True,
-        blank=True,
-    )
 
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="panchayat_leader_logins",
-        db_column="project_id",
-        null=True,
-        blank=True,
-    )
 
     username = models.CharField(
         max_length=150,

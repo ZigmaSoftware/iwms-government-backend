@@ -8,11 +8,11 @@ from rest_framework.views import APIView
 from app.models.screen_managements.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
-from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
 from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
-    CompanyUserScreenPermissionMultiScreenSerializer,
+    UserScreenPermissionMultiScreenSerializer,
 )
 from app.serializers.screen_managements.userscreencolumn_serializer import (
     UserScreenColumnSerializer,
@@ -46,7 +46,7 @@ class PermissionAssignAPIView(APIView):
         results = []
 
         for item in normalized_payloads:
-            serializer = CompanyUserScreenPermissionMultiScreenSerializer(data=item)
+            serializer = UserScreenPermissionMultiScreenSerializer(data=item)
             serializer.is_valid(raise_exception=True)
             results.append(serializer.save())
 
@@ -75,8 +75,6 @@ class PermissionAssignAPIView(APIView):
         normalized = []
         for permission in payload.get("permissions", []):
             normalized.append({
-                "companyId": payload.get("companyId") or payload.get("company_id"),
-                "projectId": payload.get("projectId") or payload.get("project_id"),
                 "userTypeId": (
                     payload.get("userTypeId")
                     or payload.get("usertypeId")
@@ -94,9 +92,8 @@ class PermissionAssignAPIView(APIView):
         return normalized
 
 
-class CompanyPermissionsAPIView(APIView):
-    def get(self, request, company_id):
-        project_id = request.query_params.get("projectId") or request.query_params.get("project_id")
+class UserPermissionsAPIView(APIView):
+    def get(self, request, company_id=None):
         staffusertype_id = (
             request.query_params.get("staffUserTypeId")
             or request.query_params.get("staffusertype_id")
@@ -107,20 +104,15 @@ class CompanyPermissionsAPIView(APIView):
         )
         usertype_id = request.query_params.get("usertypeId") or request.query_params.get("usertype_id")
 
-        action_qs = CompanyUserScreenPermission.objects.filter(
-            company_id_id=company_id,
+        action_qs = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False,
         ).select_related("mainscreen_id", "userscreen_id", "userscreenaction_id")
         column_qs = CompanyUserScreenColumnPermission.objects.filter(
-            company_id_id=company_id,
             is_active=True,
             is_deleted=False,
         ).select_related("userscreen_id", "column_id")
 
-        if project_id:
-            action_qs = action_qs.filter(project_id_id=project_id)
-            column_qs = column_qs.filter(project_id_id=project_id)
         if staffusertype_id:
             action_qs = action_qs.filter(staffusertype_id_id=staffusertype_id)
             column_qs = column_qs.filter(staffusertype_id_id=staffusertype_id)
@@ -174,8 +166,9 @@ class CompanyPermissionsAPIView(APIView):
         ]
 
         return Response({
-            "companyId": company_id,
-            "projectId": project_id,
             "contractorUserTypeId": contractorusertype_id,
             "permissions": response,
         })
+
+
+CompanyPermissionsAPIView = UserPermissionsAPIView

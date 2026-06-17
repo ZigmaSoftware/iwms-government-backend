@@ -2,8 +2,6 @@ from django.db import models
 from django.db.models import Max
 from app.utils.comfun import generate_unique_id
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 def generate_alternative_staff_template_id():
@@ -44,23 +42,7 @@ class AlternativeStaffTemplate(models.Model):
         related_name='alternative_templates'
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="alternative_staff_templates",
-        db_column="company_id",
-        null=True,
-        blank=True
-    )
 
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="alternative_staff_templates",
-        db_column="project_id",
-        null=True,
-        blank=True
-    )
 
     from_date = models.DateField(null=True, blank=True)
     to_date = models.DateField(null=True, blank=True)

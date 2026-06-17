@@ -68,8 +68,6 @@ class ScanBinViewSet(viewsets.ViewSet):
                 )
 
                 event = BinCollectionEvent.objects.create(
-                    company_id=ctx.assignment.company_id,
-                    project_id=ctx.assignment.project_id,
                     trip_assignment_id=ctx.assignment,
                     trip_collection_point_id=ctx.trip_cp,
                     collection_point_id=ctx.bin.collection_point_id,

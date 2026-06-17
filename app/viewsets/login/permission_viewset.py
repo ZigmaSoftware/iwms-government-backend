@@ -90,7 +90,6 @@
 #             return {}
         
 #         filters = {
-#             "company_id_id": company_unique_id,
 #             "usertype_id_id": usertype_unique_id,
 #         }
         
@@ -122,8 +121,10 @@ from django.utils import timezone
 
 from app.models.customers.customercreation import CustomerCreation
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.utils.permission_response import resolve_permission_payload
+
+CompanyUserScreenPermission = UserScreenPermission
 
 
 class PermissionViewSet(ViewSet):
@@ -169,12 +170,11 @@ class PermissionViewSet(ViewSet):
 
         staff_user = self._resolve_staff_user(user)
         if staff_user:
-            company = getattr(staff_user, "company_id", None)
             user_type = getattr(staff_user, "user_type_id", None)
             staff_usertype = getattr(staff_user, "staffusertype_id", None)
             contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
 
-            if not company or not user_type:
+            if not user_type:
                 return {}
 
             role_name = (
@@ -183,7 +183,6 @@ class PermissionViewSet(ViewSet):
                 or getattr(user_type, "name", None)
             )
             return resolve_permission_payload(
-                company_unique_id=company.unique_id,
                 usertype_unique_id=user_type.unique_id,
                 staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
                 contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
@@ -193,13 +192,11 @@ class PermissionViewSet(ViewSet):
 
         customer_user = self._resolve_customer_user(user)
         if customer_user:
-            company = getattr(customer_user, "company_id", None)
             user_type = getattr(customer_user, "user_type_id", None)
-            if not company or not user_type:
+            if not user_type:
                 return {}
 
             return resolve_permission_payload(
-                company_unique_id=company.unique_id,
                 usertype_unique_id=user_type.unique_id,
                 role_name="customer",
                 user_type=getattr(user_type, "name", None),
@@ -221,18 +218,16 @@ class PermissionViewSet(ViewSet):
         if not staff_user:
             return {}
 
-        # ✅ Get company and roles
-        company = getattr(staff_user, "company_id", None)
+        # ✅ Get user type and roles
         user_type = getattr(staff_user, "user_type_id", None)
         staff_usertype = getattr(staff_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
 
-        if not company or not user_type:
+        if not user_type:
             return {}
 
         # ✅ Return filtered permissions
         return self._format_permissions(
-            company_unique_id=company.unique_id,
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
@@ -246,16 +241,14 @@ class PermissionViewSet(ViewSet):
         if not staff_user:
             return {}
 
-        company = getattr(staff_user, "company_id", None)
         user_type = getattr(staff_user, "user_type_id", None)
         staff_usertype = getattr(staff_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
 
-        if not company or not user_type:
+        if not user_type:
             return {}
 
         return resolve_permission_payload(
-            company_unique_id=company.unique_id,
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
@@ -269,16 +262,14 @@ class PermissionViewSet(ViewSet):
         if not staff_user:
             return {}
 
-        company = getattr(staff_user, "company_id", None)
         user_type = getattr(staff_user, "user_type_id", None)
         staff_usertype = getattr(staff_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
 
-        if not company or not user_type:
+        if not user_type:
             return {}
 
         return resolve_permission_payload(
-            company_unique_id=company.unique_id,
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
@@ -293,7 +284,7 @@ class PermissionViewSet(ViewSet):
         Return ALL permissions for superadmin
         """
 
-        queryset = CompanyUserScreenPermission.objects.filter(
+        queryset = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False
         ).select_related(
@@ -393,13 +384,12 @@ class PermissionViewSet(ViewSet):
         }
         """
 
-        if not company_unique_id or not usertype_unique_id:
+        if not usertype_unique_id:
             return {}
 
-        queryset = CompanyUserScreenPermission.objects.filter(
+        queryset = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False,
-            company_id_id=company_unique_id,
             usertype_id_id=usertype_unique_id,
         ).select_related(
             "mainscreen_id",

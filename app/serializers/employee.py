@@ -1,18 +1,13 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 from app.models.user_creations.attendance import Employee
 from django.conf import settings
 
 
-class StaffPersonalSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class StaffPersonalSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffPersonalDetails
         fields = [
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "dob",
             "blood_group",
             "marital_status",
@@ -22,7 +17,7 @@ class StaffPersonalSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
         ]
 
 
-class StaffOfficeSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class StaffOfficeSerializer(serializers.ModelSerializer):
     personal = StaffPersonalSerializer(
         source="personal_details",
         read_only=True
@@ -32,10 +27,6 @@ class StaffOfficeSerializer(TenancyReadSerializerMixin, serializers.ModelSeriali
     class Meta:
         model = Staffcreation
         fields = [
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "staff_unique_id",
             "emp_id",
             "employee_name",
@@ -69,7 +60,7 @@ class StaffOfficeSerializer(TenancyReadSerializerMixin, serializers.ModelSeriali
 
         return None
     
-class StaffUpdateSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class StaffUpdateSerializer(serializers.ModelSerializer):
     dob = serializers.DateField(required=False)
     blood_group = serializers.CharField(required=False)
     photo = serializers.ImageField(required=False)
@@ -77,10 +68,6 @@ class StaffUpdateSerializer(TenancyReadSerializerMixin, serializers.ModelSeriali
     class Meta:
         model = Staffcreation
         fields = [
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "employee_name",
             "department",
             "designation",

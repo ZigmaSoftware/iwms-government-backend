@@ -18,8 +18,6 @@ from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedV
 class DailyTripLogViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     queryset = (
         DailyTripLog.objects.select_related(
-            "company_id",
-            "project_id",
             "trip_assignment_id",
             "trip_assignment_id__trip_plan_id",
             "trip_assignment_id__trip_plan_id__zone_id",

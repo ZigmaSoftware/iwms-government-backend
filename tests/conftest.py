@@ -67,7 +67,7 @@ def district(db, continent, country, state):
 
 
 @pytest.fixture
-def city(db, company, project, continent, country, state, district):
+def city(db, continent, country, state, district):
     from app.models.masters.city import City
     return City.objects.create(
         name="Chennai City",
@@ -75,8 +75,6 @@ def city(db, company, project, continent, country, state, district):
         country_id=country,
         state_id=state,
         district_id=district,
-        company_id=company,
-        project_id=project,
     )
 
 

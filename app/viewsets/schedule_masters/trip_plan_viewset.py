@@ -12,8 +12,6 @@ from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedV
 
 class TripPlanViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     queryset = TripPlan.objects.select_related(
-        "company_id",
-        "project_id",
         "district_id",
         "city_id",
         "zone_id",

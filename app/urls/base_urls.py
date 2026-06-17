@@ -7,8 +7,6 @@ from .custom_router import GroupedRouter
 # ============================================================
 
 # Superadmin masters
-from ..viewsets.superadminmasters.company_management import PlatformCompanyCreateViewSet
-from ..viewsets.superadminmasters.project_management import CompanyProjectCreateViewSet
 
 # Common masters
 from ..viewsets.common_masters.continent_viewset import ContinentViewSet
@@ -43,12 +41,13 @@ from ..viewsets.screen_managements.mainscreentype_viewset import MainScreenTypeV
 from ..viewsets.screen_managements.mainscreen_viewset import MainScreenViewSet
 from ..viewsets.screen_managements.userscreen_viewset import UserScreenViewSet
 from ..viewsets.screen_managements.userscreenaction_viewset import UserScreenActionViewSet
-from ..viewsets.screen_managements.companyuserscreenpermission_viewset import CompanyUserScreenPermissionViewSet
+from ..viewsets.screen_managements.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
 from ..viewsets.screen_managements.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
 from ..viewsets.screen_managements.permission_api_views import (
     CompanyPermissionsAPIView,
     PermissionAssignAPIView,
     UserScreenColumnsAPIView,
+    UserPermissionsAPIView,
 )
 
 # Role assignments
@@ -137,8 +136,6 @@ router = GroupedRouter()
 # ============================================================
 # GROUP: SUPERADMIN MASTERS
 # ============================================================
-router.register_group("superadmin","company",PlatformCompanyCreateViewSet)
-router.register_group("superadmin","project",CompanyProjectCreateViewSet)
 
 # ============================================================
 # GROUP: COMMON MASTERS
@@ -183,7 +180,13 @@ router.register_group("screen-managements", "mainscreentype",        MainScreenT
 router.register_group("screen-managements", "mainscreens",           MainScreenViewSet)
 router.register_group("screen-managements", "userscreens",           UserScreenViewSet)
 router.register_group("screen-managements", "userscreen-action",     UserScreenActionViewSet)
-router.register_group("screen-managements", "companywisescreenpermissions", CompanyUserScreenPermissionViewSet)
+router.register_group("screen-managements", "userscreenpermissions", UserScreenPermissionViewSet)
+router.register_group(
+    "screen-managements",
+    "companywisescreenpermissions",
+    UserScreenPermissionViewSet,
+    basename="screen-managements-companywisescreenpermissions-legacy",
+)
 router.register_group("screen-managements", "column-permissions", CompanyUserScreenColumnPermissionViewSet)
 
 # ============================================================
@@ -392,6 +395,7 @@ urlpatterns = [
         UserScreenColumnsAPIView.as_view(),
     ),
     path("permissions/assign/", PermissionAssignAPIView.as_view()),
+    path("permissions/user-screen/", UserPermissionsAPIView.as_view()),
     path("permissions/company/<str:company_id>/", CompanyPermissionsAPIView.as_view()),
     path("", include(router.urls)),
 ]

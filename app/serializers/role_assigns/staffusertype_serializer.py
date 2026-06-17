@@ -1,10 +1,9 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.role_assigns.staffUserType import StaffUserType
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class StaffUserTypeSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class StaffUserTypeSerializer(serializers.ModelSerializer):
     # Extra field
     usertype_name = serializers.CharField(
         source="usertype_id.name",

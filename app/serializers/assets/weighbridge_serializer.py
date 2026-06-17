@@ -1,10 +1,9 @@
 from rest_framework import serializers
 from app.models.assets.weighbridge import WeighbridgeCheck
 from app.models.schedule_masters.trip_plan import TripPlan
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 
-class WeighbridgeCheckSerializer(TenancyReadSerializerMixin,serializers.ModelSerializer):
+class WeighbridgeCheckSerializer(serializers.ModelSerializer):
 
     trip_id = serializers.SlugRelatedField(
         slug_field="unique_id",
@@ -28,10 +27,6 @@ class WeighbridgeCheckSerializer(TenancyReadSerializerMixin,serializers.ModelSer
             "status",
             "checked_date",
             "collected_date",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "is_active",
             "is_deleted",
             "created_at",

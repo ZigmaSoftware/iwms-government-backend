@@ -5,8 +5,6 @@ from app.utils.model_mapper import resolve_userscreen_model
 
 from .mainscreen import MainScreen
 
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 def generate_userscreen_id():
@@ -14,20 +12,6 @@ def generate_userscreen_id():
 
 
 class UserScreen(BaseMaster):
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
 
     unique_id = models.CharField(
         max_length=30,

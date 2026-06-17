@@ -35,8 +35,6 @@ from .transport_masters.fuel import Fuel
 # ============================================================
 # GROUP: TENANCY / SUPERADMIN
 # ============================================================
-from .superadmin_masters.company import Company
-from .superadmin_masters.project import Project
 from .superadmin_masters.auth_user import User
 
 
@@ -61,7 +59,10 @@ from .screen_managements.mainscreen import MainScreen
 from .screen_managements.userscreen import UserScreen
 from .screen_managements.userscreenaction import UserScreenAction
 from .screen_managements.userscreencolumn import UserScreenColumn
-from .screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from .screen_managements.companyuserscreenpermission import (
+    CompanyUserScreenPermission,
+    UserScreenPermission,
+)
 from .screen_managements.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
 
 
@@ -162,8 +163,6 @@ __all__ = [
     "Fuel",
 
     # Tenancy
-    "Company",
-    "Project",
     "User",
 
     # Waste Types
@@ -180,6 +179,7 @@ __all__ = [
     "UserScreen",
     "UserScreenAction",
     "UserScreenColumn",
+    "UserScreenPermission",
     "CompanyUserScreenPermission",
     "CompanyUserScreenColumnPermission",
 

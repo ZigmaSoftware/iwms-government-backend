@@ -1,9 +1,8 @@
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 # from rest_framework import serializers
 # from api.api.customers.customercreation import CustomerCreation
 
 
-# class CustomerNestedSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+# class CustomerNestedSerializer(serializers.ModelSerializer):
 
 #     city_name = serializers.CharField(source="city.name", read_only=True)
 #     zone_name = serializers.CharField(source="zone.name", read_only=True)

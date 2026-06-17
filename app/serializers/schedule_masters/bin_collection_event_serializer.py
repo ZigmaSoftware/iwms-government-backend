@@ -7,7 +7,6 @@ from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
 from app.serializers.assets.bins_serializer import BinsSerializer
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.transport_masters.vehicleCreation_serializer import (
     VehicleCreationSerializer,
 )
@@ -21,7 +20,7 @@ from app.serializers.waste_collection_bluetooth.waste_type_serializer import (
 )
 
 
-class BinCollectionEventSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class BinCollectionEventSerializer(serializers.ModelSerializer):
     trip_assignment_id = UniqueIdOrPkField(
         slug_field="unique_id",
         queryset=DailyTripAssignment.objects.filter(is_deleted=False),
@@ -60,10 +59,6 @@ class BinCollectionEventSerializer(TenancyReadSerializerMixin, serializers.Model
         model = BinCollectionEvent
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "trip_assignment_id",
             "trip_collection_point_id",
             "collection_point_id",

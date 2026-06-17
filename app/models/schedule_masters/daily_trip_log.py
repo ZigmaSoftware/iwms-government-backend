@@ -8,8 +8,6 @@ from django.utils import timezone
 from app.models.assets.bins import Bins
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.masters.panchayat import Panchayat
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
@@ -19,12 +17,10 @@ from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.utils.base_models import Account, BaseMaster
 
 
-def _generate_daily_trip_log_unique_id(company_id, project_id):
+def _generate_daily_trip_log_unique_id():
     today = timezone.localdate()
     prefix = f"DTL-{today.year}-{today.month:02d}"
     count = DailyTripLog.objects.filter(
-        company_id=company_id,
-        project_id=project_id,
         unique_id__startswith=f"{prefix}-",
     ).count()
     return f"{prefix}-{count + 1:03d}"
@@ -75,18 +71,6 @@ class DailyTripLog(BaseMaster):
         blank=True,
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        db_column="company_id",
-        related_name="daily_trip_logs",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        db_column="project_id",
-        related_name="daily_trip_logs",
-    )
     panchayat_id = models.ForeignKey(
         Panchayat,
         on_delete=models.PROTECT,
@@ -188,7 +172,6 @@ class DailyTripLog(BaseMaster):
         ordering = ["-trip_date", "-created_at"]
         indexes = [
             models.Index(fields=["trip_date", "log_status"]),
-            models.Index(fields=["company_id", "project_id", "trip_date"]),
             models.Index(fields=["collection_point_id", "trip_date"]),
         ]
 
@@ -204,8 +187,6 @@ class DailyTripLog(BaseMaster):
         if not assignment:
             return
 
-        self.company_id = assignment.company_id
-        self.project_id = assignment.project_id
         self.panchayat_id = assignment.panchayat_id
         if not self.collection_point_id:
             first_child = (
@@ -313,9 +294,7 @@ class DailyTripLog(BaseMaster):
     def save(self, *args, **kwargs):
         self.autofill_from_assignment()
         if not self.unique_id:
-            self.unique_id = _generate_daily_trip_log_unique_id(
-                self.company_id, self.project_id
-            )
+            self.unique_id = _generate_daily_trip_log_unique_id()
 
         self.full_clean()
         super().save(*args, **kwargs)

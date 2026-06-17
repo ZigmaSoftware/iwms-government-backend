@@ -7,10 +7,6 @@ class TenancyReadSerializerMixin(serializers.Serializer):
     We keep these as read-only fields to avoid clients spoofing tenant ownership.
     """
 
-    company_id = serializers.SerializerMethodField()
-    company_name = serializers.SerializerMethodField()
-    project_id = serializers.SerializerMethodField()
-    project_name = serializers.SerializerMethodField()
 
     def get_company_id(self, obj):
         company = getattr(obj, "company_id", None)

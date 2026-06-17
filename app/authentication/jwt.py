@@ -63,7 +63,7 @@ class JWTUserAuthentication(BaseAuthentication):
 
         # Try to find user in PanchayatLeaderLogin (uses unique_id with prefix PLDR-)
         leader = PanchayatLeaderLogin.objects.select_related(
-            "panchayat_id", "company_id", "project_id"
+            "panchayat_id"
         ).filter(unique_id=unique_id).first()
         if leader:
             request.jwt_payload = payload

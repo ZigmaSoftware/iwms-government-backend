@@ -11,12 +11,11 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
-from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.models.screen_managements.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
-from app.models.superadmin_masters.company import Company
 from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
-    CompanyUserScreenPermissionMultiScreenSerializer,
-    CompanyUserScreenPermissionSerializer,
+    UserScreenPermissionMultiScreenSerializer,
+    UserScreenPermissionSerializer,
 )
 from app.serializers.screen_managements.companyuserscreencolumnpermission_serializer import (
     CompanyUserScreenColumnPermissionSerializer,
@@ -26,14 +25,14 @@ from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedV
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet):
-    serializer_class = CompanyUserScreenPermissionSerializer
+class UserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+    serializer_class = UserScreenPermissionSerializer
     lookup_field = "unique_id"
 
     AUDIT_MODULE = "screen-managements"
-    AUDIT_ENDPOINT = "company-user-screen-permissions"
+    AUDIT_ENDPOINT = "user-screen-permissions"
 
-    permission_resource = "companywisescreenpermissions"
+    permission_resource = "userscreenpermissions"
 
     # Makes newest records appear first on page 1
     filter_backends = [OrderingFilter]
@@ -42,43 +41,12 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
 
     def get_serializer_class(self):
         if getattr(self, "action", None) == "create":
-            return CompanyUserScreenPermissionMultiScreenSerializer
+            return UserScreenPermissionMultiScreenSerializer
         return super().get_serializer_class()
 
     # ---------------------------------------------------------
     # Helpers
     # ---------------------------------------------------------
-    def _company_from_request(self, request, source="query", required=True):
-        """
-        Resolves company from middleware scope first, then from request.
-        Supports both company_id and company_unique_id.
-        Returns: (company_obj_or_none, error_response_or_none)
-        """
-        scoped_company = self._company()
-        if scoped_company:
-            return scoped_company, None
-
-        payload = request.query_params if source == "query" else request.data
-        company_id = (
-            payload.get("company_id")
-            or payload.get("companyId")
-            or payload.get("company_unique_id")
-        )
-
-        if not company_id:
-            if required:
-                return None, Response(
-                    {"error": "company_id (or company_unique_id) is required"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            return None, None
-
-        company = Company.objects.filter(unique_id=company_id).first()
-        if not company:
-            return None, Response({"error": "Invalid company"}, status=status.HTTP_400_BAD_REQUEST)
-
-        return company, None
-
     def _normalize_permission_payloads(self, payload):
         if "permissions" not in payload:
             return [payload]
@@ -86,8 +54,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         normalized = []
         for permission in payload.get("permissions", []):
             normalized.append({
-                "companyId": payload.get("companyId") or payload.get("company_id"),
-                "projectId": payload.get("projectId") or payload.get("project_id"),
                 "userTypeId": (
                     payload.get("userTypeId")
                     or payload.get("usertypeId")
@@ -150,7 +116,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
 
         with transaction.atomic():
             for payload in payloads:
-                serializer = CompanyUserScreenPermissionMultiScreenSerializer(
+                serializer = UserScreenPermissionMultiScreenSerializer(
                     data=payload,
                     context={"update_only": update_only},
                 )
@@ -184,10 +150,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         update_only=False,
         contractorusertype_id=None,
     ):
-        company, error = self._company_from_request(request, source="data", required=True)
-        if error:
-            return error
-
         permission_for, role_id = self._role_from_request(
             request,
             default_staffusertype_id=staffusertype_id,
@@ -200,7 +162,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
             )
 
         payload = request.data.copy()
-        payload["company_id"] = company.unique_id
         if permission_for == "contractor":
             payload["contractorusertype_id"] = role_id
             payload["staffusertype_id"] = None
@@ -209,7 +170,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
             payload["contractorusertype_id"] = None
 
         with transaction.atomic():
-            serializer = CompanyUserScreenPermissionMultiScreenSerializer(
+            serializer = UserScreenPermissionMultiScreenSerializer(
                 data=payload,
                 context={"update_only": update_only},
             )
@@ -220,9 +181,9 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
 
         return Response(
             {
-                "created": CompanyUserScreenPermissionSerializer(result["created"], many=True).data,
-                "updated": CompanyUserScreenPermissionSerializer(result["updated"], many=True).data,
-                "deleted": CompanyUserScreenPermissionSerializer(result["deleted"], many=True).data,
+                "created": UserScreenPermissionSerializer(result["created"], many=True).data,
+                "updated": UserScreenPermissionSerializer(result["updated"], many=True).data,
+                "deleted": UserScreenPermissionSerializer(result["deleted"], many=True).data,
                 "created_columns": CompanyUserScreenColumnPermissionSerializer(result.get("created_columns", []), many=True).data,
                 "updated_columns": CompanyUserScreenColumnPermissionSerializer(result.get("updated_columns", []), many=True).data,
                 "deleted_columns": CompanyUserScreenColumnPermissionSerializer(result.get("deleted_columns", []), many=True).data,
@@ -234,11 +195,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
     # Queryset
     # ---------------------------------------------------------
     def get_queryset(self):
-        company, _ = self._company_from_request(self.request, source="query", required=False)
-
-        qs = CompanyUserScreenPermission.objects.filter(is_deleted=False).select_related(
-            "company_id",
-            "project_id",
+        return UserScreenPermission.objects.filter(is_deleted=False).select_related(
             "usertype_id",
             "staffusertype_id",
             "contractorusertype_id",
@@ -247,42 +204,19 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
             "userscreenaction_id",
         )
 
-        if not company:
-            if self._is_platform_super_admin():
-                return qs
-            return qs.none()
-
-        return qs.filter(company_id_id=company.unique_id)
-
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter(
-                "companyId",
-                openapi.IN_QUERY,
-                description="Company unique_id. Also accepts company_id.",
-                type=openapi.TYPE_STRING,
-            ),
-            openapi.Parameter(
-                "company_id",
-                openapi.IN_QUERY,
-                description="Company unique_id.",
-                type=openapi.TYPE_STRING,
-            ),
-        ],
-        responses={200: CompanyUserScreenPermissionSerializer(many=True)},
-    )
+    @swagger_auto_schema(responses={200: UserScreenPermissionSerializer(many=True)})
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        request_body=CompanyUserScreenPermissionMultiScreenSerializer,
-        responses={200: "Permissions saved successfully", 201: CompanyUserScreenPermissionSerializer},
+        request_body=UserScreenPermissionMultiScreenSerializer,
+        responses={200: "Permissions saved successfully", 201: UserScreenPermissionSerializer},
     )
     def create(self, request, *args, **kwargs):
         if "permissions" in request.data or "userScreens" in request.data or "screens" in request.data:
             return self._sync_nested_permissions(request, update_only=False)
 
-        serializer = CompanyUserScreenPermissionSerializer(data=request.data)
+        serializer = UserScreenPermissionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
@@ -334,10 +268,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         return self._by_user_format(request)
 
     def _by_user_format(self, request):
-        company, error = self._company_from_request(request, source="query", required=True)
-        if error:
-            return error
-
         permission_for, role_id = self._role_from_request(request)
         mainscreen_id = request.query_params.get("mainscreen_id")
 
@@ -348,7 +278,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
             )
 
         # 🔥 CACHE KEY
-        cache_key = f"perm_{company.unique_id}_{permission_for}_{role_id}_{mainscreen_id}"
+        cache_key = f"perm_global_{permission_for}_{role_id}_{mainscreen_id}"
         cached = cache.get(cache_key)
         if cached:
             return Response(cached)
@@ -356,8 +286,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         role_filters = self._role_filter_kwargs(permission_for, role_id)
 
         # 🔥 OPTIMIZED QUERY (NO MODEL LOAD)
-        perms = CompanyUserScreenPermission.objects.filter(
-            company_id_id=company.unique_id,
+        perms = UserScreenPermission.objects.filter(
             mainscreen_id_id=mainscreen_id,
             is_deleted=False,
             **role_filters,
@@ -370,7 +299,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         )
 
         column_perms = CompanyUserScreenColumnPermission.objects.filter(
-            company_id_id=company.unique_id,
             userscreen_id__mainscreen_id_id=mainscreen_id,
             is_deleted=False,
             **role_filters,
@@ -429,7 +357,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         ]
 
         response_data = {
-            "company_id": company.unique_id,
             self._role_response_key(permission_for): role_id,
             "permission_for": permission_for,
             "usertype_id": usertype_id,
@@ -463,12 +390,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         - staffusertype_id: required for staff
         - contractorusertype_id: required for contractor
         - permission_for: staff|contractor (optional; inferred from contractorusertype_id)
-        - company_id: optional (uses middleware scope if available)
         """
-        company, error = self._company_from_request(request, source="query", required=True)
-        if error:
-            return error
-
         permission_for, role_id = self._role_from_request(request)
         if not role_id:
             return Response(
@@ -478,9 +400,8 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
 
         role_filters = self._role_filter_kwargs(permission_for, role_id)
 
-        # Get ALL permissions for this company + staff user type (no mainscreen filter)
-        qs = CompanyUserScreenPermission.objects.filter(
-            company_id_id=company.unique_id,
+        # Get ALL permissions for this role type (no mainscreen filter)
+        qs = UserScreenPermission.objects.filter(
             is_deleted=False,
             **role_filters,
         ).select_related("mainscreen_id", "usertype_id")
@@ -488,7 +409,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         if not qs.exists():
             return Response(
                 {
-                    "company_id": company.unique_id,
                     self._role_response_key(permission_for): role_id,
                     "permission_for": permission_for,
                     "mainscreens": [],
@@ -538,7 +458,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
 
         return Response(
             {
-                "company_id": company.unique_id,
                 self._role_response_key(permission_for): role_id,
                 "permission_for": permission_for,
                 "usertype_id": usertype_id,
@@ -560,10 +479,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         return self._delete_by_usertype(request, contractorusertype_id=contractorusertype_id)
 
     def _delete_by_usertype(self, request, staffusertype_id=None, contractorusertype_id=None):
-        company, error = self._company_from_request(request, source="query", required=True)
-        if error:
-            return error
-
         mainscreen_id = request.query_params.get("mainscreen_id")
         if not mainscreen_id:
             return Response(
@@ -578,8 +493,7 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         )
         role_filters = self._role_filter_kwargs(permission_for, role_id)
 
-        qs = CompanyUserScreenPermission.objects.filter(
-            company_id_id=company.unique_id,
+        qs = UserScreenPermission.objects.filter(
             mainscreen_id_id=mainscreen_id,
             is_deleted=False,
             **role_filters,
@@ -589,7 +503,6 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
         if deleted_count > 0:
             qs.update(is_deleted=True, is_active=False)
             CompanyUserScreenColumnPermission.objects.filter(
-                company_id_id=company.unique_id,
                 userscreen_id__mainscreen_id_id=mainscreen_id,
                 is_deleted=False,
                 **role_filters,
@@ -602,7 +515,9 @@ class CompanyUserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet)
                 self._role_response_key(permission_for): role_id,
                 "permission_for": permission_for,
                 "mainscreen_id": mainscreen_id,
-                "company_id": company.unique_id,
             },
             status=status.HTTP_200_OK,
         )
+
+
+CompanyUserScreenPermissionViewSet = UserScreenPermissionViewSet

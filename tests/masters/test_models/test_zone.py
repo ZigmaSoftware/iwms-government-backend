@@ -31,6 +31,7 @@ class TestZoneDefaults:
         z = Zone.objects.create(zone_name="Zone Beta", state_id=state, district_id=district, city_id=city)
         assert z.latitude is None
         assert z.longitude is None
+        assert z.coordinates == []
 
     def test_timestamps_set_on_create(self, zone):
         assert zone.created_at is not None
@@ -56,6 +57,13 @@ class TestZoneUpdate:
     def test_update_geo_coordinates(self, zone):
         zone.latitude = "12.9716"
         zone.longitude = "77.5946"
+        zone.coordinates = [
+            {"latitude": 12.9716, "longitude": 77.5946},
+            {"latitude": 12.9721, "longitude": 77.5991},
+            {"latitude": 12.9684, "longitude": 77.6012},
+        ]
         zone.save()
         zone.refresh_from_db()
         assert zone.latitude == Decimal("12.9716")
+        assert len(zone.coordinates) == 3
+        assert zone.coordinates[0]["latitude"] == 12.9716

@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from django.utils import timezone
 
 from app.models.audits.vehicle_trip_audit import VehicleTripAudit
@@ -7,7 +6,7 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 
 
-class VehicleTripAuditSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class VehicleTripAuditSerializer(serializers.ModelSerializer):
 
     daily_trip_assignment_id = serializers.SlugRelatedField(
         source="daily_trip_assignment",
@@ -25,10 +24,6 @@ class VehicleTripAuditSerializer(TenancyReadSerializerMixin, serializers.ModelSe
         model = VehicleTripAudit
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "daily_trip_assignment_id",
             "vehicle_id",
             "gps_lat",

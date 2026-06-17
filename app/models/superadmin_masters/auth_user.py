@@ -17,8 +17,6 @@ from app.models.masters.city import City
 from app.models.masters.zone import Zone
 from app.models.masters.ward import Ward
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 
@@ -34,11 +32,6 @@ class UserManager(BaseUserManager):
     """
 
     def create_user(self, username=None, password=None, **extra_fields):
-        # DB constraint requires non-superusers to belong to a company.
-        is_superuser = bool(extra_fields.get("is_superuser"))
-        if not is_superuser and not extra_fields.get("company_id"):
-            raise ValueError("Non-superusers must belong to a company")
-
         user = self.model(username=username, **extra_fields)
         if password:
             user.set_password(password)
@@ -56,9 +49,6 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_deleted", False)
         extra_fields["is_superuser"] = True  # from PermissionsMixin
 
-        # Platform authority must not be mixed with tenant/business identity.
-        extra_fields["company_id"] = None
-        extra_fields["project_id"] = None
         extra_fields["user_type_id"] = None
         extra_fields["staffusertype_id"] = None
         extra_fields["staff_id"] = None
@@ -72,20 +62,6 @@ class UserManager(BaseUserManager):
 
 class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
 
     # -----------------------------
     # Core User Identity

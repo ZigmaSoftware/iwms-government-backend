@@ -1,11 +1,11 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.models.audits.permission_audit import PermissionAuditLog
 
 
-@receiver(post_save, sender=CompanyUserScreenPermission)
+@receiver(post_save, sender=UserScreenPermission)
 def log_permission_change(sender, instance, created, **kwargs):
     try:
         action_type = "CREATED" if created else "UPDATED"
@@ -18,7 +18,6 @@ def log_permission_change(sender, instance, created, **kwargs):
             updated_by = getattr(account, "staff", None)
 
         PermissionAuditLog.objects.create(
-            company_id=instance.company_id_id,
             staffusertype_id=instance.staffusertype_id_id,
             mainscreen_id=instance.mainscreen_id_id,
             userscreen_id=instance.userscreen_id_id,

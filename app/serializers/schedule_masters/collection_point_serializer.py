@@ -1,11 +1,10 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.masters.panchayat import Panchayat
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class CollectionPointSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class CollectionPointSerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only = True)
     city_name = serializers.CharField(source="city_id.name", read_only = True)
@@ -22,10 +21,6 @@ class CollectionPointSerializer(TenancyReadSerializerMixin, serializers.ModelSer
         model = Collection_point
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "state_id",
             "state_name",
             "city_id",
@@ -79,8 +74,6 @@ class CollectionPointSerializer(TenancyReadSerializerMixin, serializers.ModelSer
                 name_field="cp_name",
                 scope_fields=[
                     "state_id",
-                    "company_id",
-                    "project_id",
                     "panchayat_id",
                     "ward_id"
                 ]

@@ -3,11 +3,10 @@ from rest_framework import serializers
 from app.models.customers.userchargerule import UserChargeRule
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 
 class UserChargeRuleSerializer(
-    TenancyReadSerializerMixin,
+    
     serializers.ModelSerializer
 ):
     property_id = serializers.PrimaryKeyRelatedField(
@@ -37,10 +36,6 @@ class UserChargeRuleSerializer(
         model = UserChargeRule
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "property_id",
             "property_name",
             "subproperty_id",

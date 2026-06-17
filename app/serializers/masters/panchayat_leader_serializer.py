@@ -3,10 +3,9 @@ from django.contrib.auth.hashers import make_password
 
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.panchayat import Panchayat
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 
-class PanchayatLeaderLoginSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class PanchayatLeaderLoginSerializer(serializers.ModelSerializer):
 
     panchayat_id = serializers.PrimaryKeyRelatedField(
         queryset=Panchayat.objects.filter(is_deleted=False),
@@ -27,10 +26,6 @@ class PanchayatLeaderLoginSerializer(TenancyReadSerializerMixin, serializers.Mod
         model = PanchayatLeaderLogin
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "panchayat_id",
             "panchayat_name",
             "username",
@@ -77,13 +72,6 @@ class PanchayatLeaderLoginSerializer(TenancyReadSerializerMixin, serializers.Mod
             validated_data["password"] = make_password(raw_password)
         else:
             raise serializers.ValidationError({"password": "Password is required."})
-
-        # Inherit company/project from panchayat if not provided
-        panchayat = validated_data.get("panchayat_id")
-        if panchayat and not validated_data.get("company_id"):
-            validated_data["company_id"] = panchayat.company_id
-        if panchayat and not validated_data.get("project_id"):
-            validated_data["project_id"] = panchayat.project_id
 
         return PanchayatLeaderLogin.objects.create(**validated_data)
 

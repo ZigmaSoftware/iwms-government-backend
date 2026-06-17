@@ -144,8 +144,6 @@ class StaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
                 action=StaffTemplateAuditLog.Action.CREATE,
                 entity_id=instance.unique_id,
                 remarks=None,
-                company_id=instance.company_id,
-                project_id=instance.project_id,
             )
     # ================= UPDATE =================
 
@@ -192,8 +190,6 @@ class StaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
                 action=StaffTemplateAuditLog.Action.MODIFY,
                 entity_id=instance.unique_id,
                 remarks=None,
-                company_id=instance.company_id,
-                project_id=instance.project_id,
             )
 
     # ================= AUDIT =================
@@ -221,6 +217,4 @@ class StaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             performed_by=user,
             performed_role=self._resolve_performed_role(user),
             change_remarks=remarks if isinstance(remarks, str) else None,
-            company_id=company_id or getattr(user, "company_id", None),
-            project_id=project_id or getattr(user, "project_id", None),
         )

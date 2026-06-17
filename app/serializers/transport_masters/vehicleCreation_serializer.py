@@ -22,22 +22,8 @@ class UniqueIdOrPkField(serializers.SlugRelatedField):
 class VehicleCreationSerializer(serializers.ModelSerializer):
 
     # Read fields — return IDs and names in response
-    company_id = serializers.SerializerMethodField()
-    company_name = serializers.SerializerMethodField()
-    project_id = serializers.SerializerMethodField()
-    project_name = serializers.SerializerMethodField()
 
     # Write fields — accept IDs from frontend
-    company_id_input = serializers.CharField(
-        write_only=True,
-        required=True,
-    )
-    project_id_input = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_null=True,
-        allow_blank=True,
-    )
 
     vehicle_type_id = UniqueIdOrPkField(
         source="vehicle_type",
@@ -67,12 +53,6 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
         model = VehicleCreation
         fields = [
             "unique_id",
-            "company_id",
-            "company_id_input",
-            "company_name",
-            "project_id",
-            "project_id_input",
-            "project_name",
             "vehicle_type_id",
             "fuel_type_id",
             "vehicle_no",
@@ -112,8 +92,6 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
         return getattr(project, "name", None)
 
     def validate(self, attrs):
-        attrs.pop("company_id_input", None)
-        attrs.pop("project_id_input", None)
 
         return unique_name_validator(
             Model=VehicleCreation,
