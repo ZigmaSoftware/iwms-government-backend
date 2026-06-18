@@ -39,7 +39,7 @@ class Command(BaseCommand):
 
         created_count = 0
         skipped_count = 0
-        for plan in plans.select_related("company_id", "project_id").all():
+        for plan in plans.all():
             repeat_days = plan.repeat_days or []
             if not repeat_days:
                 # No repeat days configured; skip
@@ -68,8 +68,6 @@ class Command(BaseCommand):
 
             with transaction.atomic():
                 assignment, created = DailyTripAssignment.objects.get_or_create(
-                    company_id=plan.company_id,
-                    project_id=plan.project_id,
                     trip_plan_id=plan,
                     trip_date=today,
                     defaults=defaults,

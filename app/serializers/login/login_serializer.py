@@ -222,7 +222,7 @@ class LoginSerializer(serializers.Serializer):
     def _build_customer_payload(self, customer_record, login_user=None):
         login_user = login_user or customer_record
 
-        user_type = customer_record.user_type_id or getattr(login_user, "user_type_id", None)
+        user_type = getattr(login_user, "user_type_id", None)
         if not user_type:
             user_type = UserType.objects.filter(name__iexact="customer").first()
         if not user_type:
@@ -353,7 +353,6 @@ class LoginSerializer(serializers.Serializer):
                 "staff_id__user_type_id",
                 "staff_id__staffusertype_id",
                 "staff_id__contractorusertype_id",
-                "customer_id__user_type_id",
                 "user_type_id",
                 "staffusertype_id",
             )

@@ -40,8 +40,6 @@ class TripAttendanceSeeder(BaseSeeder):
                 daily_trip_assignment=trip,
                 staff=staff,
                 vehicle=trip.vehicle_id,
-                company_id=trip.company_id,
-                project_id=trip.project_id,
                 attendance_time=attendance_time,
                 defaults={
                     "latitude": "13.0826800",
