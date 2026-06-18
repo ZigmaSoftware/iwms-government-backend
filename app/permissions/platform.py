@@ -2,7 +2,7 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class PlatformSuperAdminOnly(BasePermission):
-    """Allow only platform-level super admins (Django is_superuser) with no company."""
+    """Allow only platform-level super admins."""
 
     message = "Platform super admin only"
 
@@ -12,7 +12,6 @@ class PlatformSuperAdminOnly(BasePermission):
             user
             and user.is_authenticated
             and getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is None
         )
 
 
@@ -23,7 +22,7 @@ class SuperAdminApprovalPermission(PlatformSuperAdminOnly):
 
 
 class CompanyAdminOnly(BasePermission):
-    """Allow only company staff users with staff_usertype=admin."""
+    """Allow staff users with an admin role."""
 
     message = "Company admin only"
 
@@ -34,13 +33,12 @@ class CompanyAdminOnly(BasePermission):
             user
             and user.is_authenticated
             and not getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is not None
             and (role or "").lower() in ["admin","company_admin","company admin"]
         )
 
 
 class PlatformOrCompanyAdminFullAccess(BasePermission):
-    """Allow platform super admins or company staff users with admin role."""
+    """Allow platform super admins or staff users with admin role."""
 
     message = "Platform super admin or company admin only"
 
@@ -51,13 +49,11 @@ class PlatformOrCompanyAdminFullAccess(BasePermission):
 
         is_platform_super_admin = bool(
             getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is None
         )
 
         role = getattr(getattr(user, "staffusertype_id", None), "name", "")
         is_company_admin = bool(
             not getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is not None
             and (role or "").lower() in ["admin","company_admin","company admin"]
         )
 
@@ -70,7 +66,7 @@ class PlatformOrCompanyAdminOnly(BasePermission):
     """
     Allow:
     - Platform super admin → full access
-    - Company admin → read-only access
+    - Staff admin → read-only access
     """
 
     message = "Platform super admin only"
@@ -84,7 +80,6 @@ class PlatformOrCompanyAdminOnly(BasePermission):
         # ✅ Platform Super Admin → Full Access
         is_platform_super_admin = bool(
             getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is None
         )
 
         if is_platform_super_admin:
@@ -94,7 +89,6 @@ class PlatformOrCompanyAdminOnly(BasePermission):
         role = getattr(getattr(user, "staffusertype_id", None), "name", "")
         is_company_admin = bool(
             not getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is not None
             and (role or "").lower() in ["admin","company_admin","company admin"]
         )
 
@@ -106,7 +100,7 @@ class PlatformOrCompanyAdminOnly(BasePermission):
 
 
 class StaffUserOnly(BasePermission):
-    """Allow only tenant/business users (staff/customers). Block platform super admins."""
+    """Allow staff/customer users. Block platform super admins."""
 
     message = "Staff user only"
 
@@ -116,5 +110,4 @@ class StaffUserOnly(BasePermission):
             user
             and user.is_authenticated
             and not getattr(user, "is_superuser", False)
-            and getattr(user, "company_id", None) is not None
         )

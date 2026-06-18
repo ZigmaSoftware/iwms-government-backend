@@ -15,11 +15,7 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
         plans = TripPlan.objects.filter(is_deleted=False, status=TripPlan.Status.ACTIVE)
 
         for plan in plans:
-            cps = Collection_point.objects.filter(
-                company_id=plan.company_id,
-                project_id=plan.project_id,
-                is_deleted=False,
-            )
+            cps = Collection_point.objects.filter(is_deleted=False)
             if plan.panchayat_id:
                 cps = cps.filter(panchayat_id=plan.panchayat_id)
             elif plan.ward_id:

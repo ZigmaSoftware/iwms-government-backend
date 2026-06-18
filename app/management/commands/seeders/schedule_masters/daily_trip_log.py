@@ -17,8 +17,6 @@ class DailyTripLogSeeder(BaseSeeder):
     def run(self):
         assignments = (
             DailyTripAssignment.objects.select_related(
-                "company_id",
-                "project_id",
                 "trip_plan_id",
                 "trip_plan_id__vehicle_id",
                 "staff_template_id",
@@ -89,11 +87,7 @@ class DailyTripLogSeeder(BaseSeeder):
                 ),
             )
 
-            bin_qs = Bins.objects.filter(
-                company_id=assignment.company_id,
-                project_id=assignment.project_id,
-                is_deleted=False,
-            ).order_by("bin_name")[:3]
+            bin_qs = Bins.objects.filter(is_deleted=False).order_by("bin_name")[:3]
             if bin_qs:
                 log.bin_ids.set(bin_qs)
 
