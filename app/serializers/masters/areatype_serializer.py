@@ -40,5 +40,5 @@ class AreaTypeSerializer(serializers.ModelSerializer):
             return unique_name_validator(
                 Model=AreaType,
                 name_field="name", 
-                scope_fields=["company_id","project_id","city_id","district_id","state_id"]  
+                scope_fields=["city_id","district_id","state_id"]  
             )(self, attrs)

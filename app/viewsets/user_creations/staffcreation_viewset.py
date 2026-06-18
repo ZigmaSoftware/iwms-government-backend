@@ -5,7 +5,6 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 from app.models.user_creations.staffcreation import Staffcreation
 from app.permissions.platform import SuperAdminApprovalPermission
@@ -14,9 +13,10 @@ from app.serializers.user_creations.staffcreation_serializer import (
     StaffcreationSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class StaffcreationViewset(AuditViewSetMixin,CompanyScopedViewSet):
+class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Staffcreation.objects.select_related(
         "personal_details",
         "department_id",

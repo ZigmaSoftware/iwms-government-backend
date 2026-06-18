@@ -3,13 +3,12 @@ from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 from app.models.screen_managements.userscreen import UserScreen
 from app.serializers.screen_managements.userscreen_serializer import UserScreenSerializer
 
 
-class UserScreenViewSet(CompanyScopedViewSet):
+class UserScreenViewSet(viewsets.ModelViewSet):
     serializer_class = UserScreenSerializer
     queryset = UserScreen.objects.filter(is_deleted=False)
     lookup_field = "unique_id"
@@ -70,8 +69,7 @@ class UserScreenViewSet(CompanyScopedViewSet):
         return obj
 
     def perform_create(self, serializer):
-        account = self._get_account()
-        serializer.save(**self._build_save_kwargs(serializer, {}, created_by=account))
+        serializer.save()
 
     def perform_destroy(self, instance):
         instance.is_active = False

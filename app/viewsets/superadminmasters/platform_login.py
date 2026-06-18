@@ -47,9 +47,6 @@ class PlatformLoginView(APIView):
             if not self._password_matches(password, staff.password):
                 raise AuthenticationFailed("Invalid username or password")
 
-            if getattr(staff, "company_id", None) is not None:
-                raise PermissionDenied("Not a platform super admin")
-
             access = AccessToken.for_user(staff)
             access["unique_id"] = staff.staff_unique_id
             access["username"] = staff.username

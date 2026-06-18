@@ -1,9 +1,10 @@
+from rest_framework import viewsets
+
 from app.models.customers.userchargerule import UserChargeRule
 from app.serializers.customers.userchargerule_serializer import UserChargeRuleSerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
-class UserChargeRuleViewSet(CompanyScopedViewSet):
+class UserChargeRuleViewSet(viewsets.ModelViewSet):
     permission_resource = "UserChargeRule"
     serializer_class = UserChargeRuleSerializer
     lookup_field = "unique_id"

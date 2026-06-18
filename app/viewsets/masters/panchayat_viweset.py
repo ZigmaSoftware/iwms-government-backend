@@ -2,11 +2,11 @@ from rest_framework import viewsets, status
 from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.panchayat_serializer import PanchayatSerializer
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class PanhayatViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = PanchayatSerializer
     lookup_field = "unique_id"
     permission_resource = "Panchayat"

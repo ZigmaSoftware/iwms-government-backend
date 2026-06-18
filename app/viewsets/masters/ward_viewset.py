@@ -1,11 +1,11 @@
 from rest_framework.viewsets import ModelViewSet
 from app.models.masters.ward import Ward
 from app.serializers.masters.ward_serializer import WardSerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class WardViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class WardViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Ward.objects.filter(is_deleted=False)
     serializer_class = WardSerializer
     lookup_field = "unique_id"

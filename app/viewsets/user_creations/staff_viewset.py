@@ -2,13 +2,13 @@ from django.shortcuts import get_object_or_404
 
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import StaffSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class StaffViewSet(CompanyScopedViewSet,AuditViewSetMixin):
+class StaffViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Staffcreation.objects.filter(is_deleted=False)
     serializer_class = StaffSerializer
     lookup_field = "staff_unique_id"

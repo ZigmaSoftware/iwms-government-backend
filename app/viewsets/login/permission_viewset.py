@@ -1,119 +1,3 @@
-# from rest_framework.viewsets import ViewSet
-# from rest_framework.response import Response
-# from rest_framework import status
-# from rest_framework.decorators import action
-# from rest_framework.permissions import IsAuthenticated
-# from django.utils import timezone
-
-# from app.models.user_creations.staffcreation import Staffcreation
-# from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
-
-
-# class PermissionViewSet(ViewSet):
-#     """
-#     Fetch current user's permissions dynamically from DB.
-#     No authentication required for initial call (to support public pages).
-#     """
-    
-#     def list(self, request):
-#         """
-#         GET /api/v1/my-permissions/
-#         Returns latest permissions for authenticated user.
-#         """
-#         permissions = self._resolve_permissions_for_user(request.user)
-        
-#         return Response(
-#             {
-#                 "permissions": permissions,
-#                 "timestamp": timezone.now().isoformat(),
-#             },
-#             status=status.HTTP_200_OK
-#         )
-    
-#     def _resolve_permissions_for_user(self, user):
-#         """
-#         Extract user's company, role, and resolve permissions.
-#         Reuses logic from LoginSerializer._resolve_permissions()
-#         """
-#         # Handle anonymous users
-#         if not user or user.is_anonymous:
-#             return {}
-        
-#         # Resolve staff user
-#         staff_user = self._resolve_staff_user(user)
-#         if not staff_user:
-#             return {}
-        
-#         # Get company and roles
-#         company = getattr(staff_user, "company_id", None)
-#         user_type = getattr(staff_user, "user_type_id", None)
-#         staff_usertype = getattr(staff_user, "staffusertype_id", None)
-        
-#         if not company or not user_type:
-#             return {}
-        
-#         # Use same logic as login
-#         return self._format_permissions(
-#             company_unique_id=company.unique_id,
-#             usertype_unique_id=user_type.unique_id,
-#             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None
-#         )
-    
-#     def _resolve_staff_user(self, user):
-#         """
-#         Extract Staffcreation object from various user representations.
-#         """
-#         if isinstance(user, Staffcreation):
-#             return user
-        
-#         staff = getattr(user, "staff", None)
-#         if staff:
-#             return staff
-        
-#         return None
-    
-#     def _format_permissions(self, company_unique_id=None, usertype_unique_id=None, 
-#                            staffusertype_unique_id=None):
-#         """
-#         Same logic as LoginSerializer._format_permissions()
-#         """
-#         queryset = CompanyUserScreenPermission.objects.filter(
-#             is_active=True,
-#             is_deleted=False
-#         ).select_related(
-#             "mainscreen_id",
-#             "userscreen_id",
-#             "userscreenaction_id",
-#         )
-        
-#         if not company_unique_id or not usertype_unique_id:
-#             return {}
-        
-#         filters = {
-#             "usertype_id_id": usertype_unique_id,
-#         }
-        
-#         if staffusertype_unique_id:
-#             filters["staffusertype_id_id"] = staffusertype_unique_id
-#         else:
-#             filters["staffusertype_id__isnull"] = True
-        
-#         queryset = queryset.filter(**filters)
-        
-#         # Format: { "module": { "screen": ["action1", "action2"] } }
-#         permissions = {}
-#         for perm in queryset.order_by("order_no"):
-#             main_name = perm.mainscreen_id.mainscreen_name
-#             screen_name = perm.userscreen_id.userscreen_name
-#             action_name = perm.userscreenaction_id.action_name
-            
-#             screen_map = permissions.setdefault(main_name, {})
-#             actions = screen_map.setdefault(screen_name, [])
-#             if action_name not in actions:
-#                 actions.append(action_name)
-        
-#         return permissions
-
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
 from rest_framework import status
@@ -206,7 +90,7 @@ class PermissionViewSet(ViewSet):
 
     def _resolve_permissions_for_user(self, user):
         """
-        Extract user's company, role, and resolve permissions.
+        Extract user's role and resolve permissions.
         """
 
         # ✅ SUPERADMIN → FULL ACCESS
@@ -370,7 +254,6 @@ class PermissionViewSet(ViewSet):
 
     def _format_permissions(
         self,
-        company_unique_id=None,
         usertype_unique_id=None,
         staffusertype_unique_id=None,
         contractorusertype_unique_id=None,

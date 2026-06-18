@@ -71,5 +71,5 @@ class BinsSerializer(serializers.ModelSerializer):
         return unique_name_validator(
             Model=Bins,
             name_field="bin_name", 
-            scope_fields=["company_id","project_id","wastetype_id","collection_point_id"]  
+            scope_fields=["wastetype_id","collection_point_id"]  
         )(self, attrs)

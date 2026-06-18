@@ -16,13 +16,12 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Count, Sum, F, ExpressionWrapper, DecimalField, Value
 from django.db.models.functions import Coalesce
+from rest_framework import viewsets
 from rest_framework.response import Response
 
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.serializers.schedule_masters.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
-
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
@@ -62,7 +61,7 @@ def performance_status(actual, agreed):
     return "On Target"
 
 
-class DailyWasteComparisonViewSet(CompanyScopedViewSet):
+class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
     queryset = DailyWasteComparison.objects.select_related(

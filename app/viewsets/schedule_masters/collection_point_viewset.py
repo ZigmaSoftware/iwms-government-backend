@@ -2,11 +2,11 @@ from rest_framework import viewsets, status
 from app.models.schedule_masters.collection_point import Collection_point
 from app.serializers.schedule_masters.collection_point_serializer import CollectionPointSerializer
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class CollectionPointViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = CollectionPointSerializer
     lookup_field = "unique_id"
 

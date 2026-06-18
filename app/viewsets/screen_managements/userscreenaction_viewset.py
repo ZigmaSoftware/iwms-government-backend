@@ -2,7 +2,6 @@ from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 from app.models.screen_managements.userscreenaction import UserScreenAction
 from app.serializers.screen_managements.userscreenaction_serializer import (
@@ -10,7 +9,7 @@ from app.serializers.screen_managements.userscreenaction_serializer import (
 )
 
 
-class UserScreenActionViewSet(CompanyScopedViewSet):
+class UserScreenActionViewSet(viewsets.ModelViewSet):
     serializer_class = UserScreenActionSerializer
     queryset = UserScreenAction.objects.filter(is_deleted=False)
     lookup_field = "unique_id"
@@ -42,8 +41,7 @@ class UserScreenActionViewSet(CompanyScopedViewSet):
         return obj
 
     def perform_create(self, serializer):
-        account = self._get_account()
-        serializer.save(**self._build_save_kwargs(serializer, {}, created_by=account))
+        serializer.save()
 
     def perform_destroy(self, instance):
         instance.is_active = False
@@ -54,4 +52,3 @@ class UserScreenActionViewSet(CompanyScopedViewSet):
             {"message": "User Screen Action deleted successfully"},
             status=status.HTTP_200_OK
         )
-
