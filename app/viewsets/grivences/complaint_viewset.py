@@ -1,11 +1,11 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.grivences.complaints import Complaint
 from app.serializers.grivences.complaint_serializer import ComplaintSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
-class ComplaintViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class ComplaintViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ComplaintSerializer
     lookup_field = "unique_id"
     queryset = Complaint.objects.filter(is_deleted=False).select_related(

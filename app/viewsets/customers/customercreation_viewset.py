@@ -9,7 +9,6 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.customers.customercreation import CustomerCreation
 from app.models.waste_types.subproperty import SubProperty
 from app.models.common_masters.state import State
@@ -20,6 +19,7 @@ from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.serializers.customers.customercreation_serializer import CustomerCreationSerializer
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 from app.utils.customer_qr import generate_customer_qr_content, generate_apartment_qr_data
 
 
@@ -109,7 +109,7 @@ def get_or_create_apartment_qr(apartment_name, request):
     return obj.apartment_qr.url
 
 
-class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     permission_resource = "CustomerCreation"
     serializer_class = CustomerCreationSerializer
     lookup_field = "unique_id"

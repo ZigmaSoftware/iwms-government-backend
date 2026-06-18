@@ -1,10 +1,10 @@
 from app.models.masters.block_panchayat_union import BlockPanchayatUnion
 from app.serializers.masters.block_panchayat_union_serializer import BlockPanchayatUnionSerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class BlockPanchayatUnionViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class BlockPanchayatUnionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = BlockPanchayatUnionSerializer
     lookup_field = "unique_id"
     permission_resource = "BlockPanchayatUnion"

@@ -11,11 +11,11 @@ from app.serializers.schedule_masters.daily_trip_assignment_serializer import (
     DailyTripAssignmentStatusSerializer,
     DailyTripAssignmentApprovalSerializer,
 )
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class DailyTripAssignmentViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     CRUD + state-machine actions for daily trip assignments.
 
@@ -220,7 +220,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, CompanyScopedViewSet):
             return False
 
         # Platform superadmin always has approval rights
-        if getattr(user, "is_superuser", False) and getattr(user, "company_id", None) is None:
+        if getattr(user, "is_superuser", False):
             return True
 
         role_obj = getattr(user, "staffusertype_id", None)

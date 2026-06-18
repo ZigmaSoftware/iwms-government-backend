@@ -1,6 +1,5 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.assets.bins import Bins
 from app.serializers.assets.bins_serializer import BinsSerializer
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -8,6 +7,7 @@ import os
 import datetime
 from django.conf import settings
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 def save_uploaded_file(file, folder_name):
     """
@@ -39,7 +39,7 @@ def save_uploaded_file(file, folder_name):
 
 
 
-class BinsViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 

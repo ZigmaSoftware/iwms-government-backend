@@ -61,7 +61,7 @@ class MunicipalitySerializer(serializers.ModelSerializer):
             unique_name_validator(
                 Model=Municipality,
                 name_field="municipality_name",
-                scope_fields=["company_id", "project_id", "district_id", "state_id"],
+                scope_fields=["district_id", "state_id"],
             )(self, attrs)
 
         return attrs

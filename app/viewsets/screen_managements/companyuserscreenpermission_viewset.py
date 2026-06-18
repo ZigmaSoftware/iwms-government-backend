@@ -21,11 +21,10 @@ from app.serializers.screen_managements.companyuserscreencolumnpermission_serial
     CompanyUserScreenColumnPermissionSerializer,
 )
 
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class UserScreenPermissionViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = UserScreenPermissionSerializer
     lookup_field = "unique_id"
 

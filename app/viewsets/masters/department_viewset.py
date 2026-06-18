@@ -3,10 +3,10 @@ from rest_framework import filters
 from app.models.masters.department import Department
 from app.serializers.masters.department_serializer import DepartmentSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+from rest_framework import viewsets
 
 
-class DepartmentViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Department.objects.filter(is_deleted=False)
     serializer_class = DepartmentSerializer
     lookup_field = "unique_id"

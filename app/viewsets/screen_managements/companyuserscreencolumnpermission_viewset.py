@@ -1,5 +1,5 @@
 from django.db import transaction
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
@@ -17,10 +17,9 @@ from app.serializers.screen_managements.companyuserscreencolumnpermission_serial
     UserScreenColumnPermissionWriteSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
-class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Dedicated CRUD API for CompanyUserScreenColumnPermission.
 
@@ -137,8 +136,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
         if usertype_id_str:
             usertype = UserType.objects.filter(unique_id=usertype_id_str).first()
 
-        project = self._project()
-        account = self._get_account()
+        account = None
 
         with transaction.atomic():
             instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
@@ -194,7 +192,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
         if is_active is not None:
             instance.can_view = bool(is_active)
 
-        account = self._get_account()
+        account = None
         if hasattr(instance, "updated_by"):
             instance.updated_by = account
 

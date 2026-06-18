@@ -1,7 +1,6 @@
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.audits.staff_template_audit_log import StaffTemplateAuditLog
@@ -13,7 +12,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 
 
 
-class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     API Contract:
     - Create alternative staff mapping
@@ -170,7 +169,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
         return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 
-    def _log_audit(self, user, action, entity_id, remarks=None, company_id=None, project_id=None):
+    def _log_audit(self, user, action, entity_id, remarks=None):
         if not user:
             return
         StaffTemplateAuditLog.objects.create(

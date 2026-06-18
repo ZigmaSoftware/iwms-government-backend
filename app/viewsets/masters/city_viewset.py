@@ -1,11 +1,11 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.masters.city import City
 from app.serializers.masters.city_serializer import CitySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class CityViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class CityViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
 
     queryset = City.objects.filter(is_deleted=False)

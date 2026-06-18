@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -12,10 +12,9 @@ from app.serializers.schedule_masters.daily_trip_log_serializer import (
 )
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
-class DailyTripLogViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = (
         DailyTripLog.objects.select_related(
             "trip_assignment_id",
