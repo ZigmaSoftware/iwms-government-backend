@@ -11,20 +11,6 @@ from app.models.schedule_masters.daily_trip_log import DailyTripLog
 class Command(BaseCommand):
     help = "Create missing DailyTripLog rows for daily trip assignments that have collection points."
 
-    def add_arguments(self, parser):
-        parser.add_argument(
-            "--company-id",
-            dest="company_id",
-            required=False,
-            help="Optional company unique_id filter.",
-        )
-        parser.add_argument(
-            "--project-id",
-            dest="project_id",
-            required=False,
-            help="Optional project unique_id filter.",
-        )
-
     @transaction.atomic
     def handle(self, *args, **options):
         assignments = DailyTripAssignment.objects.filter(
@@ -33,8 +19,6 @@ class Command(BaseCommand):
         ).exclude(
             status=DailyTripAssignment.STATUS_CANCELLED,
         ).select_related(
-            "company_id",
-            "project_id",
             "trip_plan_id",
             "trip_plan_id__vehicle_id",
             "staff_template_id",
@@ -47,11 +31,6 @@ class Command(BaseCommand):
             "waste_type_id",
             "vehicle_id",
         )
-
-        if options.get("company_id"):
-            assignments = assignments.filter(company_id__unique_id=options["company_id"])
-        if options.get("project_id"):
-            assignments = assignments.filter(project_id__unique_id=options["project_id"])
 
         created = 0
         submitted = 0

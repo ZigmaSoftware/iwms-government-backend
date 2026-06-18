@@ -36,11 +36,7 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
 
         total_created = 0
         for assignment in assignments:
-            cp_qs = Collection_point.objects.filter(
-                company_id=assignment.company_id,
-                project_id=assignment.project_id,
-                is_deleted=False,
-            )
+            cp_qs = Collection_point.objects.filter(is_deleted=False)
             if assignment.panchayat_id:
                 cp_qs = cp_qs.filter(panchayat_id=assignment.panchayat_id)
             elif assignment.ward_id:
@@ -50,11 +46,7 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
             if not cps:
                 cps = list(
                     Collection_point.objects
-                    .filter(
-                        company_id=assignment.company_id,
-                        project_id=assignment.project_id,
-                        is_deleted=False,
-                    )
+                    .filter(is_deleted=False)
                     .order_by("cp_name")[:5]
                 )
 
