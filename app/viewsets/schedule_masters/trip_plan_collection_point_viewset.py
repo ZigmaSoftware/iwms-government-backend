@@ -5,10 +5,10 @@ from app.serializers.schedule_masters.trip_plan_collection_point_serializer impo
     TripPlanCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+from rest_framework import viewsets
 
 
-class TripPlanCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class TripPlanCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = TripPlanCollectionPointSerializer
     lookup_field = "unique_id"
     permission_resource = "TripPlanCollectionPoint"

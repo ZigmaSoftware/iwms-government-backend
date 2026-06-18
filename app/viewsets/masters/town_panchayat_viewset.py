@@ -1,10 +1,10 @@
 from app.models.masters.town_panchayat import TownPanchayat
 from app.serializers.masters.town_panchayat_serializer import TownPanchayatSerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class TownPanchayatViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class TownPanchayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = TownPanchayatSerializer
     lookup_field = "unique_id"
     permission_resource = "TownPanchayat"

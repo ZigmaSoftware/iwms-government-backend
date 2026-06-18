@@ -75,7 +75,6 @@ class LoginSerializer(serializers.Serializer):
     def _resolve_permission_payload(
         self,
         *,
-        company_unique_id=None,
         usertype_unique_id=None,
         staffusertype_unique_id=None,
         contractorusertype_unique_id=None,
@@ -84,7 +83,6 @@ class LoginSerializer(serializers.Serializer):
         user_type=None,
     ):
         return resolve_permission_payload(
-            company_unique_id=company_unique_id,
             usertype_unique_id=usertype_unique_id,
             staffusertype_unique_id=staffusertype_unique_id,
             contractorusertype_unique_id=contractorusertype_unique_id,
@@ -96,14 +94,12 @@ class LoginSerializer(serializers.Serializer):
     def _resolve_permissions(
         self,
         *,
-        company_unique_id=None,
         usertype_unique_id=None,
         staffusertype_unique_id=None,
         contractorusertype_unique_id=None,
         include_all=False
     ):
         payload = self._resolve_permission_payload(
-            company_unique_id=company_unique_id,
             usertype_unique_id=usertype_unique_id,
             staffusertype_unique_id=staffusertype_unique_id,
             contractorusertype_unique_id=contractorusertype_unique_id,

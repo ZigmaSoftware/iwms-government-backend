@@ -1,5 +1,4 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.masters.zone import Zone
 from app.serializers.masters.zone_serializer import ZoneSerializer
 
@@ -7,9 +6,10 @@ from rest_framework.viewsets import ModelViewSet
 from app.models.masters.zone import Zone
 from app.serializers.masters.zone_serializer import ZoneSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class ZoneViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class ZoneViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Zone.objects.filter(is_deleted=False)
     serializer_class = ZoneSerializer
     lookup_field = "unique_id"

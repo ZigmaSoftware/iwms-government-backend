@@ -20,10 +20,10 @@ from app.serializers.schedule_masters.daily_trip_collection_point_serializer imp
     DailyTripCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+from rest_framework import viewsets
 
 
-class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DailyTripCollectionPointSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripCollectionPoint"
@@ -393,8 +393,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
             "vehicle_id",
             "trip_plan_id",
         ).filter(is_deleted=False)
-        company = request.query_params.get("company_id")
-        project = request.query_params.get("project_id")
         trip_date = request.query_params.get("date") or request.query_params.get("trip_date")
         if trip_date:
             assignments = assignments.filter(trip_date=trip_date)

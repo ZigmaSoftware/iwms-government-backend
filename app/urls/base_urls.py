@@ -44,7 +44,6 @@ from ..viewsets.screen_managements.userscreenaction_viewset import UserScreenAct
 from ..viewsets.screen_managements.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
 from ..viewsets.screen_managements.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
 from ..viewsets.screen_managements.permission_api_views import (
-    CompanyPermissionsAPIView,
     PermissionAssignAPIView,
     UserScreenColumnsAPIView,
     UserPermissionsAPIView,
@@ -396,6 +395,5 @@ urlpatterns = [
     ),
     path("permissions/assign/", PermissionAssignAPIView.as_view()),
     path("permissions/user-screen/", UserPermissionsAPIView.as_view()),
-    path("permissions/company/<str:company_id>/", CompanyPermissionsAPIView.as_view()),
     path("", include(router.urls)),
 ]

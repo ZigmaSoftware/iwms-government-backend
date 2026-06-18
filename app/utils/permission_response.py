@@ -461,7 +461,6 @@ def finalize_permission_payload(payload, *, permissions=None, role_name=None, us
 
 def permission_querysets(
     *,
-    company_unique_id=None,
     usertype_unique_id=None,
     staffusertype_unique_id=None,
     contractorusertype_unique_id=None,

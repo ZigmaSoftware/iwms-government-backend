@@ -16,12 +16,12 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Count, Sum, F, ExpressionWrapper, DecimalField, Value
 from django.db.models.functions import Coalesce
+from rest_framework import viewsets
 from rest_framework.response import Response
 
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.schedule_masters.monthly_weight_report import MonthlyWeightReport
 from app.serializers.schedule_masters.monthly_weight_report_serializer import MonthlyWeightReportSerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
 ZERO = Decimal("0")
@@ -62,7 +62,7 @@ def performance_status(actual, agreed):
     return "On Target"
 
 
-class MonthlyWasteComparisonReportViewSet(CompanyScopedViewSet):
+class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     permission_resource = "MonthlyWasteComparisonReport"
     # Keep original queryset for retrieve/update/delete operations
     queryset = MonthlyWeightReport.objects.select_related(

@@ -93,7 +93,7 @@ class PermissionAssignAPIView(APIView):
 
 
 class UserPermissionsAPIView(APIView):
-    def get(self, request, company_id=None):
+    def get(self, request, *_args, **_kwargs):
         staffusertype_id = (
             request.query_params.get("staffUserTypeId")
             or request.query_params.get("staffusertype_id")
@@ -169,6 +169,3 @@ class UserPermissionsAPIView(APIView):
             "contractorUserTypeId": contractorusertype_id,
             "permissions": response,
         })
-
-
-CompanyPermissionsAPIView = UserPermissionsAPIView

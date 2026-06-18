@@ -9,14 +9,13 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from app.models.transport_masters.fuel import Fuel
 from app.serializers.transport_masters.vehicleCreation_serializer import VehicleCreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 
-class VehicleCreationViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = VehicleCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleCreationSerializer
     lookup_field = "unique_id"

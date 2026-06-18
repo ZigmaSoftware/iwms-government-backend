@@ -3,8 +3,6 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
-
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.audits.staff_template_audit_log import StaffTemplateAuditLog
@@ -16,7 +14,7 @@ from app.serializers.schedule_masters.staff_template_serializer import (
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class StaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Staff Template API
     """
@@ -206,7 +204,7 @@ class StaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
 
         return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 
-    def _log_audit(self, user, action, entity_id, remarks=None, company_id=None, project_id=None):
+    def _log_audit(self, user, action, entity_id, remarks=None):
         if not user:
             return
 

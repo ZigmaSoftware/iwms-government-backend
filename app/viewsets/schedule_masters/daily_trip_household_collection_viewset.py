@@ -1,4 +1,5 @@
 from django.db.models import Q
+from rest_framework import viewsets
 
 from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
@@ -6,10 +7,9 @@ from app.models.schedule_masters.daily_trip_household_collection import (
 from app.serializers.schedule_masters.daily_trip_household_collection_serializer import (
     DailyTripHouseholdCollectionSerializer,
 )
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
-class DailyTripHouseholdCollectionViewSet(CompanyScopedViewSet):
+class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
     serializer_class = DailyTripHouseholdCollectionSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripHouseholdCollection"

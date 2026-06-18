@@ -19,22 +19,6 @@ class VehicleTypeCreationSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id"]
         validators = []
 
-    def get_company_id(self, obj):
-        company = getattr(obj, "company_id", None)
-        return getattr(company, "unique_id", None)
-
-    def get_project_id(self, obj):
-        project = getattr(obj, "project_id", None)
-        return getattr(project, "unique_id", None)
-
-    def get_company_name(self, obj):
-        company = getattr(obj, "company_id", None)
-        return getattr(company, "name", None)
-
-    def get_project_name(self, obj):
-        project = getattr(obj, "project_id", None)
-        return getattr(project, "name", None)
-
     def validate(self, attrs):
 
         return unique_name_validator(

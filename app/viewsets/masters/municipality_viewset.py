@@ -1,10 +1,10 @@
 from app.models.masters.municipality import Municipality
 from app.serializers.masters.municipality_serializer import MunicipalitySerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class MunicipalityViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class MunicipalityViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = MunicipalitySerializer
     lookup_field = "unique_id"
     permission_resource = "Municipality"

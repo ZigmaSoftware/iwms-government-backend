@@ -1,5 +1,4 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.waste_types.subproperty import SubProperty
 from app.serializers.waste_types.subproperty_serializer import SubPropertySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
