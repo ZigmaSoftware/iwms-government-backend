@@ -25,7 +25,7 @@ class AdministrativeHierarchy(BaseMaster):
     )
 
     level_name = models.CharField(max_length=50)
-    # Zone / Ward / Panchayat
+    # Local body / Panchayat
 
     hierarchy_order = models.PositiveIntegerField(editable=False)
 

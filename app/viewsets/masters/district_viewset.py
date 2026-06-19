@@ -1,13 +1,18 @@
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from app.models.masters.district import District
 from app.serializers.masters.district_serializer import DistrictSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 class DistrictViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     queryset = District.objects.filter(is_deleted=False)
     serializer_class = DistrictSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["name", "district_code", "state_id__name"]
+    ordering_fields = ["name", "district_code", "is_active"]
     permission_resource = "District"
 
     AUDIT_MODULE = "masters"
@@ -20,7 +25,7 @@ class DistrictViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
 
         country_uid = self.request.query_params.get("country")
-        state_uid = self.request.query_params.get("state")
+        state_uid = self.request.query_params.get("state") or self.request.query_params.get("state_id")
         continent_uid = self.request.query_params.get("continent")
 
         if country_uid:

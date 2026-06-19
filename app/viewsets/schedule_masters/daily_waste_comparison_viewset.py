@@ -5,7 +5,7 @@ Data source: DailyTripLog (Submitted + Verified logs only)
   actual_weight_kg  = Sum(collected_weight_kg) per (date, panchayat, waste_type)
                       OR household_collected_weight_kg when source=household
                       OR both combined when source=all
-  agreed_weight_kg  = Panchayat.agreed_weight_kg (daily contract target)
+  agreed_weight_kg  = 0 unless daily target rows are managed separately
   total_trips       = Count of trip logs in the group
   points_covered    = Count of distinct collection_point_id in the group
 
@@ -137,14 +137,13 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             "trip_date",
             "panchayat_id",
             "panchayat_id__panchayat_name",
-            "panchayat_id__agreed_weight_kg",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
 
         rows = []
         for row in grouped_qs:
-            agreed = decimal_value(row["panchayat_id__agreed_weight_kg"])
+            agreed = ZERO
             actual = decimal_value(row["total_actual_weight"])
             variance = actual - agreed
             total_trips = int(row["total_trips"] or 0)

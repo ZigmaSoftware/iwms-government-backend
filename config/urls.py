@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny
 
 
 
-from app.apis.property_api import property_data, subproperty_data, ward_data, zone_data, panchayat_data, district_data, city_data, state_data, country_data
+from app.apis.property_api import property_data, subproperty_data, panchayat_data, district_data, state_data, country_data
 
 def home(request):
     return HttpResponse("Django backend is running! Try /api/v1/")
@@ -52,11 +52,8 @@ urlpatterns = [
 
     path("apis/property/", property_data, name="property-data"),
     path("apis/subproperty/", subproperty_data, name="subproperty-data"),
-    path("apis/ward/", ward_data, name="ward-data"),
-    path("apis/zone/", zone_data, name="zone-data"),
     path("apis/panchayat/", panchayat_data, name="panchayat-data"),
     path("apis/district/", district_data, name="district-data"),
-    path("apis/city/", city_data, name="city-data"),
     path("apis/state/", state_data, name="state-data"),
     path("apis/country/", country_data, name="country-data"),
 ]

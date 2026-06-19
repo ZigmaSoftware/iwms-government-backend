@@ -23,11 +23,9 @@ from rest_framework import viewsets
 from app.utils.customer_qr import generate_customer_qr_content, generate_apartment_qr_data
 
 
-from app.models.masters.ward import Ward
-from app.models.masters.zone import Zone
-from app.models.masters.city import City
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
+from app.utils.hierarchy import filter_queryset_by_hierarchy
 
 from app.models.customers.customercreation import CustomerCreation
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -122,8 +120,8 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         CustomerCreation.objects
         .filter(is_deleted=False)
         .select_related(
-            "ward", "zone", "city",
             "district", "state", "country", "panchayat_id",
+            "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id",
             "property_ref", "sub_property",
         )
         .prefetch_related("waste_types")
@@ -134,16 +132,12 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        zone_id = self.request.query_params.get("zone_id")
-        ward_id = self.request.query_params.get("ward_id")
-        panchayat_id = self.request.query_params.get("panchayat_id")
+        district_id = self.request.query_params.get("district_id") or self.request.query_params.get("district")
 
-        if panchayat_id:
-            queryset = queryset.filter(panchayat_id__unique_id=panchayat_id)
-        elif ward_id:
-            queryset = queryset.filter(ward__unique_id=ward_id)
-        elif zone_id:
-            queryset = queryset.filter(zone__unique_id=zone_id)
+        if district_id:
+            queryset = queryset.filter(district__unique_id=district_id)
+
+        queryset = filter_queryset_by_hierarchy(queryset, self.request.query_params)
 
         return queryset
     
@@ -460,9 +454,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 # 🔥 ADD THESE (MISSING IN YOUR CODE)
 
 
-                ward = get_fk(Ward, "ward_name", row.get("ward_id") or row.get("ward_name"))
-                zone = get_fk(Zone, "zone_name", row.get("zone_id") or row.get("zone_name"))
-                city = get_fk(City, "name", row.get("city_id") or row.get("city_name"))
                 district = get_fk(District, "name", row.get("district_id") or row.get("district_name"))
                 panchayat = get_fk(Panchayat, "panchayat_name", row.get("panchayat_id") or row.get("panchayat_name"))
                 waste_type_ids, invalid_waste_types = get_waste_type_ids(
@@ -490,22 +481,17 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                         })
                         continue
 
-                # ✅ Always required
-                if not city or not district:
+                if not district:
                     errors.append({
                         "row": index,
-                        "error": "City and District are required"
+                        "error": "District is required"
                     })
                     continue
 
-                # ✅ Urban or Rural
-                is_urban = ward and zone
-                is_rural = panchayat
-
-                if not (is_urban or is_rural):
+                if not panchayat:
                     errors.append({
                         "row": index,
-                        "error": "Either (ward + zone) OR panchayat is required"
+                        "error": "Panchayat is required"
                     })
                     continue
 
@@ -528,9 +514,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     "block_no": block_no or None,
                     "flat_no": flat_no or None,
 
-                    "ward_id": ward.unique_id if ward else None,
-                    "zone_id": zone.unique_id if zone else None,
-                    "city_id": city.unique_id,
                     "district_id": district.unique_id,
                     "panchayat_id": panchayat.unique_id if panchayat else None,
 

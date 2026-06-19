@@ -9,7 +9,10 @@ class ComplaintViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ComplaintSerializer
     lookup_field = "unique_id"
     queryset = Complaint.objects.filter(is_deleted=False).select_related(
-        "customer", "zone", "ward"
+        "customer",
+        "customer__district",
+        "customer__state",
+        "customer__panchayat_id",
     )
 
     AUDIT_MODULE = "grivences"

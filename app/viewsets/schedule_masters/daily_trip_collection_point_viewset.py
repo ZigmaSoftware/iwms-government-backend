@@ -20,6 +20,7 @@ from app.serializers.schedule_masters.daily_trip_collection_point_serializer imp
     DailyTripCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_queryset_by_hierarchy
 from rest_framework import viewsets
 
 
@@ -222,10 +223,14 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "trip_assignment_id__trip_plan_id",
                 "collection_point_id",
                 "collection_point_id__panchayat_id",
-                "collection_point_id__ward_id",
-                "collection_point_id__ward_id__zone_id",
-                "zone_id",
-                "ward_id",
+                "collection_point_id__corporation_id",
+                "collection_point_id__municipality_id",
+                "collection_point_id__town_panchayat_id",
+                "collection_point_id__panchayat_union_id",
+                "corporation_id",
+                "municipality_id",
+                "town_panchayat_id",
+                "panchayat_union_id",
                 "panchayat_id",
                 "bin_id",
                 "bin_id__wastetype_id",
@@ -243,9 +248,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         trip_date = params.get("date") or params.get("trip_date")
         staff_template = params.get("staff_template_id")
         alt_staff_template = params.get("alt_staff_template_id")
-        zone = params.get("zone_id")
-        ward = params.get("ward_id")
-        panchayat = params.get("panchayat_id")
         search = params.get("search")
 
         if assignment:
@@ -270,12 +272,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(
                 trip_assignment_id__alt_staff_template_id__unique_id=alt_staff_template
             )
-        if zone:
-            queryset = queryset.filter(zone_id__unique_id=zone)
-        if ward:
-            queryset = queryset.filter(ward_id__unique_id=ward)
-        if panchayat:
-            queryset = queryset.filter(panchayat_id__unique_id=panchayat)
         if search:
             queryset = queryset.filter(
                 Q(collection_point_id__cp_name__icontains=search)
@@ -283,7 +279,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 | Q(bin_id__bin_name__icontains=search)
             )
 
-        return queryset
+        return filter_queryset_by_hierarchy(queryset, params)
 
     @action(detail=False, methods=["get"], url_path="tracking")
     def tracking(self, request):
@@ -407,8 +403,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 DailyTripCollectionPoint.objects.select_related(
                     "collection_point_id",
                     "collection_point_id__panchayat_id",
-                    "collection_point_id__ward_id",
-                    "collection_point_id__ward_id__zone_id",
                     "trip_assignment_id",
                     "trip_assignment_id__trip_plan_id",
                     "bin_id",

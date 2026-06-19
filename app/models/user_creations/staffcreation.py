@@ -7,9 +7,6 @@ from ..role_assigns.userType import UserType
 from ..role_assigns.staffUserType import StaffUserType
 from ..role_assigns.contractorUserType import ContractorUserType
 from app.models.masters.district import District
-from app.models.masters.city import City
-from app.models.masters.zone import Zone
-from app.models.masters.ward import Ward
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
 from app.utils.customer_qr import generate_customer_qr_content
@@ -196,33 +193,6 @@ class StaffcreationOfficeDetails(BaseMaster):
         blank=True,
         db_column="district_id",
         related_name="staff_district"
-    )
-
-    city_id = models.ForeignKey(
-        City,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_column="city_id",
-        related_name="staff_city"
-    )
-
-    zone_id = models.ForeignKey(
-        Zone,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_column="zone_id",
-        related_name="staff_zone"
-    )
-
-    ward_id = models.ForeignKey(
-        Ward,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_column="ward_id",
-        related_name="staff_ward"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

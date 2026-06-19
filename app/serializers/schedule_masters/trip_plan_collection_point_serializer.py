@@ -8,6 +8,7 @@ from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import hierarchy_payload
 
 
 class TripPlanCollectionPointSerializer(
@@ -53,9 +54,12 @@ class TripPlanCollectionPointSerializer(
             "bin",
             "customer_id",
             "customer",
-            "zone_id",
-            "ward_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
+            "hierarchy",
             "sequence",
             "is_active",
             "is_deleted",
@@ -64,13 +68,17 @@ class TripPlanCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "zone_id",
-            "ward_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
             "created_at",
             "updated_at",
         ]
         validators = []
+
+    hierarchy = serializers.SerializerMethodField()
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id
@@ -81,12 +89,7 @@ class TripPlanCollectionPointSerializer(
             "cp_name": cp.cp_name,
             "latitude": cp.latitude,
             "longitude": cp.longitude,
-            "panchayat_id": getattr(cp.panchayat_id, "unique_id", None),
-            "panchayat_name": getattr(cp.panchayat_id, "panchayat_name", None),
-            "ward_id": getattr(cp.ward_id, "unique_id", None),
-            "ward_name": getattr(cp.ward_id, "ward_name", None),
-            "zone_id": getattr(getattr(cp.ward_id, "zone_id", None), "unique_id", None),
-            "zone_name": getattr(getattr(cp.ward_id, "zone_id", None), "zone_name", None),
+            **hierarchy_payload(cp),
         }
 
     def get_bin(self, obj):
@@ -107,9 +110,11 @@ class TripPlanCollectionPointSerializer(
         return {
             "unique_id": c.unique_id,
             "customer_name": c.customer_name,
-            "ward_name": getattr(c.ward, "ward_name", None) if hasattr(c, "ward") else None,
-            "zone_name": getattr(c.zone, "zone_name", None) if hasattr(c, "zone") else None,
+            **hierarchy_payload(c),
         }
+
+    def get_hierarchy(self, obj):
+        return hierarchy_payload(obj)
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)

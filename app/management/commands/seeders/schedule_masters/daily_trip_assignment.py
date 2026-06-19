@@ -15,8 +15,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
     def run(self):
         today = timezone.localdate()
 
-        # Only use active, approved plans so the XOR constraint is satisfied via
-        # the plan's own panchayat_id / ward_id (model.save() auto-fills these).
+        # Only use active, approved plans with a panchayat so model.save() can inherit it.
         plans = list(
             TripPlan.objects.filter(
                 is_deleted=False,
@@ -27,7 +26,6 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 "waste_type_id",
                 "vehicle_id",
                 "panchayat_id",
-                "ward_id",
             )
         )
 
@@ -45,9 +43,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 if created_count >= TARGET:
                     break
 
-                # Honour the XOR constraint: plan must supply exactly one of
-                # panchayat_id or ward_id so model.save() can inherit it.
-                if not plan.panchayat_id and not plan.ward_id:
+                if not plan.panchayat_id:
                     continue
 
                 already_exists = DailyTripAssignment.objects.filter(
@@ -63,8 +59,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 DailyTripAssignment.objects.create(
                     trip_plan_id=plan,
                     staff_template_id=plan.staff_template_id,
-                    panchayat_id=plan.panchayat_id,   # one of these will be None;
-                    ward_id=plan.ward_id,              # model.save() inherits from plan
+                    panchayat_id=plan.panchayat_id,
                     waste_type_id=plan.waste_type_id,
                     vehicle_id=plan.vehicle_id,
                     trip_date=trip_date,

@@ -9,8 +9,6 @@ class AdministrativeHierarchySeeder(BaseSeeder):
 
     # (area_type_name, level_name) — 15 combinations
     HIERARCHY_STRUCTURE = [
-        ("Urban",      "Zone"),
-        ("Urban",      "Ward"),
         ("Urban",      "Block"),
         ("Urban",      "Street"),
         ("Rural",      "Panchayat"),
