@@ -12,7 +12,7 @@ class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     permission_resource = "Panchayat"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["panchayat_name", "state_id__name", "district_id__name", "area_type_id__name", "panchayat_union_id__union_name"]
+    search_fields = ["panchayat_name", "state_id__name", "district_id__name", "area_type_id__name"]
     ordering_fields = ["panchayat_name", "is_active"]
 
     AUDIT_MODULE = "masters"
@@ -27,7 +27,6 @@ class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
         state_uid = self.request.query_params.get("state") or self.request.query_params.get("state_id")
         area_type_uid = self.request.query_params.get("area_type") or self.request.query_params.get("area_type_id")
-        panchayat_union_uid = self.request.query_params.get("panchayat_union") or self.request.query_params.get("panchayat_union_id")
 
         if district_uid:
             queryset = queryset.filter(district_id__unique_id=district_uid)
@@ -36,8 +35,6 @@ class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(state_id__unique_id=state_uid)
         if area_type_uid:
             queryset = queryset.filter(area_type_id__unique_id=area_type_uid)
-        if panchayat_union_uid:
-            queryset = queryset.filter(panchayat_union_id__unique_id=panchayat_union_uid)
 
         return queryset
 
