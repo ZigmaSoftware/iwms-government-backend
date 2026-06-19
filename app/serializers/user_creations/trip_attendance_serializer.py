@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from django.utils import timezone
 from django.conf import settings
 from app.models.transport_masters.trip_attendance import TripAttendance
@@ -8,7 +7,7 @@ from app.models.user_creations.staffcreation import Staffcreation
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 
 
-class TripAttendanceSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class TripAttendanceSerializer(serializers.ModelSerializer):
 
     daily_trip_assignment_id = serializers.SlugRelatedField(
         source="daily_trip_assignment",
@@ -32,10 +31,6 @@ class TripAttendanceSerializer(TenancyReadSerializerMixin, serializers.ModelSeri
         model = TripAttendance
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "daily_trip_assignment_id",
             "staff_id",
             "vehicle_id",

@@ -5,8 +5,6 @@ from app.models.assets.bins import Bins
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
@@ -32,18 +30,6 @@ class BinCollectionEvent(BaseMaster):
         editable=False,
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        db_column="company_id",
-        related_name="bin_collection_events",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        db_column="project_id",
-        related_name="bin_collection_events",
-    )
 
     trip_assignment_id = models.ForeignKey(
         DailyTripAssignment,

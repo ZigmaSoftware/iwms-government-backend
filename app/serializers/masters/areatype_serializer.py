@@ -2,11 +2,10 @@
 
 from rest_framework import serializers
 from app.models.masters.areatype import AreaType
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class AreaTypeSerializer(TenancyReadSerializerMixin,serializers.ModelSerializer):
+class AreaTypeSerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only = True)
     city_name = serializers.CharField(source="city_id.name", read_only = True)
@@ -16,10 +15,6 @@ class AreaTypeSerializer(TenancyReadSerializerMixin,serializers.ModelSerializer)
         model = AreaType
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "state_id",
             "state_name",
             "city_id",
@@ -45,5 +40,5 @@ class AreaTypeSerializer(TenancyReadSerializerMixin,serializers.ModelSerializer)
             return unique_name_validator(
                 Model=AreaType,
                 name_field="name", 
-                scope_fields=["company_id","project_id","city_id","district_id","state_id"]  
+                scope_fields=["city_id","district_id","state_id"]  
             )(self, attrs)

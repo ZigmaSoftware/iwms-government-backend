@@ -7,7 +7,7 @@ from django.utils import timezone
 from app.models.screen_managements.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
-from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 
 
 ACTION_KEYS = ("show", "view", "add", "edit", "delete")
@@ -154,8 +154,6 @@ def build_column_permissions(column_queryset):
 
         payload = {
             "uniqueId": column_permission.unique_id,
-            "companyId": column_permission.company_id_id,
-            "projectId": column_permission.project_id_id,
             "userTypeId": column_permission.usertype_id_id,
             "staffUserTypeId": column_permission.staffusertype_id_id,
             "mainScreenId": mainscreen.unique_id,
@@ -463,14 +461,13 @@ def finalize_permission_payload(payload, *, permissions=None, role_name=None, us
 
 def permission_querysets(
     *,
-    company_unique_id=None,
     usertype_unique_id=None,
     staffusertype_unique_id=None,
     contractorusertype_unique_id=None,
     include_all=False,
     **_unused,
 ):
-    action_queryset = CompanyUserScreenPermission.objects.filter(
+    action_queryset = UserScreenPermission.objects.filter(
         is_active=True,
         is_deleted=False,
     ).select_related(
@@ -494,11 +491,10 @@ def permission_querysets(
     if include_all:
         return action_queryset, column_queryset
 
-    if not company_unique_id or not usertype_unique_id:
+    if not usertype_unique_id:
         return action_queryset.none(), column_queryset.none()
 
     filters = {
-        "company_id_id": company_unique_id,
         "usertype_id_id": usertype_unique_id,
     }
     if staffusertype_unique_id:

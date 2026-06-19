@@ -8,23 +8,10 @@ from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
-class DailyTripAssignmentSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
-    company_id_input = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-    )
-    project_id_input = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-    )
+class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     trip_plan_id = UniqueIdOrPkField(
         slug_field="unique_id",
         queryset=TripPlan.objects.filter(is_deleted=False, status="ACTIVE"),
@@ -94,12 +81,6 @@ class DailyTripAssignmentSerializer(TenancyReadSerializerMixin, serializers.Mode
         model = DailyTripAssignment
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
-            "company_id_input",
-            "project_id_input",
             "trip_plan_id",
             "staff_template_id",
             "panchayat_id",
@@ -257,8 +238,6 @@ class DailyTripAssignmentSerializer(TenancyReadSerializerMixin, serializers.Mode
         }
 
     def validate(self, attrs):
-        attrs.pop("company_id_input", None)
-        attrs.pop("project_id_input", None)
 
         instance = getattr(self, "instance", None)
         trip_plan = attrs.get("trip_plan_id", getattr(instance, "trip_plan_id", None))

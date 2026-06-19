@@ -2,11 +2,11 @@ from rest_framework import viewsets, status
 from app.models.schedule_masters.collection_point import Collection_point
 from app.serializers.schedule_masters.collection_point_serializer import CollectionPointSerializer
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class CollectionPointViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = CollectionPointSerializer
     lookup_field = "unique_id"
 
@@ -17,8 +17,6 @@ class CollectionPointViewSet(AuditViewSetMixin,CompanyScopedViewSet):
 
     def get_queryset(self):
         queryset = Collection_point.objects.select_related(
-            "company_id",
-            "project_id",
             "state_id",
             "district_id",
             "city_id",
@@ -27,19 +25,13 @@ class CollectionPointViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             "ward_id__zone_id",
         ).filter(is_deleted=False)
 
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
         city_uid = self.request.query_params.get("city") or self.request.query_params.get("city_id")
         panchayat_uid = self.request.query_params.get("panchayat") or self.request.query_params.get("panchayat_id")
         ward_uid = self.request.query_params.get("ward") or self.request.query_params.get("ward_id")
         zone_uid = self.request.query_params.get("zone") or self.request.query_params.get("zone_id")
 
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
 
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         if district_uid:
             queryset = queryset.filter(district_id__unique_id=district_uid)

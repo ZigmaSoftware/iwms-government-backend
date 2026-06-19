@@ -1,13 +1,12 @@
 # app/api/views/area_type_view.py
 
-from rest_framework.viewsets import ModelViewSet
+from rest_framework import viewsets
 from app.models.masters.areatype import AreaType
 from app.serializers.masters.areatype_serializer import AreaTypeSerializer
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class AreaTypeViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class AreaTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     
     serializer_class = AreaTypeSerializer
     lookup_field = "unique_id"
@@ -19,15 +18,6 @@ class AreaTypeViewSet(AuditViewSetMixin,CompanyScopedViewSet):
 
     def get_queryset(self):
         queryset = AreaType.objects.filter(is_deleted=False)
-
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
-
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
-
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         return queryset
     

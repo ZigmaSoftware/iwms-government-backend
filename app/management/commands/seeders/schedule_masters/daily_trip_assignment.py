@@ -23,8 +23,6 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 status=TripPlan.Status.ACTIVE,
                 approval_status=TripPlan.ApprovalStatus.APPROVED,
             ).select_related(
-                "company_id",
-                "project_id",
                 "staff_template_id",
                 "waste_type_id",
                 "vehicle_id",
@@ -63,8 +61,6 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                     continue
 
                 DailyTripAssignment.objects.create(
-                    company_id=plan.company_id,
-                    project_id=plan.project_id,
                     trip_plan_id=plan,
                     staff_template_id=plan.staff_template_id,
                     panchayat_id=plan.panchayat_id,   # one of these will be None;

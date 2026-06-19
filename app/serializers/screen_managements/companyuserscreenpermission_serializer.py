@@ -7,13 +7,11 @@ from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
-from app.models.screen_managements.companyuserscreenpermission import CompanyUserScreenPermission
+from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.models.screen_managements.mainscreen import MainScreen
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreenaction import UserScreenAction
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
-from app.models.superadmin_masters.project import Project
-from app.models.superadmin_masters.company import Company
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
 
@@ -21,7 +19,7 @@ from app.models.role_assigns.contractorUserType import ContractorUserType
 SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "show", "view"}
 
 
-class CompanyUserScreenPermissionSerializer(serializers.ModelSerializer):
+class UserScreenPermissionSerializer(serializers.ModelSerializer):
     userscreen_name = serializers.CharField(source="userscreen_id.userscreen_name", read_only=True)
     userscreenaction_name = serializers.CharField(source="userscreenaction_id.action_name", read_only=True)
     usertype_name = serializers.CharField(source="usertype_id.name", read_only=True)
@@ -31,11 +29,9 @@ class CompanyUserScreenPermissionSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     mainscreen_name = serializers.CharField(source="mainscreen_id.mainscreen_name", read_only=True)
-    company_name = serializers.CharField(source="company_id.name", read_only=True)
-    project_name = serializers.CharField(source="project_id.name", read_only=True, allow_null=True, default=None)
 
     class Meta:
-        model = CompanyUserScreenPermission
+        model = UserScreenPermission
         fields = "__all__"
 
     def get_staffusertype_name(self, obj):
@@ -115,11 +111,7 @@ class ScreenActionSerializer(serializers.Serializer):
         return data
 
 
-class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
-    company_id = serializers.CharField(required=False)
-    companyId = serializers.CharField(required=False)
-    project_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    projectId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
     usertype_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     usertypeId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     userTypeId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -144,8 +136,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
     )
 
     def validate(self, data):
-        data["company_id"] = (data.get("company_id") or data.get("companyId") or "").strip()
-        data["project_id"] = (data.get("project_id") or data.get("projectId") or "").strip() or None
         data["staffusertype_id"] = (
             data.get("staffusertype_id")
             or data.get("staffUserTypeId")
@@ -172,28 +162,10 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         data["mainscreen_id"] = (data.get("mainscreen_id") or data.get("mainScreenId") or "").strip()
         data["screens"] = data.get("screens") or data.get("userScreens") or []
 
-        if not data["company_id"]:
-            raise serializers.ValidationError({"company_id": "This field is required."})
         if not data["mainscreen_id"]:
             raise serializers.ValidationError({"mainscreen_id": "This field is required."})
         if not data["screens"]:
             raise serializers.ValidationError({"screens": "At least one screen required."})
-
-        try:
-            company = Company.objects.get(unique_id=data["company_id"], is_deleted=False)
-        except Company.DoesNotExist:
-            raise serializers.ValidationError({"company_id": "Invalid company"})
-
-        project = None
-        if data["project_id"]:
-            try:
-                project = Project.objects.get(
-                    unique_id=data["project_id"],
-                    company_id_id=company.unique_id,
-                    is_deleted=False,
-                )
-            except Project.DoesNotExist:
-                raise serializers.ValidationError({"project_id": "Invalid project for company"})
 
         usertype = None
         if data["usertype_id"]:
@@ -363,8 +335,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 })
             screen["columnIds"] = normalized_column_ids
 
-        data["resolved_company_id"] = company.unique_id
-        data["resolved_project_id"] = project.unique_id if project else None
         data["resolved_usertype_id"] = usertype.unique_id if usertype else None
         data["resolved_staffusertype_id"] = staffusertype.unique_id if staffusertype else None
         data["resolved_contractorusertype_id"] = (
@@ -375,8 +345,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        company_id = validated_data["resolved_company_id"]
-        project_id = validated_data["resolved_project_id"]
         usertype_id = validated_data["resolved_usertype_id"]
         staffusertype_id = validated_data["resolved_staffusertype_id"]
         contractorusertype_id = validated_data.get(
@@ -390,10 +358,9 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         created, updated, deleted = [], [], []
         created_columns, updated_columns, deleted_columns = [], [], []
 
-        existing_qs = CompanyUserScreenPermission.objects.select_related(
+        existing_qs = UserScreenPermission.objects.select_related(
             "userscreen_id", "userscreenaction_id"
         ).filter(
-            company_id_id=company_id,
             usertype_id_id=usertype_id,
             staffusertype_id_id=staffusertype_id,
             contractorusertype_id_id=contractorusertype_id,
@@ -418,13 +385,11 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     permission.is_active = True
                     permission.order_no = order_no
                     permission.description = screen_desc
-                    permission.project_id_id = project_id
                     permission.save(update_fields=[
                         "is_deleted",
                         "is_active",
                         "order_no",
                         "description",
-                        "project_id",
                         "updated_at",
                     ])
                     updated.append(permission)
@@ -435,9 +400,7 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                         "screens": f"Update mode cannot create {screen_id}:{action_id}"
                     })
 
-                permission = CompanyUserScreenPermission.objects.create(
-                    company_id_id=company_id,
-                    project_id_id=project_id,
+                permission = UserScreenPermission.objects.create(
                     usertype_id_id=usertype_id,
                     staffusertype_id_id=staffusertype_id,
                     contractorusertype_id_id=contractorusertype_id,
@@ -453,8 +416,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
 
             if "columnIds" in screen and screen["columnIds"] is not None:
                 result = self._sync_column_permissions(
-                    company_id=company_id,
-                    project_id=project_id,
                     usertype_id=usertype_id,
                     staffusertype_id=staffusertype_id,
                     contractorusertype_id=contractorusertype_id,
@@ -486,8 +447,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
     def _sync_column_permissions(
         self,
         *,
-        company_id,
-        project_id,
         usertype_id,
         staffusertype_id,
         contractorusertype_id,
@@ -499,8 +458,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         existing = {
             obj.column_id_id: obj
             for obj in CompanyUserScreenColumnPermission.objects.filter(
-                company_id_id=company_id,
-                project_id_id=project_id,
                 usertype_id_id=usertype_id,
                 staffusertype_id_id=staffusertype_id,
                 contractorusertype_id_id=contractorusertype_id,
@@ -536,8 +493,6 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
 
             created.append(
                 CompanyUserScreenColumnPermission(
-                    company_id_id=company_id,
-                    project_id_id=project_id,
                     usertype_id_id=usertype_id,
                     staffusertype_id_id=staffusertype_id,
                     contractorusertype_id_id=contractorusertype_id,
@@ -572,3 +527,7 @@ class CompanyUserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             )
 
         return {"created": created, "updated": updated, "deleted": deleted}
+
+
+CompanyUserScreenPermissionSerializer = UserScreenPermissionSerializer
+CompanyUserScreenPermissionMultiScreenSerializer = UserScreenPermissionMultiScreenSerializer

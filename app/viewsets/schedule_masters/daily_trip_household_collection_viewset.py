@@ -1,4 +1,5 @@
 from django.db.models import Q
+from rest_framework import viewsets
 
 from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
@@ -6,10 +7,9 @@ from app.models.schedule_masters.daily_trip_household_collection import (
 from app.serializers.schedule_masters.daily_trip_household_collection_serializer import (
     DailyTripHouseholdCollectionSerializer,
 )
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
-class DailyTripHouseholdCollectionViewSet(CompanyScopedViewSet):
+class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
     serializer_class = DailyTripHouseholdCollectionSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripHouseholdCollection"
@@ -17,8 +17,6 @@ class DailyTripHouseholdCollectionViewSet(CompanyScopedViewSet):
     def get_queryset(self):
         queryset = (
             DailyTripHouseholdCollection.objects.select_related(
-                "company_id",
-                "project_id",
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
                 "customer_id",
@@ -33,8 +31,6 @@ class DailyTripHouseholdCollectionViewSet(CompanyScopedViewSet):
         params = self.request.query_params
         assignment = params.get("trip_assignment_id")
         customer = params.get("customer_id")
-        company = params.get("company_id")
-        project = params.get("project_id")
         status_value = params.get("status")
         is_collected = params.get("is_collected")
         trip_date = params.get("date") or params.get("trip_date")
@@ -43,10 +39,6 @@ class DailyTripHouseholdCollectionViewSet(CompanyScopedViewSet):
         zone = params.get("zone_id")
         search = params.get("search")
 
-        if company:
-            queryset = queryset.filter(company_id__unique_id=company)
-        if project:
-            queryset = queryset.filter(project_id__unique_id=project)
         if assignment:
             queryset = queryset.filter(trip_assignment_id__unique_id=assignment)
         if customer:

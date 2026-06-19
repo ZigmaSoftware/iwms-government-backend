@@ -20,10 +20,10 @@ from app.serializers.schedule_masters.daily_trip_collection_point_serializer imp
     DailyTripCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+from rest_framework import viewsets
 
 
-class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DailyTripCollectionPointSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripCollectionPoint"
@@ -218,8 +218,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     def get_queryset(self):
         queryset = (
             DailyTripCollectionPoint.objects.select_related(
-                "company_id",
-                "project_id",
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
                 "collection_point_id",
@@ -238,8 +236,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
 
         params = self.request.query_params
         assignment = params.get("trip_assignment_id")
-        company = params.get("company_id")
-        project = params.get("project_id")
         collection_point = params.get("collection_point_id")
         bin_id = params.get("bin_id")
         status_value = params.get("status")
@@ -252,10 +248,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
         panchayat = params.get("panchayat_id")
         search = params.get("search")
 
-        if company:
-            queryset = queryset.filter(company_id__unique_id=company)
-        if project:
-            queryset = queryset.filter(project_id__unique_id=project)
         if assignment:
             queryset = queryset.filter(trip_assignment_id__unique_id=assignment)
         if collection_point:
@@ -401,13 +393,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
             "vehicle_id",
             "trip_plan_id",
         ).filter(is_deleted=False)
-        company = request.query_params.get("company_id")
-        project = request.query_params.get("project_id")
         trip_date = request.query_params.get("date") or request.query_params.get("trip_date")
-        if company:
-            assignments = assignments.filter(company_id__unique_id=company)
-        if project:
-            assignments = assignments.filter(project_id__unique_id=project)
         if trip_date:
             assignments = assignments.filter(trip_date=trip_date)
         assignments = assignments.order_by("-trip_date", "-scheduled_time")[:30]
@@ -428,8 +414,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, CompanyScopedViewSet):
                     "bin_id",
                     "bin_id__wastetype_id",
                     "collected_by",
-                    "company_id",
-                    "project_id",
                 )
                 .filter(trip_assignment_id=assignment, is_deleted=False)
                 .order_by("sequence")

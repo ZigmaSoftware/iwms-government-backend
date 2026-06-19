@@ -144,8 +144,6 @@ class RegisterViewSet(ViewSet):
         relative_image_path = f"emp_image/{image_filename}"
 
         emp = Employee.objects.create(
-            company_id=staff.company_id,
-            project_id=staff.project_id,
             emp_id=staff.emp_id,
             staff=staff,
             name=name,

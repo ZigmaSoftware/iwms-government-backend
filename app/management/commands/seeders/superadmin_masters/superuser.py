@@ -41,8 +41,6 @@ class PlatformSuperUserSeeder(BaseSeeder):
             user.is_staff = True
             user.is_active = True
             user.is_deleted = False
-            user.company_id = None
-            user.project_id = None
             user.user_type_id = None
             user.staffusertype_id = None
             user.staff_id = None

@@ -1,10 +1,10 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.customers.wastecollection import WasteCollection
 from app.serializers.customers.wastecollection_serializer import WasteCollectionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
-class WasteCollectionViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class WasteCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = WasteCollection.objects.filter(is_deleted=False).select_related(
         "customer__ward","customer__zone","customer__city",
         "customer__district","customer__state","customer__country",

@@ -1,17 +1,15 @@
 from rest_framework import filters, status
 from rest_framework.response import Response
 
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.serializers.masters.panchayat_leader_serializer import PanchayatLeaderLoginSerializer
 
 
-class PanchayatLeaderLoginViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = PanchayatLeaderLogin.objects.select_related(
         "panchayat_id",
-        "company_id",
-        "project_id",
     ).filter(is_deleted=False)
 
     serializer_class = PanchayatLeaderLoginSerializer
@@ -27,7 +25,7 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, CompanyScopedViewSet):
 
     def get_queryset(self):
         qs = PanchayatLeaderLogin.objects.select_related(
-            "panchayat_id", "company_id", "project_id"
+            "panchayat_id"
         ).filter(is_deleted=False)
 
         panchayat_id = self.request.query_params.get("panchayat_id")

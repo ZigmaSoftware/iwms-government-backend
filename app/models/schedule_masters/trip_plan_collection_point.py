@@ -8,8 +8,6 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.models.masters.zone import Zone
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -34,22 +32,6 @@ class TripPlanCollectionPoint(BaseMaster):
         primary_key=True,
         default=generate_tpcp_id,
         editable=False,
-    )
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="company_id",
-        null=True,
-        blank=True,
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="project_id",
-        null=True,
-        blank=True,
     )
 
     trip_plan_id = models.ForeignKey(
@@ -156,10 +138,6 @@ class TripPlanCollectionPoint(BaseMaster):
                 raise ValidationError({"customer_id": "Customer is required for household collection."})
 
     def save(self, *args, **kwargs):
-        if self.trip_plan_id_id and not self.company_id_id:
-            plan = self.trip_plan_id
-            self.company_id = plan.company_id
-            self.project_id = plan.project_id
         if self.collection_point_id_id:
             collection_point = self.collection_point_id
             self.panchayat_id = collection_point.panchayat_id

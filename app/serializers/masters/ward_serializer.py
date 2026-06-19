@@ -1,10 +1,10 @@
 from rest_framework import serializers
 from app.models.masters.ward import Ward
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
+from app.serializers.masters.geofence import normalize_coordinates
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class WardSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class WardSerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     city_name = serializers.CharField(source="city_id.name", read_only=True)
@@ -31,10 +31,6 @@ class WardSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
         model = Ward
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
 
             "continent_id",
             "continent_name",
@@ -60,7 +56,10 @@ class WardSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
             "ward_name",
             "description",
 
+            "latitude",
+            "longitude",
             "geofencing_type",
+            "coordinates",
 
             "is_active",
             "created_at",
@@ -74,8 +73,6 @@ class WardSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
             "unique_id",
             "created_at",
             "updated_at",
-            "company_id",
-            "project_id",
         ]
 
     def validate(self, attrs):
@@ -99,8 +96,6 @@ class WardSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
                 Model=Ward,
                 name_field="ward_name",
                 scope_fields=[
-                    "company_id",
-                    "project_id",
                     "city_id",
                     "district_id",
                     "state_id"
@@ -108,3 +103,6 @@ class WardSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
             )(self, attrs)
 
         return attrs
+
+    def validate_coordinates(self, value):
+        return normalize_coordinates(value)

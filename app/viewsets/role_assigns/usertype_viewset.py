@@ -1,13 +1,12 @@
 from django.shortcuts import get_object_or_404
 
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.role_assigns.userType import UserType
 from app.serializers.role_assigns.usertype_serializer import UserTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class UserTypeViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class UserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = UserType.objects.filter(is_deleted=False)
     serializer_class = UserTypeSerializer
     lookup_field = "unique_id"
@@ -20,8 +19,8 @@ class UserTypeViewSet(AuditViewSetMixin,CompanyScopedViewSet):
     def filter_queryset(self, queryset):
         """
         Override to prevent company-scoped filtering.
-        UserTypes are global records (company_id=None) and should be accessible 
-        to all authenticated users regardless of their company assignment.
+        UserTypes are global records and should be accessible to all
+        authenticated users.
         """
         # Apply parent search/ordering filters but skip company scoping
         from rest_framework.filters import SearchFilter, OrderingFilter

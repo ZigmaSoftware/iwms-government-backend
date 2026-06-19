@@ -17,7 +17,6 @@ from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
@@ -28,19 +27,7 @@ class TripPlanStopInputSerializer(serializers.Serializer):
     is_active = serializers.BooleanField(default=True)
 
 
-class TripPlanSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
-    company_id_input = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-    )
-    project_id_input = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-    )
+class TripPlanSerializer(serializers.ModelSerializer):
 
     district_id = UniqueIdOrPkField(
         slug_field="unique_id",
@@ -135,12 +122,6 @@ class TripPlanSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer
         fields = [
             "unique_id",
             "display_code",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
-            "company_id_input",
-            "project_id_input",
             "district_id",
             "city_id",
             "zone_id",
@@ -280,8 +261,6 @@ class TripPlanSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer
         return result
 
     def validate(self, attrs):
-        attrs.pop("company_id_input", None)
-        attrs.pop("project_id_input", None)
 
         instance = getattr(self, "instance", None)
         panchayat = attrs.get("panchayat_id", getattr(instance, "panchayat_id", None))

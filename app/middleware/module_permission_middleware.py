@@ -106,7 +106,9 @@ MODULE_RESOURCE_ALLOWLIST = {
         "MainScreen",
         "UserScreen",
         "UserScreenAction",
+        "UserScreenPermission",
         "CompanyUserScreenPermission",
+        "userscreenpermissions",
         "companywisescreenpermissions",
         "column-permissions",
     },
@@ -183,8 +185,9 @@ RESOURCE_PERMISSION_ALIASES = {
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
     "StaffTemplateCreation": ("StaffTemplate", "staff-templates"),
-    "companywisescreenpermissions": ("CompanyUserScreenPermission",),
-    "column-permissions": ("CompanyUserScreenPermission",),
+    "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "companywisescreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "column-permissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
 }
 
 
@@ -272,7 +275,7 @@ def _authenticate_request(request):
 
     # Panchayat leader (localbody portal)
     leader = PanchayatLeaderLogin.objects.select_related(
-        "panchayat_id", "company_id", "project_id"
+        "panchayat_id"
     ).filter(unique_id=unique_id).first()
     if leader:
         request.user = leader
@@ -296,21 +299,18 @@ def _authenticate_request(request):
 
 
 def _permission_filters_for_user(user):
-    company = getattr(user, "company_id", None)
     usertype = getattr(user, "user_type_id", None)
     staffusertype = getattr(user, "staffusertype_id", None)
     contractorusertype = getattr(user, "contractorusertype_id", None)
 
-    company_unique_id = getattr(company, "unique_id", None)
     usertype_unique_id = getattr(usertype, "unique_id", None)
     staffusertype_unique_id = getattr(staffusertype, "unique_id", None)
     contractorusertype_unique_id = getattr(contractorusertype, "unique_id", None)
 
-    if not company_unique_id or not usertype_unique_id:
+    if not usertype_unique_id:
         return None
 
     return {
-        "company_unique_id": company_unique_id,
         "usertype_unique_id": usertype_unique_id,
         "staffusertype_unique_id": staffusertype_unique_id,
         "contractorusertype_unique_id": contractorusertype_unique_id,
@@ -332,7 +332,6 @@ def _resolve_permissions_for_request(request):
     cache_key = (
         "module-permissions:"
         f"{user_id}:"
-        f"{filters['company_unique_id']}:"
         f"{filters['usertype_unique_id']}:"
         f"{filters.get('staffusertype_unique_id') or 'none'}:"
         f"{filters.get('contractorusertype_unique_id') or 'none'}"

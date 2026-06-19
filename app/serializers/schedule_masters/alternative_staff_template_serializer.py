@@ -1,13 +1,10 @@
 from rest_framework import serializers
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 
 
 
@@ -39,19 +36,9 @@ class CommaSeparatedListField(serializers.ListField):
         return super().to_representation(value)
 
 
-class AlternativeStaffTemplateSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
 
-    company_id = UniqueIdOrPkField(
-    slug_field="unique_id",
-    queryset=Company.objects.all(),
-    required=False
-)
 
-    project_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=Project.objects.all(),
-        required=False
-    )
     staff_template = UniqueIdOrPkField(
         slug_field="unique_id",
         queryset=StaffTemplate.objects.all(),
@@ -134,10 +121,6 @@ class AlternativeStaffTemplateSerializer(TenancyReadSerializerMixin, serializers
         model = AlternativeStaffTemplate
         fields = [
             'unique_id',
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             'display_code',
             'staff_template',
             'staff_template_display_code',

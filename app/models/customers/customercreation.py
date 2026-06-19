@@ -5,15 +5,12 @@ from app.models.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.city import City
 from app.models.masters.zone import Zone
-from app.models.role_assigns.userType import UserType
-from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.masters.ward import Ward
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
+from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.company import Company
 from app.models.masters.panchayat import Panchayat
-from app.models.superadmin_masters.project import Project
 from app.utils.customer_qr import (
     QR_SUBPROPERTY_APARTMENT,
     generate_customer_qr_content,
@@ -31,14 +28,13 @@ def generate_apartment_id():
     return f"APT-{generate_unique_id()}"
 
 
-def get_or_create_apartment_id(apartment_name, latitude, longitude, company_id):
+def get_or_create_apartment_id(apartment_name, latitude, longitude):
         apartment_name = (apartment_name or "").strip().upper()
 
         existing = CustomerCreation.objects.filter(
             apartment_name__iexact=apartment_name,
             latitude=latitude,
             longitude=longitude,
-            company_id=company_id,
             is_deleted=False
         ).first()
 
@@ -74,21 +70,7 @@ class CustomerCreation(BaseMaster):
         "sub_property_id",
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="company_id",
-    )
 
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        db_column="project_id",
-    )
 
     class IDProofType(models.TextChoices):
         AADHAAR = "AADHAAR", "Aadhaar"
@@ -186,6 +168,12 @@ class CustomerCreation(BaseMaster):
         related_name="customer_creation"
     )
 
+    waste_types = models.ManyToManyField(
+        WasteType,
+        related_name="customer_creations",
+        blank=True,
+    )
+
     # =============================
     # AUTHENTICATION FIELDS
     # =============================
@@ -230,24 +218,6 @@ class CustomerCreation(BaseMaster):
 
     is_superuser = models.BooleanField(default=False)
     is_bulkwaste_generator = models.BooleanField(default=False)
-
-    user_type_id = models.ForeignKey(
-        UserType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_column="user_type_id",
-        related_name="customer_users"
-    )
-
-    staffusertype_id = models.ForeignKey(
-        StaffUserType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        db_column="staffusertype_id",
-        related_name="customer_users"
-    )
 
     # =============================
     # QR CODE FIELD
@@ -352,8 +322,7 @@ class CustomerCreation(BaseMaster):
                 self.apartment_unique_id = get_or_create_apartment_id(
                     self.apartment_name,
                     self.latitude,
-                    self.longitude,
-                    self.company_id
+                    self.longitude
                 )
 
         is_create = self._state.adding

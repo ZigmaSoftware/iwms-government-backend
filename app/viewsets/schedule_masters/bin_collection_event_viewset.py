@@ -11,10 +11,10 @@ from app.serializers.schedule_masters.bin_collection_event_serializer import (
     BinCollectionEventSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+from rest_framework import viewsets
 
 
-class BinCollectionEventViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
     permission_resource = "BinCollectionEvent"
@@ -25,8 +25,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     def get_queryset(self):
         queryset = (
             BinCollectionEvent.objects.select_related(
-                "company_id",
-                "project_id",
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
                 "trip_assignment_id__trip_plan_id__vehicle_id",
@@ -151,8 +149,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, CompanyScopedViewSet):
                 collection_point_id=collection_point,
                 defaults={
                     "bin_id": getattr(event, "bin_id", None),
-                    "company_id": getattr(event, "company_id", None),
-                    "project_id": getattr(event, "project_id", None),
                 },
             )
 

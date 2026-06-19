@@ -1,9 +1,10 @@
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
+from rest_framework import viewsets
+
 from app.models.user_creations.auditlog import AuditLog
 from app.serializers.audits.audit_log_serializer import AuditLogSerializer
 
 
-class AuditLogViewSet(CompanyScopedViewSet):
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
     serializer_class = AuditLogSerializer
     permission_resource = "AuditLog"
@@ -17,8 +18,6 @@ class AuditLogViewSet(CompanyScopedViewSet):
                 "mainscreen_id",
                 "userscreen_id",
                 "userscreenaction_id",
-                "company_id",
-                "project_id",
             )
             .order_by("-timestamp")
         )

@@ -1,5 +1,4 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.masters.zone import Zone
 from app.serializers.masters.zone_serializer import ZoneSerializer
 
@@ -7,9 +6,10 @@ from rest_framework.viewsets import ModelViewSet
 from app.models.masters.zone import Zone
 from app.serializers.masters.zone_serializer import ZoneSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class ZoneViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class ZoneViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Zone.objects.filter(is_deleted=False)
     serializer_class = ZoneSerializer
     lookup_field = "unique_id"
@@ -23,14 +23,8 @@ class ZoneViewSet(AuditViewSetMixin,CompanyScopedViewSet):
     def get_queryset(self):
         queryset = Zone.objects.filter(is_deleted=False)
 
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
 
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
 
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
         city_uid = self.request.query_params.get("city") or self.request.query_params.get("city_id")

@@ -1,7 +1,6 @@
 from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.audits.staff_template_audit_log import StaffTemplateAuditLog
@@ -13,7 +12,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 
 
 
-class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     API Contract:
     - Create alternative staff mapping
@@ -98,28 +97,12 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
 
         return None
 
-    # --------------------------------------------------
-    # CREATE (🔥 FRONTEND-DRIVEN COMPANY/PROJECT)
-    # --------------------------------------------------
-
     def perform_create(self, serializer):
         user = self._resolve_request_user()
-
-        company = serializer.validated_data.get("company_id")
-        project = serializer.validated_data.get("project_id")
-
-        # ✅ Strict validation
-        if not company or not project:
-            raise serializers.ValidationError({
-                "company_id": "Company is required",
-                "project_id": "Project is required"
-            })
 
         instance = serializer.save(
             approval_status="PENDING",
             # requested_by=user,  # can be None if allowed in model
-            company_id=company,
-            project_id=project,
         )
 
         new_data = self._serialize_instance(instance)
@@ -136,8 +119,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             action=StaffTemplateAuditLog.Action.CREATE,
             entity_id=instance.unique_id,
             remarks=instance.change_remarks,
-            company_id=instance.company_id,
-            project_id=instance.project_id,
         )
 
     def perform_update(self, serializer):
@@ -166,8 +147,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
                 action=StaffTemplateAuditLog.Action.MODIFY,
                 entity_id=instance.unique_id,
                 remarks=instance.change_remarks,
-                company_id=instance.company_id,
-                project_id=instance.project_id,
             )
 
     def update(self, request, *args, **kwargs):
@@ -190,7 +169,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
         return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 
-    def _log_audit(self, user, action, entity_id, remarks=None, company_id=None, project_id=None):
+    def _log_audit(self, user, action, entity_id, remarks=None):
         if not user:
             return
         StaffTemplateAuditLog.objects.create(
@@ -200,6 +179,4 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin,CompanyScopedViewSet):
             performed_by=user,
             performed_role=self._resolve_performed_role(user),
             change_remarks=remarks if isinstance(remarks, str) else None,
-            company_id=company_id or getattr(user, "company_id", None),
-            project_id=project_id or getattr(user, "project_id", None),
         )

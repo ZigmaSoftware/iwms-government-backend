@@ -3,8 +3,6 @@ from django.db.models import Q
 
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.masters.zone import Zone
 from app.models.masters.ward import Ward
 from app.models.user_creations.staffcreation import Staffcreation
@@ -29,8 +27,6 @@ class UnassignedStaffPool(BaseMaster):
         UNAVAILABLE = "UNAVAILABLE", "Unavailable"
 
     unique_id = models.CharField(max_length=60, primary_key=True, default=generate_unassigned_staff_pool_id, editable=False)
-    company_id = models.ForeignKey(Company, on_delete=models.PROTECT, db_column="company_id", null=True, blank=True)
-    project_id = models.ForeignKey(Project, on_delete=models.PROTECT, db_column="project_id", null=True, blank=True)
     operator = models.ForeignKey(Staffcreation, on_delete=models.SET_NULL, null=True, blank=True, to_field="staff_unique_id", db_column="operator_id", related_name="unassigned_operator_pool")
     driver = models.ForeignKey(Staffcreation, on_delete=models.SET_NULL, null=True, blank=True, to_field="staff_unique_id", db_column="driver_id", related_name="unassigned_driver_pool")
     zone = models.ForeignKey(Zone, on_delete=models.PROTECT, to_field="unique_id", db_column="zone_id")

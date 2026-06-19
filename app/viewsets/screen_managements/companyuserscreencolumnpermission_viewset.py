@@ -1,5 +1,5 @@
 from django.db import transaction
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
@@ -12,16 +12,14 @@ from app.models.screen_managements.companyuserscreencolumnpermission import (
 )
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
-from app.models.superadmin_masters.company import Company
 from app.serializers.screen_managements.companyuserscreencolumnpermission_serializer import (
     UserScreenColumnPermissionSerializer,
     UserScreenColumnPermissionWriteSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 
 
-class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Dedicated CRUD API for CompanyUserScreenColumnPermission.
 
@@ -52,8 +50,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
             is_deleted=False,
             can_view = True,
         ).select_related(
-            "company_id",
-            "project_id",
             "usertype_id",
             "staffusertype_id",
             "contractorusertype_id",
@@ -117,20 +113,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
         write_ser.is_valid(raise_exception=True)
         vd = write_ser.validated_data
 
-        # Resolve company
-        company = self._company()
-        if not company:
-            if self._is_platform_super_admin():
-                company_id_str = request.data.get("company_id")
-                company = Company.objects.filter(unique_id=company_id_str).first()
-                if not company:
-                    return Response(
-                        {"error": "Valid company_id is required for platform admin"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            else:
-                raise PermissionDenied("Company user required")
-
         # Resolve FK objects
         userscreen = UserScreen.objects.get(unique_id=vd["userscreen_id"])
         column = UserScreenColumn.objects.get(unique_id=vd["column_id"])
@@ -154,13 +136,10 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
         if usertype_id_str:
             usertype = UserType.objects.filter(unique_id=usertype_id_str).first()
 
-        project = self._project()
-        account = self._get_account()
+        account = None
 
         with transaction.atomic():
             instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
-                company_id=company,
-                project_id=project,
                 staffusertype_id=staffusertype,
                 contractorusertype_id=contractorusertype,
                 usertype_id=usertype,
@@ -213,7 +192,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, CompanyScopedV
         if is_active is not None:
             instance.can_view = bool(is_active)
 
-        account = self._get_account()
+        account = None
         if hasattr(instance, "updated_by"):
             instance.updated_by = account
 

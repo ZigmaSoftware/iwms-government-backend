@@ -3,7 +3,6 @@ from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 
@@ -18,7 +17,7 @@ class StaffApprovalActionSerializer(serializers.Serializer):
     )
 
 
-class StaffcreationSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class StaffcreationSerializer(serializers.ModelSerializer):
     # --------------------------------------------------
     # Core identifiers
     # --------------------------------------------------
@@ -184,10 +183,6 @@ class StaffcreationSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
         model = Staffcreation
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "emp_id",
             "username",
             "password",
@@ -310,8 +305,6 @@ class StaffcreationSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
         StaffPersonalDetails.objects.create(
             staff=staff,
             staff_unique_id=staff.staff_unique_id,
-            company_id=staff.company_id,
-            project_id=staff.project_id,
             **personal_data,
         )
 
@@ -341,10 +334,6 @@ class StaffcreationSerializer(TenancyReadSerializerMixin, serializers.ModelSeria
             personal_instance, _ = StaffPersonalDetails.objects.get_or_create(
                 staff=staff
             )
-            if not getattr(personal_instance, "company_id", None):
-                personal_instance.company_id = staff.company_id
-            if not getattr(personal_instance, "project_id", None):
-                personal_instance.project_id = staff.project_id
             for attr, value in personal_data.items():
                 setattr(personal_instance, attr, value)
 

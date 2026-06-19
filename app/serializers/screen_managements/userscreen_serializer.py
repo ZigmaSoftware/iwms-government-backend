@@ -19,7 +19,7 @@ from app.utils.model_mapper import resolve_userscreen_model
 
 
 class UserScreenSerializer(
-    TenancyReadSerializerMixin,
+    
     serializers.ModelSerializer
 ):
 

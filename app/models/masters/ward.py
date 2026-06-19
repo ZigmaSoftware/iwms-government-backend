@@ -2,8 +2,6 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from django.core.validators import RegexValidator
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.masters.hierarchy import AdministrativeHierarchy
 from app.models.masters.areatype import AreaType
 from ..common_masters.state import State
@@ -32,8 +30,6 @@ class Ward(BaseMaster):
         editable=False
     )
 
-    company_id = models.ForeignKey(Company, on_delete=models.PROTECT,null=True,blank=True)
-    project_id = models.ForeignKey(Project, on_delete=models.PROTECT,null=True,blank=True)
 
     state_id = models.ForeignKey(State, on_delete=models.PROTECT)
     district_id = models.ForeignKey(District, on_delete=models.PROTECT)
@@ -67,6 +63,7 @@ class Ward(BaseMaster):
     description = models.TextField(null=True, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6,null=True,blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6,null=True,blank=True)
+    coordinates = models.JSONField(default=list, blank=True)
     geofencing_type = models.CharField(max_length=20, choices=GeoFencingType.choices, default=GeoFencingType.SQUARE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)     

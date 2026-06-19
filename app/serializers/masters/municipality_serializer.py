@@ -1,10 +1,9 @@
 from rest_framework import serializers
 from app.models.masters.municipality import Municipality
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class MunicipalitySerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class MunicipalitySerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
@@ -16,10 +15,6 @@ class MunicipalitySerializer(TenancyReadSerializerMixin, serializers.ModelSerial
         model = Municipality
         fields = [
             "unique_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "state_id",
             "state_name",
             "district_id",
@@ -45,8 +40,6 @@ class MunicipalitySerializer(TenancyReadSerializerMixin, serializers.ModelSerial
             "unique_id",
             "created_at",
             "updated_at",
-            "company_id",
-            "project_id",
         ]
 
     def validate(self, attrs):
@@ -68,7 +61,7 @@ class MunicipalitySerializer(TenancyReadSerializerMixin, serializers.ModelSerial
             unique_name_validator(
                 Model=Municipality,
                 name_field="municipality_name",
-                scope_fields=["company_id", "project_id", "district_id", "state_id"],
+                scope_fields=["district_id", "state_id"],
             )(self, attrs)
 
         return attrs

@@ -5,16 +5,13 @@ from app.models.assets.bins import Bins
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.user_creations.staffcreation import Staffcreation
-from app.serializers.company_projects.tenancy import TenancyReadSerializerMixin
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
-class DailyTripLogSerializer(TenancyReadSerializerMixin, serializers.ModelSerializer):
+class DailyTripLogSerializer(serializers.ModelSerializer):
     trip_assignment_id = UniqueIdOrPkField(
         slug_field="unique_id",
         queryset=DailyTripAssignment.objects.select_related(
-            "company_id",
-            "project_id",
             "trip_plan_id",
             "trip_plan_id__vehicle_id",
             "staff_template_id",
@@ -66,10 +63,6 @@ class DailyTripLogSerializer(TenancyReadSerializerMixin, serializers.ModelSerial
             "staff_template_id",
             "staff_template",
             "alt_staff_template_id",
-            "company_id",
-            "company_name",
-            "project_id",
-            "project_name",
             "panchayat_id",
             "panchayat",
             "ward",
@@ -108,8 +101,6 @@ class DailyTripLogSerializer(TenancyReadSerializerMixin, serializers.ModelSerial
             "unique_id",
             "staff_template_id",
             "alt_staff_template_id",
-            "company_id",
-            "project_id",
             "panchayat_id",
             "collection_point_id",
             "waste_type_id",

@@ -2,11 +2,11 @@ from rest_framework import viewsets, status
 from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.panchayat_serializer import PanchayatSerializer
 from rest_framework.response import Response
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class PanhayatViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = PanchayatSerializer
     lookup_field = "unique_id"
     permission_resource = "Panchayat"
@@ -17,14 +17,8 @@ class PanhayatViewSet(AuditViewSetMixin,CompanyScopedViewSet):
     def get_queryset(self):
         queryset = Panchayat.objects.filter(is_deleted=False)
 
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
 
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
 
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
         city_uid = self.request.query_params.get("city") or self.request.query_params.get("city_id")

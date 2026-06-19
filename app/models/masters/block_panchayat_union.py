@@ -1,8 +1,6 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.models.masters.district import District
 from app.models.common_masters.state import State
 from app.models.masters.hierarchy import AdministrativeHierarchy
@@ -21,22 +19,6 @@ class BlockPanchayatUnion(BaseMaster):
         editable=False,
     )
 
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="block_panchayat_unions",
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="block_panchayat_unions",
-        db_column="project_id",
-    )
 
     state_id = models.ForeignKey(
         State,

@@ -12,8 +12,6 @@ from app.models.masters.zone import Zone
 from app.models.masters.ward import Ward
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
-from app.models.superadmin_masters.company import Company
-from app.models.superadmin_masters.project import Project
 from app.utils.customer_qr import generate_customer_qr_content
 
 
@@ -226,18 +224,6 @@ class StaffcreationOfficeDetails(BaseMaster):
         db_column="ward_id",
         related_name="staff_ward"
     )
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="staff_office_details",
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="staff_office_details",
-        db_column="project_id",
-    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -317,18 +303,6 @@ class StaffPersonalDetails(models.Model):
         max_length=30,
         primary_key=True,
         editable=False
-    )
-    company_id = models.ForeignKey(
-        Company,
-        on_delete=models.PROTECT,
-        related_name="staff_personal_details",
-        db_column="company_id",
-    )
-    project_id = models.ForeignKey(
-        Project,
-        on_delete=models.PROTECT,
-        related_name="staff_personal_details",
-        db_column="project_id",
     )
     marital_status = models.CharField(max_length=50, blank=True, null=True)
     dob = models.DateField(blank=True, null=True)

@@ -1,11 +1,11 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.masters.city import City
 from app.serializers.masters.city_serializer import CitySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class CityViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class CityViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
 
     queryset = City.objects.filter(is_deleted=False)
@@ -20,14 +20,8 @@ class CityViewSet(AuditViewSetMixin,CompanyScopedViewSet):
     def get_queryset(self):
         queryset = City.objects.filter(is_deleted=False)
 
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
 
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
 
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         district_uid = self.request.query_params.get("district")
         state_uid = self.request.query_params.get("state")

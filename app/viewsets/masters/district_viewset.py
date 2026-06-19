@@ -1,10 +1,9 @@
 from rest_framework import viewsets
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.masters.district import District
 from app.serializers.masters.district_serializer import DistrictSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 
-class DistrictViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class DistrictViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     queryset = District.objects.filter(is_deleted=False)
     serializer_class = DistrictSerializer
@@ -17,14 +16,8 @@ class DistrictViewSet(AuditViewSetMixin,CompanyScopedViewSet):
     def get_queryset(self):
         queryset = District.objects.filter(is_deleted=False)
 
-        company_uid = self.request.query_params.get("company_id")
-        project_uid = self.request.query_params.get("project_id")
 
-        if company_uid:
-            queryset = queryset.filter(company_id__unique_id=company_uid)
 
-        if project_uid:
-            queryset = queryset.filter(project_id__unique_id=project_uid)
 
         country_uid = self.request.query_params.get("country")
         state_uid = self.request.query_params.get("state")

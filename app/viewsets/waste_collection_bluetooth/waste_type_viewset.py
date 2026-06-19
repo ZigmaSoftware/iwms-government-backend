@@ -1,12 +1,12 @@
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.serializers.waste_collection_bluetooth.waste_type_serializer import (
     WasteTypeSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 
 
-class WasteTypeViewSet(AuditViewSetMixin,CompanyScopedViewSet):
+class WasteTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     
     serializer_class = WasteTypeSerializer
     permission_resource = "WasteType"

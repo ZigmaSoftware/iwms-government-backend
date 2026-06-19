@@ -9,18 +9,17 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from app.models.superadmin_masters.company import Company
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
 from app.models.customers.customercreation import CustomerCreation
-from app.models.superadmin_masters.project import Project
 from app.models.waste_types.subproperty import SubProperty
 from app.models.common_masters.state import State
 from app.models.common_masters.country import Country
 from app.models.waste_types.property import Property
+from app.models.user_creations.waste_collection_bluetooth import WasteType
 
 from app.serializers.customers.customercreation_serializer import CustomerCreationSerializer
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from rest_framework import viewsets
 from app.utils.customer_qr import generate_customer_qr_content, generate_apartment_qr_data
 
 
@@ -87,12 +86,11 @@ DYNAMIC_FILTER_ALIASES = _build_dynamic_filter_aliases()
 
 
 
-def get_or_create_apartment_qr(apartment_name,company_id,request):
+def get_or_create_apartment_qr(apartment_name, request):
     apartment_name = (apartment_name or "").strip().upper()
 
     obj = CustomerCreation.objects.filter(
         apartment_name__iexact=apartment_name,
-        company_id=company_id,
         is_deleted=False
     ).first()
 
@@ -111,7 +109,7 @@ def get_or_create_apartment_qr(apartment_name,company_id,request):
     return obj.apartment_qr.url
 
 
-class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
+class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     permission_resource = "CustomerCreation"
     serializer_class = CustomerCreationSerializer
     lookup_field = "unique_id"
@@ -124,10 +122,11 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
         CustomerCreation.objects
         .filter(is_deleted=False)
         .select_related(
-            "company_id", "project_id", "ward", "zone", "city",
+            "ward", "zone", "city",
             "district", "state", "country", "panchayat_id",
             "property_ref", "sub_property",
         )
+        .prefetch_related("waste_types")
         .order_by("customer_name")
     )
 
@@ -135,16 +134,10 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        company_id = self.request.query_params.get("company_id")
-        project_id = self.request.query_params.get("project_id")
         zone_id = self.request.query_params.get("zone_id")
         ward_id = self.request.query_params.get("ward_id")
         panchayat_id = self.request.query_params.get("panchayat_id")
 
-        if company_id:
-            queryset = queryset.filter(company_id__unique_id=company_id)
-        if project_id:
-            queryset = queryset.filter(project_id__unique_id=project_id)
         if panchayat_id:
             queryset = queryset.filter(panchayat_id__unique_id=panchayat_id)
         elif ward_id:
@@ -161,7 +154,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
         if instance.apartment_name:
             get_or_create_apartment_qr(
                 instance.apartment_name,
-                instance.company_id,
                 self.request
             )
 
@@ -183,7 +175,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
         if instance.apartment_name:
             get_or_create_apartment_qr(
                 instance.apartment_name,
-                instance.company_id,
                 self.request
             )
 
@@ -234,9 +225,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
     def apartment_count(self, request):
         queryset = self.filter_queryset(self.get_queryset())
 
-        company_id = request.query_params.get("company_id")
-        if company_id:
-            queryset = queryset.filter(company_id__unique_id=company_id)
 
         data = (
             queryset
@@ -261,7 +249,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
         for item in data:
             apartment_name = item["apartment_name_upper"]
 
-            qr_url = get_or_create_apartment_qr(apartment_name,company_id,request)
+            qr_url = get_or_create_apartment_qr(apartment_name, request)
 
             if qr_url:
                 qr_url = request.build_absolute_uri(qr_url)
@@ -432,6 +420,27 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
             # Try name
             return model.objects.filter(**{f"{field}__iexact": value}).first()
 
+        def get_waste_type_ids(value):
+            raw_values = [
+                item.strip()
+                for item in re.split(r"[,|;]", value or "")
+                if item and item.strip()
+            ]
+            waste_type_ids = []
+            invalid_values = []
+
+            for raw_value in raw_values:
+                waste_type = (
+                    WasteType.objects.filter(unique_id=raw_value, is_deleted=False).first()
+                    or WasteType.objects.filter(waste_type_name__iexact=raw_value, is_deleted=False).first()
+                )
+                if waste_type:
+                    waste_type_ids.append(waste_type.unique_id)
+                else:
+                    invalid_values.append(raw_value)
+
+            return waste_type_ids, invalid_values
+
         try:
             decoded_file = file.read().decode("utf-8")
             io_string = io.StringIO(decoded_file)
@@ -439,18 +448,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
 
             success_count = 0
             errors = []
-
-            company_unique_id = request.data.get("company_id")
-            project_unique_id = request.data.get("project_id")
-
-            company = Company.objects.filter(unique_id=company_unique_id).first()
-            project = Project.objects.filter(unique_id=project_unique_id).first()
-
-            if not company:
-                return Response({"error": "Invalid company_id"}, status=400)
-
-            if not project:
-                return Response({"error": "Invalid project_id"}, status=400)
 
             for index, row in enumerate(reader, start=1):
 
@@ -468,6 +465,9 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
                 city = get_fk(City, "name", row.get("city_id") or row.get("city_name"))
                 district = get_fk(District, "name", row.get("district_id") or row.get("district_name"))
                 panchayat = get_fk(Panchayat, "panchayat_name", row.get("panchayat_id") or row.get("panchayat_name"))
+                waste_type_ids, invalid_waste_types = get_waste_type_ids(
+                    row.get("waste_type_ids") or row.get("waste_types") or row.get("waste_type_names")
+                )
 
                 # ✅ VALIDATION
                 if not state:
@@ -509,10 +509,14 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
                     })
                     continue
 
-                data = {
-                    "company_id": company.unique_id,
-                    "project_id": project.unique_id,
+                if invalid_waste_types:
+                    errors.append({
+                        "row": index,
+                        "error": f"Invalid waste type(s): {', '.join(invalid_waste_types)}"
+                    })
+                    continue
 
+                data = {
                     "customer_name": clean(row.get("customer_name")),
                     "contact_no": clean(row.get("contact_no")),
 
@@ -538,6 +542,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
                     "country_id": country.unique_id if country else None,
                     "property_id": property_obj.unique_id if property_obj else None,
                     "sub_property_id": sub_property.unique_id,
+                    "waste_type_ids": waste_type_ids,
 
                     "id_proof_type": clean(row.get("id_proof_type")),
                     "id_no": clean(row.get("id_no")),
@@ -552,7 +557,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, CompanyScopedViewSet):
                     if instance.apartment_name:
                         get_or_create_apartment_qr(
                             instance.apartment_name,
-                            instance.company_id,
                             request
                         )
 

@@ -16,13 +16,12 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Count, Sum, F, ExpressionWrapper, DecimalField, Value
 from django.db.models.functions import Coalesce
+from rest_framework import viewsets
 from rest_framework.response import Response
 
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.serializers.schedule_masters.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
-from app.viewsets.superadminmasters.company_scoped_viewset import CompanyScopedViewSet
-
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
@@ -62,11 +61,11 @@ def performance_status(actual, agreed):
     return "On Target"
 
 
-class DailyWasteComparisonViewSet(CompanyScopedViewSet):
+class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
     queryset = DailyWasteComparison.objects.select_related(
-        "company_id", "project_id", "panchayat_id", "waste_type_id"
+        "panchayat_id", "waste_type_id"
     )
     serializer_class = DailyWasteComparisonSerializer
     lookup_field = "unique_id"
@@ -74,7 +73,7 @@ class DailyWasteComparisonViewSet(CompanyScopedViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         queryset = DailyTripLog.objects.select_related(
-            "company_id", "project_id", "panchayat_id", "waste_type_id",
+            "panchayat_id", "waste_type_id",
         ).filter(
             is_deleted=False,
             log_status__in=[
@@ -83,20 +82,7 @@ class DailyWasteComparisonViewSet(CompanyScopedViewSet):
             ],
         )
 
-        # ── company / project scoping (superadmin passes through) ────────
         queryset = self.filter_queryset(queryset)
-
-        if self._is_platform_super_admin():
-            company_param = request.query_params.get("company_id")
-            project_param = request.query_params.get("project_id")
-            if company_param:
-                queryset = queryset.filter(company_id__unique_id=company_param)
-            if project_param:
-                queryset = queryset.filter(project_id__unique_id=project_param)
-        else:
-            project_param = request.query_params.get("project_id")
-            if project_param:
-                queryset = queryset.filter(project_id__unique_id=project_param)
 
         # ── date / month / panchayat / waste_type filters ────────────────
         date_param = request.query_params.get("date")
@@ -154,10 +140,6 @@ class DailyWasteComparisonViewSet(CompanyScopedViewSet):
             "panchayat_id__agreed_weight_kg",
             "waste_type_id",
             "waste_type_id__waste_type_name",
-            "company_id",
-            "company_id__name",
-            "project_id",
-            "project_id__name",
         ).annotate(**annotation_kwargs)
 
         rows = []
@@ -174,10 +156,6 @@ class DailyWasteComparisonViewSet(CompanyScopedViewSet):
 
             rows.append({
                 "unique_id": unique_id,
-                "company_id": row["company_id"],
-                "company_name": row["company_id__name"],
-                "project_id": row["project_id"],
-                "project_name": row["project_id__name"],
                 "collection_date": str(row["trip_date"]),
                 "panchayat_id": row["panchayat_id"],
                 "panchayat_name": (
