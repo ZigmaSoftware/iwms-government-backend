@@ -4,7 +4,6 @@ from app.utils.comfun import generate_unique_id
 from app.models.masters.district import District
 from app.models.common_masters.state import State
 from app.models.masters.areatype import AreaType
-from app.models.masters.panchayat_union import PanchayatUnion
 
 def generate_panchayat_id():
     return f"PANCHAYAT-{generate_unique_id()}"
@@ -46,18 +45,9 @@ class Panchayat(BaseMaster):
 
     panchayat_name = models.CharField(max_length=100)
 
-    panchayat_union_id = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="panchayats",
-        db_column="panchayat_union_id",
-    )
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["panchayat_name"]
-        unique_together = ("state_id", "district_id", "area_type_id", "panchayat_union_id", "panchayat_name")
+        unique_together = ("state_id", "district_id", "area_type_id", "panchayat_name")

@@ -8,7 +8,6 @@ class PanchayatSerializer(serializers.ModelSerializer):
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
     area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
-    panchayat_union_name = serializers.CharField(source="panchayat_union_id.union_name", read_only=True)
 
     class Meta:
         model = Panchayat
@@ -20,8 +19,6 @@ class PanchayatSerializer(serializers.ModelSerializer):
             "district_name",
             "area_type_id",
             "area_type_name",
-            "panchayat_union_id",
-            "panchayat_union_name",
             "panchayat_name",
             "is_active",
             "created_at",
@@ -52,7 +49,6 @@ class PanchayatSerializer(serializers.ModelSerializer):
                 Model=Panchayat,
                 name_field="panchayat_name",
                 scope_fields=[
-                    "panchayat_union_id",
                     "area_type_id",
                     "district_id",
                     "state_id"
