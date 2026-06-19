@@ -1,51 +1,48 @@
 from django.db import models
-from app.utils.base_models import BaseMaster
-from app.utils.comfun import generate_unique_id
-from app.models.masters.district import District
+
 from app.models.common_masters.state import State
 from app.models.masters.areatype import AreaType
+from app.models.masters.district import District
+from app.utils.base_models import BaseMaster
+from app.utils.comfun import generate_unique_id
 
 
-def generate_town_panchayat_id():
-    return f"TWNP-{generate_unique_id()}"
+def generate_corporation_id():
+    return f"CORP-{generate_unique_id()}"
 
 
-class TownPanchayat(BaseMaster):
+class Corporation(BaseMaster):
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
-        default=generate_town_panchayat_id,
+        default=generate_corporation_id,
         editable=False,
     )
-
-
     state_id = models.ForeignKey(
         State,
         on_delete=models.PROTECT,
-        related_name="town_panchayats",
+        related_name="corporations",
         db_column="state_id",
     )
     district_id = models.ForeignKey(
         District,
         on_delete=models.PROTECT,
-        related_name="town_panchayats",
+        related_name="corporations",
         db_column="district_id",
     )
-
     area_type_id = models.ForeignKey(
         AreaType,
         on_delete=models.PROTECT,
-        related_name="town_panchayats",
+        related_name="corporations",
         db_column="area_type_id",
-        null=True,
-        blank=True,
     )
-
-    town_panchayat_name = models.CharField(max_length=100)
-
+    corporation_name = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["town_panchayat_name"]
-        unique_together = ("state_id", "district_id", "area_type_id", "town_panchayat_name")
+        ordering = ["corporation_name"]
+        unique_together = ("state_id", "district_id", "area_type_id", "corporation_name")
+
+    def __str__(self):
+        return self.corporation_name

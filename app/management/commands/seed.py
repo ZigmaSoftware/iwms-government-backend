@@ -31,7 +31,7 @@ from app.management.commands.seeders.assets.bins import BinSeeder
 # role-assigns (router: role-assigns/user-type, staffusertypes, contractorusertypes)
 from app.management.commands.seeders.role_assigns import ROLE_ASSIGN_SEEDERS
 
-# user-creations (router: user-creations/staffcreation, supervisor-zone-map, ...)
+# user-creations (router: user-creations/staffcreation, ...)
 from app.management.commands.seeders.user_creations.auth_user_seeder import AuthUserSeeder
 from app.management.commands.seeders.user_creations.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.user_creations.staff_personal import StaffPersonalSeeder
@@ -42,7 +42,7 @@ from app.management.commands.seeders.transport_masters.vehicleCreation import Ve
 from app.management.commands.seeders.transport_masters.fuel import FuelSeeder
 from app.management.commands.seeders.transport_masters.trip_attendance import TripAttendanceSeeder
 
-# process-items (router: process-items/zone-property-load-tracker)
+# process-items
 
 
 # schedule-masters (router: schedule-masters/ — all 9 submodules)
@@ -126,7 +126,6 @@ TRANSPORT_MASTERS_SEEDERS = [
 ]
 
 PROCESS_ITEMS_SEEDERS = [
-    # ZonePropertyLoadTrackerSeeder,  # process-items/zone-property-load-tracker
 ]
 
 # ============================================================
@@ -179,7 +178,7 @@ ORDERED_GROUPS = [
     "waste-types",          # properties, subproperties
     "assets",               # WasteType (bins seeded inside schedule-masters)
     "role-assigns",         # user-type, staffusertypes, contractorusertypes
-    "user-creations",       # staff office, personal, auth-user, supervisor-zone-map
+    "user-creations",       # staff office, personal, auth-user
     "transport-masters",    # vehicle-type, vehicle-creation, fuel
     "schedule-masters",     # all 9 submodules (incl. CollectionPoint + Bins internally)
     "screen-managements",   # screen permissions

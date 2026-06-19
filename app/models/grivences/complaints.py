@@ -1,8 +1,6 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.zone import Zone
-from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from django.utils import timezone
 from django.db.models import Max
@@ -68,9 +66,6 @@ class Complaint(BaseMaster):
         on_delete=models.PROTECT,
         db_column="customer_id_id",
     )
-    zone = models.ForeignKey(Zone, on_delete=models.PROTECT, null=True, blank=True)
-    ward = models.ForeignKey(Ward, on_delete=models.PROTECT, null=True, blank=True)
-
     contact_no = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
 
@@ -111,14 +106,12 @@ class Complaint(BaseMaster):
 
     def save(self, *args, **kwargs):
         if self.customer:
-            self.zone = self.customer.zone
-            self.ward = self.customer.ward
             self.contact_no = self.customer.contact_no
             self.address = (
                 f"{self.customer.building_no}, "
                 f"{self.customer.street}, "
                 f"{self.customer.area}, "
-                f"{self.customer.city.name if self.customer.city else ''}"
+                f"{self.customer.district.name if self.customer.district else ''}"
             )
 
         if self.status == "CLOSED" and not self.complaint_closed_at:

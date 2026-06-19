@@ -41,7 +41,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     trip_assignment = serializers.SerializerMethodField(read_only=True)
     staff_template = serializers.SerializerMethodField(read_only=True)
     panchayat = serializers.SerializerMethodField(read_only=True)
-    ward = serializers.SerializerMethodField(read_only=True)
     collection_point = serializers.SerializerMethodField(read_only=True)
     collection_points = serializers.SerializerMethodField(read_only=True)
     waste_type = serializers.SerializerMethodField(read_only=True)
@@ -65,7 +64,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "alt_staff_template_id",
             "panchayat_id",
             "panchayat",
-            "ward",
             "collection_point_id",
             "collection_point",
             "collection_points",
@@ -121,7 +119,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         if not assignment:
             return None
         trip_plan = getattr(assignment, "trip_plan_id", None)
-        zone = getattr(trip_plan, "zone_id", None)
         return {
             "unique_id": assignment.unique_id,
             "status": assignment.status,
@@ -129,10 +126,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "trip_date": str(assignment.trip_date),
             "scheduled_time": str(assignment.scheduled_time),
             "display_code": getattr(trip_plan, "display_code", assignment.unique_id),
-            "zone": (
-                {"unique_id": zone.unique_id, "zone_name": zone.zone_name}
-                if zone else None
-            ),
         }
 
     def get_staff_template(self, obj):
@@ -247,13 +240,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     def get_panchayat(self, obj):
         p = obj.panchayat_id
         return None if not p else {"unique_id": p.unique_id, "panchayat_name": p.panchayat_name}
-
-    def get_ward(self, obj):
-        assignment = obj.trip_assignment_id
-        ward = getattr(assignment, "ward_id", None)
-        if not ward:
-            return None
-        return {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id

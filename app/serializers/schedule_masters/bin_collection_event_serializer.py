@@ -51,8 +51,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
     approval_status = serializers.SerializerMethodField()
     display_code = serializers.SerializerMethodField()
     panchayat_name = serializers.SerializerMethodField()
-    ward_name = serializers.SerializerMethodField()
-    zone_name = serializers.SerializerMethodField()
     collection_point = serializers.SerializerMethodField()
 
     class Meta:
@@ -84,8 +82,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "driver_longitude",
             "notes",
             "panchayat_name",
-            "ward_name",
-            "zone_name",
             "collection_point",
             "created_by",
             "updated_by",
@@ -101,9 +97,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        # ward_id is a SerializerMethodField on the serializer (returns nested data)
-        # but also a real FK on the model — it is set in validate() from the assignment,
-        # so it must NOT appear in writable fields.
 
     def validate(self, attrs):
         trip_cp = attrs.get(
@@ -135,9 +128,7 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
                 "Trip collection point does not belong to the selected assignment."
             )
 
-        # Set location from assignment — one of panchayat OR ward will be non-null.
         attrs["panchayat_id"] = getattr(assignment, "panchayat_id", None)
-        attrs["ward_id"] = getattr(assignment, "ward_id", None)
         attrs["collection_date"] = (
             attrs.get("collection_date")
             or getattr(assignment, "trip_date", None)
@@ -261,16 +252,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
     def get_panchayat_name(self, obj):
         panchayat = obj.panchayat_id
         return getattr(panchayat, "panchayat_name", None)
-
-    def get_ward_name(self, obj):
-        # Read from the model's own ward_id FK (set in validate from assignment)
-        ward = obj.ward_id
-        return getattr(ward, "ward_name", None)
-
-    def get_zone_name(self, obj):
-        ward = obj.ward_id
-        zone = getattr(ward, "zone_id", None) if ward else None
-        return getattr(zone, "zone_name", None)
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id

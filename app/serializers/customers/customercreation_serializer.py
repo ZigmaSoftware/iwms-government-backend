@@ -3,42 +3,23 @@ from rest_framework import serializers
 from app.models.common_masters.country import Country
 from app.models.common_masters.state import State
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.city import City
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
-from app.models.masters.zone import Zone
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils.hierarchy import validate_single_hierarchy
 
 from django.contrib.auth.hashers import make_password
 
 
 class CustomerCreationSerializer(serializers.ModelSerializer):
 
-    ward_id = serializers.SlugRelatedField(
-        source="ward",
-        queryset=Ward.objects.all(),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    zone_id = serializers.SlugRelatedField(
-        source="zone",
-        queryset=Zone.objects.all(),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    city_id = serializers.SlugRelatedField (
-        source="city",
-        queryset=City.objects.all(),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
     district_id = serializers.SlugRelatedField(
         source="district",
         queryset=District.objects.all(),
@@ -80,17 +61,15 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         many=True,
         required=False,
     )
-    panchayat_id = serializers.SlugRelatedField(
-        # source="panchayat_id",
-        queryset=Panchayat.objects.all(),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
     panchayat_name = serializers.CharField(source="panchayat_id.panchayat_name", read_only=True)
-    ward_name = serializers.CharField(source="ward.ward_name", read_only=True)
-    zone_name = serializers.CharField(source="zone.zone_name", read_only=True)
-    city_name = serializers.CharField(source="city.name", read_only=True)
+    corporation_id = serializers.SlugRelatedField(queryset=Corporation.objects.all(), slug_field="unique_id", required=False, allow_null=True)
+    municipality_id = serializers.SlugRelatedField(queryset=Municipality.objects.all(), slug_field="unique_id", required=False, allow_null=True)
+    town_panchayat_id = serializers.SlugRelatedField(queryset=TownPanchayat.objects.all(), slug_field="unique_id", required=False, allow_null=True)
+    panchayat_union_id = serializers.SlugRelatedField(queryset=PanchayatUnion.objects.all(), slug_field="unique_id", required=False, allow_null=True)
+    corporation_name = serializers.CharField(source="corporation_id.corporation_name", read_only=True)
+    municipality_name = serializers.CharField(source="municipality_id.municipality_name", read_only=True)
+    town_panchayat_name = serializers.CharField(source="town_panchayat_id.town_panchayat_name", read_only=True)
+    panchayat_union_name = serializers.CharField(source="panchayat_union_id.union_name", read_only=True)
     district_name = serializers.CharField(source="district.name", read_only=True)
     state_name = serializers.CharField(source="state.name", read_only=True)
     country_name = serializers.CharField(source="country.name", read_only=True)
@@ -129,12 +108,13 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
             "industry_name",
             "industry_type",
             "group_qr_id",
-            "ward_id",
-            "zone_id",
-            "city_id",
             "district_id",
             "state_id",
             "country_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
             "pincode",
             "latitude",
@@ -153,10 +133,11 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
             "created_at",
             "is_deleted",
             "is_active",
-            "ward_name",
-            "zone_name",
+            "corporation_name",
+            "municipality_name",
+            "town_panchayat_name",
+            "panchayat_union_name",
             "panchayat_name",
-            "city_name",
             "district_name",
             "state_name",
             "country_name",
@@ -204,6 +185,11 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         # )(self, attrs)
 
         instance = getattr(self, "instance", None)
+        validate_single_hierarchy(
+            attrs,
+            instance,
+            "Customer must belong to exactly one hierarchy level.",
+        )
         name = attrs.get("customer_name") or getattr(instance, "customer_name", None)
         mobile = attrs.get("contact_no") or getattr(instance, "contact_no", None)
 

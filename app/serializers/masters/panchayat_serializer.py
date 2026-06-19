@@ -1,18 +1,14 @@
 from rest_framework import serializers
 from app.models.masters.panchayat import Panchayat
-from app.serializers.masters.geofence import normalize_coordinates
 from app.validators.unique_name_validator import unique_name_validator
 
 
 class PanchayatSerializer(serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only=True)
-    city_name = serializers.CharField(source="city_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
     area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
-    hierarchy_order = serializers.IntegerField(source="hierarchy_id.hierarchy_order", read_only=True)
-    hierarchy_name = serializers.CharField(source="hierarchy_id.level_name", read_only=True)
-    block_name = serializers.CharField(source="block_id.block_name", read_only=True)
+    panchayat_union_name = serializers.CharField(source="panchayat_union_id.union_name", read_only=True)
 
     class Meta:
         model = Panchayat
@@ -20,25 +16,13 @@ class PanchayatSerializer(serializers.ModelSerializer):
             "unique_id",
             "state_id",
             "state_name",
-            "city_id",
-            "city_name",
             "district_id",
             "district_name",
-            "block_id",
-            "block_name",
             "area_type_id",
             "area_type_name",
-            "hierarchy_id",
-            "hierarchy_order",
-            "hierarchy_name",
+            "panchayat_union_id",
+            "panchayat_union_name",
             "panchayat_name",
-            "agreed_weight_kg",
-            "weight_unit",
-            "effective_from",
-            "geofencing_type",
-            "latitude",
-            "longitude",
-            "coordinates",
             "is_active",
             "created_at",
             "updated_at",
@@ -55,44 +39,24 @@ class PanchayatSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
 
-        # -------------------------------
-        # GET VALUES (Handle Update Case)
-        # -------------------------------
         area_type = attrs.get("area_type_id") or getattr(self.instance, "area_type_id", None)
-        hierarchy = attrs.get("hierarchy_id") or getattr(self.instance, "hierarchy_id", None)
         panchayat_name = attrs.get("panchayat_name")
 
-        # -------------------------------
-        # 1️⃣ AreaType Must Be Rural
-        # -------------------------------
-        if area_type and area_type.name.lower() != "rural":
+        if area_type and area_type.name != "Rural Local Body":
             raise serializers.ValidationError({
-                "area_type": "Panchayat must belong to Rural area type."
+                "area_type_id": "Panchayat must belong to Rural Local Body."
             })
 
-        # -------------------------------
-        # 2️⃣ Hierarchy Must Be Panchayat
-        # -------------------------------
-        if hierarchy and hierarchy.level_name.lower() != "panchayat":
-            raise serializers.ValidationError({
-                "hierarchy": "Hierarchy level must be Panchayat."
-            })
-
-        # -------------------------------
-        # 3️⃣ Unique Panchayat Name
-        # -------------------------------
         if not self.instance or panchayat_name:
             unique_name_validator(
                 Model=Panchayat,
                 name_field="panchayat_name",
                 scope_fields=[
-                    "city_id",
+                    "panchayat_union_id",
+                    "area_type_id",
                     "district_id",
                     "state_id"
                 ]
             )(self, attrs)
 
         return attrs
-
-    def validate_coordinates(self, value):
-        return normalize_coordinates(value)

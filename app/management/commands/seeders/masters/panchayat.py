@@ -1,37 +1,43 @@
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.masters.city import City
+from app.models.common_masters.state import State
+from app.models.masters.areatype import AreaType
+from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 
 
 class PanchayatSeeder(BaseSeeder):
     name = "PanchayatSeeder"
 
     def run(self):
-        city = City.objects.select_related("state_id", "district_id").first()
-        if not city:
-            self.log("Skipped: no city found for panchayat seed data.")
+        tamil_nadu = State.objects.filter(name="Tamil Nadu").first()
+        district = District.objects.filter(state_id=tamil_nadu, name="Erode").first()
+        area_type = AreaType.objects.filter(
+            state_id=tamil_nadu,
+            district_id=district,
+            name="Rural Local Body",
+        ).first()
+        if not tamil_nadu or not district or not area_type:
+            self.log("Skipped: Tamil Nadu/Erode/Rural Local Body seed data not found.")
             return
 
-        coordinates = [
-            {"latitude": 12.987100, "longitude": 80.218400},
-            {"latitude": 12.991200, "longitude": 80.225300},
-            {"latitude": 12.984600, "longitude": 80.231100},
-            {"latitude": 12.979800, "longitude": 80.222600},
-        ]
+        union, _ = PanchayatUnion.objects.update_or_create(
+            state_id=tamil_nadu,
+            district_id=district,
+            area_type_id=area_type,
+            union_name="Erode Panchayat Union",
+            defaults={"is_active": True, "is_deleted": False},
+        )
         panchayat, created = Panchayat.objects.update_or_create(
             panchayat_name="Sample Panchayat",
-            city_id=city,
+            state_id=tamil_nadu,
+            district_id=district,
+            area_type_id=area_type,
+            panchayat_union_id=union,
             defaults={
-                "state_id": city.state_id,
-                "district_id": city.district_id,
-                "latitude": coordinates[0]["latitude"],
-                "longitude": coordinates[0]["longitude"],
-                "geofencing_type": "polygon",
-                "coordinates": coordinates,
-                "agreed_weight_kg": "2500.75",
-                "weight_unit": "kg",
                 "is_active": True,
+                "is_deleted": False,
             },
         )
         action = "Created" if created else "Updated"
-        self.log(f"{action}: {panchayat.panchayat_name} with {len(coordinates)} geofence points.")
+        self.log(f"{action}: {panchayat.panchayat_name}.")
