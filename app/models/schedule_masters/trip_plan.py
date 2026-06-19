@@ -5,11 +5,12 @@ from django.db import models
 from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.city import City
 from app.models.masters.district import District
-from app.models.masters.zone import Zone
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
@@ -59,21 +60,6 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
     )
-    city_id = models.ForeignKey(
-        City,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-    )
-    zone_id = models.ForeignKey(
-        Zone,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
-    )
-    # panchayat XOR ward mirrors Collection_point.clean() logic.
     panchayat_id = models.ForeignKey(
         Panchayat,
         on_delete=models.PROTECT,
@@ -82,15 +68,38 @@ class TripPlan(BaseMaster):
         null=True,
         blank=True,
     )
-    ward_id = models.ForeignKey(
-        Ward,
+    corporation_id = models.ForeignKey(
+        Corporation,
         on_delete=models.PROTECT,
         to_field="unique_id",
         related_name="trip_plans",
         null=True,
         blank=True,
     )
-
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        related_name="trip_plans",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        related_name="trip_plans",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        related_name="trip_plans",
+        null=True,
+        blank=True,
+    )
     # ---- WHO -------------------------------------------------------
     staff_template_id = models.ForeignKey(
         StaffTemplate,
@@ -179,17 +188,11 @@ class TripPlan(BaseMaster):
         indexes = [
             models.Index(fields=["status", "approval_status"]),
             models.Index(fields=["display_code"]),
-            models.Index(fields=["district_id", "city_id"]),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                # Mirrors Collection_point: must have panchayat OR ward, not both, not neither
-                check=(
-                    models.Q(panchayat_id__isnull=False, ward_id__isnull=True) |
-                    models.Q(panchayat_id__isnull=True,  ward_id__isnull=False)
-                ),
-                name="trip_plan_panchayat_xor_ward",
-            )
+            models.Index(fields=["district_id", "panchayat_id"]),
+            models.Index(fields=["district_id", "corporation_id"]),
+            models.Index(fields=["district_id", "municipality_id"]),
+            models.Index(fields=["district_id", "town_panchayat_id"]),
+            models.Index(fields=["district_id", "panchayat_union_id"]),
         ]
 
     def _generate_display_code(self):

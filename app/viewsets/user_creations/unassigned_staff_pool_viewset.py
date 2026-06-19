@@ -12,7 +12,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 
 class UnassignedStaffPoolViewSet(ModelViewSet,AuditViewSetMixin):
     """
-    Controls staff availability by zone & ward.
+    Controls staff availability.
     Used by system + supervisors.
     """
 
@@ -39,21 +39,7 @@ class UnassignedStaffPoolViewSet(ModelViewSet,AuditViewSetMixin):
         serializer.save()
 
     def _validate_daily_trip_assignment_alignment(self, attrs):
-        daily_trip_assignment = attrs.get("daily_trip_assignment")
-        zone = attrs.get("zone")
-        ward = attrs.get("ward")
-
-        assignment_ward = getattr(daily_trip_assignment, "ward_id", None)
-        assignment_zone = getattr(assignment_ward, "zone_id", None)
-        if daily_trip_assignment and zone and assignment_zone and assignment_zone.unique_id != zone.unique_id:
-            raise ValidationError(
-                {"daily_trip_assignment_id": "Daily trip assignment zone does not match pool zone."}
-            )
-
-        if ward and zone and ward.zone_id_id != zone.unique_id:
-            raise ValidationError(
-                {"ward_id": "Ward does not belong to the selected zone."}
-            )
+        return None
 
     def destroy(self, request, *args, **kwargs):
         return Response(

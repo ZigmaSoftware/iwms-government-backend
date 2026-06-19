@@ -7,13 +7,8 @@ class BinsSerializer(serializers.ModelSerializer):
     panchayat_name = serializers.CharField(source="collection_point_id.panchayat_id.panchayat_name", read_only = True)
     panchayat_id = serializers.CharField(source="collection_point_id.panchayat_id", read_only = True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
-    city_name = serializers.CharField(source="city_id.name", read_only=True)
-    ward_id = serializers.CharField(source="collection_point_id.ward_id", read_only = True)
-    ward_name = serializers.CharField(source="collection_point_id.ward_id.ward_name", read_only = True)
     wastetype_name = serializers.CharField(source="wastetype_id.waste_type_name", read_only = True)
     collection_point_name = serializers.CharField(source="collection_point_id.cp_name", read_only = True)
-    zone_id = serializers.CharField(source="collection_point_id.ward_id.zone_id.unique_id", read_only=True)  # ✅ for zone_id   
-    zone_name = serializers.CharField(source="collection_point_id.ward_id.zone_id.zone_name", read_only=True)  # ✅ for zone_name
 
     class Meta:
         model = Bins
@@ -23,12 +18,6 @@ class BinsSerializer(serializers.ModelSerializer):
             "panchayat_name",
             "district_id",
             "district_name",
-            "city_id",
-            "city_name",
-            "zone_id",
-            "zone_name",
-            "ward_id",
-            "ward_name",
             "collection_point_id",
             "collection_point_name",
             "bin_capacity",

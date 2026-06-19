@@ -45,6 +45,7 @@ class District(BaseMaster):
     )
 
     name = models.CharField(max_length=100)
+    district_code = models.CharField(max_length=20, blank=True, null=True)
 
     class Meta:
         ordering = ["name"]

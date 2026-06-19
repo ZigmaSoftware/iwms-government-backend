@@ -62,7 +62,6 @@ class Command(BaseCommand):
                 "vehicle_id": plan.vehicle_id,
                 "waste_type_id": plan.waste_type_id,
                 "panchayat_id": plan.panchayat_id,
-                "ward_id": plan.ward_id,
                 "scheduled_time": plan.scheduled_time,
             }
 

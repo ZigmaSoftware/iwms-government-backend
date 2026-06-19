@@ -2,11 +2,14 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.city import City
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.district import District
-from app.models.masters.ward import Ward
 from app.models.common_masters.state import State
 from django.core.exceptions import ValidationError
+from app.utils.hierarchy import HIERARCHY_FIELDS, HIERARCHY_LABELS, selected_hierarchy_values
 
 def geneate_collection_point_id():
     return f"CP-{generate_unique_id()}"
@@ -29,14 +32,6 @@ class Collection_point(BaseMaster):
         
     )
 
-    city_id = models.ForeignKey(
-        City,
-        on_delete = models.PROTECT,
-        related_name="cp",
-        db_column="city_id",
-        
-    )
-
     district_id = models.ForeignKey(
         District,
         on_delete = models.PROTECT,
@@ -54,14 +49,37 @@ class Collection_point(BaseMaster):
         null=True,
         blank=True
     )
-
-    ward_id = models.ForeignKey(
-        Ward,
+    corporation_id = models.ForeignKey(
+        Corporation,
         on_delete=models.PROTECT,
         related_name="cp",
-        db_column="ward_id",
+        db_column="corporation_id",
         null=True,
-        blank=True
+        blank=True,
+    )
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="cp",
+        db_column="municipality_id",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        related_name="cp",
+        db_column="town_panchayat_id",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        related_name="cp",
+        db_column="panchayat_union_id",
+        null=True,
+        blank=True,
     )
 
     cp_name = models.CharField(max_length=100)
@@ -74,18 +92,14 @@ class Collection_point(BaseMaster):
 
 
     def clean(self):
-        if not self.panchayat_id and not self.ward_id:
-            raise ValidationError("Collection Point must belong to Ward or Panchayat.")
-
-        if self.panchayat_id and self.ward_id:
-            raise ValidationError("Collection Point cannot belong to both Ward and Panchayat.")
+        if len(selected_hierarchy_values(self)) != 1:
+            raise ValidationError("Collection Point must belong to exactly one hierarchy level.")
         
 
     def __str__(self):
-        if self.panchayat_id:
-            return f"{self.cp_name} (Panchayat: {self.panchayat_id.panchayat_name})"
-
-        if self.ward_id:
-            return f"{self.cp_name} (Ward: {self.ward_id.ward_name})"
+        for field in HIERARCHY_FIELDS:
+            value = getattr(self, field, None)
+            if value:
+                return f"{self.cp_name} ({HIERARCHY_LABELS[field]}: {value})"
 
         return self.cp_name

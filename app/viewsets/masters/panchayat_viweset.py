@@ -1,15 +1,19 @@
-from rest_framework import viewsets, status
+from rest_framework import filters, viewsets, status
 from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.panchayat_serializer import PanchayatSerializer
 from rest_framework.response import Response
 from app.utils.audit_mixin import AuditViewSetMixin
-from rest_framework import viewsets
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = PanchayatSerializer
     lookup_field = "unique_id"
     permission_resource = "Panchayat"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["panchayat_name", "state_id__name", "district_id__name", "area_type_id__name", "panchayat_union_id__union_name"]
+    ordering_fields = ["panchayat_name", "is_active"]
 
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT ="panchayat"
@@ -21,17 +25,19 @@ class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
 
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
-        city_uid = self.request.query_params.get("city") or self.request.query_params.get("city_id")
         state_uid = self.request.query_params.get("state") or self.request.query_params.get("state_id")
+        area_type_uid = self.request.query_params.get("area_type") or self.request.query_params.get("area_type_id")
+        panchayat_union_uid = self.request.query_params.get("panchayat_union") or self.request.query_params.get("panchayat_union_id")
 
         if district_uid:
             queryset = queryset.filter(district_id__unique_id=district_uid)
 
-        if city_uid:
-            queryset = queryset.filter(city_id__unique_id=city_uid)
-
         if state_uid:
             queryset = queryset.filter(state_id__unique_id=state_uid)
+        if area_type_uid:
+            queryset = queryset.filter(area_type_id__unique_id=area_type_uid)
+        if panchayat_union_uid:
+            queryset = queryset.filter(panchayat_union_id__unique_id=panchayat_union_uid)
 
         return queryset
 

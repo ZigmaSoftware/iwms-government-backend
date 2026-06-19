@@ -1,13 +1,18 @@
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from app.models.common_masters.state import State
 from app.serializers.common_masters.state_serializer import StateSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class StateViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
     queryset = State.objects.all()   # REQUIRED for DRF basename detection
     serializer_class = StateSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["name", "label"]
+    ordering_fields = ["name", "label", "is_active"]
 
     permission_resource = "State"
 

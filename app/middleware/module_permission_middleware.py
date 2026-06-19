@@ -82,11 +82,12 @@ MODULE_RESOURCE_ALLOWLIST = {
     },
     "masters": {
         "District",
-        "City",
-        "Zone",
-        "Ward",
         "Panchayat",
         "AreaType",
+        "Corporation",
+        "Municipality",
+        "TownPanchayat",
+        "PanchayatUnion",
         "AdministrativeHierarchy",
         "Department",
         "Designation",
@@ -122,13 +123,9 @@ MODULE_RESOURCE_ALLOWLIST = {
         "StaffCreation",
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
-        "supervisor-zone-map",
         "UnassignedStaffPool",
     },
-    "process-items": {
-        
-        "ZonePropertyLoadTracker",
-    },
+    "process-items": set(),
     "customer-masters": {
         "CustomerCreation",
         "WasteCollection",
@@ -162,7 +159,6 @@ MODULE_RESOURCE_ALLOWLIST = {
     "audits": {
         "VehicleTripAudit",
         "TripExceptionLog",
-        "SupervisorZoneAccessAudit",
         "StaffTemplateAuditLog",
         "LoginAudit",
         "CommonAudit",

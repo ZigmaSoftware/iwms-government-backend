@@ -32,9 +32,13 @@ class FeedBackSerializer(serializers.ModelSerializer):
     # Expose customer identifier as `customer_id`
     customer_id = serializers.CharField(source="customer.unique_id", read_only=True)
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
-    ward_name = serializers.CharField(source="customer.ward.ward_name", read_only=True)
-    zone_name = serializers.CharField(source="customer.zone.name", read_only=True)
-    city_name = serializers.CharField(source="customer.city.name", read_only=True)
+    district_name = serializers.CharField(source="customer.district.name", read_only=True)
+    state_name = serializers.CharField(source="customer.state.name", read_only=True)
+    corporation_name = serializers.CharField(source="customer.corporation_id.corporation_name", read_only=True, default=None)
+    municipality_name = serializers.CharField(source="customer.municipality_id.municipality_name", read_only=True, default=None)
+    town_panchayat_name = serializers.CharField(source="customer.town_panchayat_id.town_panchayat_name", read_only=True, default=None)
+    panchayat_union_name = serializers.CharField(source="customer.panchayat_union_id.union_name", read_only=True, default=None)
+    panchayat_name = serializers.CharField(source="customer.panchayat_id.panchayat_name", read_only=True, default=None)
 
     class Meta:
         model = FeedBack
