@@ -135,7 +135,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {   
     'default': {
         'ENGINE': os.getenv("DB_ENGINE", "django.db.backends.mysql"),
-        'NAME': os.getenv("DB_NAME", "iwmsdb"), 
+        'NAME': os.getenv("DB_NAME", "iwms-government"), 
         'USER': os.getenv("DB_USER", "root"),
         'PASSWORD': os.getenv("DB_PASSWORD", "admin@123"),
         'HOST': os.getenv("DB_HOST", "localhost"),
