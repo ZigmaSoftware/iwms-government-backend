@@ -62,6 +62,8 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
     staffusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contractorusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contractorUserTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    governmentusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    governmentUserTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     usertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     is_active = serializers.BooleanField(default=True)
     order_no = serializers.IntegerField(default=1, required=False)
@@ -81,6 +83,11 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
         data["contractorusertype_id"] = (
             data.get("contractorusertype_id")
             or data.get("contractorUserTypeId")
+            or ""
+        ).strip() or None
+        data["governmentusertype_id"] = (
+            data.get("governmentusertype_id")
+            or data.get("governmentUserTypeId")
             or ""
         ).strip() or None
         userscreen_id = data.get("userscreen_id")

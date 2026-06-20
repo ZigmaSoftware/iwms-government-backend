@@ -2,6 +2,7 @@ from django.db import models
 from django.db.models import UniqueConstraint
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.userscreen import UserScreen
@@ -50,6 +51,15 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         null=True,
         blank=True,
     )
+    governmentusertype_id = models.ForeignKey(
+        GovernmentStaffUserType,
+        on_delete=models.PROTECT,
+        related_name="userscreen_column_permissions",
+        to_field="unique_id",
+        db_column="governmentusertype_id",
+        null=True,
+        blank=True,
+    )
     userscreen_id = models.ForeignKey(
         UserScreen,
         on_delete=models.PROTECT,
@@ -80,6 +90,7 @@ class CompanyUserScreenColumnPermission(BaseMaster):
             models.Index(fields=["userscreen_id"]),
             models.Index(fields=["staffusertype_id", "userscreen_id"]),
             models.Index(fields=["contractorusertype_id", "userscreen_id"]),
+            models.Index(fields=["governmentusertype_id", "userscreen_id"]),
             models.Index(fields=["userscreen_id", "column_id", "is_active", "is_deleted"]),
         ]
         constraints = [
@@ -88,6 +99,7 @@ class CompanyUserScreenColumnPermission(BaseMaster):
                     "usertype_id",
                     "staffusertype_id",
                     "contractorusertype_id",
+                    "governmentusertype_id",
                     "userscreen_id",
                     "column_id",
                     "is_deleted",

@@ -51,6 +51,7 @@ from ..viewsets.screen_managements.permission_api_views import (
 from ..viewsets.role_assigns.usertype_viewset import UserTypeViewSet
 from ..viewsets.role_assigns.staffusertype_viewset import StaffUserTypeViewSet
 from ..viewsets.role_assigns.contractorusertype_viewset import ContractorUserTypeViewSet
+from ..viewsets.role_assigns.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
 
 # User creations
 from ..viewsets.user_creations.staff_viewset import StaffViewSet
@@ -192,6 +193,8 @@ router.register_group("role-assigns", "staffusertypes",      StaffUserTypeViewSe
 router.register_group("role-assigns", "staffusertypes",      StaffUserTypeViewSet, basename="staffusertype-roletype")
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet)
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet, basename="contractorusertype-roletype")
+router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet)
+router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet, basename="governmentusertype-roletype")
 
 # ============================================================
 # GROUP: USER CREATION

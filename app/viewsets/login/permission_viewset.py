@@ -57,6 +57,7 @@ class PermissionViewSet(ViewSet):
             user_type = getattr(staff_user, "user_type_id", None)
             staff_usertype = getattr(staff_user, "staffusertype_id", None)
             contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
+            government_usertype = getattr(staff_user, "governmentusertype_id", None)
 
             if not user_type:
                 return {}
@@ -64,12 +65,14 @@ class PermissionViewSet(ViewSet):
             role_name = (
                 getattr(staff_usertype, "name", None)
                 or getattr(contractor_usertype, "name", None)
+                or getattr(government_usertype, "name", None)
                 or getattr(user_type, "name", None)
             )
             return resolve_permission_payload(
                 usertype_unique_id=user_type.unique_id,
                 staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
                 contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
+                governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
                 role_name=role_name,
                 user_type=getattr(user_type, "name", None),
             )
@@ -106,6 +109,7 @@ class PermissionViewSet(ViewSet):
         user_type = getattr(staff_user, "user_type_id", None)
         staff_usertype = getattr(staff_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
+        government_usertype = getattr(staff_user, "governmentusertype_id", None)
 
         if not user_type:
             return {}
@@ -115,6 +119,7 @@ class PermissionViewSet(ViewSet):
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
+            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
         )
 
     def _resolve_permission_details_for_user(self, user):
@@ -128,6 +133,7 @@ class PermissionViewSet(ViewSet):
         user_type = getattr(staff_user, "user_type_id", None)
         staff_usertype = getattr(staff_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
+        government_usertype = getattr(staff_user, "governmentusertype_id", None)
 
         if not user_type:
             return {}
@@ -136,6 +142,7 @@ class PermissionViewSet(ViewSet):
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
+            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
         )["permission_details"]
 
     def _resolve_column_permissions_for_user(self, user):
@@ -149,6 +156,7 @@ class PermissionViewSet(ViewSet):
         user_type = getattr(staff_user, "user_type_id", None)
         staff_usertype = getattr(staff_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
+        government_usertype = getattr(staff_user, "governmentusertype_id", None)
 
         if not user_type:
             return {}
@@ -157,6 +165,7 @@ class PermissionViewSet(ViewSet):
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
+            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
         )["column_permissions"]
 
     # ------------------------------------------------------------------
@@ -257,6 +266,7 @@ class PermissionViewSet(ViewSet):
         usertype_unique_id=None,
         staffusertype_unique_id=None,
         contractorusertype_unique_id=None,
+        governmentusertype_unique_id=None,
     ):
         """
         Build permission structure:
@@ -289,10 +299,15 @@ class PermissionViewSet(ViewSet):
             queryset = queryset.filter(
                 contractorusertype_id_id=contractorusertype_unique_id
             )
+        elif governmentusertype_unique_id:
+            queryset = queryset.filter(
+                governmentusertype_id_id=governmentusertype_unique_id
+            )
         else:
             queryset = queryset.filter(
                 staffusertype_id__isnull=True,
                 contractorusertype_id__isnull=True,
+                governmentusertype_id__isnull=True,
             )
 
         permissions = {}
