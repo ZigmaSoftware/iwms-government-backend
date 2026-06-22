@@ -1,5 +1,3 @@
-# app/api/serializers/area_type_serializer.py
-
 from rest_framework import serializers
 from app.models.masters.areatype import AreaType
 from app.validators.unique_name_validator import unique_name_validator
