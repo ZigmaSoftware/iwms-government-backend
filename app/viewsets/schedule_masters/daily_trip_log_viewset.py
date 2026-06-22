@@ -11,6 +11,7 @@ from app.serializers.schedule_masters.daily_trip_log_serializer import (
     DailyTripLogVerifySerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.base_models import Account
 from app.utils.pagination import LimitOffsetWithPage
 
 
@@ -56,6 +57,27 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     AUDIT_MODULE = "trip-logs"
     AUDIT_ENDPOINT = "daily-trip-logs"
+
+    def _get_account(self):
+        user = getattr(self.request, "user", None)
+        if not user or getattr(user, "is_anonymous", False):
+            return None
+
+        account = Account.objects.filter(user=user).first()
+        if account:
+            return account
+
+        staff = getattr(user, "staff", None)
+        if staff:
+            account = Account.objects.filter(staff=staff).first()
+            if account:
+                return account
+
+        unique_id = getattr(user, "unique_id", None) or getattr(user, "username", None)
+        if unique_id:
+            return Account.objects.filter(account_id=unique_id).first()
+
+        return None
 
     def get_queryset(self):
         qs = super().get_queryset()
