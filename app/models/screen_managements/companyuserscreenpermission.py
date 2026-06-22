@@ -9,6 +9,7 @@ from app.models.screen_managements.userscreenaction import UserScreenAction
 from django.db.models import Q, UniqueConstraint
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 
 
 def generate_userscreenpermission_id():
@@ -54,7 +55,17 @@ class UserScreenPermission(BaseMaster):
         null=True,
         blank=True
     )
-    
+
+    governmentusertype_id = models.ForeignKey(
+        GovernmentStaffUserType,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        db_column="governmentusertype_id",
+        related_name="userscreenpermissions",
+        null=True,
+        blank=True
+    )
+
     mainscreen_id = models.ForeignKey(
         MainScreen, on_delete=models.PROTECT,
         to_field="unique_id", db_column="mainscreen_id",
@@ -94,6 +105,7 @@ class UserScreenPermission(BaseMaster):
                     "usertype_id",
                     "staffusertype_id",
                     "contractorusertype_id",
+                    "governmentusertype_id",
                     "mainscreen_id",
                     "userscreen_id",
                     "userscreenaction_id",

@@ -6,10 +6,13 @@ from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
-from app.models.masters.zone import Zone
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils.hierarchy import copy_hierarchy
 
 
 def generate_tpcp_id():
@@ -21,10 +24,12 @@ class TripPlanCollectionPoint(BaseMaster):
 
     COLLECTION_TYPE_BIN = "bin_collection"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
 
     COLLECTION_TYPE_CHOICES = [
         (COLLECTION_TYPE_BIN, "Bin Collection"),
         (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
     ]
 
     unique_id = models.CharField(
@@ -80,27 +85,43 @@ class TripPlanCollectionPoint(BaseMaster):
         blank=True,
     )
 
-    zone_id = models.ForeignKey(
-        Zone,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="zone_id",
-        null=True,
-        blank=True,
-    )
-    ward_id = models.ForeignKey(
-        Ward,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="ward_id",
-        null=True,
-        blank=True,
-    )
     panchayat_id = models.ForeignKey(
         Panchayat,
         on_delete=models.PROTECT,
         related_name="trip_plan_collection_points",
         db_column="panchayat_id",
+        null=True,
+        blank=True,
+    )
+    corporation_id = models.ForeignKey(
+        Corporation,
+        on_delete=models.PROTECT,
+        related_name="trip_plan_collection_points",
+        db_column="corporation_id",
+        null=True,
+        blank=True,
+    )
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="trip_plan_collection_points",
+        db_column="municipality_id",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        related_name="trip_plan_collection_points",
+        db_column="town_panchayat_id",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        related_name="trip_plan_collection_points",
+        db_column="panchayat_union_id",
         null=True,
         blank=True,
     )
@@ -128,29 +149,43 @@ class TripPlanCollectionPoint(BaseMaster):
         ]
 
     def clean(self):
+        if self.trip_plan_id_id and self.collection_type != self.trip_plan_id.collection_type:
+            raise ValidationError(
+                {"collection_type": "Trip point collection type must match the Trip Plan collection type."}
+            )
+
         if self.collection_type == self.COLLECTION_TYPE_BIN:
             if not self.collection_point_id_id:
                 raise ValidationError({"collection_point_id": "Collection point is required for bin collection."})
             if not self.bin_id_id:
                 raise ValidationError({"bin_id": "Bin is required for bin collection."})
-        elif self.collection_type == self.COLLECTION_TYPE_HOUSEHOLD:
-            if not self.customer_id_id:
-                raise ValidationError({"customer_id": "Customer is required for household collection."})
+        elif self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK}:
+            has_hierarchy = any(
+                getattr(self, f"{field}_id", None)
+                for field in (
+                    "corporation_id",
+                    "municipality_id",
+                    "town_panchayat_id",
+                    "panchayat_union_id",
+                    "panchayat_id",
+                )
+            )
+            if not self.customer_id_id and not has_hierarchy and not self.trip_plan_id_id:
+                raise ValidationError(
+                    {"customer_id": "Select a customer or assign collection to a local body."}
+                )
 
     def save(self, *args, **kwargs):
         if self.collection_point_id_id:
-            collection_point = self.collection_point_id
-            self.panchayat_id = collection_point.panchayat_id
-            self.ward_id = collection_point.ward_id
-            self.zone_id = (
-                collection_point.ward_id.zone_id
-                if collection_point.ward_id_id
-                else None
-            )
+            copy_hierarchy(self, self.collection_point_id)
+        elif self.customer_id_id:
+            copy_hierarchy(self, self.customer_id)
+        elif self.trip_plan_id_id:
+            copy_hierarchy(self, self.trip_plan_id)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        if self.collection_type == self.COLLECTION_TYPE_HOUSEHOLD and self.customer_id_id:
+        if self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK} and self.customer_id_id:
             return f"{self.trip_plan_id_id} -> customer:{self.customer_id_id} (seq {self.sequence})"
         return (
             f"{self.trip_plan_id_id} -> "

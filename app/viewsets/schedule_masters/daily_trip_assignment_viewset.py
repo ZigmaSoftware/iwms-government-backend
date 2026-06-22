@@ -1,6 +1,4 @@
 from django.utils import timezone
-from django.db.models import Q
-
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -12,6 +10,7 @@ from app.serializers.schedule_masters.daily_trip_assignment_serializer import (
     DailyTripAssignmentApprovalSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_queryset_by_hierarchy
 from rest_framework import viewsets
 
 
@@ -26,10 +25,11 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     queryset = DailyTripAssignment.objects.select_related(
         "trip_plan_id",
-        "trip_plan_id__zone_id",
         "trip_plan_id__panchayat_id",
-        "trip_plan_id__ward_id",
-        "trip_plan_id__ward_id__zone_id",
+        "trip_plan_id__corporation_id",
+        "trip_plan_id__municipality_id",
+        "trip_plan_id__town_panchayat_id",
+        "trip_plan_id__panchayat_union_id",
         "trip_plan_id__vehicle_id",
         "trip_plan_id__waste_type_id",
         "staff_template_id",
@@ -38,9 +38,11 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "alt_staff_template_id",
         "alt_staff_template_id__driver_id",
         "alt_staff_template_id__operator_id",
+        "corporation_id",
+        "municipality_id",
+        "town_panchayat_id",
+        "panchayat_union_id",
         "panchayat_id",
-        "ward_id",
-        "ward_id__zone_id",
         "waste_type_id",
         "vehicle_id",
     ).filter(is_deleted=False)
@@ -62,9 +64,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         params = self.request.query_params
         trip_date = params.get("date") or params.get("trip_date")
         today_flag = params.get("today")
-        panchayat = params.get("panchayat_id")
-        ward = params.get("ward_id")
-        zone = params.get("zone_id")
         trip_plan = params.get("trip_plan_id")
         trip_status = params.get("status")
         waste_type = params.get("waste_type_id")
@@ -75,18 +74,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if today_flag and str(today_flag).lower() in ("1", "true", "yes"):
             qs = qs.filter(trip_date=timezone.localdate())
 
-        if panchayat:
-            qs = qs.filter(panchayat_id=panchayat)
-
-        if ward:
-            qs = qs.filter(ward_id=ward)
-
-        if zone:
-            qs = qs.filter(
-                Q(ward_id__zone_id__unique_id=zone) |
-                Q(trip_plan_id__zone_id__unique_id=zone)
-            )
-
         if trip_plan:
             qs = qs.filter(trip_plan_id=trip_plan)
 
@@ -96,7 +83,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if waste_type:
             qs = qs.filter(waste_type_id=waste_type)
 
-        return qs
+        return filter_queryset_by_hierarchy(qs, params)
 
     # ----------------------------------------------------------
     # UPDATE — only allowed when Scheduled

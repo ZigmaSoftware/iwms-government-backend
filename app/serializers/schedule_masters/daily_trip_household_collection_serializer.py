@@ -6,6 +6,7 @@ from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import hierarchy_payload
 
 
 class DailyTripHouseholdCollectionSerializer(
@@ -24,7 +25,7 @@ class DailyTripHouseholdCollectionSerializer(
     trip_assignment = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
     panchayat = serializers.SerializerMethodField()
-    ward = serializers.SerializerMethodField()
+    hierarchy = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyTripHouseholdCollection
@@ -34,12 +35,15 @@ class DailyTripHouseholdCollectionSerializer(
             "trip_assignment",
             "customer_id",
             "customer",
+            "collection_type",
             "waste_collection_id",
-            "zone_id",
-            "ward_id",
-            "ward",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
             "panchayat",
+            "hierarchy",
             "sequence",
             "is_collected",
             "collected_at",
@@ -50,8 +54,10 @@ class DailyTripHouseholdCollectionSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "zone_id",
-            "ward_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
             "waste_collection_id",
             "created_at",
@@ -81,12 +87,12 @@ class DailyTripHouseholdCollectionSerializer(
             "customer_name": getattr(customer, "customer_name", None),
             "building_no": getattr(customer, "building_no", None),
             "street": getattr(customer, "street", None),
+            **hierarchy_payload(customer),
         }
 
     def get_panchayat(self, obj):
         p = obj.panchayat_id
         return None if not p else {"unique_id": p.unique_id, "panchayat_name": p.panchayat_name}
 
-    def get_ward(self, obj):
-        w = obj.ward_id
-        return None if not w else {"unique_id": w.unique_id, "ward_name": w.ward_name}
+    def get_hierarchy(self, obj):
+        return hierarchy_payload(obj)

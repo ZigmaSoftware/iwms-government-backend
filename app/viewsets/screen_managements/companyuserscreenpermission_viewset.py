@@ -11,6 +11,7 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.models.screen_managements.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
 from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
@@ -66,13 +67,17 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     payload.get("contractorUserTypeId")
                     or payload.get("contractorusertype_id")
                 ),
+                "governmentUserTypeId": (
+                    payload.get("governmentUserTypeId")
+                    or payload.get("governmentusertype_id")
+                ),
                 "mainScreenId": permission.get("mainScreenId") or permission.get("mainscreen_id"),
                 "userScreens": permission.get("userScreens") or permission.get("screens") or [],
                 "description": payload.get("description", ""),
             })
         return normalized
 
-    def _role_from_request(self, request, *, default_staffusertype_id=None, default_contractorusertype_id=None):
+    def _role_from_request(self, request, *, default_staffusertype_id=None, default_contractorusertype_id=None, default_governmentusertype_id=None):
         permission_for = (request.query_params.get("permission_for") or request.data.get("permission_for") or "").lower()
         contractorusertype_id = (
             default_contractorusertype_id
@@ -88,6 +93,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             or request.data.get("staffusertype_id")
             or request.data.get("staffUserTypeId")
         )
+        governmentusertype_id = (
+            default_governmentusertype_id
+            or request.query_params.get("governmentusertype_id")
+            or request.query_params.get("governmentUserTypeId")
+            or request.data.get("governmentusertype_id")
+            or request.data.get("governmentUserTypeId")
+        )
 
         if not contractorusertype_id and staffusertype_id:
             if str(staffusertype_id).startswith("CNTUSRTYPE-") or ContractorUserType.objects.filter(
@@ -96,17 +108,30 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             ).exists():
                 contractorusertype_id = staffusertype_id
                 staffusertype_id = None
+        if not governmentusertype_id and staffusertype_id:
+            if str(staffusertype_id).startswith("GOVTUSRTYPE-") or GovernmentStaffUserType.objects.filter(
+                unique_id=staffusertype_id,
+                is_deleted=False,
+            ).exists():
+                governmentusertype_id = staffusertype_id
+                staffusertype_id = None
 
+        if permission_for == "government" or governmentusertype_id:
+            return "government", governmentusertype_id
         if permission_for == "contractor" or contractorusertype_id:
             return "contractor", contractorusertype_id
         return "staff", staffusertype_id
 
     def _role_filter_kwargs(self, permission_for, role_id):
+        if permission_for == "government":
+            return {"governmentusertype_id_id": role_id}
         if permission_for == "contractor":
             return {"contractorusertype_id_id": role_id}
         return {"staffusertype_id_id": role_id}
 
     def _role_response_key(self, permission_for):
+        if permission_for == "government":
+            return "governmentusertype_id"
         return "contractorusertype_id" if permission_for == "contractor" else "staffusertype_id"
 
     def _sync_nested_permissions(self, request, update_only=False):
@@ -148,11 +173,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         staffusertype_id=None,
         update_only=False,
         contractorusertype_id=None,
+        governmentusertype_id=None,
     ):
         permission_for, role_id = self._role_from_request(
             request,
             default_staffusertype_id=staffusertype_id,
             default_contractorusertype_id=contractorusertype_id,
+            default_governmentusertype_id=governmentusertype_id,
         )
         if not role_id:
             return Response(
@@ -164,9 +191,15 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if permission_for == "contractor":
             payload["contractorusertype_id"] = role_id
             payload["staffusertype_id"] = None
+            payload["governmentusertype_id"] = None
+        elif permission_for == "government":
+            payload["governmentusertype_id"] = role_id
+            payload["staffusertype_id"] = None
+            payload["contractorusertype_id"] = None
         else:
             payload["staffusertype_id"] = role_id
             payload["contractorusertype_id"] = None
+            payload["governmentusertype_id"] = None
 
         with transaction.atomic():
             serializer = UserScreenPermissionMultiScreenSerializer(
@@ -198,6 +231,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "usertype_id",
             "staffusertype_id",
             "contractorusertype_id",
+            "governmentusertype_id",
             "mainscreen_id",
             "userscreen_id",
             "userscreenaction_id",
@@ -243,6 +277,14 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             update_only=False,
         )
 
+    @action(detail=False, methods=["post"], url_path=r"bulk-sync-multi-government/(?P<governmentusertype_id>[^/.]+)")
+    def bulk_sync_multi_government(self, request, governmentusertype_id):
+        return self._sync_permissions(
+            request,
+            governmentusertype_id=governmentusertype_id,
+            update_only=False,
+        )
+
     @action(detail=False, methods=["post", "put"], url_path=r"update-by-staffusertype/(?P<staffusertype_id>[^/.]+)")
     def update_by_staffusertype(self, request, staffusertype_id):
         return self._sync_permissions(request, staffusertype_id, update_only=False)
@@ -252,6 +294,14 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return self._sync_permissions(
             request,
             contractorusertype_id=contractorusertype_id,
+            update_only=True,
+        )
+
+    @action(detail=False, methods=["post", "put"], url_path=r"update-by-governmentusertype/(?P<governmentusertype_id>[^/.]+)")
+    def update_by_governmentusertype(self, request, governmentusertype_id):
+        return self._sync_permissions(
+            request,
+            governmentusertype_id=governmentusertype_id,
             update_only=True,
         )
 
@@ -388,6 +438,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         Query params:
         - staffusertype_id: required for staff
         - contractorusertype_id: required for contractor
+        - governmentusertype_id: required for government
         - permission_for: staff|contractor (optional; inferred from contractorusertype_id)
         """
         permission_for, role_id = self._role_from_request(request)
@@ -477,7 +528,11 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def delete_by_contractorusertype(self, request, contractorusertype_id):
         return self._delete_by_usertype(request, contractorusertype_id=contractorusertype_id)
 
-    def _delete_by_usertype(self, request, staffusertype_id=None, contractorusertype_id=None):
+    @action(detail=False, methods=["delete"], url_path=r"delete-by-governmentusertype/(?P<governmentusertype_id>[^/.]+)/?")
+    def delete_by_governmentusertype(self, request, governmentusertype_id):
+        return self._delete_by_usertype(request, governmentusertype_id=governmentusertype_id)
+
+    def _delete_by_usertype(self, request, staffusertype_id=None, contractorusertype_id=None, governmentusertype_id=None):
         mainscreen_id = request.query_params.get("mainscreen_id")
         if not mainscreen_id:
             return Response(
@@ -489,6 +544,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             request,
             default_staffusertype_id=staffusertype_id,
             default_contractorusertype_id=contractorusertype_id,
+            default_governmentusertype_id=governmentusertype_id,
         )
         role_filters = self._role_filter_kwargs(permission_for, role_id)
 

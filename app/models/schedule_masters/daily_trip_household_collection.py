@@ -4,11 +4,14 @@ from django.utils import timezone
 from app.models.customers.customercreation import CustomerCreation
 from app.models.customers.wastecollection import WasteCollection
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
-from app.models.masters.zone import Zone
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils.hierarchy import copy_hierarchy
 
 
 def generate_dthc_id():
@@ -27,12 +30,18 @@ class DailyTripHouseholdCollection(BaseMaster):
     STATUS_COLLECTED = "Collected"
     STATUS_SKIPPED = "Skipped"
     STATUS_MISSED = "Missed"
+    COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_COLLECTED, "Collected"),
         (STATUS_SKIPPED, "Skipped"),
         (STATUS_MISSED, "Missed"),
+    ]
+    COLLECTION_TYPE_CHOICES = [
+        (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
     ]
 
     unique_id = models.CharField(
@@ -59,6 +68,13 @@ class DailyTripHouseholdCollection(BaseMaster):
         related_name="daily_trip_household_collections",
     )
 
+    collection_type = models.CharField(
+        max_length=30,
+        choices=COLLECTION_TYPE_CHOICES,
+        default=COLLECTION_TYPE_HOUSEHOLD,
+        db_index=True,
+    )
+
     # Filled when the WasteCollection record is saved for this customer + trip
     waste_collection_id = models.ForeignKey(
         WasteCollection,
@@ -69,27 +85,43 @@ class DailyTripHouseholdCollection(BaseMaster):
         blank=True,
     )
 
-    zone_id = models.ForeignKey(
-        Zone,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="zone_id",
-        null=True,
-        blank=True,
-    )
-    ward_id = models.ForeignKey(
-        Ward,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="ward_id",
-        null=True,
-        blank=True,
-    )
     panchayat_id = models.ForeignKey(
         Panchayat,
         on_delete=models.PROTECT,
         related_name="daily_trip_household_collections",
         db_column="panchayat_id",
+        null=True,
+        blank=True,
+    )
+    corporation_id = models.ForeignKey(
+        Corporation,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_household_collections",
+        db_column="corporation_id",
+        null=True,
+        blank=True,
+    )
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_household_collections",
+        db_column="municipality_id",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_household_collections",
+        db_column="town_panchayat_id",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_household_collections",
+        db_column="panchayat_union_id",
         null=True,
         blank=True,
     )
@@ -124,22 +156,18 @@ class DailyTripHouseholdCollection(BaseMaster):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["trip_assignment_id", "customer_id"],
+                fields=["trip_assignment_id", "customer_id", "collection_type"],
                 name="uniq_household_per_trip_assignment",
             ),
         ]
 
     def save(self, *args, **kwargs):
-        # Denormalise location from customer
-        if self.customer_id_id and not self.panchayat_id_id:
-            customer = self.customer_id
-            self.panchayat_id = getattr(customer, "panchayat_id", None)
-            self.ward_id = getattr(customer, "ward_id", None)
-            self.zone_id = getattr(customer, "zone_id", None)
+        if self.customer_id_id:
+            copy_hierarchy(self, self.customer_id)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.trip_assignment_id_id}:customer:{self.customer_id_id}"
+        return f"{self.trip_assignment_id_id}:customer:{self.customer_id_id}:{self.collection_type}"
 
     def mark_collected(self, waste_collection, collected_at=None):
         from decimal import Decimal

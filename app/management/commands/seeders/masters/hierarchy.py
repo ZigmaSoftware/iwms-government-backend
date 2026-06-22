@@ -1,5 +1,4 @@
 from app.management.commands.seeders.base import BaseSeeder
-
 from app.models.masters.areatype import AreaType
 from app.models.masters.hierarchy import AdministrativeHierarchy
 
@@ -7,27 +6,18 @@ from app.models.masters.hierarchy import AdministrativeHierarchy
 class AdministrativeHierarchySeeder(BaseSeeder):
     name = "hierarchy"
 
-    # (area_type_name, level_name) — 15 combinations
+    # (area_type_name, level_name) — 5 records using valid AreaTypeName choices
     HIERARCHY_STRUCTURE = [
-        ("Urban",      "Zone"),
-        ("Urban",      "Ward"),
-        ("Urban",      "Block"),
-        ("Urban",      "Street"),
-        ("Rural",      "Panchayat"),
-        ("Rural",      "Village"),
-        ("Rural",      "Hamlet"),
-        ("Semi-Urban", "Division"),
-        ("Semi-Urban", "Sector"),
-        ("Industrial", "Estate"),
-        ("Industrial", "Phase"),
-        ("Commercial", "Complex"),
-        ("Commercial", "Market"),
-        ("Coastal",    "Bay"),
-        ("Coastal",    "Harbor"),
+        ("Urban Local Body", "Ward"),
+        ("Urban Local Body", "Street"),
+        ("Urban Local Body", "Zone"),
+        ("Rural Local Body", "Panchayat"),
+        ("Rural Local Body", "Village"),
     ]
 
     def run(self):
         area_type_cache = {}
+        count = 0
 
         for area_type_name, level_name in self.HIERARCHY_STRUCTURE:
             if area_type_name not in area_type_cache:
@@ -43,6 +33,7 @@ class AdministrativeHierarchySeeder(BaseSeeder):
                 level_name=level_name,
             )
             action = "Created" if created else "Exists"
-            self.log(f"Hierarchy seeded: {area_type_name} - {level_name} ({action})")
+            self.log(f"Hierarchy: {area_type_name} - {level_name} ({action})")
+            count += 1
 
-        self.log(f"---Hierarchies seeded ({len(self.HIERARCHY_STRUCTURE)} records)---")
+        self.log(f"---Hierarchies seeded ({count} records)---")

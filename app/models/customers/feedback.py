@@ -53,10 +53,9 @@ class FeedBack(BaseMaster):
     def __str__(self):
         """Readable entry with linked customer and location."""
         customer_name = self.customer.customer_name if self.customer else "Unknown"
-        ward = getattr(self.customer.ward, "ward_name", "")
-        zone = getattr(self.customer.zone, "zone_name", "")
-        city = getattr(self.customer.city, "city_name", "")
-        return f"{customer_name} - {ward or zone or city}"
+        district = getattr(getattr(self.customer, "district", None), "name", "")
+        panchayat = getattr(getattr(self.customer, "panchayat_id", None), "panchayat_name", "")
+        return f"{customer_name} - {panchayat or district}"
 
     def delete(self, *args, **kwargs):
         """Soft delete this record."""

@@ -17,6 +17,7 @@ class Continent(BaseMaster):
     )
 
     name = models.CharField(max_length=100)
+    coordinates = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["name"]

@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from app.models.common_masters.continent import Continent
+from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
-class ContinentSerializer(serializers.ModelSerializer):
+class ContinentSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = Continent
         fields = "__all__"

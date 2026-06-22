@@ -10,27 +10,14 @@ class MainCategorySeeder(BaseSeeder):
         "Schedule pickup",
         "Pickup status",
         "Waste tips",
-        "Collector info",
         "Billing inquiry",
-        "Recycling info",
-        "Complaint tracking",
-        "Feedback",
-        "Emergency pickup",
-        "New service request",
-        "Service cancellation",
-        "Service modification",
-        "Location update",
-        "App support",
     ]
 
     def run(self):
         for category in self.MAIN_CATEGORIES:
             MainCategory.objects.get_or_create(
                 main_categoryName=category,
-                defaults={
-                    "is_active": True,
-                    "is_deleted": False,
-                },
+                defaults={"is_active": True, "is_deleted": False},
             )
 
         self.log(f"---Main categories seeded ({len(self.MAIN_CATEGORIES)} records)---")

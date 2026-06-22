@@ -7,8 +7,12 @@ from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.utils.hierarchy import copy_hierarchy
 
 
 def _generate_trip_assignment_unique_id():
@@ -108,11 +112,37 @@ class DailyTripAssignment(BaseMaster):
         null=True,
         blank=True,
     )
-
-    ward_id = models.ForeignKey(
-        Ward,
+    corporation_id = models.ForeignKey(
+        Corporation,
         on_delete=models.PROTECT,
-        db_column="ward_id",
+        db_column="corporation_id",
+        to_field="unique_id",
+        related_name="daily_trip_assignments",
+        null=True,
+        blank=True,
+    )
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        db_column="municipality_id",
+        to_field="unique_id",
+        related_name="daily_trip_assignments",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        db_column="town_panchayat_id",
+        to_field="unique_id",
+        related_name="daily_trip_assignments",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        db_column="panchayat_union_id",
         to_field="unique_id",
         related_name="daily_trip_assignments",
         null=True,
@@ -198,16 +228,10 @@ class DailyTripAssignment(BaseMaster):
             models.Index(fields=["trip_date", "status"]),
             models.Index(fields=["trip_plan_id", "trip_date"]),
             models.Index(fields=["panchayat_id", "trip_date"]),
-            models.Index(fields=["ward_id", "trip_date"]),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                check=(
-                    models.Q(panchayat_id__isnull=False, ward_id__isnull=True) |
-                    models.Q(panchayat_id__isnull=True, ward_id__isnull=False)
-                ),
-                name="daily_trip_assignment_panchayat_xor_ward",
-            )
+            models.Index(fields=["corporation_id", "trip_date"]),
+            models.Index(fields=["municipality_id", "trip_date"]),
+            models.Index(fields=["town_panchayat_id", "trip_date"]),
+            models.Index(fields=["panchayat_union_id", "trip_date"]),
         ]
 
     # ------------------------------------------------------------------
@@ -219,8 +243,7 @@ class DailyTripAssignment(BaseMaster):
             self.staff_template_id = self.staff_template_id or self.trip_plan_id.staff_template_id
             self.vehicle_id = self.vehicle_id or self.trip_plan_id.vehicle_id
             self.waste_type_id = self.waste_type_id or self.trip_plan_id.waste_type_id
-            self.panchayat_id = self.panchayat_id or self.trip_plan_id.panchayat_id
-            self.ward_id = self.ward_id or self.trip_plan_id.ward_id
+            copy_hierarchy(self, self.trip_plan_id, only_empty=True)
             self.scheduled_time = self.scheduled_time or self.trip_plan_id.scheduled_time
         if not self.unique_id:
             self.unique_id = _generate_trip_assignment_unique_id()

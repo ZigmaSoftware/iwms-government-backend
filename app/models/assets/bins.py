@@ -2,7 +2,6 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.city import City
 from app.models.masters.district import District
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.user_creations.waste_collection_bluetooth import WasteType
@@ -47,15 +46,6 @@ class Bins(BaseMaster):
         blank=True
     )
 
-    city_id = models.ForeignKey(
-        City,
-        on_delete=models.PROTECT,
-        related_name="bin",
-        db_column="city_id",
-        null=True,
-        blank=True
-    )
-
     wastetype_id = models.ForeignKey(
         WasteType,  
         on_delete=models.PROTECT,
@@ -68,6 +58,7 @@ class Bins(BaseMaster):
     bin_type = models.CharField(max_length=10, choices=BinType.choices)
     bin_image = models.CharField(max_length=100)
     bin_qr = models.ImageField(upload_to="bin_qr/", blank=True, null=True)
+    coordinates = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -83,7 +74,6 @@ class Bins(BaseMaster):
     def save(self, *args, **kwargs):
         if self.collection_point_id:
             self.district_id = self.collection_point_id.district_id
-            self.city_id = self.collection_point_id.city_id
 
         is_create = self._state.adding
         super().save(*args, **kwargs)
