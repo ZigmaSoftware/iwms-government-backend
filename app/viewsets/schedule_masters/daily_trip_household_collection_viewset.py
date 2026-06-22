@@ -39,6 +39,7 @@ class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
         assignment = params.get("trip_assignment_id")
         customer = params.get("customer_id")
         status_value = params.get("status")
+        collection_type = params.get("collection_type")
         is_collected = params.get("is_collected")
         trip_date = params.get("date") or params.get("trip_date")
         search = params.get("search")
@@ -49,6 +50,8 @@ class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(customer_id__unique_id=customer)
         if status_value:
             queryset = queryset.filter(status=status_value)
+        if collection_type:
+            queryset = queryset.filter(collection_type=collection_type)
         if is_collected is not None:
             queryset = queryset.filter(
                 is_collected=str(is_collected).lower() in {"1", "true", "yes"}

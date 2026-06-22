@@ -1,10 +1,11 @@
 from rest_framework import serializers
 
 from app.models.masters.panchayat_union import PanchayatUnion
+from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class PanchayatUnionSerializer(serializers.ModelSerializer):
+class PanchayatUnionSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
     area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
@@ -20,6 +21,7 @@ class PanchayatUnionSerializer(serializers.ModelSerializer):
             "area_type_id",
             "area_type_name",
             "union_name",
+            "coordinates",
             "is_active",
             "created_at",
             "updated_at",

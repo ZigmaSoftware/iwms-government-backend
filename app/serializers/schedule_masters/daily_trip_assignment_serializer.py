@@ -67,6 +67,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "waste_type_name": getattr(getattr(plan, "waste_type_id", None), "waste_type_name", None),
             "has_bin": TripPlanCollectionPoint.COLLECTION_TYPE_BIN in stop_types,
             "has_household": TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD in stop_types,
+            "has_bulk": TripPlanCollectionPoint.COLLECTION_TYPE_BULK in stop_types,
         }
 
     def get_staff_template(self, obj):
@@ -111,9 +112,13 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
         from app.models.schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
         plan = obj.trip_plan_id
         if not plan:
-            return {"has_bin": False, "has_household": False}
+            return {"has_bin": False, "has_household": False, "has_bulk": False}
         stops = plan.plan_collection_points.filter(is_deleted=False).values_list("collection_type", flat=True)
-        return {"has_bin": TripPlanCollectionPoint.COLLECTION_TYPE_BIN in stops, "has_household": TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD in stops}
+        return {
+            "has_bin": TripPlanCollectionPoint.COLLECTION_TYPE_BIN in stops,
+            "has_household": TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD in stops,
+            "has_bulk": TripPlanCollectionPoint.COLLECTION_TYPE_BULK in stops,
+        }
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)

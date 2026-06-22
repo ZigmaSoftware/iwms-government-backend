@@ -38,6 +38,7 @@ class AreaType(BaseMaster):
     )
 
     name = models.CharField(max_length=50, choices=AreaTypeName.choices)
+    coordinates = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

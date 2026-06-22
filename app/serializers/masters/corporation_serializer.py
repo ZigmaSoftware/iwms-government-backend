@@ -1,10 +1,11 @@
 from rest_framework import serializers
 
 from app.models.masters.corporation import Corporation
+from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class CorporationSerializer(serializers.ModelSerializer):
+class CorporationSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
     area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
@@ -20,6 +21,7 @@ class CorporationSerializer(serializers.ModelSerializer):
             "area_type_id",
             "area_type_name",
             "corporation_name",
+            "coordinates",
             "is_active",
             "created_at",
             "updated_at",

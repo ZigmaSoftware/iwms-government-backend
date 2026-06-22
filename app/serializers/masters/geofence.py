@@ -39,3 +39,8 @@ def normalize_coordinates(value):
         normalized.append({"latitude": latitude, "longitude": longitude})
 
     return normalized
+
+
+class GeoCoordinateSerializerMixin:
+    def validate_coordinates(self, value):
+        return normalize_coordinates(value)

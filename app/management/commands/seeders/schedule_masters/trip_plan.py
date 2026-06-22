@@ -16,13 +16,18 @@ from app.models.waste_types.subproperty import SubProperty
 class TripPlanSeeder(BaseSeeder):
     name = "TripPlanSeeder"
 
-    # (panchayat_name, waste_type_name, scheduled_time, trigger_kg, max_kg)
+    # (panchayat_name, primary_waste_type, extra_waste_types, scheduled_time, trigger_kg, max_kg)
     TRIP_PLANS = [
-        ("Anthiyur Panchayat",         "Organic Waste",   time(7, 0),  200, 5000),
-        ("Bhavani Panchayat",          "Plastic Waste",   time(7, 30), 150, 4000),
-        ("Gobichettipalayam Panchayat","Paper Waste",     time(8, 0),  100, 1500),
-        ("Kavundampalayam Panchayat",  "Metal Waste",     time(8, 30), 100, 4000),
-        ("Modakkurichi Panchayat",     "Hazardous Waste", time(9, 0),   50, 1500),
+        ("Anthiyur Panchayat",          "Organic Waste",   ["Plastic Waste"],           time(7, 0),  200, 5000),
+        ("Bhavani Panchayat",           "Plastic Waste",   ["Paper Waste"],             time(7, 30), 150, 4000),
+        ("Gobichettipalayam Panchayat", "Paper Waste",     [],                          time(8, 0),  100, 1500),
+        ("Kavundampalayam Panchayat",   "Metal Waste",     [],                          time(8, 30), 100, 4000),
+        ("Modakkurichi Panchayat",      "Hazardous Waste", ["Organic Waste"],           time(9, 0),   50, 1500),
+    ]
+    COLLECTION_TYPES = [
+        TripPlan.COLLECTION_TYPE_BIN,
+        TripPlan.COLLECTION_TYPE_HOUSEHOLD,
+        TripPlan.COLLECTION_TYPE_BULK,
     ]
 
     def run(self):
@@ -54,60 +59,63 @@ class TripPlanSeeder(BaseSeeder):
             property_id=property_obj, sub_property_name="Apartment", is_deleted=False
         ).first() if property_obj else None
 
-        if not property_obj or not sub_property:
-            self.log("Property/SubProperty not found — run PropertySeeder first.")
-            return
-
         count = 0
-        for idx, (panchayat_name, waste_type_name, sched_time, trigger_kg, max_kg) in enumerate(
+        for idx, (panchayat_name, primary_waste_type_name, extra_waste_type_names, sched_time, trigger_kg, max_kg) in enumerate(
             self.TRIP_PLANS
         ):
             panchayat = Panchayat.objects.filter(
                 panchayat_name=panchayat_name, district_id=district
             ).first()
-            waste_type = WasteType.objects.filter(
-                waste_type_name=waste_type_name, is_deleted=False
+            primary_waste_type = WasteType.objects.filter(
+                waste_type_name=primary_waste_type_name, is_deleted=False
             ).first()
 
             if not panchayat:
                 self.log(f"Panchayat '{panchayat_name}' not found — skipping.")
                 continue
-            if not waste_type:
-                self.log(f"WasteType '{waste_type_name}' not found — skipping.")
+            if not primary_waste_type:
+                self.log(f"WasteType '{primary_waste_type_name}' not found — skipping.")
                 continue
+
+            # Collect all waste types for M2M (primary + extras)
+            all_waste_types = [primary_waste_type]
+            for extra_name in extra_waste_type_names:
+                wt = WasteType.objects.filter(waste_type_name=extra_name, is_deleted=False).first()
+                if wt:
+                    all_waste_types.append(wt)
 
             template = templates[idx % len(templates)]
             vehicle = vehicles[idx % len(vehicles)]
 
-            already_exists = TripPlan.objects.filter(
-                district_id=district,
-                panchayat_id=panchayat,
-                staff_template_id=template,
-                waste_type_id=waste_type,
-                is_deleted=False,
-            ).exists()
-            if already_exists:
-                self.log(f"TripPlan for '{panchayat_name}' already exists — skipping.")
-                continue
-
-            TripPlan.objects.create(
-                district_id=district,
-                panchayat_id=panchayat,
-                staff_template_id=template,
-                vehicle_id=vehicle,
-                supervisor_id=supervisor,
-                property_id=property_obj,
-                sub_property_id=sub_property,
-                waste_type_id=waste_type,
-                scheduled_time=sched_time,
-                trip_trigger_weight_kg=trigger_kg,
-                max_vehicle_capacity_kg=max_kg,
-                approval_status=TripPlan.ApprovalStatus.APPROVED,
-                status=TripPlan.Status.ACTIVE,
-                is_active=True,
-                is_deleted=False,
-            )
-            count += 1
-            self.log(f"Created TripPlan: {panchayat_name} - {waste_type_name}")
+            for collection_type in self.COLLECTION_TYPES:
+                plan, created = TripPlan.objects.update_or_create(
+                    district_id=district,
+                    panchayat_id=panchayat,
+                    waste_type_id=primary_waste_type,
+                    collection_type=collection_type,
+                    is_deleted=False,
+                    defaults={
+                        "staff_template_id": template,
+                        "vehicle_id": vehicle,
+                        "supervisor_id": supervisor,
+                        "property_id": property_obj,
+                        "sub_property_id": sub_property,
+                        "scheduled_time": sched_time,
+                        "trip_trigger_weight_kg": trigger_kg,
+                        "max_vehicle_capacity_kg": max_kg,
+                        "approval_status": TripPlan.ApprovalStatus.APPROVED,
+                        "status": TripPlan.Status.ACTIVE,
+                        "is_active": True,
+                        "is_auto_assign": True,
+                        "repeat_days": [0, 1, 2, 3, 4, 5, 6],
+                    },
+                )
+                # Sync M2M waste types
+                plan.waste_types.set(all_waste_types)
+                if created:
+                    count += 1
+                    self.log(f"Created TripPlan: {panchayat_name} - {primary_waste_type_name} - {collection_type}")
+                else:
+                    self.log(f"Updated TripPlan: {plan.display_code} - {collection_type}")
 
         self.log(f"---Trip plans seeded ({count} created)---")

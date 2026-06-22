@@ -58,6 +58,7 @@ class Bins(BaseMaster):
     bin_type = models.CharField(max_length=10, choices=BinType.choices)
     bin_image = models.CharField(max_length=100)
     bin_qr = models.ImageField(upload_to="bin_qr/", blank=True, null=True)
+    coordinates = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

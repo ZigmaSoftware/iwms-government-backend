@@ -35,6 +35,7 @@ class DailyTripHouseholdCollectionSerializer(
             "trip_assignment",
             "customer_id",
             "customer",
+            "collection_type",
             "waste_collection_id",
             "corporation_id",
             "municipality_id",
