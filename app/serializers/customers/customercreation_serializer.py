@@ -15,7 +15,7 @@ from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 from app.utils.hierarchy import validate_single_hierarchy
 
-from django.contrib.auth.hashers import make_password
+from app.utils.password_encryption import encrypt_password, decrypt_password
 
 
 class CustomerCreationSerializer(serializers.ModelSerializer):
@@ -85,10 +85,10 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     industry_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     group_qr_id = serializers.CharField(read_only=True)
-    is_bulkwaste_generator = serializers.BooleanField(read_only=True)
+    is_bulkwaste_generator = serializers.BooleanField(required=False)
     qr_code = serializers.ImageField(read_only=True)
 
-    password = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     password_crt_date = serializers.DateTimeField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
 
@@ -149,9 +149,13 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id", "password_crt_date", "created_at"]
         validators = []
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['password'] = decrypt_password(instance.password or "")
+        return data
 
         # =============================
-    # CREATE (HASH PASSWORD)
+    # CREATE (ENCRYPT PASSWORD)
     # =============================
     def create(self, validated_data):
         password = validated_data.pop("password", None)
@@ -159,13 +163,13 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         instance = super().create(validated_data)
 
         if password:
-            instance.password = make_password(password)
+            instance.password = encrypt_password(password)
             instance.save(update_fields=["password"])
 
         return instance
 
     # =============================
-    # UPDATE (HASH PASSWORD)
+    # UPDATE (ENCRYPT PASSWORD)
     # =============================
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
@@ -173,7 +177,7 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         instance = super().update(instance, validated_data)
 
         if password:
-            instance.password = make_password(password)
+            instance.password = encrypt_password(password)
             instance.save(update_fields=["password"])
 
         return instance
