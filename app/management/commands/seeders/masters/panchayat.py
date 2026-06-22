@@ -1,4 +1,5 @@
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.geo import coordinates
 from app.models.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.district import District
@@ -9,11 +10,11 @@ class PanchayatSeeder(BaseSeeder):
     name = "PanchayatSeeder"
 
     PANCHAYATS = [
-        "Anthiyur Panchayat",
-        "Bhavani Panchayat",
-        "Gobichettipalayam Panchayat",
-        "Kavundampalayam Panchayat",
-        "Modakkurichi Panchayat",
+        ("Anthiyur Panchayat", coordinates((11.5750, 77.5900), (11.5660, 77.6040))),
+        ("Bhavani Panchayat", coordinates((11.4437, 77.6845), (11.4550, 77.6720))),
+        ("Gobichettipalayam Panchayat", coordinates((11.4524, 77.4355), (11.4620, 77.4480))),
+        ("Kavundampalayam Panchayat", coordinates((11.2932, 77.6011), (11.3010, 77.6150))),
+        ("Modakkurichi Panchayat", coordinates((11.3805, 77.7032), (11.3910, 77.7160))),
     ]
 
     def run(self):
@@ -30,13 +31,17 @@ class PanchayatSeeder(BaseSeeder):
             return
 
         count = 0
-        for panchayat_name in self.PANCHAYATS:
+        for panchayat_name, geo_coordinates in self.PANCHAYATS:
             _, created = Panchayat.objects.update_or_create(
                 panchayat_name=panchayat_name,
                 state_id=tamil_nadu,
                 district_id=district,
                 area_type_id=area_type,
-                defaults={"is_active": True, "is_deleted": False},
+                defaults={
+                    "coordinates": geo_coordinates,
+                    "is_active": True,
+                    "is_deleted": False,
+                },
             )
             action = "Created" if created else "Updated"
             self.log(f"{action}: {panchayat_name}")

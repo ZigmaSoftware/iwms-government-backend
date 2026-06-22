@@ -27,6 +27,15 @@ def generate_trip_plan_id():
 class TripPlan(BaseMaster):
     """Single source of truth for route + trip configuration."""
 
+    COLLECTION_TYPE_BIN = "bin_collection"
+    COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
+    COLLECTION_TYPE_CHOICES = [
+        (COLLECTION_TYPE_BIN, "Secondary Collection Point"),
+        (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
+    ]
+
     class ApprovalStatus(models.TextChoices):
         PENDING  = "PENDING",  "Pending"
         APPROVED = "APPROVED", "Approved"
@@ -119,6 +128,8 @@ class TripPlan(BaseMaster):
         on_delete=models.PROTECT,
         to_field="staff_unique_id",
         related_name="trip_plans",
+        null=True,
+        blank=True,
     )
 
     # ---- WHAT ------------------------------------------------------
@@ -128,6 +139,8 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
         db_column="property_id",
+        null=True,
+        blank=True,
     )
     sub_property_id = models.ForeignKey(
         SubProperty,
@@ -135,6 +148,8 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
         db_column="sub_property_id",
+        null=True,
+        blank=True,
     )
     waste_type_id = models.ForeignKey(
         WasteType,
@@ -142,11 +157,31 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
         db_column="waste_type_id",
+        null=True,
+        blank=True,
+    )
+    # Supports multiple waste types per trip plan (e.g. household + bulk)
+    waste_types = models.ManyToManyField(
+        WasteType,
+        related_name="trip_plans_multi",
+        blank=True,
+        help_text="Multiple waste types handled by this trip plan.",
+    )
+    collection_type = models.CharField(
+        max_length=30,
+        choices=COLLECTION_TYPE_CHOICES,
+        default=COLLECTION_TYPE_BIN,
+        db_index=True,
+        help_text="One Trip Plan can generate only one category of daily work.",
     )
     trip_trigger_weight_kg = models.PositiveIntegerField(
+        null=True,
+        blank=True,
         help_text="Collected weight (kg) that triggers a trip dispatch.",
     )
     max_vehicle_capacity_kg = models.PositiveIntegerField(
+        null=True,
+        blank=True,
         help_text="Hard ceiling for vehicle load (kg).",
     )
 
@@ -186,6 +221,7 @@ class TripPlan(BaseMaster):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
+            models.Index(fields=["collection_type"]),
             models.Index(fields=["status", "approval_status"]),
             models.Index(fields=["display_code"]),
             models.Index(fields=["district_id", "panchayat_id"]),

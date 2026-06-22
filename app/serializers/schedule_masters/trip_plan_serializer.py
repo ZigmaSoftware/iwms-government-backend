@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from app.models.assets.bins import Bins
+from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.corporation import Corporation
@@ -21,8 +22,13 @@ from app.utils.hierarchy import HIERARCHY_FIELDS, selected_hierarchy_from_attrs,
 
 
 class TripPlanStopInputSerializer(serializers.Serializer):
-    collection_point_id = serializers.CharField()
-    bin_id = serializers.CharField()
+    collection_type = serializers.ChoiceField(
+        choices=TripPlanCollectionPoint.COLLECTION_TYPE_CHOICES,
+        default=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+    )
+    collection_point_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    bin_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    customer_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     sequence = serializers.IntegerField(min_value=1)
     is_active = serializers.BooleanField(default=True)
 
@@ -36,10 +42,19 @@ class TripPlanSerializer(serializers.ModelSerializer):
     panchayat_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True)
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True)
-    supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True)
-    property_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Property.objects.filter(is_deleted=False), write_only=True)
-    sub_property_id = UniqueIdOrPkField(slug_field="unique_id", queryset=SubProperty.objects.filter(is_deleted=False), write_only=True)
-    waste_type_id = UniqueIdOrPkField(slug_field="unique_id", queryset=WasteType.objects.filter(is_deleted=False), write_only=True)
+    supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    property_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Property.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    sub_property_id = UniqueIdOrPkField(slug_field="unique_id", queryset=SubProperty.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    waste_type_id = UniqueIdOrPkField(slug_field="unique_id", queryset=WasteType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    # Multiple waste types support
+    waste_type_ids = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=WasteType.objects.filter(is_deleted=False),
+        many=True,
+        required=False,
+        source="waste_types",
+        write_only=True,
+    )
     collection_points = TripPlanStopInputSerializer(many=True, write_only=True, required=False)
     is_auto_assign = serializers.BooleanField(required=False)
     repeat_days = serializers.ListField(child=serializers.IntegerField(min_value=0, max_value=6), required=False, allow_null=True)
@@ -56,6 +71,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
     property = serializers.SerializerMethodField()
     sub_property = serializers.SerializerMethodField()
     waste_type = serializers.SerializerMethodField()
+    waste_types_detail = serializers.SerializerMethodField()
     plan_collection_points = serializers.SerializerMethodField()
 
     class Meta:
@@ -64,12 +80,13 @@ class TripPlanSerializer(serializers.ModelSerializer):
             "unique_id", "display_code", "district_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "staff_template_id", "vehicle_id", "supervisor_id", "property_id",
-            "sub_property_id", "waste_type_id", "district", "corporation",
+            "sub_property_id", "waste_type_id", "waste_type_ids", "district", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
             "staff_template", "vehicle", "supervisor", "property", "sub_property",
-            "waste_type", "trip_trigger_weight_kg", "max_vehicle_capacity_kg",
-            "scheduled_time", "is_auto_assign", "repeat_days", "approval_status",
-            "status", "collection_points", "plan_collection_points", "created_at", "updated_at",
+            "waste_type", "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
+            "max_vehicle_capacity_kg", "scheduled_time", "is_auto_assign", "repeat_days",
+            "approval_status", "status", "collection_points", "plan_collection_points",
+            "created_at", "updated_at",
         ]
         read_only_fields = ["unique_id", "display_code", "created_at", "updated_at"]
 
@@ -129,6 +146,12 @@ class TripPlanSerializer(serializers.ModelSerializer):
     def get_waste_type(self, obj):
         return self._ref(obj, "waste_type_id", "waste_type_name")
 
+    def get_waste_types_detail(self, obj):
+        return [
+            {"unique_id": wt.unique_id, "waste_type_name": wt.waste_type_name}
+            for wt in obj.waste_types.all()
+        ]
+
     def get_plan_collection_points(self, obj):
         stops = obj.plan_collection_points.filter(is_deleted=False).select_related("collection_point_id", "bin_id", "customer_id")
         return [{
@@ -165,14 +188,54 @@ class TripPlanSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Sub-property does not belong to the selected property.")
 
         stops = attrs.get("collection_points")
+        plan_collection_type = attrs.get(
+            "collection_type",
+            getattr(instance, "collection_type", TripPlan.COLLECTION_TYPE_BIN),
+        )
         if stops is not None:
             sequences = [stop["sequence"] for stop in stops]
             if len(sequences) != len(set(sequences)):
                 raise serializers.ValidationError({"collection_points": "Stop sequences must be unique."})
-            collection_point_ids = [stop["collection_point_id"] for stop in stops]
+            collection_point_ids = [
+                stop.get("collection_point_id")
+                for stop in stops
+                if stop.get("collection_type") == TripPlanCollectionPoint.COLLECTION_TYPE_BIN
+            ]
             if len(collection_point_ids) != len(set(collection_point_ids)):
                 raise serializers.ValidationError({"collection_points": "Collection points must be unique per trip plan."})
             for stop in stops:
+                collection_type = stop.get("collection_type") or plan_collection_type
+                if collection_type != plan_collection_type:
+                    raise serializers.ValidationError(
+                        {"collection_points": "All trip points must match the Trip Plan collection type."}
+                    )
+                if collection_type in {
+                    TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
+                    TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
+                }:
+                    customer_id = stop.get("customer_id")
+                    if customer_id:
+                        customer = CustomerCreation.objects.filter(unique_id=customer_id, is_deleted=False).first()
+                        if not customer:
+                            raise serializers.ValidationError({"collection_points": "Invalid customer."})
+                        if (
+                            collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
+                            and not customer.is_bulkwaste_generator
+                        ):
+                            raise serializers.ValidationError({"collection_points": "Bulk waste stops require a bulk-waste customer."})
+                        if (
+                            collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD
+                            and customer.is_bulkwaste_generator
+                        ):
+                            raise serializers.ValidationError({"collection_points": "Household stops require a non-bulk customer."})
+                        if getattr(customer, f"{trip_hierarchy_field}_id", None) != getattr(trip_hierarchy_obj, "unique_id", None):
+                            raise serializers.ValidationError({"collection_points": "Customer does not belong to the selected hierarchy level."})
+                    continue
+
+                if not stop.get("collection_point_id"):
+                    raise serializers.ValidationError({"collection_points": "Collection point is required for secondary collection."})
+                if not stop.get("bin_id"):
+                    raise serializers.ValidationError({"collection_points": "Bin is required for secondary collection."})
                 cp = Collection_point.objects.filter(unique_id=stop["collection_point_id"], is_deleted=False).first()
                 bin_obj = Bins.objects.filter(unique_id=stop["bin_id"], is_deleted=False).first()
                 if not cp:
@@ -189,22 +252,43 @@ class TripPlanSerializer(serializers.ModelSerializer):
             return
         TripPlanCollectionPoint.objects.filter(trip_plan_id=trip_plan).update(is_deleted=True, is_active=False)
         for stop in stops:
-            TripPlanCollectionPoint.objects.create(
-                trip_plan_id=trip_plan,
-                collection_point_id=Collection_point.objects.get(unique_id=stop["collection_point_id"]),
-                bin_id=Bins.objects.get(unique_id=stop["bin_id"]),
-                sequence=stop["sequence"],
-                is_active=stop.get("is_active", True),
-            )
+            collection_type = stop.get("collection_type") or trip_plan.collection_type
+            if collection_type in {
+                TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
+                TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
+            }:
+                customer_id = stop.get("customer_id")
+                TripPlanCollectionPoint.objects.create(
+                    trip_plan_id=trip_plan,
+                    collection_type=collection_type,
+                    customer_id=CustomerCreation.objects.get(unique_id=customer_id) if customer_id else None,
+                    sequence=stop["sequence"],
+                    is_active=stop.get("is_active", True),
+                )
+            else:
+                TripPlanCollectionPoint.objects.create(
+                    trip_plan_id=trip_plan,
+                    collection_type=collection_type,
+                    collection_point_id=Collection_point.objects.get(unique_id=stop["collection_point_id"]),
+                    bin_id=Bins.objects.get(unique_id=stop["bin_id"]),
+                    sequence=stop["sequence"],
+                    is_active=stop.get("is_active", True),
+                )
 
     def create(self, validated_data):
         stops = validated_data.pop("collection_points", None)
+        waste_types = validated_data.pop("waste_types", None)
         trip_plan = super().create(validated_data)
+        if waste_types is not None:
+            trip_plan.waste_types.set(waste_types)
         self._sync_stops(trip_plan, stops)
         return trip_plan
 
     def update(self, instance, validated_data):
         stops = validated_data.pop("collection_points", None)
+        waste_types = validated_data.pop("waste_types", None)
         trip_plan = super().update(instance, validated_data)
+        if waste_types is not None:
+            trip_plan.waste_types.set(waste_types)
         self._sync_stops(trip_plan, stops)
         return trip_plan

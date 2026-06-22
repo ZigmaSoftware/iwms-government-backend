@@ -2,9 +2,10 @@ from rest_framework import serializers
 from app.models.common_masters.continent import Continent
 from app.models.common_masters.country import Country
 from app.models.masters.district import District
+from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
-class DistrictSerializer(serializers.ModelSerializer):
+class DistrictSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     continent_id = serializers.SlugRelatedField(
         queryset=Continent.objects.filter(is_deleted=False),
         slug_field="unique_id",
@@ -33,6 +34,7 @@ class DistrictSerializer(serializers.ModelSerializer):
             "district_name",
             "district_code",
             "name",
+            "coordinates",
             "continent_id",
             "continent_name",
             "country_id",

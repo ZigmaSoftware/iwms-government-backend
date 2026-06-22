@@ -24,10 +24,12 @@ class TripPlanCollectionPoint(BaseMaster):
 
     COLLECTION_TYPE_BIN = "bin_collection"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
 
     COLLECTION_TYPE_CHOICES = [
         (COLLECTION_TYPE_BIN, "Bin Collection"),
         (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
     ]
 
     unique_id = models.CharField(
@@ -147,14 +149,31 @@ class TripPlanCollectionPoint(BaseMaster):
         ]
 
     def clean(self):
+        if self.trip_plan_id_id and self.collection_type != self.trip_plan_id.collection_type:
+            raise ValidationError(
+                {"collection_type": "Trip point collection type must match the Trip Plan collection type."}
+            )
+
         if self.collection_type == self.COLLECTION_TYPE_BIN:
             if not self.collection_point_id_id:
                 raise ValidationError({"collection_point_id": "Collection point is required for bin collection."})
             if not self.bin_id_id:
                 raise ValidationError({"bin_id": "Bin is required for bin collection."})
-        elif self.collection_type == self.COLLECTION_TYPE_HOUSEHOLD:
-            if not self.customer_id_id:
-                raise ValidationError({"customer_id": "Customer is required for household collection."})
+        elif self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK}:
+            has_hierarchy = any(
+                getattr(self, f"{field}_id", None)
+                for field in (
+                    "corporation_id",
+                    "municipality_id",
+                    "town_panchayat_id",
+                    "panchayat_union_id",
+                    "panchayat_id",
+                )
+            )
+            if not self.customer_id_id and not has_hierarchy and not self.trip_plan_id_id:
+                raise ValidationError(
+                    {"customer_id": "Select a customer or assign collection to a local body."}
+                )
 
     def save(self, *args, **kwargs):
         if self.collection_point_id_id:
@@ -166,7 +185,7 @@ class TripPlanCollectionPoint(BaseMaster):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        if self.collection_type == self.COLLECTION_TYPE_HOUSEHOLD and self.customer_id_id:
+        if self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK} and self.customer_id_id:
             return f"{self.trip_plan_id_id} -> customer:{self.customer_id_id} (seq {self.sequence})"
         return (
             f"{self.trip_plan_id_id} -> "
