@@ -55,11 +55,9 @@ class WasteCollection(BaseMaster):
     def __str__(self):
         """Readable entry with linked customer and location."""
         customer_name = self.customer.customer_name if self.customer else "Unknown"
-        ward = self.customer.ward.ward_name if self.customer and self.customer.ward else ""
-        zone = self.customer.zone.zone_name if self.customer and self.customer.zone else ""
-        city = self.customer.city.city_name if self.customer and self.customer.city else ""
-        panchayat = self.customer.panchayat.panchayat_name if self.customer and self.customer.panchayat else ""
-        return f"{customer_name} - {ward or zone or city} - {panchayat}"
+        district = getattr(getattr(self.customer, "district", None), "name", "") if self.customer else ""
+        panchayat = getattr(getattr(self.customer, "panchayat_id", None), "panchayat_name", "") if self.customer else ""
+        return f"{customer_name} - {panchayat or district}"
 
     def save(self, *args, **kwargs):
         """Auto-calculate total before save."""

@@ -1,17 +1,19 @@
 from .district import DistrictSeeder
-from .city import CitySeeder
-from .zone import ZoneSeeder
-from .ward import WardSeeder
 from .areatype import AreaTypeSeeder
+from .corporation import CorporationSeeder
 from .hierarchy import AdministrativeHierarchySeeder
+from .municipality import MunicipalitySeeder
 from .panchayat import PanchayatSeeder
+from .panchayat_union import PanchayatUnionSeeder
+from .town_panchayat import TownPanchayatSeeder
 
 MASTER_SEEDERS = [
     DistrictSeeder,
-    CitySeeder,
     AreaTypeSeeder,
+    CorporationSeeder,
+    MunicipalitySeeder,
+    TownPanchayatSeeder,
+    PanchayatUnionSeeder,
     AdministrativeHierarchySeeder,
-    ZoneSeeder,
-    WardSeeder,
     PanchayatSeeder,   
 ]

@@ -15,18 +15,16 @@ from ..viewsets.common_masters.state_viewset import StateViewSet
 
 # Masters
 from ..viewsets.masters.district_viewset import DistrictViewSet
-from ..viewsets.masters.city_viewset import CityViewSet
-from ..viewsets.masters.zone_viewset import ZoneViewSet
-from ..viewsets.masters.ward_viewset import WardViewSet
 from ..viewsets.masters.panchayat_viweset import PanhayatViewSet
 from ..viewsets.masters.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
 from ..viewsets.masters.areatype_viewset import AreaTypeViewSet
 from ..viewsets.masters.hierarchy_viewset import AdministrativeHierarchyViewSet
 from ..viewsets.masters.department_viewset import DepartmentViewSet
 from ..viewsets.masters.designation_viewset import DesignationViewSet
+from ..viewsets.masters.corporation_viewset import CorporationViewSet
 from ..viewsets.masters.municipality_viewset import MunicipalityViewSet
 from ..viewsets.masters.town_panchayat_viewset import TownPanchayatViewSet
-from ..viewsets.masters.block_panchayat_union_viewset import BlockPanchayatUnionViewSet
+from ..viewsets.masters.panchayat_union_viewset import PanchayatUnionViewSet
 
 # Waste types
 from ..viewsets.waste_types.property_viewset import PropertyViewSet
@@ -53,6 +51,7 @@ from ..viewsets.screen_managements.permission_api_views import (
 from ..viewsets.role_assigns.usertype_viewset import UserTypeViewSet
 from ..viewsets.role_assigns.staffusertype_viewset import StaffUserTypeViewSet
 from ..viewsets.role_assigns.contractorusertype_viewset import ContractorUserTypeViewSet
+from ..viewsets.role_assigns.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
 
 # User creations
 from ..viewsets.user_creations.staff_viewset import StaffViewSet
@@ -147,18 +146,16 @@ router.register_group("common-masters", "states",        StateViewSet)
 # GROUP: MASTERS
 # ============================================================
 router.register_group("masters", "districts",     DistrictViewSet)
-router.register_group("masters", "cities",        CityViewSet)
-router.register_group("masters", "zones",         ZoneViewSet)
-router.register_group("masters", "wards",         WardViewSet)
 router.register_group("masters", "panchayat",         PanhayatViewSet)
 router.register_group("masters", "panchayat-leaders", PanchayatLeaderLoginViewSet)
 router.register_group("masters", "areatypes",         AreaTypeViewSet)
 router.register_group("masters", "hierarchy",         AdministrativeHierarchyViewSet)
 router.register_group("masters", "departments",       DepartmentViewSet)
 router.register_group("masters", "designations",      DesignationViewSet)
+router.register_group("masters", "corporations",           CorporationViewSet)
 router.register_group("masters", "municipalities",          MunicipalityViewSet)
 router.register_group("masters", "town-panchayats",         TownPanchayatViewSet)
-router.register_group("masters", "block-panchayat-unions",  BlockPanchayatUnionViewSet)
+router.register_group("masters", "panchayat-unions",        PanchayatUnionViewSet)
 
 # ============================================================
 # GROUP: Waste-Type
@@ -196,6 +193,8 @@ router.register_group("role-assigns", "staffusertypes",      StaffUserTypeViewSe
 router.register_group("role-assigns", "staffusertypes",      StaffUserTypeViewSet, basename="staffusertype-roletype")
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet)
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet, basename="contractorusertype-roletype")
+router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet)
+router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet, basename="governmentusertype-roletype")
 
 # ============================================================
 # GROUP: USER CREATION

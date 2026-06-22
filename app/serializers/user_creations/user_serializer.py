@@ -62,16 +62,6 @@ class StaffSerializer(serializers.ModelSerializer):
     district_name = serializers.CharField(
         source="district_id.name", read_only=True
     )
-    city_name = serializers.CharField(
-        source="city_id.name", read_only=True
-    )
-    zone_name = serializers.CharField(
-        source="zone_id.name", read_only=True
-    )
-    ward_name = serializers.CharField(
-        source="ward_id.name", read_only=True
-    )
-
     class Meta:
         model = Staffcreation
         fields = "__all__"

@@ -5,6 +5,7 @@ from app.serializers.schedule_masters.trip_plan_collection_point_serializer impo
     TripPlanCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_queryset_by_hierarchy
 from rest_framework import viewsets
 
 
@@ -21,13 +22,13 @@ class TripPlanCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             TripPlanCollectionPoint.objects.select_related(
                 "trip_plan_id",
                 "collection_point_id",
-                "zone_id",
-                "ward_id",
+                "corporation_id",
+                "municipality_id",
+                "town_panchayat_id",
+                "panchayat_union_id",
                 "panchayat_id",
                 "bin_id",
                 "customer_id",
-                "customer_id__ward",
-                "customer_id__zone",
             )
             .filter(is_deleted=False)
         )
@@ -35,22 +36,13 @@ class TripPlanCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         params = self.request.query_params
         trip_plan = params.get("trip_plan_id")
         collection_point = params.get("collection_point_id")
-        zone = params.get("zone_id")
-        ward = params.get("ward_id")
-        panchayat = params.get("panchayat_id")
         collection_type = params.get("collection_type")
 
         if trip_plan:
             queryset = queryset.filter(trip_plan_id__unique_id=trip_plan)
         if collection_point:
             queryset = queryset.filter(collection_point_id__unique_id=collection_point)
-        if zone:
-            queryset = queryset.filter(zone_id__unique_id=zone)
-        if ward:
-            queryset = queryset.filter(ward_id__unique_id=ward)
-        if panchayat:
-            queryset = queryset.filter(panchayat_id__unique_id=panchayat)
         if collection_type:
             queryset = queryset.filter(collection_type=collection_type)
 
-        return queryset
+        return filter_queryset_by_hierarchy(queryset, params)

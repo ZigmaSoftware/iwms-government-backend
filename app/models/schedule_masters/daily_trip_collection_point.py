@@ -5,11 +5,14 @@ from app.models.assets.bins import Bins
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
-from app.models.masters.zone import Zone
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.user_creations.staffcreation import Staffcreation
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils.hierarchy import copy_hierarchy
 
 
 def generate_daily_trip_cp_id():
@@ -54,27 +57,43 @@ class DailyTripCollectionPoint(BaseMaster):
         to_field="unique_id",
         related_name="daily_trip_cps",
     )
-    zone_id = models.ForeignKey(
-        Zone,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_collection_points",
-        db_column="zone_id",
-        null=True,
-        blank=True,
-    )
-    ward_id = models.ForeignKey(
-        Ward,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_collection_points",
-        db_column="ward_id",
-        null=True,
-        blank=True,
-    )
     panchayat_id = models.ForeignKey(
         Panchayat,
         on_delete=models.PROTECT,
         related_name="daily_trip_collection_points",
         db_column="panchayat_id",
+        null=True,
+        blank=True,
+    )
+    corporation_id = models.ForeignKey(
+        Corporation,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_collection_points",
+        db_column="corporation_id",
+        null=True,
+        blank=True,
+    )
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_collection_points",
+        db_column="municipality_id",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_collection_points",
+        db_column="town_panchayat_id",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        related_name="daily_trip_collection_points",
+        db_column="panchayat_union_id",
         null=True,
         blank=True,
     )
@@ -132,14 +151,7 @@ class DailyTripCollectionPoint(BaseMaster):
 
     def save(self, *args, **kwargs):
         if self.collection_point_id_id:
-            collection_point = self.collection_point_id
-            self.panchayat_id = collection_point.panchayat_id
-            self.ward_id = collection_point.ward_id
-            self.zone_id = (
-                collection_point.ward_id.zone_id
-                if collection_point.ward_id_id
-                else None
-            )
+            copy_hierarchy(self, self.collection_point_id)
         super().save(*args, **kwargs)
 
     def __str__(self):

@@ -41,8 +41,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "bin_id",
                 "bin_id__wastetype_id",
                 "panchayat_id",
-                "ward_id",
-                "ward_id__zone_id",
             )
             .filter(is_deleted=False)
         )

@@ -6,6 +6,7 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
 from app.models.schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
+from app.signals.trip_plan_signals import _create_daily_household_collections
 
 
 class Command(BaseCommand):
@@ -62,7 +63,6 @@ class Command(BaseCommand):
                 "vehicle_id": plan.vehicle_id,
                 "waste_type_id": plan.waste_type_id,
                 "panchayat_id": plan.panchayat_id,
-                "ward_id": plan.ward_id,
                 "scheduled_time": plan.scheduled_time,
             }
 
@@ -75,27 +75,39 @@ class Command(BaseCommand):
 
                 if created:
                     created_count += 1
-                    # create collection points
+                    # create operational child records
                     stops = (
                         TripPlanCollectionPoint.objects
                         .filter(trip_plan_id=plan, is_active=True, is_deleted=False)
                         .order_by("sequence")
                     )
                     cp_created = 0
+                    hh_created = 0
                     for stop in stops:
-                        cp_obj, cp_new = DailyTripCollectionPoint.objects.get_or_create(
-                            trip_assignment_id=assignment,
-                            collection_point_id=stop.collection_point_id,
-                            defaults={
-                                "bin_id": stop.bin_id,
-                                "sequence": stop.sequence,
-                                "status": DailyTripCollectionPoint.STATUS_PENDING,
-                            },
-                        )
-                        if cp_new:
-                            cp_created += 1
+                        if stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BIN:
+                            if not stop.collection_point_id_id:
+                                continue
+                            cp_obj, cp_new = DailyTripCollectionPoint.objects.get_or_create(
+                                trip_assignment_id=assignment,
+                                collection_point_id=stop.collection_point_id,
+                                defaults={
+                                    "bin_id": stop.bin_id,
+                                    "sequence": stop.sequence,
+                                    "status": DailyTripCollectionPoint.STATUS_PENDING,
+                                },
+                            )
+                            if cp_new:
+                                cp_created += 1
+                        elif stop.collection_type in {
+                            TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
+                            TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
+                        }:
+                            hh_created += _create_daily_household_collections(assignment, stop)
                     self.stdout.write(
-                        f"Created assignment {assignment.unique_id} with {cp_created} collection points for plan {plan.unique_id}"
+                        (
+                            f"Created assignment {assignment.unique_id} with {cp_created} "
+                            f"daily trip points and {hh_created} household points for plan {plan.unique_id}"
+                        )
                     )
                 else:
                     self.stdout.write(f"Assignment already exists for plan {plan.unique_id} on {today}")

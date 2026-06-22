@@ -6,10 +6,14 @@ from app.utils.comfun import generate_unique_id
 from ..role_assigns.userType import UserType
 from ..role_assigns.staffUserType import StaffUserType
 from ..role_assigns.contractorUserType import ContractorUserType
+from ..role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.masters.district import District
-from app.models.masters.city import City
-from app.models.masters.zone import Zone
-from app.models.masters.ward import Ward
+from app.models.common_masters.state import State
+from app.models.masters.municipality import Municipality
+from app.models.masters.corporation import Corporation
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
 from app.utils.customer_qr import generate_customer_qr_content
@@ -186,9 +190,27 @@ class StaffcreationOfficeDetails(BaseMaster):
         related_name="staff_users"
     )
 
+    governmentusertype_id = models.ForeignKey(
+        GovernmentStaffUserType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="governmentusertype_id",
+        related_name="staff_users"
+    )
+
     # -----------------------------
-    # LOCATION FIELDS (match auth_user)
+    # LOCATION FIELDS
     # -----------------------------
+    state_id = models.ForeignKey(
+        State,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="state_id",
+        related_name="staff_state"
+    )
+
     district_id = models.ForeignKey(
         District,
         on_delete=models.SET_NULL,
@@ -198,31 +220,49 @@ class StaffcreationOfficeDetails(BaseMaster):
         related_name="staff_district"
     )
 
-    city_id = models.ForeignKey(
-        City,
+    municipality_id = models.ForeignKey(
+        Municipality,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        db_column="city_id",
-        related_name="staff_city"
+        db_column="municipality_id",
+        related_name="staff_municipality"
     )
 
-    zone_id = models.ForeignKey(
-        Zone,
+    corporation_id = models.ForeignKey(
+        Corporation,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        db_column="zone_id",
-        related_name="staff_zone"
+        db_column="corporation_id",
+        related_name="staff_corporation"
     )
 
-    ward_id = models.ForeignKey(
-        Ward,
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        db_column="ward_id",
-        related_name="staff_ward"
+        db_column="town_panchayat_id",
+        related_name="staff_town_panchayat"
+    )
+
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="panchayat_union_id",
+        related_name="staff_panchayat_union"
+    )
+
+    panchayat_id = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="panchayat_id",
+        related_name="staff_panchayat"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

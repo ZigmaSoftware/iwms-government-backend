@@ -464,6 +464,7 @@ def permission_querysets(
     usertype_unique_id=None,
     staffusertype_unique_id=None,
     contractorusertype_unique_id=None,
+    governmentusertype_unique_id=None,
     include_all=False,
     **_unused,
 ):
@@ -476,6 +477,7 @@ def permission_querysets(
         "userscreenaction_id",
         "staffusertype_id",
         "contractorusertype_id",
+        "governmentusertype_id",
     )
     column_queryset = CompanyUserScreenColumnPermission.objects.filter(
         is_active=True,
@@ -486,6 +488,7 @@ def permission_querysets(
         "column_id",
         "staffusertype_id",
         "contractorusertype_id",
+        "governmentusertype_id",
     )
 
     if include_all:
@@ -501,9 +504,12 @@ def permission_querysets(
         filters["staffusertype_id_id"] = staffusertype_unique_id
     elif contractorusertype_unique_id:
         filters["contractorusertype_id_id"] = contractorusertype_unique_id
+    elif governmentusertype_unique_id:
+        filters["governmentusertype_id_id"] = governmentusertype_unique_id
     else:
         filters["staffusertype_id__isnull"] = True
         filters["contractorusertype_id__isnull"] = True
+        filters["governmentusertype_id__isnull"] = True
 
     return action_queryset.filter(**filters), column_queryset.filter(**filters)
 

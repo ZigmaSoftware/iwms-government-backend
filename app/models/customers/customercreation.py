@@ -3,14 +3,15 @@ from app.utils.base_models import BaseMaster
 from app.models.common_masters.country import Country
 from app.models.common_masters.state import State
 from app.models.masters.district import District
-from app.models.masters.city import City
-from app.models.masters.zone import Zone
-from app.models.masters.ward import Ward
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.utils.comfun import generate_unique_id
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.utils.customer_qr import (
     QR_SUBPROPERTY_APARTMENT,
     generate_customer_qr_content,
@@ -92,9 +93,6 @@ class CustomerCreation(BaseMaster):
     street = models.CharField(max_length=100, null=True, blank=True)
     area = models.CharField(max_length=50, null=True, blank=True)
 
-    ward = models.ForeignKey(Ward, on_delete=models.PROTECT, related_name='customer_creation', blank=True, null=True)
-    zone = models.ForeignKey(Zone, on_delete=models.PROTECT, related_name='customer_creation', blank=True, null=True)
-    city = models.ForeignKey(City, on_delete=models.PROTECT, related_name='customer_creation', blank=True, null=True)
     district = models.ForeignKey(District, on_delete=models.PROTECT, related_name='customer_creation', blank=True, null=True)
     state = models.ForeignKey(State, on_delete=models.PROTECT, related_name='customer_creation')
     country = models.ForeignKey(Country, on_delete=models.PROTECT, related_name='customer_creation')
@@ -137,6 +135,38 @@ class CustomerCreation(BaseMaster):
         db_column="panchayat_id",
         blank=True,
         null=True
+    )
+    corporation_id = models.ForeignKey(
+        Corporation,
+        on_delete=models.PROTECT,
+        related_name="customer_creations",
+        db_column="corporation_id",
+        blank=True,
+        null=True,
+    )
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="customer_creations",
+        db_column="municipality_id",
+        blank=True,
+        null=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        related_name="customer_creations",
+        db_column="town_panchayat_id",
+        blank=True,
+        null=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        related_name="customer_creations",
+        db_column="panchayat_union_id",
+        blank=True,
+        null=True,
     )
 
     sqft = models.DecimalField(
@@ -236,11 +266,7 @@ class CustomerCreation(BaseMaster):
         ordering = ["customer_name"]
 
     def __str__(self):
-        location = (
-            self.zone.name if self.zone else
-            self.city.name if self.city else
-            self.state.name
-        )
+        location = getattr(self.district, "name", None) or getattr(self.state, "name", "")
         return f"{self.customer_name} ({location})"
 
     def delete(self, *args, **kwargs):

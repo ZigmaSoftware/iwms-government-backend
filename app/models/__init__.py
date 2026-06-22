@@ -15,15 +15,15 @@ from .common_masters.state import State
 # GROUP: MASTERS
 # ============================================================
 from .masters.district import District
-from .masters.city import City
-from .masters.zone import Zone
-from .masters.ward import Ward
 from .masters.department import Department
 from .masters.designation import Designation
 from .masters.panchayat_leader_login import PanchayatLeaderLogin
+from .masters.areatype import AreaType
+from .masters.corporation import Corporation
 from .masters.municipality import Municipality
 from .masters.town_panchayat import TownPanchayat
-from .masters.block_panchayat_union import BlockPanchayatUnion
+from .masters.panchayat_union import PanchayatUnion
+from .masters.panchayat import Panchayat
 
 
 # ============================================================
@@ -49,6 +49,7 @@ from .waste_types.subproperty import SubProperty
 # ============================================================
 from .role_assigns.userType import UserType
 from .role_assigns.staffUserType import StaffUserType
+from .role_assigns.governmentStaffUserType import GovernmentStaffUserType
 
 
 # ============================================================
@@ -85,8 +86,6 @@ from .user_creations.loginAudit import LoginAudit
 from .user_creations.auditlog import AuditLog
 from app.utils.common_audit import CommonAudit
 from .audits.permission_audit import PermissionAuditLog
-from .audits.supervisor_zone_access_audit import SupervisorZoneAccessAudit
-from .user_creations.supervisor_zone_map import SupervisorZoneMap
 
 
 # ============================================================
@@ -149,15 +148,15 @@ __all__ = [
 
     # Masters
     "District",
-    "City",
-    "Zone",
-    "Ward",
+    "AreaType",
+    "Corporation",
     "Department",
     "Designation",
     "PanchayatLeaderLogin",
     "Municipality",
     "TownPanchayat",
-    "BlockPanchayatUnion",
+    "PanchayatUnion",
+    "Panchayat",
 
     # Assets
     "Fuel",
@@ -172,6 +171,7 @@ __all__ = [
     # Users & Roles
     "UserType",
     "StaffUserType",
+    "GovernmentStaffUserType",
 
     # Screen Management
     "MainScreenType",
@@ -188,7 +188,6 @@ __all__ = [
     "StaffPersonalDetails",
     "StaffTemplate",
     "AlternativeStaffTemplate",
-    "SupervisorZoneMap",
     "UnassignedStaffPool",
 
     # Auth / Audit
@@ -225,7 +224,6 @@ __all__ = [
 
     # Audits
     "PermissionAuditLog",
-    "SupervisorZoneAccessAudit",
 
     # Daily Trip Assignment
     "DailyTripAssignment",

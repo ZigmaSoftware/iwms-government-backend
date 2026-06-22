@@ -5,7 +5,7 @@ Data source: DailyTripLog (Submitted + Verified logs only)
   actual_weight_kg  = Sum(collected_weight_kg) per (month, panchayat, waste_type)
                       OR household_collected_weight_kg when source=household
                       OR both combined when source=all
-  agreed_weight_kg  = Panchayat.agreed_weight_kg × COUNT(DISTINCT trip_date)
+  agreed_weight_kg  = 0 unless stored monthly target rows are managed separately
   total_trips       = Count of trip logs in the group
   points_covered    = Count of distinct collection_point_id in the group
 
@@ -136,7 +136,6 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             "trip_date__month",
             "panchayat_id",
             "panchayat_id__panchayat_name",
-            "panchayat_id__agreed_weight_kg",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
@@ -147,10 +146,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             month_val = row["trip_date__month"]
             month_str = f"{year_val}-{month_val:02d}"
 
-            # Monthly agreed = daily target × number of trip-days this month
-            agreed_per_day = decimal_value(row["panchayat_id__agreed_weight_kg"])
-            trip_days      = int(row["distinct_trip_days"] or 0)
-            agreed         = agreed_per_day * Decimal(str(trip_days))
+            agreed = ZERO
 
             actual      = decimal_value(row["total_actual_weight"])
             variance    = actual - agreed

@@ -5,11 +5,12 @@ from django.db import models
 from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.city import City
 from app.models.masters.district import District
-from app.models.masters.zone import Zone
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
@@ -25,6 +26,15 @@ def generate_trip_plan_id():
 
 class TripPlan(BaseMaster):
     """Single source of truth for route + trip configuration."""
+
+    COLLECTION_TYPE_BIN = "bin_collection"
+    COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
+    COLLECTION_TYPE_CHOICES = [
+        (COLLECTION_TYPE_BIN, "Secondary Collection Point"),
+        (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
+    ]
 
     class ApprovalStatus(models.TextChoices):
         PENDING  = "PENDING",  "Pending"
@@ -59,21 +69,6 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
     )
-    city_id = models.ForeignKey(
-        City,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-    )
-    zone_id = models.ForeignKey(
-        Zone,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
-    )
-    # panchayat XOR ward mirrors Collection_point.clean() logic.
     panchayat_id = models.ForeignKey(
         Panchayat,
         on_delete=models.PROTECT,
@@ -82,15 +77,38 @@ class TripPlan(BaseMaster):
         null=True,
         blank=True,
     )
-    ward_id = models.ForeignKey(
-        Ward,
+    corporation_id = models.ForeignKey(
+        Corporation,
         on_delete=models.PROTECT,
         to_field="unique_id",
         related_name="trip_plans",
         null=True,
         blank=True,
     )
-
+    municipality_id = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        related_name="trip_plans",
+        null=True,
+        blank=True,
+    )
+    town_panchayat_id = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        related_name="trip_plans",
+        null=True,
+        blank=True,
+    )
+    panchayat_union_id = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.PROTECT,
+        to_field="unique_id",
+        related_name="trip_plans",
+        null=True,
+        blank=True,
+    )
     # ---- WHO -------------------------------------------------------
     staff_template_id = models.ForeignKey(
         StaffTemplate,
@@ -110,6 +128,8 @@ class TripPlan(BaseMaster):
         on_delete=models.PROTECT,
         to_field="staff_unique_id",
         related_name="trip_plans",
+        null=True,
+        blank=True,
     )
 
     # ---- WHAT ------------------------------------------------------
@@ -119,6 +139,8 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
         db_column="property_id",
+        null=True,
+        blank=True,
     )
     sub_property_id = models.ForeignKey(
         SubProperty,
@@ -126,6 +148,8 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
         db_column="sub_property_id",
+        null=True,
+        blank=True,
     )
     waste_type_id = models.ForeignKey(
         WasteType,
@@ -133,11 +157,31 @@ class TripPlan(BaseMaster):
         to_field="unique_id",
         related_name="trip_plans",
         db_column="waste_type_id",
+        null=True,
+        blank=True,
+    )
+    # Supports multiple waste types per trip plan (e.g. household + bulk)
+    waste_types = models.ManyToManyField(
+        WasteType,
+        related_name="trip_plans_multi",
+        blank=True,
+        help_text="Multiple waste types handled by this trip plan.",
+    )
+    collection_type = models.CharField(
+        max_length=30,
+        choices=COLLECTION_TYPE_CHOICES,
+        default=COLLECTION_TYPE_BIN,
+        db_index=True,
+        help_text="One Trip Plan can generate only one category of daily work.",
     )
     trip_trigger_weight_kg = models.PositiveIntegerField(
+        null=True,
+        blank=True,
         help_text="Collected weight (kg) that triggers a trip dispatch.",
     )
     max_vehicle_capacity_kg = models.PositiveIntegerField(
+        null=True,
+        blank=True,
         help_text="Hard ceiling for vehicle load (kg).",
     )
 
@@ -177,19 +221,14 @@ class TripPlan(BaseMaster):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
+            models.Index(fields=["collection_type"]),
             models.Index(fields=["status", "approval_status"]),
             models.Index(fields=["display_code"]),
-            models.Index(fields=["district_id", "city_id"]),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                # Mirrors Collection_point: must have panchayat OR ward, not both, not neither
-                check=(
-                    models.Q(panchayat_id__isnull=False, ward_id__isnull=True) |
-                    models.Q(panchayat_id__isnull=True,  ward_id__isnull=False)
-                ),
-                name="trip_plan_panchayat_xor_ward",
-            )
+            models.Index(fields=["district_id", "panchayat_id"]),
+            models.Index(fields=["district_id", "corporation_id"]),
+            models.Index(fields=["district_id", "municipality_id"]),
+            models.Index(fields=["district_id", "town_panchayat_id"]),
+            models.Index(fields=["district_id", "panchayat_union_id"]),
         ]
 
     def _generate_display_code(self):

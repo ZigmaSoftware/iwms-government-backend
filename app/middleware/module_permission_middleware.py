@@ -82,11 +82,12 @@ MODULE_RESOURCE_ALLOWLIST = {
     },
     "masters": {
         "District",
-        "City",
-        "Zone",
-        "Ward",
         "Panchayat",
         "AreaType",
+        "Corporation",
+        "Municipality",
+        "TownPanchayat",
+        "PanchayatUnion",
         "AdministrativeHierarchy",
         "Department",
         "Designation",
@@ -122,13 +123,9 @@ MODULE_RESOURCE_ALLOWLIST = {
         "StaffCreation",
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
-        "supervisor-zone-map",
         "UnassignedStaffPool",
     },
-    "process-items": {
-        
-        "ZonePropertyLoadTracker",
-    },
+    "process-items": set(),
     "customer-masters": {
         "CustomerCreation",
         "WasteCollection",
@@ -162,7 +159,6 @@ MODULE_RESOURCE_ALLOWLIST = {
     "audits": {
         "VehicleTripAudit",
         "TripExceptionLog",
-        "SupervisorZoneAccessAudit",
         "StaffTemplateAuditLog",
         "LoginAudit",
         "CommonAudit",
@@ -302,10 +298,12 @@ def _permission_filters_for_user(user):
     usertype = getattr(user, "user_type_id", None)
     staffusertype = getattr(user, "staffusertype_id", None)
     contractorusertype = getattr(user, "contractorusertype_id", None)
+    governmentusertype = getattr(user, "governmentusertype_id", None)
 
     usertype_unique_id = getattr(usertype, "unique_id", None)
     staffusertype_unique_id = getattr(staffusertype, "unique_id", None)
     contractorusertype_unique_id = getattr(contractorusertype, "unique_id", None)
+    governmentusertype_unique_id = getattr(governmentusertype, "unique_id", None)
 
     if not usertype_unique_id:
         return None
@@ -314,6 +312,7 @@ def _permission_filters_for_user(user):
         "usertype_unique_id": usertype_unique_id,
         "staffusertype_unique_id": staffusertype_unique_id,
         "contractorusertype_unique_id": contractorusertype_unique_id,
+        "governmentusertype_unique_id": governmentusertype_unique_id,
     }
 
 

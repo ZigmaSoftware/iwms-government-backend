@@ -86,12 +86,14 @@ class LoginViewSet(ViewSet):
             )
             role = "superadmin" if getattr(user, "is_superuser", False) else "platform"
             email = getattr(user, "email", None)
-        elif user_type in ["staff", "contractor"]:
-            # Staff/contractor login
+        elif user_type in ["staff", "contractor", "government"]:
+            # Staff/contractor/government login
             target = profile_object or user
             name = getattr(target, "employee_name", None) or getattr(user, "username", None)
             if user_type == "contractor":
                 role_type = getattr(target, "contractorusertype_id", None) or getattr(user, "contractorusertype_id", None)
+            elif user_type == "government":
+                role_type = getattr(target, "governmentusertype_id", None) or getattr(user, "governmentusertype_id", None)
             else:
                 role_type = getattr(target, "staffusertype_id", None) or getattr(user, "staffusertype_id", None)
 

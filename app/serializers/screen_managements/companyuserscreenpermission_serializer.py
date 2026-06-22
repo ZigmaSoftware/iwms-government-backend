@@ -14,6 +14,7 @@ from app.models.screen_managements.userscreenaction import UserScreenAction
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 
 
 SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "show", "view"}
@@ -28,6 +29,7 @@ class UserScreenPermissionSerializer(serializers.ModelSerializer):
         source="contractorusertype_id.name",
         read_only=True,
     )
+    governmentusertype_name = serializers.SerializerMethodField()
     mainscreen_name = serializers.CharField(source="mainscreen_id.mainscreen_name", read_only=True)
 
     class Meta:
@@ -41,18 +43,42 @@ class UserScreenPermissionSerializer(serializers.ModelSerializer):
         contractorusertype = getattr(obj, "contractorusertype_id", None)
         if contractorusertype:
             return contractorusertype.name
+        governmentusertype = getattr(obj, "governmentusertype_id", None)
+        if governmentusertype:
+            if hasattr(governmentusertype, "get_name_display"):
+                return governmentusertype.get_name_display()
+            return governmentusertype.name
         return None
+
+    def get_governmentusertype_name(self, obj):
+        governmentusertype = getattr(obj, "governmentusertype_id", None)
+        if not governmentusertype:
+            return None
+        if hasattr(governmentusertype, "get_name_display"):
+            return governmentusertype.get_name_display()
+        return governmentusertype.name
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         contractorusertype_id = data.get("contractorusertype_id")
+        governmentusertype_id = data.get("governmentusertype_id")
 
         if contractorusertype_id and not data.get("staffusertype_id"):
             data["staffusertype_id"] = contractorusertype_id
             data["staffUserTypeId"] = contractorusertype_id
+        if governmentusertype_id and not data.get("staffusertype_id"):
+            data["staffusertype_id"] = governmentusertype_id
+            data["staffUserTypeId"] = governmentusertype_id
 
         data["contractorUserTypeId"] = contractorusertype_id
-        data["permission_for"] = "contractor" if contractorusertype_id else "staff"
+        data["governmentUserTypeId"] = governmentusertype_id
+        data["permission_for"] = (
+            "government"
+            if governmentusertype_id
+            else "contractor"
+            if contractorusertype_id
+            else "staff"
+        )
         return data
 
 
@@ -134,6 +160,16 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         allow_null=True,
         allow_blank=True,
     )
+    governmentusertype_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+    governmentUserTypeId = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
 
     def validate(self, data):
         data["staffusertype_id"] = (
@@ -152,12 +188,24 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             or data.get("contractorUserTypeId")
             or ""
         ).strip() or None
+        data["governmentusertype_id"] = (
+            data.get("governmentusertype_id")
+            or data.get("governmentUserTypeId")
+            or ""
+        ).strip() or None
         if data["staffusertype_id"] and not data["contractorusertype_id"]:
             if str(data["staffusertype_id"]).startswith("CNTUSRTYPE-") or ContractorUserType.objects.filter(
                 unique_id=data["staffusertype_id"],
                 is_deleted=False,
             ).exists():
                 data["contractorusertype_id"] = data["staffusertype_id"]
+                data["staffusertype_id"] = None
+        if data["staffusertype_id"] and not data["governmentusertype_id"]:
+            if str(data["staffusertype_id"]).startswith("GOVTUSRTYPE-") or GovernmentStaffUserType.objects.filter(
+                unique_id=data["staffusertype_id"],
+                is_deleted=False,
+            ).exists():
+                data["governmentusertype_id"] = data["staffusertype_id"]
                 data["staffusertype_id"] = None
         data["mainscreen_id"] = (data.get("mainscreen_id") or data.get("mainScreenId") or "").strip()
         data["screens"] = data.get("screens") or data.get("userScreens") or []
@@ -197,9 +245,24 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     "contractorusertype_id": "Invalid contractorusertype"
                 })
 
-        if staffusertype and contractorusertype:
+        governmentusertype = None
+        if data["governmentusertype_id"]:
+            try:
+                governmentusertype = GovernmentStaffUserType.objects.get(
+                    unique_id=data["governmentusertype_id"],
+                    is_deleted=False,
+                )
+            except GovernmentStaffUserType.DoesNotExist:
+                raise serializers.ValidationError({
+                    "governmentusertype_id": "Invalid governmentusertype"
+                })
+
+        selected_role_count = sum(
+            bool(role) for role in (staffusertype, contractorusertype, governmentusertype)
+        )
+        if selected_role_count > 1:
             raise serializers.ValidationError({
-                "permission_for": "Use either staffusertype_id or contractorusertype_id, not both."
+                "permission_for": "Use only one of staffusertype_id, contractorusertype_id, or governmentusertype_id."
             })
         if staffusertype and usertype and staffusertype.usertype_id_id != usertype.unique_id:
             raise serializers.ValidationError({
@@ -208,6 +271,10 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         if contractorusertype and usertype and contractorusertype.usertype_id_id != usertype.unique_id:
             raise serializers.ValidationError({
                 "contractorusertype_id": "Contractor usertype does not belong to selected usertype."
+            })
+        if governmentusertype and usertype and governmentusertype.usertype_id_id != usertype.unique_id:
+            raise serializers.ValidationError({
+                "governmentusertype_id": "Government usertype does not belong to selected usertype."
             })
 
         try:
@@ -340,6 +407,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         data["resolved_contractorusertype_id"] = (
             contractorusertype.unique_id if contractorusertype else None
         )
+        data["resolved_governmentusertype_id"] = (
+            governmentusertype.unique_id if governmentusertype else None
+        )
         data["resolved_mainscreen_id"] = mainscreen.unique_id
         return data
 
@@ -349,6 +419,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         staffusertype_id = validated_data["resolved_staffusertype_id"]
         contractorusertype_id = validated_data.get(
             "resolved_contractorusertype_id"
+        )
+        governmentusertype_id = validated_data.get(
+            "resolved_governmentusertype_id"
         )
         mainscreen_id = validated_data["resolved_mainscreen_id"]
         screens = validated_data["screens"]
@@ -364,6 +437,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             usertype_id_id=usertype_id,
             staffusertype_id_id=staffusertype_id,
             contractorusertype_id_id=contractorusertype_id,
+            governmentusertype_id_id=governmentusertype_id,
             mainscreen_id_id=mainscreen_id,
         )
         existing_lookup = {
@@ -404,6 +478,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     usertype_id_id=usertype_id,
                     staffusertype_id_id=staffusertype_id,
                     contractorusertype_id_id=contractorusertype_id,
+                    governmentusertype_id_id=governmentusertype_id,
                     mainscreen_id_id=mainscreen_id,
                     userscreen_id_id=screen_id,
                     userscreenaction_id_id=action_id,
@@ -419,6 +494,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     usertype_id=usertype_id,
                     staffusertype_id=staffusertype_id,
                     contractorusertype_id=contractorusertype_id,
+                    governmentusertype_id=governmentusertype_id,
                     userscreen_id=screen_id,
                     column_permissions=screen.get("columnPermissions"),
                     column_ids=screen["columnIds"],
@@ -450,6 +526,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         usertype_id,
         staffusertype_id,
         contractorusertype_id,
+        governmentusertype_id,
         userscreen_id,
         column_ids,
         column_permissions,
@@ -461,6 +538,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 usertype_id_id=usertype_id,
                 staffusertype_id_id=staffusertype_id,
                 contractorusertype_id_id=contractorusertype_id,
+                governmentusertype_id_id=governmentusertype_id,
                 userscreen_id_id=userscreen_id,
             )
         }
@@ -496,6 +574,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     usertype_id_id=usertype_id,
                     staffusertype_id_id=staffusertype_id,
                     contractorusertype_id_id=contractorusertype_id,
+                    governmentusertype_id_id=governmentusertype_id,
                     userscreen_id_id=userscreen_id,
                     column_id_id=column_id,
                     can_view=can_view,

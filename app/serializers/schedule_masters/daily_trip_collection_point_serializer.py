@@ -8,6 +8,7 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 )
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import hierarchy_payload
 
 
 class DailyTripCollectionPointSerializer(
@@ -37,6 +38,7 @@ class DailyTripCollectionPointSerializer(
     collection_point = serializers.SerializerMethodField()
     bin = serializers.SerializerMethodField()
     collected_by_staff = serializers.SerializerMethodField()
+    hierarchy = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyTripCollectionPoint
@@ -46,9 +48,12 @@ class DailyTripCollectionPointSerializer(
             "trip_assignment",
             "collection_point_id",
             "collection_point",
-            "zone_id",
-            "ward_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
+            "hierarchy",
             "bin_id",
             "bin",
             "sequence",
@@ -67,8 +72,10 @@ class DailyTripCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "zone_id",
-            "ward_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
             "created_at",
             "updated_at",
@@ -99,13 +106,11 @@ class DailyTripCollectionPointSerializer(
             "cp_name": cp.cp_name,
             "latitude": cp.latitude,
             "longitude": cp.longitude,
-            "panchayat_id": getattr(cp.panchayat_id, "unique_id", None),
-            "panchayat_name": getattr(cp.panchayat_id, "panchayat_name", None),
-            "ward_id": getattr(cp.ward_id, "unique_id", None),
-            "ward_name": getattr(cp.ward_id, "ward_name", None),
-            "zone_id": getattr(getattr(cp.ward_id, "zone_id", None), "unique_id", None),
-            "zone_name": getattr(getattr(cp.ward_id, "zone_id", None), "zone_name", None),
+            **hierarchy_payload(cp),
         }
+
+    def get_hierarchy(self, obj):
+        return hierarchy_payload(obj)
 
     def get_bin(self, obj):
         bin_obj = obj.bin_id
