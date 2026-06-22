@@ -5,6 +5,7 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.companyuserscreencolumnpermission import (
@@ -53,6 +54,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
             "usertype_id",
             "staffusertype_id",
             "contractorusertype_id",
+            "governmentusertype_id",
             "userscreen_id",
             "column_id",
         )
@@ -71,6 +73,13 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         )
         if contractorusertype_id:
             qs = qs.filter(contractorusertype_id_id=contractorusertype_id)
+
+        governmentusertype_id = (
+            self.request.query_params.get("governmentusertype_id")
+            or self.request.query_params.get("governmentUserTypeId")
+        )
+        if governmentusertype_id:
+            qs = qs.filter(governmentusertype_id_id=governmentusertype_id)
 
         return qs
 
@@ -131,6 +140,13 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
                 unique_id=contractorusertype_id_str
             ).first()
 
+        governmentusertype = None
+        governmentusertype_id_str = vd.get("governmentusertype_id") or ""
+        if governmentusertype_id_str:
+            governmentusertype = GovernmentStaffUserType.objects.filter(
+                unique_id=governmentusertype_id_str
+            ).first()
+
         usertype = None
         usertype_id_str = vd.get("usertype_id") or ""
         if usertype_id_str:
@@ -142,6 +158,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
             instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
                 staffusertype_id=staffusertype,
                 contractorusertype_id=contractorusertype,
+                governmentusertype_id=governmentusertype,
                 usertype_id=usertype,
                 userscreen_id=userscreen,
                 column_id=column,

@@ -1,4 +1,3 @@
-# seeders/masters/state.py
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.common_masters.continent import Continent
 from app.models.common_masters.country import Country
@@ -10,21 +9,11 @@ class StateSeeder(BaseSeeder):
 
     # (state_name, label)
     STATES = [
-        ("Tamil Nadu",      "TN"),
-        ("Karnataka",       "KA"),
-        ("Kerala",          "KL"),
-        ("Andhra Pradesh",  "AP"),
-        ("Telangana",       "TS"),
-        ("Maharashtra",     "MH"),
-        ("Gujarat",         "GJ"),
-        ("Rajasthan",       "RJ"),
-        ("Uttar Pradesh",   "UP"),
-        ("Madhya Pradesh",  "MP"),
-        ("West Bengal",     "WB"),
-        ("Bihar",           "BR"),
-        ("Punjab",          "PB"),
-        ("Haryana",         "HR"),
-        ("Delhi",           "DL"),
+        ("Tamil Nadu",     "TN"),
+        ("Karnataka",      "KA"),
+        ("Kerala",         "KL"),
+        ("Andhra Pradesh", "AP"),
+        ("Telangana",      "TS"),
     ]
 
     def run(self):

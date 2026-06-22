@@ -13,25 +13,6 @@ class AuditViewSetMixin:
     AUDIT_ENDPOINT = None
     AUDIT_REDACT_FIELDS = set()
 
-    @classmethod
-    def get_extra_actions(cls):
-        """
-        Provide compatibility with DRF routers which call
-        ``viewset.get_extra_actions()`` on the viewset class. If a
-        superclass provides this method, delegate to it; otherwise
-        return an empty list.
-        """
-        for base in cls.__mro__[1:]:
-            if hasattr(base, "get_extra_actions"):
-                try:
-                    return base.get_extra_actions()
-                except Exception:
-                    # If superclass method exists but fails, ignore and
-                    # continue to next base.
-                    continue
-
-        return []
-
     def get_audit_object_id(self, instance):
 
         possible_fields = [

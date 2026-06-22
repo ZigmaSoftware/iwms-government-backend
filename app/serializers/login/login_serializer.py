@@ -78,6 +78,7 @@ class LoginSerializer(serializers.Serializer):
         usertype_unique_id=None,
         staffusertype_unique_id=None,
         contractorusertype_unique_id=None,
+        governmentusertype_unique_id=None,
         include_all=False,
         role_name=None,
         user_type=None,
@@ -86,6 +87,7 @@ class LoginSerializer(serializers.Serializer):
             usertype_unique_id=usertype_unique_id,
             staffusertype_unique_id=staffusertype_unique_id,
             contractorusertype_unique_id=contractorusertype_unique_id,
+            governmentusertype_unique_id=governmentusertype_unique_id,
             include_all=include_all,
             role_name=role_name,
             user_type=user_type,
@@ -170,14 +172,15 @@ class LoginSerializer(serializers.Serializer):
         if not user_type:
             raise serializers.ValidationError("Invalid user type")
 
-        allowed_roles = ["staff", "contractor"]
+        allowed_roles = ["staff", "contractor", "government"]
 
         if user_type.name.lower() not in allowed_roles:
             raise serializers.ValidationError("Unsupported user role type")
 
         staff_usertype = getattr(staff_record, "staffusertype_id", None) or getattr(login_user, "staffusertype_id", None)
         contractor_usertype = getattr(staff_record, "contractorusertype_id", None) or getattr(login_user, "contractorusertype_id", None)
-        role_usertype = staff_usertype or contractor_usertype
+        government_usertype = getattr(staff_record, "governmentusertype_id", None) or getattr(login_user, "governmentusertype_id", None)
+        role_usertype = staff_usertype or contractor_usertype or government_usertype
 
         if not role_usertype:
             raise serializers.ValidationError("Staff role not assigned")
@@ -186,8 +189,9 @@ class LoginSerializer(serializers.Serializer):
             usertype_unique_id=user_type.unique_id,
             staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
             contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
+            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
             role_name=role_usertype.name,
-            user_type="contractor" if contractor_usertype else "staff",
+            user_type="government" if government_usertype else "contractor" if contractor_usertype else "staff",
         )
         permissions = permission_payload["permissions"]
 
@@ -197,7 +201,7 @@ class LoginSerializer(serializers.Serializer):
                 permission_payload,
                 permissions=permissions,
                 role_name=role_usertype.name,
-                user_type="contractor" if contractor_usertype else "staff",
+                user_type="government" if government_usertype else "contractor" if contractor_usertype else "staff",
             )
 
         password_expired = _is_password_expired(getattr(staff_record, "password_crt_date", None))
@@ -212,9 +216,10 @@ class LoginSerializer(serializers.Serializer):
             "landing": permission_payload["landing"],
             "permission_version": permission_payload["permission_version"],
             "generated_at": permission_payload["generated_at"],
-            "user_type": "contractor" if contractor_usertype else "staff",
+            "user_type": "government" if government_usertype else "contractor" if contractor_usertype else "staff",
             "staffusertype_id": staff_usertype.unique_id if staff_usertype else None,
             "contractorusertype_id": contractor_usertype.unique_id if contractor_usertype else None,
+            "governmentusertype_id": government_usertype.unique_id if government_usertype else None,
             "profile_object": staff_record,
             "password_expired": password_expired,
         }
@@ -312,7 +317,7 @@ class LoginSerializer(serializers.Serializer):
 
         queryset = (
             Staffcreation.objects
-            .select_related("user_type_id", "staffusertype_id", "contractorusertype_id", "personal_details")
+            .select_related("user_type_id", "staffusertype_id", "contractorusertype_id", "governmentusertype_id", "personal_details")
             .filter(is_active=True, is_deleted=False)
             .filter(lookup_filters)
         )
@@ -353,6 +358,7 @@ class LoginSerializer(serializers.Serializer):
                 "staff_id__user_type_id",
                 "staff_id__staffusertype_id",
                 "staff_id__contractorusertype_id",
+                "staff_id__governmentusertype_id",
                 "user_type_id",
                 "staffusertype_id",
             )
