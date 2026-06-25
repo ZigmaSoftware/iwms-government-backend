@@ -1,3 +1,7 @@
+from datetime import timedelta
+
+from django.utils import timezone
+
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.schedule_masters.staff_template import StaffTemplate
@@ -26,10 +30,14 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
             return
 
         count = 0
+        updated = 0
+        base_date = timezone.localdate()
         for idx, (driver_username, operator_username, change_reason) in enumerate(
             self.ALT_ASSIGNMENTS
         ):
             template = templates[idx % templates.count()]
+            from_date = base_date + timedelta(days=idx + 1)
+            to_date = from_date + timedelta(days=6)
 
             driver = StaffcreationOfficeDetails.objects.filter(
                 username=driver_username, is_deleted=False
@@ -42,17 +50,28 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 self.log(f"Staff not found for alt template {idx + 1} — skipping.")
                 continue
 
-            if AlternativeStaffTemplate.objects.filter(staff_template=template).exists():
-                self.log(f"Alt template for '{template.display_code}' already exists — skipping.")
+            existing = AlternativeStaffTemplate.objects.filter(staff_template=template).first()
+            if existing:
+                existing.driver_id = driver
+                existing.operator_id = operator
+                existing.change_reason = change_reason
+                existing.from_date = existing.from_date or from_date
+                existing.to_date = existing.to_date or to_date
+                existing.approval_status = "APPROVED"
+                existing.save()
+                updated += 1
+                self.log(f"Updated alt template for '{template.display_code}'.")
                 continue
 
             AlternativeStaffTemplate.objects.create(
                 staff_template=template,
                 driver_id=driver,
                 operator_id=operator,
+                from_date=from_date,
+                to_date=to_date,
                 change_reason=change_reason,
                 approval_status="APPROVED",
             )
             count += 1
 
-        self.log(f"---Alternative staff templates seeded ({count} created)---")
+        self.log(f"---Alternative staff templates seeded ({count} created, {updated} updated)---")
