@@ -251,6 +251,7 @@ router.register_group("schedule-masters", "monthly-waste-comparison", MonthlyWas
 # GROUP: REPORTS (aliases used by the admin frontend)
 # ============================================================
 router.register_group("reports", "monthly-waste-comparison", MonthlyWasteComparisonReportViewSet, basename="reports-monthly-waste-comparison")
+router.register_group("reports", "daily-waste-comparisons", DailyWasteComparisonViewSet, basename="reports-daily-waste-comparisons")
 
 # ============================================================
 # GROUP: AUDIT

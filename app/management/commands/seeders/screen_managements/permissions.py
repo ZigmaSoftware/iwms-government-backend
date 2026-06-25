@@ -35,7 +35,7 @@ class PermissionSeeder(BaseSeeder):
         # Schedule Operations
         ("Schedule Operations", "Daily Trip Assignment",          "event",          1, "Assign daily trips to staff"),
         ("Schedule Operations", "Daily Trip Collection Point",    "location_on",    2, "Track daily collection point visits"),
-        ("Schedule Operations", "Daily Trip Household Collection","home",           3, "Household-level daily waste collection"),
+        ("Schedule Operations", "Daily Trip Household Collection","home_work",       3, "Household-level daily waste collection"),
         ("Schedule Operations", "Daily Trip Tracking",            "track_changes",  4, "Live tracking of daily trips"),
         ("Schedule Operations", "Bin Collection Event",           "recycling",      5, "Secondary bin pickup events"),
         ("Schedule Operations", "Daily Trip Log",                 "list_alt",       6, "Daily trip execution logs"),
@@ -45,7 +45,7 @@ class PermissionSeeder(BaseSeeder):
         ("Schedule Reports", "Monthly Waste Comparison", "analytics",   2, "Monthly aggregated waste report"),
 
         # Reports
-        ("Reports", "Waste Reports", "bar_chart", 1, "View waste collection reports"),
+        ("Reports", "Waste Reports", "summarize", 1, "View waste collection reports"),
 
         # Settings
         ("Settings", "System Settings", "settings", 1, "Application settings"),
