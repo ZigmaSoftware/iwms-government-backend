@@ -32,8 +32,8 @@ db.sqlite3
 *.sqlite3
 
 # === Environment files ===
-.env
-.env.*
+# .env
+# .env.*
 
 # === IDE and System files ===
 .vscode/

@@ -8,6 +8,58 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
+from app.utils.hierarchy import HIERARCHY_FIELDS, selected_hierarchy_values
+
+
+def _customers_for_household_stop(stop):
+    from app.models.customers.customercreation import CustomerCreation
+
+    is_bulk_stop = stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
+    if stop.customer_id_id:
+        return CustomerCreation.objects.filter(
+            unique_id=stop.customer_id_id,
+            is_deleted=False,
+            is_bulkwaste_generator=is_bulk_stop,
+        )
+
+    hierarchy = selected_hierarchy_values(stop) or selected_hierarchy_values(stop.trip_plan_id)
+    customers = CustomerCreation.objects.filter(
+        is_deleted=False,
+        is_active=True,
+        is_bulkwaste_generator=is_bulk_stop,
+    )
+    for field in HIERARCHY_FIELDS:
+        value = hierarchy.get(field)
+        if value:
+            return customers.filter(**{field: value})
+    return CustomerCreation.objects.none()
+
+
+def _create_daily_household_collections(assignment, stop):
+    from app.models.schedule_masters.daily_trip_household_collection import (
+        DailyTripHouseholdCollection,
+    )
+
+    collection_type = (
+        DailyTripHouseholdCollection.COLLECTION_TYPE_BULK
+        if stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
+        else DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD
+    )
+    created_count = 0
+    for offset, customer in enumerate(_customers_for_household_stop(stop), start=0):
+        _, created = DailyTripHouseholdCollection.objects.get_or_create(
+            trip_assignment_id=assignment,
+            customer_id=customer,
+            collection_type=collection_type,
+            defaults={
+                "sequence": stop.sequence + offset,
+                "is_collected": False,
+                "status": DailyTripHouseholdCollection.STATUS_PENDING,
+            },
+        )
+        if created:
+            created_count += 1
+    return created_count
 
 
 @receiver(post_save, sender=DailyTripAssignment)
@@ -37,21 +89,11 @@ def copy_trip_plan_stops_to_daily_assignment(sender, instance, created, **kwargs
                 },
             )
 
-        elif stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD:
-            if not stop.customer_id_id:
-                continue
-            from app.models.schedule_masters.daily_trip_household_collection import (
-                DailyTripHouseholdCollection,
-            )
-            DailyTripHouseholdCollection.objects.get_or_create(
-                trip_assignment_id=instance,
-                customer_id=stop.customer_id,
-                defaults={
-                    "sequence": stop.sequence,
-                    "is_collected": False,
-                    "status": DailyTripHouseholdCollection.STATUS_PENDING,
-                },
-            )
+        elif stop.collection_type in {
+            TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
+            TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
+        }:
+            _create_daily_household_collections(instance, stop)
 
 
 @receiver(post_save, sender="app.WasteCollection")
@@ -71,10 +113,16 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     )
     from app.models.schedule_masters.daily_trip_log import DailyTripLog
 
+    collection_type = (
+        DailyTripHouseholdCollection.COLLECTION_TYPE_BULK
+        if getattr(instance.customer, "is_bulkwaste_generator", False)
+        else DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD
+    )
     # 1. Update / create the household collection entry
     dthc, _ = DailyTripHouseholdCollection.objects.get_or_create(
         trip_assignment_id=instance.trip_assignment_id,
         customer_id=instance.customer,
+        collection_type=collection_type,
         defaults={"status": DailyTripHouseholdCollection.STATUS_PENDING},
     )
     dthc.mark_collected(instance)

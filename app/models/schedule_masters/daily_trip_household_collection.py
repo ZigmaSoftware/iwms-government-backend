@@ -30,12 +30,18 @@ class DailyTripHouseholdCollection(BaseMaster):
     STATUS_COLLECTED = "Collected"
     STATUS_SKIPPED = "Skipped"
     STATUS_MISSED = "Missed"
+    COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_COLLECTED, "Collected"),
         (STATUS_SKIPPED, "Skipped"),
         (STATUS_MISSED, "Missed"),
+    ]
+    COLLECTION_TYPE_CHOICES = [
+        (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
     ]
 
     unique_id = models.CharField(
@@ -60,6 +66,13 @@ class DailyTripHouseholdCollection(BaseMaster):
         db_column="customer_id",
         to_field="unique_id",
         related_name="daily_trip_household_collections",
+    )
+
+    collection_type = models.CharField(
+        max_length=30,
+        choices=COLLECTION_TYPE_CHOICES,
+        default=COLLECTION_TYPE_HOUSEHOLD,
+        db_index=True,
     )
 
     # Filled when the WasteCollection record is saved for this customer + trip
@@ -143,7 +156,7 @@ class DailyTripHouseholdCollection(BaseMaster):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["trip_assignment_id", "customer_id"],
+                fields=["trip_assignment_id", "customer_id", "collection_type"],
                 name="uniq_household_per_trip_assignment",
             ),
         ]
@@ -154,7 +167,7 @@ class DailyTripHouseholdCollection(BaseMaster):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.trip_assignment_id_id}:customer:{self.customer_id_id}"
+        return f"{self.trip_assignment_id_id}:customer:{self.customer_id_id}:{self.collection_type}"
 
     def mark_collected(self, waste_collection, collected_at=None):
         from decimal import Decimal

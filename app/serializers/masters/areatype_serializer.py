@@ -1,11 +1,10 @@
-# app/api/serializers/area_type_serializer.py
-
 from rest_framework import serializers
 from app.models.masters.areatype import AreaType
+from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
-class AreaTypeSerializer(serializers.ModelSerializer):
+class AreaTypeSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
 
     state_name = serializers.CharField(source="state_id.name", read_only = True)
     district_name = serializers.CharField(source="district_id.name", read_only = True)
@@ -21,6 +20,7 @@ class AreaTypeSerializer(serializers.ModelSerializer):
             "district_name",
             "name",
             "area_type_name",
+            "coordinates",
             "is_active",
             "created_at",
             "updated_at",

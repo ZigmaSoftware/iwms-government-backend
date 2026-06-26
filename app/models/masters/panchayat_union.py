@@ -37,6 +37,7 @@ class PanchayatUnion(BaseMaster):
         db_column="area_type_id",
     )
     union_name = models.CharField(max_length=100)
+    coordinates = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

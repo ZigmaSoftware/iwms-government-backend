@@ -1,8 +1,14 @@
 from rest_framework import serializers
 from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
+from app.models.masters.municipality import Municipality
+from app.models.masters.corporation import Corporation
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 
@@ -46,6 +52,64 @@ class StaffcreationSerializer(serializers.ModelSerializer):
     )
     contractorusertype_name = serializers.CharField(
         source="contractorusertype_id.name",
+        read_only=True,
+    )
+    governmentusertype_id = serializers.PrimaryKeyRelatedField(
+        queryset=GovernmentStaffUserType.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    governmentusertype_name = serializers.CharField(
+        source="governmentusertype_id.name",
+        read_only=True,
+    )
+    governmentusertype_level = serializers.CharField(
+        source="governmentusertype_id.level",
+        read_only=True,
+    )
+    municipality_id = serializers.PrimaryKeyRelatedField(
+        queryset=Municipality.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    municipality_name = serializers.CharField(
+        source="municipality_id.municipality_name",
+        read_only=True,
+    )
+    corporation_id = serializers.PrimaryKeyRelatedField(
+        queryset=Corporation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    corporation_name = serializers.CharField(
+        source="corporation_id.corporation_name",
+        read_only=True,
+    )
+    town_panchayat_id = serializers.PrimaryKeyRelatedField(
+        queryset=TownPanchayat.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    town_panchayat_name = serializers.CharField(
+        source="town_panchayat_id.town_panchayat_name",
+        read_only=True,
+    )
+    panchayat_union_id = serializers.PrimaryKeyRelatedField(
+        queryset=PanchayatUnion.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    panchayat_union_name = serializers.CharField(
+        source="panchayat_union_id.union_name",
+        read_only=True,
+    )
+    panchayat_id = serializers.PrimaryKeyRelatedField(
+        queryset=Panchayat.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    panchayat_name = serializers.CharField(
+        source="panchayat_id.panchayat_name",
         read_only=True,
     )
     department_id = serializers.PrimaryKeyRelatedField(
@@ -229,6 +293,24 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "staffusertype_name",
             "contractorusertype_id",
             "contractorusertype_name",
+
+            # Government user type
+            "governmentusertype_id",
+            "governmentusertype_name",
+            "governmentusertype_level",
+
+            # Geographic FKs for government staff
+            "municipality_id",
+            "municipality_name",
+            "corporation_id",
+            "corporation_name",
+            "town_panchayat_id",
+            "town_panchayat_name",
+            "panchayat_union_id",
+            "panchayat_union_name",
+            "panchayat_id",
+            "panchayat_name",
+
             "approval_status",
             "login_enabled",
             "approved_by",
@@ -300,6 +382,10 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         if contractorusertype and contractorusertype.usertype_id:
             validated_data["user_type_id"] = contractorusertype.usertype_id
 
+        governmentusertype = validated_data.get("governmentusertype_id")
+        if governmentusertype and governmentusertype.usertype_id:
+            validated_data["user_type_id"] = governmentusertype.usertype_id
+
         staff = Staffcreation.objects.create(**validated_data)
 
         StaffPersonalDetails.objects.create(
@@ -327,6 +413,10 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         contractorusertype = validated_data.get("contractorusertype_id")
         if contractorusertype and contractorusertype.usertype_id:
             validated_data["user_type_id"] = contractorusertype.usertype_id
+
+        governmentusertype = validated_data.get("governmentusertype_id")
+        if governmentusertype and governmentusertype.usertype_id:
+            validated_data["user_type_id"] = governmentusertype.usertype_id
 
         staff = super().update(instance, validated_data)
 

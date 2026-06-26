@@ -53,6 +53,7 @@ from app.management.commands.seeders.schedule_masters.trip_plan import TripPlanS
 from app.management.commands.seeders.schedule_masters.trip_plan_collection_point import TripPlanCollectionPointSeeder
 from app.management.commands.seeders.schedule_masters.daily_trip_assignment import DailyTripAssignmentSeeder
 from app.management.commands.seeders.schedule_masters.daily_trip_collection_point import DailyTripCollectionPointSeeder
+from app.management.commands.seeders.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
 from app.management.commands.seeders.schedule_masters.daily_trip_log import DailyTripLogSeeder
 from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
 
@@ -142,6 +143,7 @@ SCHEDULE_MASTERS_SEEDERS = [
     TripPlanCollectionPointSeeder,  # 5. trip-plan-collection-points
     DailyTripAssignmentSeeder,      # 6. daily-trip-assignments
     DailyTripCollectionPointSeeder, # 7. daily-trip-collection-points
+    DailyTripHouseholdCollectionSeeder,
     DailyTripLogSeeder,             # 8. daily-trip-logs
     TripAttendanceSeeder,
     BinCollectionEventSeeder,       # 9. bin-collection-events
@@ -214,6 +216,7 @@ SEED_GROUPS = {
     "platform":           SUPERADMIN_SEEDERS,
     # Single-seeder shortcuts
     "bin-collection-events": [BinCollectionEventSeeder],
+    "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],
     "blue-planet":        [BluePlanetSeeder],
 }

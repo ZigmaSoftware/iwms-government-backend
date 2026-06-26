@@ -1,11 +1,12 @@
 from rest_framework import serializers
 
 from app.models.schedule_masters.collection_point import Collection_point
+from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 from app.utils.hierarchy import validate_single_hierarchy
 
 
-class CollectionPointSerializer(serializers.ModelSerializer):
+class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     state_name = serializers.CharField(source="state_id.name", read_only=True)
     district_name = serializers.CharField(source="district_id.name", read_only=True)
     panchayat_name = serializers.CharField(source="panchayat_id.panchayat_name", read_only=True)
@@ -35,6 +36,7 @@ class CollectionPointSerializer(serializers.ModelSerializer):
             "cp_name",
             "latitude",
             "longitude",
+            "coordinates",
             "is_active",
             "created_at",
             "updated_at",

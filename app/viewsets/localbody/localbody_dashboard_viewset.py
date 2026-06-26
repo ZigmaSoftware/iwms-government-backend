@@ -89,7 +89,7 @@ class LocalBodyDashboardViewSet(ViewSet):
         ).select_related("waste_type_id", "collection_point_id")
 
         monthly_data = self._monthly_report(base_qs, panchayat, month, sort)
-        daily_data   = self._daily_data(base_qs, month)
+        daily_data   = self._daily_data(base_qs, panchayat, month)
 
         return Response({
             "panchayat_name": panchayat_name,
@@ -231,7 +231,9 @@ class LocalBodyDashboardViewSet(ViewSet):
 
     # ── daily data ───────────────────────────────────────────────────────
 
-    def _daily_data(self, base_qs, month):
+    def _daily_data(self, base_qs, panchayat, month):
+        agreed_per_day = Decimal(str(getattr(panchayat, "agreed_weight_kg", 0) or 0))
+
         qs = base_qs
         if month:
             try:
@@ -259,7 +261,7 @@ class LocalBodyDashboardViewSet(ViewSet):
                 "date":              str(r["trip_date"]),
                 "waste_type":        r["waste_type_id__waste_type_name"] or "Unknown",
                 "actual_weight_kg":  float(_r(r["actual_weight_kg"])),
-                "agreed_weight_kg":  0.0,   # trip-level agreed not available per waste type
+                "agreed_weight_kg":  float(_r(agreed_per_day)),
                 "trip_count":        int(r["trip_count"] or 0),
                 "points_covered":    int(r["points_covered"] or 0),
             }
@@ -293,7 +295,6 @@ class LocalBodyDashboardViewSet(ViewSet):
                 "trip_date",
                 "waste_type_id__waste_type_name",
                 "collected_weight_kg",
-                "panchayat_id__agreed_weight_kg",
                 "log_status",
                 "collection_point_id",
             )
@@ -302,27 +303,27 @@ class LocalBodyDashboardViewSet(ViewSet):
 
         daily_rows = []
         for r in rows_raw:
-            agreed_kg = Decimal(str(r["panchayat_id__agreed_weight_kg"] or 0))
             actual_kg = Decimal(str(r["collected_weight_kg"] or 0))
-            var       = actual_kg - agreed_kg
+            variance  = actual_kg - agreed_per_day
             daily_rows.append({
                 "unique_id":                   r["unique_id"],
                 "date":                        str(r["trip_date"]),
                 "waste_type":                  r["waste_type_id__waste_type_name"] or "—",
-                "agreed_weight_kg":            float(_r(agreed_kg)),
+                "agreed_weight_kg":            float(_r(agreed_per_day)),
                 "actual_weight_kg":            float(_r(actual_kg)),
-                "variance_kg":                 float(_r(var)),
-                "variance_percent":            float(_var_pct(actual_kg, agreed_kg)),
-                "report_status":               _status(actual_kg, agreed_kg),
+                "variance_kg":                 float(_r(variance)),
+                "variance_percent":            float(_var_pct(actual_kg, agreed_per_day)),
+                "report_status":               _status(actual_kg, agreed_per_day),
                 "total_trips":                 1,
                 "collection_points_covered":   1 if r["collection_point_id"] else 0,
             })
 
-        # Daily KPIs
-        total_actual  = sum(Decimal(str(r["actual_weight_kg"])) for r in daily_rows)
-        total_agreed  = sum(Decimal(str(r["agreed_weight_kg"])) for r in daily_rows)
-        total_trips   = sum(r["total_trips"] for r in daily_rows)
-        total_points  = sum(r["collection_points_covered"] for r in daily_rows)
+        # Daily KPIs — use agreed_per_day × distinct trip dates (not sum of per-row agreed)
+        total_actual       = sum(Decimal(str(r["actual_weight_kg"])) for r in daily_rows)
+        distinct_trip_days = len(day_wise)   # number of unique dates with trips
+        total_agreed       = agreed_per_day * Decimal(str(distinct_trip_days))
+        total_trips        = sum(r["total_trips"] for r in daily_rows)
+        total_points       = sum(r["collection_points_covered"] for r in daily_rows)
 
         daily_kpis = {
             "total_actual_kg":               float(_r(total_actual)),

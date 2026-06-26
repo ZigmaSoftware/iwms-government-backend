@@ -137,13 +137,14 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             "trip_date",
             "panchayat_id",
             "panchayat_id__panchayat_name",
+            "panchayat_id__agreed_weight_kg",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
 
         rows = []
         for row in grouped_qs:
-            agreed = ZERO
+            agreed = decimal_value(row["panchayat_id__agreed_weight_kg"])
             actual = decimal_value(row["total_actual_weight"])
             variance = actual - agreed
             total_trips = int(row["total_trips"] or 0)
