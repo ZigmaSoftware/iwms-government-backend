@@ -97,6 +97,19 @@ class CustomerCreation(BaseMaster):
     state = models.ForeignKey(State, on_delete=models.PROTECT, related_name='customer_creation')
     country = models.ForeignKey(Country, on_delete=models.PROTECT, related_name='customer_creation')
 
+    # Dynamic geography: the hierarchy node this customer belongs to. Replaces
+    # the static country/state/district columns above (kept temporarily for a
+    # zero-downtime migration; remove once the gated drop migration is applied).
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="location_node_id",
+        null=True,
+        blank=True,
+    )
+
     pincode = models.CharField(max_length=10)
     latitude = models.CharField(max_length=100)
     longitude = models.CharField(max_length=100)

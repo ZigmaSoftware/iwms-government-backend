@@ -21,7 +21,7 @@ class PanchayatSeeder(BaseSeeder):
             self.log("Skipped: Tamil Nadu/Erode/Rural Local Body seed data not found.")
             return
 
-        union, _ = PanchayatUnion.objects.update_or_create(
+        PanchayatUnion.objects.update_or_create(
             state_id=tamil_nadu,
             district_id=district,
             area_type_id=area_type,
@@ -33,7 +33,6 @@ class PanchayatSeeder(BaseSeeder):
             state_id=tamil_nadu,
             district_id=district,
             area_type_id=area_type,
-            panchayat_union_id=union,
             defaults={
                 "is_active": True,
                 "is_deleted": False,

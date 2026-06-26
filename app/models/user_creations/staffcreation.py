@@ -195,6 +195,19 @@ class StaffcreationOfficeDetails(BaseMaster):
         related_name="staff_district"
     )
 
+    # Dynamic geography: the hierarchy node this staff member is scoped to.
+    # Replaces the static district_id (kept temporarily for zero-downtime
+    # migration; remove once the gated drop migration is applied).
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
+        related_name="staff_location",
+        to_field="unique_id",
+        db_column="location_node_id",
+        null=True,
+        blank=True,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

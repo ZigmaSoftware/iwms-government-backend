@@ -134,6 +134,18 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
         related_name="users_district"
     )
 
+    # Dynamic geography: the hierarchy node this user is scoped to. Replaces
+    # the static district_id (kept temporarily for zero-downtime migration).
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
+        related_name="users_location",
+        to_field="unique_id",
+        db_column="location_node_id",
+        null=True,
+        blank=True,
+    )
+
     # -----------------------------
     # SYSTEM FIELDS
     # -----------------------------

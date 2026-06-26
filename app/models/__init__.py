@@ -24,6 +24,8 @@ from .masters.municipality import Municipality
 from .masters.town_panchayat import TownPanchayat
 from .masters.panchayat_union import PanchayatUnion
 from .masters.panchayat import Panchayat
+from .masters.hierarchy_tree import HierarchyLevel, HierarchyNode, HierarchyClosure
+from .masters.hierarchy_assignment import HierarchyAssignment
 
 
 # ============================================================
@@ -156,6 +158,12 @@ __all__ = [
     "TownPanchayat",
     "PanchayatUnion",
     "Panchayat",
+
+    # Hierarchy Tree (closure-table)
+    "HierarchyLevel",
+    "HierarchyNode",
+    "HierarchyClosure",
+    "HierarchyAssignment",
 
     # Assets
     "Fuel",
