@@ -44,6 +44,9 @@ class Panchayat(BaseMaster):
     )
 
     panchayat_name = models.CharField(max_length=100)
+    agreed_weight_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, null=True, blank=True
+    )
     coordinates = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
