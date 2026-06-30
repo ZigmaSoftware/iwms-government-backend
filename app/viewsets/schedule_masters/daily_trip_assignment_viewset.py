@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.management.commands.generate_daily_trips import run_for_date
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.serializers.schedule_masters.daily_trip_assignment_serializer import (
     DailyTripAssignmentSerializer,
@@ -193,6 +194,50 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         return Response(
             DailyTripAssignmentSerializer(instance, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ----------------------------------------------------------
+    # ACTION: MANUAL JOB-SCHEDULER RUN  (for testing / on-demand)
+    # POST /daily-trip-assignments/generate-daily/
+    # body: { "date": "YYYY-MM-DD" }   (optional, defaults to today)
+    # ----------------------------------------------------------
+
+    @action(detail=False, methods=["post"], url_path="generate-daily")
+    def generate_daily(self, request):
+        """Manually run the daily trip job scheduler for one date.
+
+        Mirrors the nightly cron (`manage.py generate_daily_trips`) so admins
+        can generate / back-fill a day's trips on demand without shell access.
+        Idempotent — re-running the same date creates no duplicates.
+        """
+        if not self._has_approval_role(request):
+            return Response(
+                {"detail": "Only supervisors and admins can run the daily scheduler."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        target_date = None
+        raw_date = request.data.get("date")
+        if raw_date:
+            try:
+                target_date = timezone.datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"detail": "Invalid date. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        summary = run_for_date(target_date=target_date)
+
+        return Response(
+            {
+                "message": (
+                    f"Generated {summary['created']} assignment(s); "
+                    f"skipped {summary['skipped']} plan(s) for {summary['date']}."
+                ),
+                **summary,
+            },
             status=status.HTTP_200_OK,
         )
 

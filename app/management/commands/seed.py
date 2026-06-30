@@ -56,6 +56,7 @@ from app.management.commands.seeders.schedule_masters.daily_trip_collection_poin
 from app.management.commands.seeders.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
 from app.management.commands.seeders.schedule_masters.daily_trip_log import DailyTripLogSeeder
 from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
+from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
@@ -215,6 +216,7 @@ SEED_GROUPS = {
     "vehicles":           TRANSPORT_MASTERS_SEEDERS,
     "platform":           SUPERADMIN_SEEDERS,
     # Single-seeder shortcuts
+    "scheduler-demo":     [SchedulerDemoSeeder],   # one ready-to-run demo TripPlan for the job scheduler
     "bin-collection-events": [BinCollectionEventSeeder],
     "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],

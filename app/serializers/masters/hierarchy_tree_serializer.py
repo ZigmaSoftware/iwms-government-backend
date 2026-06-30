@@ -55,6 +55,7 @@ class HierarchyNodeSerializer(serializers.ModelSerializer):
             "name",
             "code",
             "custom_properties",
+            "coordinates",
             "is_active",
         ]
         read_only_fields = ("unique_id",)

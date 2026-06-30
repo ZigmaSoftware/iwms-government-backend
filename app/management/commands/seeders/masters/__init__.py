@@ -1,6 +1,7 @@
 from .district import DistrictSeeder
 from .areatype import AreaTypeSeeder
 from .corporation import CorporationSeeder
+from .municipality import MunicipalitySeeder
 from .hierarchy import AdministrativeHierarchySeeder
 from .hierarchy_tree import HierarchyTreeSeeder
 from .geo_to_hierarchy import GeoToHierarchySeeder

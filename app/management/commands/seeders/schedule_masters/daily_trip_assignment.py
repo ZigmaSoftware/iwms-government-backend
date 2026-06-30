@@ -15,7 +15,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
     def run(self):
         today = timezone.localdate()
 
-        # Only use active, approved plans with a panchayat so model.save() can inherit it.
+        # Only use active, approved plans with a location node set.
         plans = list(
             TripPlan.objects.filter(
                 is_deleted=False,
@@ -25,7 +25,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 "staff_template_id",
                 "waste_type_id",
                 "vehicle_id",
-                "panchayat_id",
+                "location_node",
             )
         )
 
@@ -43,7 +43,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 if created_count >= TARGET:
                     break
 
-                if not plan.panchayat_id:
+                if not plan.location_node_id:
                     continue
 
                 already_exists = DailyTripAssignment.objects.filter(
@@ -59,7 +59,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 DailyTripAssignment.objects.create(
                     trip_plan_id=plan,
                     staff_template_id=plan.staff_template_id,
-                    panchayat_id=plan.panchayat_id,
+                    location_node=plan.location_node,
                     waste_type_id=plan.waste_type_id,
                     vehicle_id=plan.vehicle_id,
                     trip_date=trip_date,

@@ -23,7 +23,12 @@ GEO_LEVELS = [
     ("State", "STATE", 3),
     ("District", "DISTRICT", 4),
     ("Area Type", "AREA_TYPE", 5),
-    ("Panchayat", "PANCHAYAT", 6),
+    # Urban / Rural local bodies sit under Area Type.
+    ("Corporation", "CORPORATION", 6),
+    ("Municipality", "MUNICIPALITY", 7),
+    ("Town Panchayat", "TOWN_PANCHAYAT", 8),
+    ("Panchayat Union", "PANCHAYAT_UNION", 9),
+    ("Panchayat", "PANCHAYAT", 10),
 ]
 
 
@@ -37,6 +42,10 @@ class GeoToHierarchySeeder(BaseSeeder):
         from app.models.common_masters.state import State
         from app.models.masters.district import District
         from app.models.masters.areatype import AreaType
+        from app.models.masters.corporation import Corporation
+        from app.models.masters.municipality import Municipality
+        from app.models.masters.town_panchayat import TownPanchayat
+        from app.models.masters.panchayat_union import PanchayatUnion
         from app.models.masters.panchayat import Panchayat
 
         levels = self._ensure_levels()
@@ -81,6 +90,28 @@ class GeoToHierarchySeeder(BaseSeeder):
             parent = index.get(("district", str(area.district_id_id))) if area.district_id_id else None
             upsert("areatype", area.unique_id, area.name, "Area Type", parent)
 
+        # Local bodies (under Area Type, falling back to District). Each carries
+        # area_type_id / district_id FKs on its geo master.
+        def _area_or_district(obj):
+            return (
+                index.get(("areatype", str(obj.area_type_id_id))) if getattr(obj, "area_type_id_id", None) else None
+            ) or (
+                index.get(("district", str(obj.district_id_id))) if getattr(obj, "district_id_id", None) else None
+            )
+
+        for corp in Corporation.objects.filter(is_deleted=False):
+            upsert("corporation", corp.unique_id, corp.corporation_name, "Corporation", _area_or_district(corp))
+
+        for muni in Municipality.objects.filter(is_deleted=False):
+            upsert("municipality", muni.unique_id, muni.municipality_name, "Municipality", _area_or_district(muni))
+
+        for tp in TownPanchayat.objects.filter(is_deleted=False):
+            upsert("town_panchayat", tp.unique_id, tp.town_panchayat_name, "Town Panchayat", _area_or_district(tp))
+
+        for pu in PanchayatUnion.objects.filter(is_deleted=False):
+            upsert("panchayat_union", pu.unique_id, pu.union_name, "Panchayat Union", _area_or_district(pu))
+
+        # Panchayats sit under their Area Type (falling back to District).
         for pan in Panchayat.objects.filter(is_deleted=False):
             parent = (
                 index.get(("areatype", str(pan.area_type_id_id))) if pan.area_type_id_id else None

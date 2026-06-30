@@ -9,7 +9,28 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.schedule_masters.collection_point import Collection_point
+
+
+# hierarchy_field (legacy) -> node custom_properties.source_type
+_FIELD_TO_SOURCE = {
+    "corporation_id": "corporation",
+    "municipality_id": "municipality",
+    "town_panchayat_id": "town_panchayat",
+    "panchayat_union_id": "panchayat_union",
+    "panchayat_id": "panchayat",
+}
+
+
+def _node_for(source_type, source_obj):
+    if not source_obj:
+        return None
+    return HierarchyNode.objects.filter(
+        is_deleted=False,
+        custom_properties__source_type=source_type,
+        custom_properties__source_id=source_obj.unique_id,
+    ).first()
 
 
 class CollectionPointSeeder(BaseSeeder):
@@ -54,16 +75,16 @@ class CollectionPointSeeder(BaseSeeder):
                 self.log(f"Hierarchy '{hierarchy_name}' not found — skipping.")
                 continue
 
+            # Geography is now a single hierarchy node.
+            location_node = _node_for(_FIELD_TO_SOURCE[hierarchy_field], hierarchy_obj)
+            if not location_node:
+                self.log(f"No hierarchy node for '{hierarchy_name}' — run geo_to_hierarchy seeder first. Skipping.")
+                continue
+
             _, created = Collection_point.objects.update_or_create(
                 cp_name=cp_name,
-                district_id=hierarchy_obj.district_id,
+                location_node=location_node,
                 defaults={
-                    "state_id": tamil_nadu,
-                    "corporation_id": hierarchy_obj if hierarchy_field == "corporation_id" else None,
-                    "municipality_id": hierarchy_obj if hierarchy_field == "municipality_id" else None,
-                    "town_panchayat_id": hierarchy_obj if hierarchy_field == "town_panchayat_id" else None,
-                    "panchayat_union_id": hierarchy_obj if hierarchy_field == "panchayat_union_id" else None,
-                    "panchayat_id": hierarchy_obj if hierarchy_field == "panchayat_id" else None,
                     "latitude": lat,
                     "longitude": lon,
                     "coordinates": geo_coordinates,

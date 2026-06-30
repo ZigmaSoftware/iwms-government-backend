@@ -89,6 +89,7 @@ class HierarchyNodeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 name=data.get("name"),
                 code=data.get("code", ""),
                 custom_properties=data.get("custom_properties"),
+                coordinates=data.get("coordinates"),
             )
         except (DjangoValidationError, HierarchyLevel.DoesNotExist, HierarchyNode.DoesNotExist) as exc:
             return Response({"detail": _msg(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -111,6 +112,7 @@ class HierarchyNodeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 code=data.get("code") if "code" in data else None,
                 is_active=data.get("is_active") if "is_active" in data else None,
                 custom_properties=data.get("custom_properties") if "custom_properties" in data else None,
+                coordinates=data.get("coordinates") if "coordinates" in data else None,
             )
         except HierarchyNode.DoesNotExist as exc:
             return Response({"detail": _msg(exc)}, status=status.HTTP_404_NOT_FOUND)

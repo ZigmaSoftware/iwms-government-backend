@@ -9,9 +9,13 @@ from app.models.masters.corporation import Corporation
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.hierarchy_tree import HierarchyNode
+from app.models.common_masters.state import State
+from app.models.masters.district import District
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 
+from app.utils.hierarchy import legacy_geo_from_node
 from app.utils.password_encryption import encrypt_password, decrypt_password
 
 
@@ -67,6 +71,26 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         source="governmentusertype_id.level",
         read_only=True,
     )
+    state_id = serializers.SlugRelatedField(
+        queryset=State.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    state_name = serializers.CharField(
+        source="state_id.name",
+        read_only=True,
+    )
+    district_id = serializers.SlugRelatedField(
+        queryset=District.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    district_name = serializers.CharField(
+        source="district_id.name",
+        read_only=True,
+    )
     municipality_id = serializers.PrimaryKeyRelatedField(
         queryset=Municipality.objects.filter(is_deleted=False),
         required=False,
@@ -110,6 +134,17 @@ class StaffcreationSerializer(serializers.ModelSerializer):
     )
     panchayat_name = serializers.CharField(
         source="panchayat_id.panchayat_name",
+        read_only=True,
+    )
+    location_node_id = serializers.SlugRelatedField(
+        source="location_node",
+        queryset=HierarchyNode.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    location_node_name = serializers.CharField(
+        source="location_node.name",
         read_only=True,
     )
     department_id = serializers.PrimaryKeyRelatedField(
@@ -300,6 +335,10 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "governmentusertype_level",
 
             # Geographic FKs for government staff
+            "state_id",
+            "state_name",
+            "district_id",
+            "district_name",
             "municipality_id",
             "municipality_name",
             "corporation_id",
@@ -310,6 +349,8 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "panchayat_union_name",
             "panchayat_id",
             "panchayat_name",
+            "location_node_id",
+            "location_node_name",
 
             "approval_status",
             "login_enabled",
@@ -341,6 +382,23 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def validate(self, attrs):
+        node = attrs.get("location_node")
+        if node:
+            legacy = legacy_geo_from_node(node)
+            for source_attr, target_attr in (
+                ("state", "state_id"),
+                ("district", "district_id"),
+                ("corporation_id", "corporation_id"),
+                ("municipality_id", "municipality_id"),
+                ("town_panchayat_id", "town_panchayat_id"),
+                ("panchayat_union_id", "panchayat_union_id"),
+                ("panchayat_id", "panchayat_id"),
+            ):
+                if source_attr in legacy:
+                    attrs.setdefault(target_attr, legacy[source_attr])
+        return attrs
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

@@ -69,7 +69,7 @@ ASSIGNABLE_ENTITIES = {
     },
     "collection_point": {
         "label": "Collection Point",
-        "model_path": "app.models.schedule_masters.collection_point.CollectionPoint",
+        "model_path": "app.models.schedule_masters.collection_point.Collection_point",
         "pk_field": "unique_id",
         "name_attr": "cp_name",
     },

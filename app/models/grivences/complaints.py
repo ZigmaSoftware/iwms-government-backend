@@ -111,7 +111,7 @@ class Complaint(BaseMaster):
                 f"{self.customer.building_no}, "
                 f"{self.customer.street}, "
                 f"{self.customer.area}, "
-                f"{self.customer.district.name if self.customer.district else ''}"
+                f"{self.customer.location_node.name if self.customer.location_node else ''}"
             )
 
         if self.status == "CLOSED" and not self.complaint_closed_at:

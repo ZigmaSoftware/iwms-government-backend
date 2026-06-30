@@ -28,7 +28,26 @@ from app.models.masters.hierarchy_tree import (
 # Serialisation helpers
 # ----------------------------------------------------------------------------
 
-def node_to_dict(node, include_parent=True):
+def _resolve_node_coordinates(node):
+    """Return a representative {"lat", "lng"} for a node, or None.
+
+    Coordinates now live directly on HierarchyNode so the hierarchy tree is
+    independent from the removed static geography masters.
+    """
+    coords = getattr(node, "coordinates", None)
+    if isinstance(coords, list) and coords:
+        first = coords[0]
+        if isinstance(first, dict) and first.get("latitude") is not None and first.get("longitude") is not None:
+            return {"lat": first["latitude"], "lng": first["longitude"]}
+    props = node.custom_properties or {}
+    lat = props.get("latitude") or props.get("lat")
+    lng = props.get("longitude") or props.get("lng")
+    if lat is not None and lng is not None:
+        return {"lat": lat, "lng": lng}
+    return None
+
+
+def node_to_dict(node, include_parent=True, include_coordinates=False):
     data = {
         "unique_id": node.unique_id,
         "level_id": node.level_id,
@@ -39,9 +58,12 @@ def node_to_dict(node, include_parent=True):
         "code": node.code,
         "is_active": node.is_active,
         "custom_properties": node.custom_properties,
+        "coordinates": node.coordinates,
     }
     if include_parent and node.parent_id:
         data["parent_name"] = node.parent.name
+    if include_coordinates:
+        data["coordinates"] = _resolve_node_coordinates(node)
     return data
 
 
@@ -54,7 +76,7 @@ def _active_nodes():
 
 
 @transaction.atomic
-def create_node(*, level_id, parent_id=None, name, code="", custom_properties=None):
+def create_node(*, level_id, parent_id=None, name, code="", custom_properties=None, coordinates=None):
     level = HierarchyLevel.objects.get(unique_id=level_id, is_deleted=False)
 
     parent = None
@@ -76,6 +98,7 @@ def create_node(*, level_id, parent_id=None, name, code="", custom_properties=No
         name=name,
         code=code or "",
         custom_properties=custom_properties or {},
+        coordinates=coordinates or [],
     )
 
     if parent:
@@ -146,7 +169,7 @@ def _rebuild_subtree_closure(root):
 
 @transaction.atomic
 def update_node(node_id, *, level_id=None, parent_id=None, name=None, code=None,
-                is_active=None, custom_properties=None):
+                is_active=None, custom_properties=None, coordinates=None):
     node = _active_nodes().select_related("level").get(unique_id=node_id)
     old_parent_id = node.parent_id
     old_level_id = node.level_id
@@ -180,6 +203,8 @@ def update_node(node_id, *, level_id=None, parent_id=None, name=None, code=None,
         node.is_active = is_active
     if custom_properties is not None:
         node.custom_properties = custom_properties
+    if coordinates is not None:
+        node.coordinates = coordinates or []
 
     node.save()
 
@@ -251,7 +276,7 @@ def build_tree():
         .select_related("level", "parent")
         .order_by("level__order", "name")
     )
-    by_id = {n.unique_id: {**node_to_dict(n), "children": []} for n in nodes}
+    by_id = {n.unique_id: {**node_to_dict(n, include_coordinates=True), "children": []} for n in nodes}
     roots = []
     for n in nodes:
         item = by_id[n.unique_id]

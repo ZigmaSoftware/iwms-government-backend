@@ -95,6 +95,7 @@ class HierarchyNode(BaseMaster):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=100, blank=True, null=True)
     custom_properties = models.JSONField(default=dict, blank=True)
+    coordinates = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "hierarchy_tree_node"

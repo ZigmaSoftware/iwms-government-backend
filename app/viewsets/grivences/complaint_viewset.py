@@ -10,9 +10,8 @@ class ComplaintViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
     queryset = Complaint.objects.filter(is_deleted=False).select_related(
         "customer",
-        "customer__district",
-        "customer__state",
-        "customer__panchayat_id",
+        "customer__location_node",
+        "customer__location_node__level",
     )
 
     AUDIT_MODULE = "grivences"

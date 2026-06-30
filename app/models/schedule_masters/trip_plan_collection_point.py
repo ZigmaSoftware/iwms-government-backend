@@ -5,11 +5,6 @@ from app.models.assets.bins import Bins
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.trip_plan import TripPlan
-from app.models.masters.panchayat import Panchayat
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_hierarchy
@@ -85,43 +80,12 @@ class TripPlanCollectionPoint(BaseMaster):
         blank=True,
     )
 
-    panchayat_id = models.ForeignKey(
-        Panchayat,
-        on_delete=models.PROTECT,
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
         related_name="trip_plan_collection_points",
-        db_column="panchayat_id",
-        null=True,
-        blank=True,
-    )
-    corporation_id = models.ForeignKey(
-        Corporation,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="corporation_id",
-        null=True,
-        blank=True,
-    )
-    municipality_id = models.ForeignKey(
-        Municipality,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="municipality_id",
-        null=True,
-        blank=True,
-    )
-    town_panchayat_id = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="town_panchayat_id",
-        null=True,
-        blank=True,
-    )
-    panchayat_union_id = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.PROTECT,
-        related_name="trip_plan_collection_points",
-        db_column="panchayat_union_id",
+        to_field="unique_id",
+        db_column="location_node_id",
         null=True,
         blank=True,
     )
@@ -160,19 +124,9 @@ class TripPlanCollectionPoint(BaseMaster):
             if not self.bin_id_id:
                 raise ValidationError({"bin_id": "Bin is required for bin collection."})
         elif self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK}:
-            has_hierarchy = any(
-                getattr(self, f"{field}_id", None)
-                for field in (
-                    "corporation_id",
-                    "municipality_id",
-                    "town_panchayat_id",
-                    "panchayat_union_id",
-                    "panchayat_id",
-                )
-            )
-            if not self.customer_id_id and not has_hierarchy and not self.trip_plan_id_id:
+            if not self.customer_id_id and not self.location_node_id and not self.trip_plan_id_id:
                 raise ValidationError(
-                    {"customer_id": "Select a customer or assign collection to a local body."}
+                    {"customer_id": "Select a customer or assign collection to a hierarchy node."}
                 )
 
     def save(self, *args, **kwargs):

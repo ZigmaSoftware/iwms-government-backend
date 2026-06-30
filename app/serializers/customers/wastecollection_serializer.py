@@ -34,15 +34,10 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     customer_id = serializers.CharField(
         source="customer.unique_id", read_only=True
     )
-    district_name = serializers.CharField(source="customer.district.name", read_only=True)
-    state_name = serializers.CharField(source="customer.state.name", read_only=True)
-    country_name = serializers.CharField(source="customer.country.name", read_only=True)
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
-    corporation_name = serializers.CharField(source="customer.corporation_id.corporation_name", read_only=True, default=None)
-    municipality_name = serializers.CharField(source="customer.municipality_id.municipality_name", read_only=True, default=None)
-    town_panchayat_name = serializers.CharField(source="customer.town_panchayat_id.town_panchayat_name", read_only=True, default=None)
-    panchayat_union_name = serializers.CharField(source="customer.panchayat_union_id.union_name", read_only=True, default=None)
-    panchayat_name = serializers.CharField(source="customer.panchayat_id.panchayat_name", read_only=True, default=None)
+    # Geography is now the customer's single hierarchy node.
+    location_name = serializers.CharField(source="customer.location_node.name", read_only=True, default=None)
+    location_level = serializers.CharField(source="customer.location_node.level.name", read_only=True, default=None)
 
     trip_assignment_id = serializers.SlugRelatedField(
         slug_field="unique_id",

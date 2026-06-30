@@ -1,78 +1,284 @@
-So, I have a big task for you.
-Analyse this backend and frontend (/Users/zigma-mac/Documents/closure) carefully:
-Building separate projects for various client requriements with various geographial heirarchy would be really a painful long process. So, i found a solution for it. the closure table solves this by enabling the user to customize the heirarchy in real time and make the auditing and reporting powerful.
-Use current "masters" in mainscreen section for showing this heirarchy in real time. I need a userscreen called "heirarchy" under "master" Use this to  show our heirarchy modfication screen and creation of node or deletion or updation. I also want a feature to skip heirarchy (eg: I can create a stree under a country).
-I need uniques id generate for every entry, analyse my proect for unique id generation.
 
-
-I dont want this change to affect any functionality of my project. IN this heirarchy screen,  create some seeders in erode and also whatever if you want.
-When any of the heirarchy is pressed, it needs to show a separate screen for that heirarchy user "This screen shows data of <>" show this plain text in that screen, i can replace it with appropriate content.
-
-
-I’ll trace the current masters and hierarchy implementation first, then I’ll either make the navigation/model changes directly or point out the exact backend dependency if this frontend can’t complete it alone. After that I’ll give you the walkthrough with concrete examples.
+Before reading the task, my core motive is to create a dynamic heirarchy model with permission, view and action assignable forms and launch it as a completely configurable project. I want forms that decide heirarchy. 
+Carefully plan this first and make it fully functional and userfuul. 
 
 
 
+Task:
+I want a form where I can CRUD constants like "state", "city" etc, There is a form for entering variables to this "tamilnadu" but  if I want to create a constant "ward"/"zone" I need a form.
+IWMS Enhancement: Trip Point Management & Automated Daily Job Scheduler
+Objective
+Enhance the IWMS Trip Planning module to support automatic generation of daily operational data based on predefined Trip Plans. The system should support Urban and Rural administrative hierarchies, multiple collection types, and automated daily scheduling.
 
-There are already uncommitted changes in exactly the hierarchy/navigation files, plus a new hierarchyTree folder. I’ll read those before editing so I don’t overwrite work that may already be part of this closure flow.
+1. Rename Existing Module
+Rename the following modules throughout the application (Frontend, Backend, APIs, Database labels, Navigation, Reports, and Permissions):
+
+Trip Plan Collection Points → Trip Points
+
+Daily Trip Collection Points → Daily Trip Points
+
+The Trip Points module should represent only Secondary Collection Points.
+
+2. Collection Categories
+The system should support three different operational categories.
+
+Secondary Collection Points
+
+Household Collection
+
+Bulk Waste Collection
+
+Each Trip Plan must belong to one of these categories.
+
+3. Administrative Hierarchy
+The Trip Plan should be created using the following hierarchy.
+
+State
+    ↓
+District
+    ↓
+Area Type
+Area Type has two options:
+
+Urban
+
+Rural
+
+Urban Hierarchy
+If Area Type = Urban
+
+Display
+
+Corporation
+Municipality
+Town Panchayat
+Only one of the above can be selected.
+
+Rural Hierarchy
+If Area Type = Rural
+
+Display
+
+Panchayat Union
+Panchayat
+Only one of the above can be selected.
+
+The UI should dynamically display only the relevant fields depending on the selected Area Type.
+
+4. Collection Type Selection
+After selecting the administrative hierarchy, the user should select the Collection Type.
+
+Options:
+
+Secondary Collection Point
+
+Household
+
+Bulk Waste Collection
+
+The remaining fields should change based on this selection.
+
+Secondary Collection Point
+Display only Secondary Collection Points belonging to the selected administrative area.
+
+These will become Trip Points.
+
+Household
+Display Household locations within the selected administrative area.
+
+Bulk Waste Collection
+Display Bulk Waste Collection locations within the selected administrative area.
+
+5. Geo Mapping
+Every master entity already contains Geo Coordinates.
+
+Examples:
+
+Corporation
+
+Municipality
+
+Town Panchayat
+
+Panchayat Union
+
+Panchayat
+
+Secondary Collection Point
+
+Household
+
+Bulk Waste Collection
+
+Use these coordinates to:
+
+Display locations on a map.
+
+Validate whether the selected point belongs to the chosen administrative boundary.
+
+Support future route optimization.
+
+6. Designation Assignment
+Each Trip Plan should also contain:
+
+Designation
+
+Staff Template
+
+Vehicle Type (if applicable)
+
+Vehicle
+
+Driver
+
+Helper
+
+This determines which workforce executes the trip.
+
+7. Trip Plan Master
+The Trip Plan should contain:
+
+Trip Name
+
+Area Type
+
+Administrative Hierarchy
+
+Collection Type
+
+Trip Points
+
+Designation
+
+Staff Template
+
+Vehicle Details
+
+Working Days
+
+Start Time
+
+End Time
+
+Active Status
+
+Once configured, the Trip Plan acts as the master template.
+
+8. Automated Daily Scheduler
+Create a background Job Scheduler.
+
+Example:
+
+Run every day at 12:05 AM.
+
+The scheduler should:
+
+Step 1
+Find all Active Trip Plans.
+
+Step 2
+Check whether the Trip Plan is scheduled for today's weekday.
+
+Step 3
+Generate Daily Trip Assignment.
+
+If today's assignment already exists, skip it.
+
+Step 4
+Generate Daily Trip Points.
+
+For each generated Daily Trip Assignment:
+
+Copy all configured Trip Points.
+
+Preserve sequence/order.
+
+Mark status as Pending.
+
+Step 5
+Generate operational records according to Collection Type.
+
+Secondary Collection Point
+Generate Daily Trip Points using Secondary Collection Points.
+
+Household
+Generate Daily Household Collection records.
+
+Bulk Waste Collection
+Generate Daily Bulk Waste Collection records.
+
+9. Duplicate Prevention
+The scheduler must never create duplicate records.
+
+Before inserting:
+
+Check
+
+Trip Plan
++
+Operation Date
+If records already exist:
+
+Skip generation.
+
+10. Scheduler Configuration
+Implement using the existing scheduling framework (Celery Beat, APScheduler, Django-Q, or Cron).
+
+Execution Time:
+
+Every day
+12:05 AM
+The scheduler should also support manual execution for testing.
+
+11. Database Flow
+Trip Plan
+        │
+        ▼
+Daily Job Scheduler
+        │
+        ▼
+Daily Trip Assignment
+        │
+        ▼
+Daily Trip Points
+        │
+        ├── Secondary Collection Point
+        ├── Household Collection
+        └── Bulk Waste Collection
+12. Future Enhancements
+The design should support future additions without schema changes:
+
+GPS Route Optimization
+
+Geo-fencing
+
+Live Vehicle Tracking
+
+Attendance Validation
+
+Missed Collection Alerts
+
+Route Deviation Detection
+
+Automatic Route Assignment
+
+Analytics & Reports
+
+Expected Outcome
+Administrators configure each Trip Plan only once.
+
+Every day, the scheduler automatically:
+
+Creates Daily Trip Assignments.
+
+Creates Daily Trip Points.
+
+Generates operational records for Secondary Collection Points, Household Collection, or Bulk Waste Collection.
+
+Prevents duplicate generation.
+
+Uses the configured administrative hierarchy and geo-coordinates.
+
+Produces ready-to-use data for daily field operations.
 
 
-
-
-The current sidebar still exposes old geographical masters (District, Area Type, Corporation, Municipality, etc.) under Masters, while the new closure page is already present as Hierarchy Tree. I’m checking the new page now to see whether it supports country/state/district creation through nodes or only displays data.
-
-
-
-
-The new tree page does create/edit/delete hierarchy nodes through masters/hierarchy-nodes, and it loads node levels from masters/hierarchy-levels. That means Country, State, District, Ward, etc. become rows/nodes inside Hierarchy Tree, not separate menu items, assuming the backend has those level records.
-
-
-
-
-There’s also a breadcrumb route map that still lists old geo pages, so I’ll remove the old geographical entries from both the visible sidebar and breadcrumb map. I’ll keep the underlying old route components registered for now so existing direct URLs don’t crash during migration, but users will be guided to Hierarchy Tree as the only Masters entry for geography.
-
-
-
-
-I’m going to hide the old standalone geography CRUD pages from navigation and breadcrumbs: Continent, Country, State, District, Area Type, Corporation, Municipality, Town Panchayat, Panchayat Union, and Panchayat. The replacement visible path will be Masters -> Hierarchy Tree, where those same concepts are created as nodes by selecting the appropriate level.
-
-
-
-
-I found the sidebar file destructures many route constants only because the old menu entries use them. I’ll also remove those unused constants to keep TypeScript clean.
-
-
-
-
-I’m applying the navigation cleanup now: Masters will show only Hierarchy Tree, and the sidebar will stop showing Common Masters geography links. The old page components/routes will remain available internally until backend/data migration is fully complete.
-
-
-
-
-Edited a file
-
-
-Sidebar cleanup is done. Next I’m adjusting the route-to-breadcrumb map so search/breadcrumbs also point to the hierarchy tree instead of showing the removed geography tables.
-
-
-
-
-Edited a file
-
-
-The frontend can now guide users to the closure tree, but “everything connects to hierarchy” depends on backend fields and APIs. I’m checking the sibling closure workspace to confirm the exact table/API names before I claim how assignments should work.
-
-
-
-
-The configured workspace path is not under Documents/IWMS; it points to ../../closure from this repo, so I’ll check /Users/zigma-mac/Documents/closure. Build currently fails on existing unrelated TypeScript errors in dashboard/types, before this hierarchy change is compiled by Vite.
-
-
-
-
-
-
-
-The closure demo confirms the intended model: hierarchy_level, hierarchy_node, hierarchy_closure, user_scope, and asset_scope. I’ll pull the exact API/table details from its README and backend files, then I’ll summarize the implementation and tutorial against the frontend paths we changed.
-
-Edited 2 files+0-111Review changesUndoReview

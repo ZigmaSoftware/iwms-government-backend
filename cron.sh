@@ -12,3 +12,7 @@
 
 # 5) WPE frontend+backend sync - 09:00 everyday
 #0 9 * * * flock -n /tmp/auto-deploy.lock /home/admin/auto-deploy.sh >> /home/admin/cron.log 2>&1
+
+# 6) Daily Trip Job Scheduler – 12:05 AM every day
+#    Generates DailyTripAssignment + Daily Trip Points from active TripPlans.
+5 0 * * * /home/admin/scheduler.sh >> /home/admin/generate_daily_trips.log 2>&1

@@ -11,6 +11,7 @@ from django.db import transaction
 
 from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
 from app.models.masters.hierarchy_assignment import HierarchyAssignment
+from app.services.hierarchy_tree_service import _resolve_node_coordinates
 from app.utils.hierarchy_entities import entity_label, get_entity_config
 
 
@@ -26,6 +27,9 @@ def assignment_to_dict(assignment, *, include_path=False):
         "entity_label": assignment.entity_label,
         "is_primary": assignment.is_primary,
         "is_active": assignment.is_active,
+        # Representative map pin for the assigned node (resolved from the geo
+        # master it mirrors), or None if the node has no coordinates.
+        "coordinates": _resolve_node_coordinates(node) if node else None,
     }
     if include_path:
         data["path"] = _node_path(assignment.node_id)

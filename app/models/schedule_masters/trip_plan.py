@@ -5,12 +5,6 @@ from django.db import models
 from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.district import District
-from app.models.masters.panchayat import Panchayat
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
@@ -63,51 +57,12 @@ class TripPlan(BaseMaster):
     # ---- tenancy ---------------------------------------------------
 
     # ---- WHERE -----------------------------------------------------
-    district_id = models.ForeignKey(
-        District,
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
         on_delete=models.PROTECT,
         to_field="unique_id",
         related_name="trip_plans",
-    )
-    panchayat_id = models.ForeignKey(
-        Panchayat,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
-    )
-    corporation_id = models.ForeignKey(
-        Corporation,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
-    )
-    municipality_id = models.ForeignKey(
-        Municipality,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
-    )
-    town_panchayat_id = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
-    )
-    panchayat_union_id = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
+        db_column="location_node_id",
     )
     # ---- WHO -------------------------------------------------------
     staff_template_id = models.ForeignKey(
@@ -224,11 +179,7 @@ class TripPlan(BaseMaster):
             models.Index(fields=["collection_type"]),
             models.Index(fields=["status", "approval_status"]),
             models.Index(fields=["display_code"]),
-            models.Index(fields=["district_id", "panchayat_id"]),
-            models.Index(fields=["district_id", "corporation_id"]),
-            models.Index(fields=["district_id", "municipality_id"]),
-            models.Index(fields=["district_id", "town_panchayat_id"]),
-            models.Index(fields=["district_id", "panchayat_union_id"]),
+            models.Index(fields=["location_node"]),
         ]
 
     def _generate_display_code(self):

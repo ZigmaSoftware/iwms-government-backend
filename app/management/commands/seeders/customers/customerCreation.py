@@ -1,11 +1,20 @@
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.common_masters.country import Country
-from app.models.common_masters.state import State
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.district import District
+from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.masters.panchayat import Panchayat
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
+
+
+def _node_for(source_type, source_obj):
+    """Resolve the hierarchy node mirrored from a legacy geo master."""
+    if not source_obj:
+        return None
+    return HierarchyNode.objects.filter(
+        is_deleted=False,
+        custom_properties__source_type=source_type,
+        custom_properties__source_id=source_obj.unique_id,
+    ).first()
 
 
 class CustomerCreationSeeder(BaseSeeder):
@@ -21,12 +30,6 @@ class CustomerCreationSeeder(BaseSeeder):
     ]
 
     def run(self):
-        india = Country.objects.filter(name="India").first()
-        tamil_nadu = State.objects.filter(name="Tamil Nadu").first()
-        if not india or not tamil_nadu:
-            self.log("India/Tamil Nadu not found — run CountrySeeder and StateSeeder first.")
-            return
-
         property_obj = Property.objects.filter(property_name="Residential", is_deleted=False).first()
         sub_property = SubProperty.objects.filter(
             property_id=property_obj, sub_property_name="Apartment", is_deleted=False
@@ -36,11 +39,10 @@ class CustomerCreationSeeder(BaseSeeder):
             self.log("Property/SubProperty not found — run PropertySeeder first.")
             return
 
-        district_names = ["Erode", "Salem", "Coimbatore", "Chennai", "Madurai"]
-        districts = {
-            name: District.objects.filter(name=name, state_id=tamil_nadu).first()
-            for name in district_names
-        }
+        # Fallback node so the seeder still works if a panchayat wasn't mirrored.
+        fallback_node = HierarchyNode.objects.filter(
+            is_deleted=False, custom_properties__source_type="district",
+        ).first()
 
         count = 0
         for idx, (
@@ -51,7 +53,16 @@ class CustomerCreationSeeder(BaseSeeder):
                 panchayat_name=panchayat_name,
                 is_deleted=False,
             ).select_related("district_id").first()
-            district = getattr(panchayat, "district_id", None) or list(districts.values())[idx]
+
+            # Geography is now a single hierarchy node (deepest available).
+            location_node = (
+                _node_for("panchayat", panchayat)
+                or _node_for("district", getattr(panchayat, "district_id", None))
+                or fallback_node
+            )
+            if not location_node:
+                self.log(f"No hierarchy node for {cust_name} — run geo_to_hierarchy seeder first. Skipping.")
+                continue
 
             _, created = CustomerCreation.objects.update_or_create(
                 id_no=id_no,
@@ -61,10 +72,7 @@ class CustomerCreationSeeder(BaseSeeder):
                     "building_no": building_no,
                     "street": street,
                     "area": area,
-                    "district": district,
-                    "panchayat_id": panchayat,
-                    "state": tamil_nadu,
-                    "country": india,
+                    "location_node": location_node,
                     "pincode": pincode,
                     "latitude": lat,
                     "longitude": lon,
