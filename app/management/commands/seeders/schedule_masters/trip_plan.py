@@ -1,6 +1,6 @@
 from datetime import time
 
-from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.base import BaseSeeder, node_for_source
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.collection_point import Collection_point
@@ -77,6 +77,12 @@ class TripPlanSeeder(BaseSeeder):
                 self.log(f"WasteType '{primary_waste_type_name}' not found — skipping.")
                 continue
 
+            # Geography is now a single hierarchy node (the panchayat's node).
+            location_node = node_for_source("panchayat", panchayat) or node_for_source("district", district)
+            if not location_node:
+                self.log(f"No hierarchy node for '{panchayat_name}' — run geo_to_hierarchy first. Skipping.")
+                continue
+
             # Collect all waste types for M2M (primary + extras)
             all_waste_types = [primary_waste_type]
             for extra_name in extra_waste_type_names:
@@ -89,8 +95,7 @@ class TripPlanSeeder(BaseSeeder):
 
             for collection_type in self.COLLECTION_TYPES:
                 plan, created = TripPlan.objects.update_or_create(
-                    district_id=district,
-                    panchayat_id=panchayat,
+                    location_node=location_node,
                     waste_type_id=primary_waste_type,
                     collection_type=collection_type,
                     is_deleted=False,

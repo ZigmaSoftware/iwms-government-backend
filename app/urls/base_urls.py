@@ -19,6 +19,11 @@ from ..viewsets.masters.panchayat_viweset import PanhayatViewSet
 from ..viewsets.masters.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
 from ..viewsets.masters.areatype_viewset import AreaTypeViewSet
 from ..viewsets.masters.hierarchy_viewset import AdministrativeHierarchyViewSet
+from ..viewsets.masters.hierarchy_tree_viewset import (
+    HierarchyLevelViewSet,
+    HierarchyNodeViewSet,
+)
+from ..viewsets.masters.hierarchy_assignment_viewset import HierarchyAssignmentViewSet
 from ..viewsets.masters.department_viewset import DepartmentViewSet
 from ..viewsets.masters.designation_viewset import DesignationViewSet
 from ..viewsets.masters.corporation_viewset import CorporationViewSet
@@ -150,6 +155,9 @@ router.register_group("masters", "panchayat",         PanhayatViewSet)
 router.register_group("masters", "panchayat-leaders", PanchayatLeaderLoginViewSet)
 router.register_group("masters", "areatypes",         AreaTypeViewSet)
 router.register_group("masters", "hierarchy",         AdministrativeHierarchyViewSet)
+router.register_group("masters", "hierarchy-levels",      HierarchyLevelViewSet)
+router.register_group("masters", "hierarchy-nodes",       HierarchyNodeViewSet)
+router.register_group("masters", "hierarchy-assignments", HierarchyAssignmentViewSet)
 router.register_group("masters", "departments",       DepartmentViewSet)
 router.register_group("masters", "designations",      DesignationViewSet)
 router.register_group("masters", "corporations",           CorporationViewSet)

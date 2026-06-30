@@ -4,6 +4,7 @@ from app.models.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 
 
 class PanchayatSeeder(BaseSeeder):
@@ -30,21 +31,22 @@ class PanchayatSeeder(BaseSeeder):
             self.log("Skipped: Tamil Nadu / Erode / Rural Local Body seed data not found.")
             return
 
-        count = 0
-        for panchayat_name, geo_coordinates in self.PANCHAYATS:
-            _, created = Panchayat.objects.update_or_create(
-                panchayat_name=panchayat_name,
-                state_id=tamil_nadu,
-                district_id=district,
-                area_type_id=area_type,
-                defaults={
-                    "coordinates": geo_coordinates,
-                    "is_active": True,
-                    "is_deleted": False,
-                },
-            )
-            action = "Created" if created else "Updated"
-            self.log(f"{action}: {panchayat_name}")
-            count += 1
-
-        self.log(f"---Panchayats seeded ({count} records)---")
+        PanchayatUnion.objects.update_or_create(
+            state_id=tamil_nadu,
+            district_id=district,
+            area_type_id=area_type,
+            union_name="Erode Panchayat Union",
+            defaults={"is_active": True, "is_deleted": False},
+        )
+        panchayat, created = Panchayat.objects.update_or_create(
+            panchayat_name="Sample Panchayat",
+            state_id=tamil_nadu,
+            district_id=district,
+            area_type_id=area_type,
+            defaults={
+                "is_active": True,
+                "is_deleted": False,
+            },
+        )
+        action = "Created" if created else "Updated"
+        self.log(f"{action}: {panchayat.panchayat_name}.")

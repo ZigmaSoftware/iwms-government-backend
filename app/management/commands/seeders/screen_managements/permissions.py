@@ -1,6 +1,7 @@
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.screen_managements.mainscreentype import MainScreenType
 from app.models.screen_managements.mainscreen import MainScreen
+from app.models.screen_managements.userscreen import UserScreen
 
 
 class PermissionSeeder(BaseSeeder):
@@ -24,6 +25,7 @@ class PermissionSeeder(BaseSeeder):
 
         # Masters
         ("Masters", "Staff Management", "people", 1, "Manage staff records"),
+        ("Masters", "Hierarchy Management", "account_tree", 2, "Manage dynamic hierarchy configuration"),
 
         # Schedule Setup
         ("Schedule Setup", "Staff Templates",             "group",         1, "Manage staff team templates"),
@@ -51,6 +53,20 @@ class PermissionSeeder(BaseSeeder):
         ("Settings", "System Settings", "settings", 1, "Application settings"),
     ]
 
+    # (main_screen_name, user_screen_name, folder_name, icon_name, order_no, description, app_label, model_name)
+    USER_SCREENS = [
+        (
+            "Hierarchy Management",
+            "Hierarchy Tree Levels",
+            "hierarchy-levels",
+            "account_tree_level",
+            1,
+            "Create and manage configurable hierarchy tree levels",
+            "app",
+            "HierarchyLevel",
+        ),
+    ]
+
     def run(self):
         type_cache = {}
         for type_name in self.SCREEN_TYPES:
@@ -61,12 +77,13 @@ class PermissionSeeder(BaseSeeder):
             type_cache[type_name] = obj
 
         count = 0
+        screen_cache = {}
         for type_name, screen_name, icon_name, order_no, description in self.SCREENS:
             screen_type = type_cache.get(type_name)
             if not screen_type:
                 continue
 
-            _, created = MainScreen.objects.get_or_create(
+            screen, created = MainScreen.objects.get_or_create(
                 mainscreen_name=screen_name,
                 defaults={
                     "mainscreentype_id": screen_type,
@@ -77,7 +94,43 @@ class PermissionSeeder(BaseSeeder):
                     "is_deleted": False,
                 },
             )
+            screen_cache[screen_name] = screen
             if created:
                 count += 1
 
-        self.log(f"---Screen permissions seeded ({count} screens created)---")
+        user_screen_count = 0
+        for (
+            main_screen_name,
+            user_screen_name,
+            folder_name,
+            icon_name,
+            order_no,
+            description,
+            model_app_label,
+            model_name,
+        ) in self.USER_SCREENS:
+            main_screen = screen_cache.get(main_screen_name)
+            if not main_screen:
+                continue
+
+            _, created = UserScreen.objects.get_or_create(
+                userscreen_name=user_screen_name,
+                defaults={
+                    "mainscreen_id": main_screen,
+                    "folder_name": folder_name,
+                    "icon_name": icon_name,
+                    "order_no": order_no,
+                    "description": description,
+                    "model_app_label": model_app_label,
+                    "model_name": model_name,
+                    "is_active": True,
+                    "is_deleted": False,
+                },
+            )
+            if created:
+                user_screen_count += 1
+
+        self.log(
+            f"---Screen permissions seeded ({count} main screens created, "
+            f"{user_screen_count} user screens created)---"
+        )

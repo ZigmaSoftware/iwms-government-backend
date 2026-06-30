@@ -3,11 +3,6 @@ from django.utils import timezone
 
 from app.models.customers.customercreation import CustomerCreation
 from app.models.customers.wastecollection import WasteCollection
-from app.models.masters.panchayat import Panchayat
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
@@ -85,43 +80,12 @@ class DailyTripHouseholdCollection(BaseMaster):
         blank=True,
     )
 
-    panchayat_id = models.ForeignKey(
-        Panchayat,
-        on_delete=models.PROTECT,
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
         related_name="daily_trip_household_collections",
-        db_column="panchayat_id",
-        null=True,
-        blank=True,
-    )
-    corporation_id = models.ForeignKey(
-        Corporation,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="corporation_id",
-        null=True,
-        blank=True,
-    )
-    municipality_id = models.ForeignKey(
-        Municipality,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="municipality_id",
-        null=True,
-        blank=True,
-    )
-    town_panchayat_id = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="town_panchayat_id",
-        null=True,
-        blank=True,
-    )
-    panchayat_union_id = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.PROTECT,
-        related_name="daily_trip_household_collections",
-        db_column="panchayat_union_id",
+        to_field="unique_id",
+        db_column="location_node_id",
         null=True,
         blank=True,
     )

@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../iwms-government-frontend"
+		},
+		{
+			"path": "../../APPS/closure"
+		},
+		{
+			"path": "../iwms-backend"
+		},
+		{
+			"path": "../iwms-frontend"
+		}
+	],
+	"settings": {}
+}

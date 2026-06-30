@@ -4,7 +4,20 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
 from app.models.masters.district import District
+from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+
+
+def _district_node(district):
+    """Resolve the hierarchy node mirrored from a District (geography is now a
+    single location_node, not a district_id FK)."""
+    if not district:
+        return None
+    return HierarchyNode.objects.filter(
+        is_deleted=False,
+        custom_properties__source_type="district",
+        custom_properties__source_id=district.unique_id,
+    ).first()
 
 
 class StaffOfficeSeeder(BaseSeeder):
@@ -26,12 +39,13 @@ class StaffOfficeSeeder(BaseSeeder):
             dept = Department.objects.filter(department_code=dept_code).first()
             desig = Designation.objects.filter(designation_name=desig_name).first()
             district = District.objects.filter(name=district_name).first()
+            location_node = _district_node(district)
 
             defaults = {
                 "employee_name": emp_name,
                 "department_id": dept,
                 "designation_id": desig,
-                "district_id": district,
+                "location_node": location_node,
                 "department": dept.department_name if dept else "",
                 "designation": desig.designation_name if desig else "",
                 "active_status": True,
@@ -51,7 +65,6 @@ class StaffOfficeSeeder(BaseSeeder):
                 continue
 
             StaffcreationOfficeDetails.objects.create(
-                employee_name=emp_name,
                 username=username,
                 password=make_password("Staff@1234"),
                 **defaults,

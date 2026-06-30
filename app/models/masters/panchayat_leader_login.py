@@ -32,6 +32,18 @@ class PanchayatLeaderLogin(BaseMaster):
         to_field="unique_id",
     )
 
+    # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
+    # the static panchayat_id (kept temporarily for zero-downtime migration).
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
+        related_name="panchayat_leader_logins",
+        to_field="unique_id",
+        db_column="location_node_id",
+        null=True,
+        blank=True,
+    )
+
 
 
     username = models.CharField(
