@@ -1,6 +1,5 @@
 from django.db import models
 
-from app.models.masters.panchayat import Panchayat
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.utils.comfun import generate_unique_id
 
@@ -16,10 +15,10 @@ class MonthlyWeightReport(models.Model):
         default=generate_monthlyweightreport_id,
         editable=False,
     )
-    panchayat_id = models.ForeignKey(
-        Panchayat,
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
         on_delete=models.DO_NOTHING,
-        db_column="panchayat_id",
+        db_column="location_node_id",
         db_constraint=False,
     )
     month = models.CharField(max_length=20)

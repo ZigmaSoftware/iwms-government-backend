@@ -22,6 +22,7 @@ python3 manage.py seed
 find . -name "__pycache__" -type d -exec rm -rf {} + && python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py seed && python3 manage.py runserver 0.0.0.0:8000
 
 
+
 # Run individual groups
 python3 manage.py seed --group masters
 python3 manage.py seed --group assets

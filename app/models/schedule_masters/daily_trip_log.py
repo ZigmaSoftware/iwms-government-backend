@@ -7,7 +7,6 @@ from django.utils import timezone
 
 from app.models.assets.bins import Bins
 from app.models.schedule_masters.collection_point import Collection_point
-from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
@@ -71,10 +70,10 @@ class DailyTripLog(BaseMaster):
         blank=True,
     )
 
-    panchayat_id = models.ForeignKey(
-        Panchayat,
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
         on_delete=models.PROTECT,
-        db_column="panchayat_id",
+        db_column="location_node_id",
         to_field="unique_id",
         related_name="daily_trip_logs",
     )
@@ -187,7 +186,7 @@ class DailyTripLog(BaseMaster):
         if not assignment:
             return
 
-        self.panchayat_id = assignment.panchayat_id
+        self.location_node = assignment.location_node
         if not self.collection_point_id:
             first_child = (
                 assignment.trip_collection_points

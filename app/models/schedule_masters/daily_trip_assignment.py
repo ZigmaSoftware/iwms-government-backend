@@ -6,11 +6,6 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
-from app.models.masters.panchayat import Panchayat
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.utils.hierarchy import copy_hierarchy
 
@@ -103,46 +98,10 @@ class DailyTripAssignment(BaseMaster):
     # LOCATION
     # ------------------------------------------------------------------
 
-    panchayat_id = models.ForeignKey(
-        Panchayat,
-        on_delete=models.PROTECT,
-        db_column="panchayat_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-        null=True,
-        blank=True,
-    )
-    corporation_id = models.ForeignKey(
-        Corporation,
-        on_delete=models.PROTECT,
-        db_column="corporation_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-        null=True,
-        blank=True,
-    )
-    municipality_id = models.ForeignKey(
-        Municipality,
-        on_delete=models.PROTECT,
-        db_column="municipality_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-        null=True,
-        blank=True,
-    )
-    town_panchayat_id = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.PROTECT,
-        db_column="town_panchayat_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-        null=True,
-        blank=True,
-    )
-    panchayat_union_id = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.PROTECT,
-        db_column="panchayat_union_id",
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
+        on_delete=models.SET_NULL,
+        db_column="location_node_id",
         to_field="unique_id",
         related_name="daily_trip_assignments",
         null=True,
@@ -227,11 +186,7 @@ class DailyTripAssignment(BaseMaster):
         indexes = [
             models.Index(fields=["trip_date", "status"]),
             models.Index(fields=["trip_plan_id", "trip_date"]),
-            models.Index(fields=["panchayat_id", "trip_date"]),
-            models.Index(fields=["corporation_id", "trip_date"]),
-            models.Index(fields=["municipality_id", "trip_date"]),
-            models.Index(fields=["town_panchayat_id", "trip_date"]),
-            models.Index(fields=["panchayat_union_id", "trip_date"]),
+            models.Index(fields=["location_node", "trip_date"]),
         ]
 
     # ------------------------------------------------------------------

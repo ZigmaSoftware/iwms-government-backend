@@ -3,7 +3,6 @@ from django.utils import timezone
 
 from app.models.assets.bins import Bins
 from app.models.schedule_masters.collection_point import Collection_point
-from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
@@ -59,10 +58,10 @@ class BinCollectionEvent(BaseMaster):
         to_field="unique_id",
         related_name="bin_collection_events",
     )
-    panchayat_id = models.ForeignKey(
-        Panchayat,
+    location_node = models.ForeignKey(
+        "app.HierarchyNode",
         on_delete=models.PROTECT,
-        db_column="panchayat_id",
+        db_column="location_node_id",
         to_field="unique_id",
         related_name="bin_collection_events",
         null=True,
