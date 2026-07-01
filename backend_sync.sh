@@ -1,100 +1,185 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
-BACKEND_DIR="/home/admin/localserver/iwms-backend"
-LOG="/home/admin/backend_sync.log"
+BACKEND_DIR="/home/admin/localserver/iwmsGovernment/iwms-government-backend"
+LOG_DIR="/home/admin/localserver/iwmsGovernment/logs"
+LOG="$LOG_DIR/backend_sync.log"
 BRANCH="main"
 SERVICE="django"
 TOKEN_FILE="$HOME/Downloads/BP.txt"
+PASSWORD_FILE="/home/admin/admin_password.txt"
 USERNAME="ZigmaSoftware"
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+REPO_URL="https://github.com/ZigmaSoftware/iwms-government-backend.git"
+LEGACY_VENV_DIR="/home/admin/localserver/iwms-backend/venv"
 
-echo "[$TIMESTAMP] Backend sync started" >> "$LOG"
+STASH_CREATED=0
+PREV_COMMIT=""
+AUTH_REPO_URL=""
 
-cd "$BACKEND_DIR"
+resolve_venv_dir() {
+    local candidate
 
-# Load token
-TOKEN=$(cat "$TOKEN_FILE" | tr -d ' \n')
+    for candidate in "$BACKEND_DIR/.venv" "$BACKEND_DIR/venv" "$LEGACY_VENV_DIR"; do
+        if [[ -x "$candidate/bin/python" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
 
-# Ensure authenticated remote URL
-REMOTE_URL=$(git remote get-url origin)
-if [[ "$REMOTE_URL" != https://$USERNAME:* ]]; then
-    NEW_URL="https://$USERNAME:$TOKEN@${REMOTE_URL#https://}"
-    git remote set-url origin "$NEW_URL"
-    echo "[$TIMESTAMP] Updated Git remote with credentials." >> "$LOG"
-fi
+    return 1
+}
 
-git stash --include-untracked >> "$LOG" 2>&1 || true
-git fetch origin "$BRANCH" >> "$LOG" 2>&1
+log() {
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] $1" >> "$LOG"
+}
 
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/$BRANCH)
+ensure_origin_remote() {
+    local current_remote=""
 
-if [ "$LOCAL" = "$REMOTE" ]; then
-    echo "[$TIMESTAMP] No backend updates." >> "$LOG"
-    exit 0
-fi
+    if git remote get-url origin >/dev/null 2>&1; then
+        current_remote=$(git remote get-url origin)
+        if [[ "$current_remote" != "$REPO_URL" ]]; then
+            git remote set-url origin "$REPO_URL"
+            log "Updated origin to $REPO_URL."
+        fi
+    else
+        git remote add origin "$REPO_URL"
+        log "Added missing origin remote: $REPO_URL."
+    fi
+}
 
-PREV_COMMIT=$(git rev-parse HEAD)
+restore_stash() {
+    if [[ "$STASH_CREATED" -eq 1 ]]; then
+        if git stash pop >> "$LOG" 2>&1; then
+            log "Restored stashed local changes."
+        else
+            log "Stash restore needs manual attention."
+        fi
+    fi
+}
 
-# Try merging
-if ! git pull --rebase >> "$LOG" 2>&1; then
-    echo "[$TIMESTAMP] Merge conflict. Aborting rebase." >> "$LOG"
-    git rebase --abort >> "$LOG" 2>&1 || true
-    git stash pop >> "$LOG" 2>&1 || true
+restart_service() {
+    if [[ -f "$PASSWORD_FILE" ]]; then
+        sudo -S systemctl restart "$SERVICE" < "$PASSWORD_FILE" >> "$LOG" 2>&1
+    else
+        sudo systemctl restart "$SERVICE" >> "$LOG" 2>&1
+    fi
+}
+
+rollback() {
+    if [[ -n "$PREV_COMMIT" ]]; then
+        log "Rolling back to $PREV_COMMIT."
+        git reset --hard "$PREV_COMMIT" >> "$LOG" 2>&1
+        restart_service || true
+    fi
+}
+
+install_requirements() {
+    local venv_dir=""
+
+    if venv_dir=$(resolve_venv_dir); then
+        "$venv_dir/bin/pip" install -r requirements.txt >> "$LOG" 2>&1
+    else
+        python3 -m pip install --break-system-packages -r requirements.txt >> "$LOG" 2>&1
+    fi
+}
+
+trap restore_stash EXIT
+
+mkdir -p "$LOG_DIR"
+log "Backend sync started."
+
+if [[ ! -d "$BACKEND_DIR/.git" ]]; then
+    log "Backend repo not found at $BACKEND_DIR."
     exit 1
 fi
 
-# Detect if backend files changed (exclude frontend)
-if git diff --name-only $PREV_COMMIT HEAD | grep -qv "frontend"; then
-    echo "[$TIMESTAMP] Backend files changed." >> "$LOG"
+if [[ ! -r "$TOKEN_FILE" ]]; then
+    log "Token file not found at $TOKEN_FILE."
+    exit 1
+fi
 
-    # Activate the virtual environment
-    source "$BACKEND_DIR/venv/bin/activate"
+TOKEN=$(tr -d ' \n' < "$TOKEN_FILE")
+if [[ -z "$TOKEN" ]]; then
+    log "Token file is empty."
+    exit 1
+fi
 
-    # Install dependencies only when requirements.txt changed
-    if git diff --name-only $PREV_COMMIT HEAD | grep -q "requirements.txt"; then
-        echo "[$TIMESTAMP] Installing pip dependencies..." >> "$LOG"
+AUTH_REPO_URL="https://${USERNAME}:${TOKEN}@github.com/ZigmaSoftware/iwms-government-backend.git"
 
-        if ! pip install --break-system-packages -r requirements.txt >> "$LOG" 2>&1; then
-            echo "[$TIMESTAMP] pip install failed. Rolling back..." >> "$LOG"
-            deactivate
-            git reset --hard "$PREV_COMMIT" >> "$LOG"
-            sudo systemctl restart "$SERVICE"
+cd "$BACKEND_DIR"
+
+ensure_origin_remote
+
+HAS_UNTRACKED=0
+if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    HAS_UNTRACKED=1
+fi
+
+if ! git diff --quiet || ! git diff --cached --quiet || [[ "$HAS_UNTRACKED" -eq 1 ]]; then
+    git stash push --include-untracked -m "backend-sync-$(date +%s)" >> "$LOG" 2>&1
+    STASH_CREATED=1
+    log "Stashed local changes before sync."
+fi
+
+git fetch "$AUTH_REPO_URL" "$BRANCH:refs/remotes/origin/$BRANCH" >> "$LOG" 2>&1
+
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse "origin/$BRANCH")
+
+if [[ "$LOCAL" == "$REMOTE" ]]; then
+    log "No backend updates."
+    exit 0
+fi
+
+PREV_COMMIT="$LOCAL"
+
+if ! git pull --rebase "$AUTH_REPO_URL" "$BRANCH" >> "$LOG" 2>&1; then
+    log "Merge conflict. Aborting rebase."
+    git rebase --abort >> "$LOG" 2>&1 || true
+    exit 1
+fi
+
+CHANGED_FILES=$(git diff --name-only "$PREV_COMMIT" HEAD)
+if [[ -n "$CHANGED_FILES" ]]; then
+    log "Backend repo updated."
+
+    if echo "$CHANGED_FILES" | grep -q '^requirements\.txt$'; then
+        log "Installing Python dependencies."
+        if ! install_requirements; then
+            log "Dependency install failed."
+            rollback
             exit 1
         fi
     fi
 
-    deactivate
-
-    echo "[$TIMESTAMP] Performing health check..." >> "$LOG"
-
-    # Server health check
-    if curl -s --max-time 5 http://127.0.0.1:8000 >/dev/null; then
-        echo "[$TIMESTAMP] Backend healthy. No restart needed." >> "$LOG"
-    else
-        echo "[$TIMESTAMP] Backend DOWN. Restarting service..." >> "$LOG"
-
-        if ! sudo systemctl restart "$SERVICE" >> "$LOG" 2>&1; then
-            echo "[$TIMESTAMP] Restart FAILED. Rolling back code..." >> "$LOG"
-            git reset --hard "$PREV_COMMIT" >> "$LOG"
-            sudo systemctl restart "$SERVICE"
-            exit 1
-        fi
-
-        sleep 3
-        if curl -s --max-time 5 http://127.0.0.1:8000 >/dev/null; then
-            echo "[$TIMESTAMP] Backend recovered after restart." >> "$LOG"
-        else
-            echo "[$TIMESTAMP] Backend still unhealthy. Rolling back..." >> "$LOG"
-            git reset --hard "$PREV_COMMIT" >> "$LOG"
-            sudo systemctl restart "$SERVICE"
-            exit 1
-        fi
+    log "Restarting backend service."
+    if ! restart_service; then
+        log "Backend restart failed."
+        rollback
+        exit 1
     fi
 fi
 
-git push origin $BRANCH >> "$LOG" 2>&1
-echo "[$TIMESTAMP] Backend sync completed." >> "$LOG"
+log "Performing health check."
+if curl -s --max-time 5 http://127.0.0.1:8000 >/dev/null; then
+    log "Backend healthy."
+else
+    log "Backend unhealthy after sync."
+    rollback
+    exit 1
+fi
 
+AHEAD_COUNT=$(git rev-list --count "origin/$BRANCH..HEAD")
+if [[ "$AHEAD_COUNT" -gt 0 ]]; then
+    log "Local branch is ahead by $AHEAD_COUNT commit(s). Pushing to origin."
+    if ! git push "$AUTH_REPO_URL" "$BRANCH" >> "$LOG" 2>&1; then
+        log "Push failed after successful sync."
+        exit 1
+    fi
+fi
 
+log "Backend sync completed."

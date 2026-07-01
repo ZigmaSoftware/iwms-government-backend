@@ -3,6 +3,18 @@ source .venv/bin/activate
 uv sync
 uv add pkgname
 
+# Preferred command wrapper after uv sync
+./manage.sh makemigrations
+./manage.sh migrate
+./manage.sh runserver 0.0.0.0:8000
+
+# Server-safe uv sync
+mkdir -p /tmp/uv-cache
+UV_CACHE_DIR=/tmp/uv-cache UV_LINK_MODE=copy uv sync --locked
+
+# If the server has no DNS / internet access, fix that first:
+# getent hosts files.pythonhosted.org pypi.org
+
 # remove pycache folders
 #for linux
 find . -name "__pycache__" -type d -exec rm -rf {} + 
@@ -11,32 +23,32 @@ find . -name "__pycache__" -type d -exec rm -rf {} +
 Get-ChildItem -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
 
 #Run the application
-python3 manage.py makemigrations
-python3 manage.py migrate
-python3 manage.py runserver
+./manage.sh makemigrations
+./manage.sh migrate
+./manage.sh runserver
 
 # Run everything
-python3 manage.py seed
+./manage.sh seed
 
 # One line commadn to run everything
-find . -name "__pycache__" -type d -exec rm -rf {} + && python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py seed && python3 manage.py runserver 0.0.0.0:8000
+find . -name "__pycache__" -type d -exec rm -rf {} + && ./manage.sh makemigrations && ./manage.sh migrate && ./manage.sh seed && ./manage.sh runserver 0.0.0.0:8000
 
 
 
 # Run individual groups
-python3 manage.py seed --group masters
-python3 manage.py seed --group assets
-python3 manage.py seed --group role-assign
-python3 manage.py seed --group permission
-python3 manage.py seed --group customers
-python3 manage.py seed --group user-creation
+./manage.sh seed --group masters
+./manage.sh seed --group assets
+./manage.sh seed --group role-assign
+./manage.sh seed --group permission
+./manage.sh seed --group customers
+./manage.sh seed --group user-creation
 
 #To install the respected lib
 pip install -r ./requirements.txt
 pip install --upgrade setuptools
 
 
-local server:  python3 manage.py runserver 192.168.1.128:4216
+local server:  ./manage.sh runserver 192.168.1.128:4216
 
 
 
