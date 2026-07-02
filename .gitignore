@@ -20,6 +20,7 @@ api/migrations/
 venv/
 env/
 .venv/
+.uv-cache/
 
 # === Django static/media ===
 media/
