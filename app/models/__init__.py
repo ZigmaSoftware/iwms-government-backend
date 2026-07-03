@@ -101,11 +101,27 @@ from .customers.password_reset_otp import PasswordResetOTP
 
 
 # ============================================================
-# GROUP: GRIEVANCES
+# GROUP: COMPLAINT TICKETING
 # ============================================================
-from .grivences.complaints import Complaint
-from .grivences.main_category_citizenGrievance import MainCategory
-from .grivences.sub_category_citizenGrievance import SubCategory
+from .complaint_ticket.source_master import ComplaintSource
+from .complaint_ticket.language_master import ComplaintLanguage
+from .complaint_ticket.priority_master import ComplaintPriority
+from .complaint_ticket.status_master import ComplaintStatus
+from .complaint_ticket.category_master import ComplaintCategory
+from .complaint_ticket.subcategory_master import ComplaintSubcategory
+from .complaint_ticket.team_master import ComplaintTeam
+from .complaint_ticket.sla_rule_master import ComplaintSlaRule
+from .complaint_ticket.routing_rule import ComplaintRoutingRule
+from .complaint_ticket.ticket import ComplaintTicket
+from .complaint_ticket.ticket_extra_detail import ComplaintTicketExtraDetail
+from .complaint_ticket.ticket_attachment import ComplaintAttachment
+from .complaint_ticket.status_history import ComplaintStatusHistory
+from .complaint_ticket.assignment_history import ComplaintAssignmentHistory
+from .complaint_ticket.escalation_history import ComplaintEscalationHistory
+from .complaint_ticket.reopen_history import ComplaintReopenHistory
+from .complaint_ticket.comment import ComplaintComment
+from .complaint_ticket.feedback import ComplaintFeedback
+from .complaint_ticket.address_change_request import ComplaintAddressChangeRequest
 
 
 # ============================================================
@@ -209,10 +225,26 @@ __all__ = [
     "UserChargeRule",
     "PasswordResetOTP",
 
-    # Grievances
-    "Complaint",
-    "MainCategory",
-    "SubCategory",
+    # Complaint Ticketing
+    "ComplaintSource",
+    "ComplaintLanguage",
+    "ComplaintPriority",
+    "ComplaintStatus",
+    "ComplaintCategory",
+    "ComplaintSubcategory",
+    "ComplaintTeam",
+    "ComplaintSlaRule",
+    "ComplaintRoutingRule",
+    "ComplaintTicket",
+    "ComplaintTicketExtraDetail",
+    "ComplaintAttachment",
+    "ComplaintStatusHistory",
+    "ComplaintAssignmentHistory",
+    "ComplaintEscalationHistory",
+    "ComplaintReopenHistory",
+    "ComplaintComment",
+    "ComplaintFeedback",
+    "ComplaintAddressChangeRequest",
 
     # Bluetooth Waste
     "WasteCollectionSub",
