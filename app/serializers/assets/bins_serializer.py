@@ -1,21 +1,14 @@
 from rest_framework import serializers
 from app.models.assets.bins import Bins
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
+from app.services.hierarchy_tree_service import get_path
 from app.validators.unique_name_validator import unique_name_validator
 
 class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
 
-    panchayat_name = serializers.CharField(source="collection_point_id.panchayat_id.panchayat_name", read_only = True)
-    panchayat_id = serializers.CharField(source="collection_point_id.panchayat_id.unique_id", read_only = True)
-    corporation_id = serializers.CharField(source="collection_point_id.corporation_id.unique_id", read_only=True)
-    corporation_name = serializers.CharField(source="collection_point_id.corporation_id.corporation_name", read_only=True)
-    municipality_id = serializers.CharField(source="collection_point_id.municipality_id.unique_id", read_only=True)
-    municipality_name = serializers.CharField(source="collection_point_id.municipality_id.municipality_name", read_only=True)
-    town_panchayat_id = serializers.CharField(source="collection_point_id.town_panchayat_id.unique_id", read_only=True)
-    town_panchayat_name = serializers.CharField(source="collection_point_id.town_panchayat_id.town_panchayat_name", read_only=True)
-    panchayat_union_id = serializers.CharField(source="collection_point_id.panchayat_union_id.unique_id", read_only=True)
-    panchayat_union_name = serializers.CharField(source="collection_point_id.panchayat_union_id.union_name", read_only=True)
-    district_name = serializers.CharField(source="district_id.name", read_only=True)
+    location_node_name = serializers.CharField(source="location_node.name", read_only=True)
+    location_level = serializers.CharField(source="location_node.level.name", read_only=True)
+    location_path = serializers.SerializerMethodField(read_only=True)
     wastetype_name = serializers.CharField(source="wastetype_id.waste_type_name", read_only = True)
     collection_point_name = serializers.CharField(source="collection_point_id.cp_name", read_only = True)
 
@@ -23,18 +16,10 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         model = Bins
         fields = [
             "unique_id",
-            "panchayat_id",
-            "panchayat_name",
-            "corporation_id",
-            "corporation_name",
-            "municipality_id",
-            "municipality_name",
-            "town_panchayat_id",
-            "town_panchayat_name",
-            "panchayat_union_id",
-            "panchayat_union_name",
-            "district_id",
-            "district_name",
+            "location_node",
+            "location_node_name",
+            "location_level",
+            "location_path",
             "collection_point_id",
             "collection_point_name",
             "bin_capacity",
@@ -54,6 +39,7 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         ]
         read_only_fields = [
             "unique_id",
+            "location_node",
             "bin_qr",
             "created_at",
             "updated_at",
@@ -77,6 +63,14 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
 
         return unique_name_validator(
             Model=Bins,
-            name_field="bin_name", 
-            scope_fields=["wastetype_id","collection_point_id"]  
+            name_field="bin_name",
+            scope_fields=["wastetype_id","collection_point_id"]
         )(self, attrs)
+
+    def get_location_path(self, obj):
+        if not obj.location_node_id:
+            return []
+        return [
+            {"unique_id": e["unique_id"], "name": e["name"], "level_name": e.get("level_name")}
+            for e in get_path(obj.location_node_id)
+        ]

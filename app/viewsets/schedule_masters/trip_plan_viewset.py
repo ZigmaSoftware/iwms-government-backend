@@ -12,12 +12,7 @@ from app.utils.hierarchy import filter_queryset_by_hierarchy
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = TripPlan.objects.select_related(
-        "district_id",
-        "corporation_id",
-        "municipality_id",
-        "town_panchayat_id",
-        "panchayat_union_id",
-        "panchayat_id",
+        "location_node",
         "staff_template_id",
         "staff_template_id__driver_id",
         "staff_template_id__operator_id",
@@ -37,9 +32,6 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
-        if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
         return filter_queryset_by_hierarchy(queryset, self.request.query_params)
 
     @swagger_auto_schema(request_body=TripPlanSerializer)

@@ -48,11 +48,6 @@ class DailyTripCollectionPointSerializer(
             "trip_assignment",
             "collection_point_id",
             "collection_point",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "hierarchy",
             "bin_id",
             "bin",
@@ -72,11 +67,6 @@ class DailyTripCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "created_at",
             "updated_at",
         ]

@@ -56,11 +56,6 @@ class TripPlanCollectionPointSerializer(
             "customer_id",
             "customer",
             "local_body",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "hierarchy",
             "sequence",
             "is_active",
@@ -70,11 +65,6 @@ class TripPlanCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "created_at",
             "updated_at",
         ]
@@ -119,23 +109,16 @@ class TripPlanCollectionPointSerializer(
         return hierarchy_payload(obj)
 
     def get_local_body(self, obj):
-        local_bodies = [
-            ("corporation_id", "Corporation", "corporation_name"),
-            ("municipality_id", "Municipality", "municipality_name"),
-            ("town_panchayat_id", "Town Panchayat", "town_panchayat_name"),
-            ("panchayat_union_id", "Panchayat Union", "union_name"),
-            ("panchayat_id", "Panchayat / PLB", "panchayat_name"),
-        ]
-        for field, label, name_attr in local_bodies:
-            value = getattr(obj, field, None)
-            if value:
-                return {
-                    "field": field,
-                    "label": label,
-                    "unique_id": getattr(value, "unique_id", None),
-                    "name": getattr(value, name_attr, None),
-                }
-        return None
+        node = getattr(obj, "location_node", None)
+        if not node:
+            return None
+        level = getattr(node, "level", None)
+        return {
+            "field": "location_node",
+            "label": getattr(level, "name", None),
+            "unique_id": node.unique_id,
+            "name": node.name,
+        }
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)

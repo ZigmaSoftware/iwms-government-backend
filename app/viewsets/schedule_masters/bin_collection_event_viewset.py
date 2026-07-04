@@ -40,7 +40,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "collection_point_id",
                 "bin_id",
                 "bin_id__wastetype_id",
-                "panchayat_id",
+                "location_node",
             )
             .filter(is_deleted=False)
         )
@@ -61,7 +61,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if bin_id:
             queryset = queryset.filter(bin_id=bin_id)
         if panchayat:
-            queryset = queryset.filter(panchayat_id=panchayat)
+            queryset = queryset.filter(location_node__unique_id=panchayat)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
         if date_from:

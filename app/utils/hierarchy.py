@@ -106,3 +106,35 @@ def backfill_legacy_geo_from_node(attrs, *, node_attr=LOCATION_FIELD):
 def agreed_weight_for_node(node):
     props = getattr(node, "custom_properties", None) or {}
     return props.get("agreed_weight_kg") or props.get("daily_agreed_weight_kg") or 0
+
+
+def requester_scope_node(user):
+    """
+    The hierarchy node a logged-in staff/government user is scoped to: their
+    own ``location_node`` if set, else the node of their government role
+    (``governmentusertype_id.location_node``). Returns None for identities
+    with no location (e.g. platform super admins), meaning "unscoped".
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return None
+
+    node = getattr(user, "location_node", None)
+    if node:
+        return node
+
+    govt_type = getattr(user, "governmentusertype_id", None)
+    return getattr(govt_type, "location_node", None) if govt_type else None
+
+
+def filter_queryset_by_requester_scope(queryset, user, field=LOCATION_FIELD):
+    """
+    Auto-scope a queryset to the requester's own node + descendants. Users
+    with no resolvable scope node (e.g. super admins) see everything.
+    """
+    node = requester_scope_node(user)
+    if not node:
+        return queryset
+    ids = descendant_ids(node)
+    if not ids:
+        return queryset.none()
+    return queryset.filter(**{f"{field}_id__in": ids})

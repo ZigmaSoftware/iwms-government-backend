@@ -13,6 +13,7 @@ from app.serializers.user_creations.staffcreation_serializer import (
     StaffcreationSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_queryset_by_hierarchy, filter_queryset_by_requester_scope
 from rest_framework import viewsets
 
 
@@ -98,6 +99,14 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
 
         if login_enabled in ["0", "1", "true", "false", "True", "False"]:
             queryset = queryset.filter(login_enabled=str(login_enabled).lower() in ["1", "true"])
+
+        # A District-level (etc.) staff member automatically sees every staff
+        # record at their own node and all descendant nodes beneath it (e.g.
+        # every Corporation/Municipality/Town Panchayat/Panchayat Union/
+        # Panchayat under their District). ?location_node=<id> lets a broader
+        # user (e.g. State/super admin) drill into one specific node.
+        queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
+        queryset = filter_queryset_by_hierarchy(queryset, self.request.query_params)
 
         return queryset.order_by("-created_at")
 

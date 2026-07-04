@@ -78,7 +78,7 @@ def resolve_bin_from_qr(bin_qr: str) -> Bins:
     bin_obj = (
         Bins.objects
         .filter(bin_qr=bin_qr, is_deleted=False)
-        .select_related("collection_point_id", "collection_point_id__panchayat_id", "wastetype_id")
+        .select_related("collection_point_id", "collection_point_id__location_node", "wastetype_id")
         .first()
     )
     if not bin_obj:

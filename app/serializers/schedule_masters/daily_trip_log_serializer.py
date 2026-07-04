@@ -20,7 +20,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "alt_staff_template_id",
             "alt_staff_template_id__driver_id",
             "alt_staff_template_id__operator_id",
-            "panchayat_id",
+            "location_node",
             "waste_type_id",
         ).filter(is_deleted=False),
         write_only=True,
@@ -40,7 +40,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
 
     trip_assignment = serializers.SerializerMethodField(read_only=True)
     staff_template = serializers.SerializerMethodField(read_only=True)
-    panchayat = serializers.SerializerMethodField(read_only=True)
+    location_node_name = serializers.CharField(source="location_node.name", read_only=True)
     collection_point = serializers.SerializerMethodField(read_only=True)
     collection_points = serializers.SerializerMethodField(read_only=True)
     waste_type = serializers.SerializerMethodField(read_only=True)
@@ -62,8 +62,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "staff_template_id",
             "staff_template",
             "alt_staff_template_id",
-            "panchayat_id",
-            "panchayat",
+            "location_node",
+            "location_node_name",
             "collection_point_id",
             "collection_point",
             "collection_points",
@@ -99,7 +99,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "unique_id",
             "staff_template_id",
             "alt_staff_template_id",
-            "panchayat_id",
+            "location_node",
             "collection_point_id",
             "waste_type_id",
             "trip_date",
@@ -236,10 +236,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "status": hh.status,
             })
         return result
-
-    def get_panchayat(self, obj):
-        p = obj.panchayat_id
-        return None if not p else {"unique_id": p.unique_id, "panchayat_name": p.panchayat_name}
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id

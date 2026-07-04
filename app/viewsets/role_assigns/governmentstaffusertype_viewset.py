@@ -21,9 +21,23 @@ class GovernmentStaffUserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="role-choices")
     def role_choices(self, request):
+        level = request.query_params.get("level")
+        choices = GovernmentStaffUserType.GOVT_ROLE_CHOICES
+        if level:
+            all_levels = [key for key, _ in GovernmentStaffUserType.GOVT_LEVEL_CHOICES]
+            prefix = f"govt_{level}_"
+            other_prefixes = [
+                f"govt_{other}_" for other in all_levels
+                if other != level and other.startswith(level)
+            ]
+            choices = [
+                (key, label) for key, label in choices
+                if key.startswith(prefix)
+                and not any(key.startswith(p) for p in other_prefixes)
+            ]
         return Response([
             {"value": key, "label": label}
-            for key, label in GovernmentStaffUserType.GOVT_ROLE_CHOICES
+            for key, label in choices
         ])
 
     @action(detail=False, methods=["get"], url_path="level-choices")

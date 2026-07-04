@@ -22,11 +22,7 @@ class TripPlanCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             TripPlanCollectionPoint.objects.select_related(
                 "trip_plan_id",
                 "collection_point_id",
-                "corporation_id",
-                "municipality_id",
-                "town_panchayat_id",
-                "panchayat_union_id",
-                "panchayat_id",
+                "location_node",
                 "bin_id",
                 "customer_id",
             )

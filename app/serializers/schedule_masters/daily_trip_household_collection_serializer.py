@@ -24,7 +24,6 @@ class DailyTripHouseholdCollectionSerializer(
 
     trip_assignment = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
-    panchayat = serializers.SerializerMethodField()
     hierarchy = serializers.SerializerMethodField()
 
     class Meta:
@@ -37,12 +36,6 @@ class DailyTripHouseholdCollectionSerializer(
             "customer",
             "collection_type",
             "waste_collection_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
-            "panchayat",
             "hierarchy",
             "sequence",
             "is_collected",
@@ -54,11 +47,6 @@ class DailyTripHouseholdCollectionSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "waste_collection_id",
             "created_at",
             "updated_at",
@@ -89,10 +77,6 @@ class DailyTripHouseholdCollectionSerializer(
             "street": getattr(customer, "street", None),
             **hierarchy_payload(customer),
         }
-
-    def get_panchayat(self, obj):
-        p = obj.panchayat_id
-        return None if not p else {"unique_id": p.unique_id, "panchayat_name": p.panchayat_name}
 
     def get_hierarchy(self, obj):
         return hierarchy_payload(obj)

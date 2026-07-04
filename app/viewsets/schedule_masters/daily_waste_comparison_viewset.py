@@ -19,9 +19,11 @@ from django.db.models.functions import Coalesce
 from rest_framework import viewsets
 from rest_framework.response import Response
 
+from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.serializers.schedule_masters.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
+from app.utils.hierarchy import agreed_weight_for_node
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
@@ -65,7 +67,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
     queryset = DailyWasteComparison.objects.select_related(
-        "panchayat_id", "waste_type_id"
+        "location_node", "waste_type_id"
     )
     serializer_class = DailyWasteComparisonSerializer
     lookup_field = "unique_id"
@@ -73,7 +75,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         queryset = DailyTripLog.objects.select_related(
-            "panchayat_id", "waste_type_id",
+            "location_node", "waste_type_id",
         ).filter(
             is_deleted=False,
             log_status__in=[
@@ -103,7 +105,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
                 pass
 
         if panchayat_param:
-            queryset = queryset.filter(panchayat_id=panchayat_param)
+            queryset = queryset.filter(location_node__unique_id=panchayat_param)
         if waste_type_param:
             queryset = queryset.filter(waste_type_id=waste_type_param)
 
@@ -133,33 +135,39 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
                 )
             )
 
+        nodes_by_id = {
+            node.unique_id: node
+            for node in HierarchyNode.objects.filter(
+                unique_id__in=queryset.values_list("location_node", flat=True).distinct()
+            )
+        }
+
         grouped_qs = queryset.values(
             "trip_date",
-            "panchayat_id",
-            "panchayat_id__panchayat_name",
-            "panchayat_id__agreed_weight_kg",
+            "location_node",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
 
         rows = []
         for row in grouped_qs:
-            agreed = decimal_value(row["panchayat_id__agreed_weight_kg"])
+            node = nodes_by_id.get(row["location_node"])
+            agreed = decimal_value(agreed_weight_for_node(node))
             actual = decimal_value(row["total_actual_weight"])
             variance = actual - agreed
             total_trips = int(row["total_trips"] or 0)
             points = int(row["collection_points_covered"] or 0)
 
             unique_id = (
-                f"DWC-{row['trip_date']}-{row['panchayat_id']}-{row['waste_type_id']}"
+                f"DWC-{row['trip_date']}-{row['location_node']}-{row['waste_type_id']}"
             )
 
             rows.append({
                 "unique_id": unique_id,
                 "collection_date": str(row["trip_date"]),
-                "panchayat_id": row["panchayat_id"],
+                "panchayat_id": row["location_node"],
                 "panchayat_name": (
-                    row["panchayat_id__panchayat_name"] or row["panchayat_id"]
+                    getattr(node, "name", None) or row["location_node"]
                 ),
                 "waste_type_id": row["waste_type_id"],
                 "waste_type": (

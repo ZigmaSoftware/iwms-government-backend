@@ -68,24 +68,24 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Bins.objects.select_related(
-            "district_id",
+            "location_node",
             "collection_point_id",
-            "collection_point_id__panchayat_id",
+            "collection_point_id__location_node",
             "wastetype_id",
         ).filter(is_deleted=False)
 
-        district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
-        panchayat_uid = self.request.query_params.get("panchayat") or self.request.query_params.get("panchayat_id")
+        location_uid = (
+            self.request.query_params.get("location_node")
+            or self.request.query_params.get("panchayat")
+            or self.request.query_params.get("panchayat_id")
+        )
         collection_point_uid = (
             self.request.query_params.get("collection_point")
             or self.request.query_params.get("collection_point_id")
         )
 
-        if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
-
-        if panchayat_uid:
-            queryset = queryset.filter(collection_point_id__panchayat_id__unique_id=panchayat_uid)
+        if location_uid:
+            queryset = queryset.filter(location_node__unique_id=location_uid)
 
         if collection_point_uid:
             queryset = queryset.filter(collection_point_id__unique_id=collection_point_uid)

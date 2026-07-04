@@ -2,37 +2,24 @@ from rest_framework import serializers
 
 from app.models.schedule_masters.collection_point import Collection_point
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
+from app.services.hierarchy_tree_service import get_path
 from app.validators.unique_name_validator import unique_name_validator
 from app.utils.hierarchy import validate_single_hierarchy
 
 
 class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
-    state_name = serializers.CharField(source="state_id.name", read_only=True)
-    district_name = serializers.CharField(source="district_id.name", read_only=True)
-    panchayat_name = serializers.CharField(source="panchayat_id.panchayat_name", read_only=True)
-    corporation_name = serializers.CharField(source="corporation_id.corporation_name", read_only=True)
-    municipality_name = serializers.CharField(source="municipality_id.municipality_name", read_only=True)
-    town_panchayat_name = serializers.CharField(source="town_panchayat_id.town_panchayat_name", read_only=True)
-    panchayat_union_name = serializers.CharField(source="panchayat_union_id.union_name", read_only=True)
+    location_node_name = serializers.CharField(source="location_node.name", read_only=True)
+    location_level = serializers.CharField(source="location_node.level.name", read_only=True)
+    location_path = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Collection_point
         fields = [
             "unique_id",
-            "state_id",
-            "state_name",
-            "district_id",
-            "district_name",
-            "corporation_id",
-            "corporation_name",
-            "municipality_id",
-            "municipality_name",
-            "town_panchayat_id",
-            "town_panchayat_name",
-            "panchayat_union_id",
-            "panchayat_union_name",
-            "panchayat_id",
-            "panchayat_name",
+            "location_node",
+            "location_node_name",
+            "location_level",
+            "location_path",
             "cp_name",
             "latitude",
             "longitude",
@@ -46,6 +33,14 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
         ]
         read_only_fields = ["unique_id", "created_at", "updated_at"]
 
+    def get_location_path(self, obj):
+        if not obj.location_node_id:
+            return []
+        return [
+            {"unique_id": e["unique_id"], "name": e["name"], "level_name": e.get("level_name")}
+            for e in get_path(obj.location_node_id)
+        ]
+
     def validate(self, attrs):
         validate_single_hierarchy(
             attrs,
@@ -57,15 +52,7 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             unique_name_validator(
                 Model=Collection_point,
                 name_field="cp_name",
-                scope_fields=[
-                    "state_id",
-                    "district_id",
-                    "corporation_id",
-                    "municipality_id",
-                    "town_panchayat_id",
-                    "panchayat_union_id",
-                    "panchayat_id",
-                ],
+                scope_fields=["location_node"],
             )(self, attrs)
 
         return attrs

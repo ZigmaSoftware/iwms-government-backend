@@ -18,19 +18,9 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Collection_point.objects.select_related(
-            "state_id",
-            "district_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
+            "location_node",
+            "location_node__level",
         ).filter(is_deleted=False)
-
-        district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
-
-        if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
 
         queryset = filter_queryset_by_hierarchy(queryset, self.request.query_params)
 
