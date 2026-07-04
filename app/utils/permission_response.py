@@ -362,7 +362,7 @@ def infer_app_surfaces(module_access, permissions, role_name=None, user_type=Non
         "audits",
         "masters",
         "common-masters",
-        "grivences",
+        "complaint-ticket",
     }:
         surface_keys.append("admin")
     elif screen_keys & {
