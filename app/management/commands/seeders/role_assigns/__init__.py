@@ -1,9 +1,7 @@
-from .contractorUserType import ContractorUserTypeSeeder
-from .staffUserType import StaffUserTypeSeeder
+from .governmentStaffUserType import GovernmentStaffUserTypeSeeder
 from .userType import UserTypeSeeder
 
 ROLE_ASSIGN_SEEDERS = [
     UserTypeSeeder,
-    StaffUserTypeSeeder,
-    ContractorUserTypeSeeder,
+    GovernmentStaffUserTypeSeeder,
 ]
