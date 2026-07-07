@@ -12,5 +12,5 @@ class WasteCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = WasteCollectionSerializer
     lookup_field = "unique_id"
 
-    AUDIT_MODULE = "customer-masters"
-    AUDIT_ENDPOINT = "wastecollections" 
+    AUDIT_MODULE = "schedule-masters"
+    AUDIT_ENDPOINT = "wastecollections"

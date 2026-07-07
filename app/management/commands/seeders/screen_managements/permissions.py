@@ -202,8 +202,7 @@ class PermissionSeeder(BaseSeeder):
                 "subitems": [
                     ("customercreations", "customercreations", "customercreations", 1, "Customer creation"),
                     ("customercreations", "apartment-list", "apartment-list", 2, "Apartment list"),
-                    ("wastecollections", "wastecollections", "wastecollections", 3, "Waste collections"),
-                    ("feedbacks", "feedbacks", "feedbacks", 4, "Feedback"),
+                    ("feedbacks", "feedbacks", "feedbacks", 3, "Feedback"),
                 ],
             },
             {
@@ -252,6 +251,7 @@ class PermissionSeeder(BaseSeeder):
                     ("daily-trip-household-collections", "daily-trip-household-collections", "daily-trip-household-collections", 8, "Daily trip household collections"),
                     ("bin-collection-events", "bin-collection-events", "bin-collection-events", 9, "Bin collection events"),
                     ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 10, "Daily trip logs"),
+                    ("wastecollections", "waste-collected-data", "recycling", 11, "Waste collected data"),
                 ],
             },
             {
