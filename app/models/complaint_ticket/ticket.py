@@ -76,6 +76,11 @@ class ComplaintTicket(BaseMaster):
         on_delete=models.PROTECT,
         related_name="tickets",
     )
+    waste_types = models.ManyToManyField(
+        "app.WasteType",
+        blank=True,
+        related_name="complaint_tickets",
+    )
     subcategory = models.ForeignKey(
         ComplaintSubcategory,
         on_delete=models.SET_NULL,
@@ -135,6 +140,8 @@ class ComplaintTicket(BaseMaster):
     first_response_due_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
+    sla_breached = models.BooleanField(default=False)
+    sla_breached_at = models.DateTimeField(null=True, blank=True)
 
     reopened_count = models.IntegerField(default=0)
     parent_ticket = models.ForeignKey(
@@ -144,7 +151,10 @@ class ComplaintTicket(BaseMaster):
         blank=True,
         related_name="child_tickets",
     )
-    idempotency_key = models.CharField(max_length=150, unique=True, null=True, blank=True)
+    # Not DB-unique: the public grievance duplicate check only rejects a
+    # resubmission within the 6-hour cooldown window, so the same device can
+    # legitimately produce more than one row with this key over time.
+    idempotency_key = models.CharField(max_length=150, db_index=True, null=True, blank=True)
     is_sensitive = models.BooleanField(default=False)
 
     created = models.DateTimeField(auto_now_add=True)

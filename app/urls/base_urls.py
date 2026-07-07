@@ -6,8 +6,6 @@ from .custom_router import GroupedRouter
 # IMPORTS
 # ============================================================
 
-# Superadmin masters
-
 # Common masters
 from ..viewsets.common_masters.continent_viewset import ContinentViewSet
 from ..viewsets.common_masters.country_viewset import CountryViewSet
@@ -89,18 +87,23 @@ from ..viewsets.complaint_ticket.master_viewsets import (
     ComplaintPriorityViewSet,
     ComplaintStatusViewSet,
     ComplaintTeamViewSet,
+    ComplaintModuleViewSet,
     ComplaintCategoryViewSet,
     ComplaintSubcategoryViewSet,
     ComplaintSlaRuleViewSet,
 )
 from ..viewsets.complaint_ticket.ticket_viewset import ComplaintTicketViewSet
-from ..viewsets.complaint_ticket.citizen_viewset import CitizenComplaintTicketViewSet
+from ..viewsets.complaint_ticket.citizen_viewset import (
+    CitizenComplaintTicketViewSet,
+    PublicGrievanceViewSet,
+)
 from ..viewsets.complaint_ticket.address_change_viewset import ComplaintAddressChangeViewSet
 from ..viewsets.complaint_ticket.secondary_viewsets import (
     ComplaintRoutingRuleViewSet,
     ComplaintFeedbackViewSet,
     ComplaintReopenHistoryViewSet,
 )
+from ..viewsets.complaint_ticket.notification_viewset import ComplaintNotificationViewSet
 
 # Transport masters
 from ..viewsets.transport_masters.vehicletypecreation_viewset import VehicleTypeCreationViewSet
@@ -150,10 +153,6 @@ from ..viewsets.attendance_view.external_attendance import ExternalAttendanceVie
 
 
 router = GroupedRouter()
-
-# ============================================================
-# GROUP: SUPERADMIN MASTERS
-# ============================================================
 
 # ============================================================
 # GROUP: COMMON MASTERS
@@ -243,6 +242,7 @@ router.register_group("customer-masters", "user-charge-rules", UserChargeRuleVie
 # GROUP: COMPLAINT TICKETING
 # ============================================================
 router.register_group("complaint-ticket", "tickets", ComplaintTicketViewSet)
+router.register_group("complaint-ticket", "modules", ComplaintModuleViewSet)
 router.register_group("complaint-ticket", "categories", ComplaintCategoryViewSet)
 router.register_group("complaint-ticket", "subcategories", ComplaintSubcategoryViewSet)
 router.register_group("complaint-ticket", "priorities", ComplaintPriorityViewSet)
@@ -254,6 +254,7 @@ router.register_group("complaint-ticket", "sla-rules", ComplaintSlaRuleViewSet)
 router.register_group("complaint-ticket", "routing-rules", ComplaintRoutingRuleViewSet)
 router.register_group("complaint-ticket", "feedback", ComplaintFeedbackViewSet)
 router.register_group("complaint-ticket", "reopen-history", ComplaintReopenHistoryViewSet)
+router.register_group("complaint-ticket", "notifications", ComplaintNotificationViewSet, basename="complaint-notifications")
 router.register_group("complaint-ticket", "address-change", ComplaintAddressChangeViewSet)
 
 # ============================================================
@@ -264,6 +265,13 @@ router.register_group(
     "complaint-tickets",
     CitizenComplaintTicketViewSet,
     basename="citizen-complaint-tickets",
+)
+router.register_group(
+    "public",
+    "publicgrivence",
+    PublicGrievanceViewSet,
+    basename="publicgrivence",
+    include_group_in_prefix=False,
 )
 
 # ============================================================

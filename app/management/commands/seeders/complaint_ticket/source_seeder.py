@@ -11,6 +11,7 @@ class ComplaintSourceSeeder(BaseSeeder):
         ("WEB", "Web Portal"),
         ("CALL_CENTER", "Call Center"),
         ("ADMIN", "Admin"),
+        ("PUBLIC_GRIEVANCE", "Public Grievance"),
     ]
 
     def run(self):

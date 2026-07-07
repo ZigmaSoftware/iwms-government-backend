@@ -2,6 +2,7 @@ from .source_master import ComplaintSource
 from .language_master import ComplaintLanguage
 from .priority_master import ComplaintPriority
 from .status_master import ComplaintStatus
+from .module_master import ComplaintModule
 from .category_master import ComplaintCategory
 from .subcategory_master import ComplaintSubcategory
 from .team_master import ComplaintTeam
@@ -17,12 +18,14 @@ from .escalation_history import ComplaintEscalationHistory
 from .feedback import ComplaintFeedback
 from .reopen_history import ComplaintReopenHistory
 from .address_change_request import ComplaintAddressChangeRequest
+from .notification import ComplaintNotification
 
 __all__ = [
     "ComplaintSource",
     "ComplaintLanguage",
     "ComplaintPriority",
     "ComplaintStatus",
+    "ComplaintModule",
     "ComplaintCategory",
     "ComplaintSubcategory",
     "ComplaintTeam",
@@ -38,4 +41,5 @@ __all__ = [
     "ComplaintFeedback",
     "ComplaintReopenHistory",
     "ComplaintAddressChangeRequest",
+    "ComplaintNotification",
 ]

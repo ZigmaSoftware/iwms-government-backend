@@ -20,14 +20,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.complaint_ticket_routing import apply_routing_and_sla
+from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_escalation
+from app.utils.hierarchy import filter_queryset_by_hierarchy, covering_node_ids
+from app.services import notification_service
 
 from app.models.complaint_ticket.ticket import ComplaintTicket
 from app.models.complaint_ticket.status_master import ComplaintStatus
 from app.models.complaint_ticket.team_master import ComplaintTeam
 from app.models.complaint_ticket.status_history import ComplaintStatusHistory
 from app.models.complaint_ticket.assignment_history import ComplaintAssignmentHistory
-from app.models.complaint_ticket.escalation_history import ComplaintEscalationHistory
 from app.models.complaint_ticket.comment import ComplaintComment
 from app.models.complaint_ticket.reopen_history import ComplaintReopenHistory
 from app.models.complaint_ticket.feedback import ComplaintFeedback
@@ -81,28 +82,43 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_history", "status_history__to_status",
             "escalation_history", "escalation_history__escalated_to_team",
             "escalation_history__escalated_from_team",
+            "attachments",
         ).order_by("-created")
         params = self.request.query_params
-        customer = params.get("customer") or params.get("customer_id")
-        if customer:
-            qs = qs.filter(customer_id=customer)
-        wa_phone = params.get("wa_phone")
-        if wa_phone:
-            qs = qs.filter(wa_phone=wa_phone)
-        status_code = params.get("status")
-        if status_code:
-            normalized = status_code.strip().lower()
-            bucket = {
-                "in_progress": "started",
-                "progressing": "started",
-                "processing": "started",
-                "new": "pending",
-            }.get(normalized, normalized)
-            q = _status_bucket_q(bucket)
-            if q:
-                qs = qs.filter(q)
-            else:
-                qs = qs.filter(status__status_code=status_code)
+
+        # ----------------------------------------------------------
+        # List-only filters. These read query params (customer, district,
+        # city, status, ...) that detail actions also legitimately receive
+        # for their OWN purposes - e.g. assignable-staff takes a
+        # ?location_node= to scope the STAFF list, not the ticket being
+        # fetched. Applying these here unconditionally would filter the
+        # very ticket a detail action is trying to load right out of the
+        # queryset, so they only run for the list action.
+        # ----------------------------------------------------------
+        if self.action == "list":
+            customer = params.get("customer") or params.get("customer_id")
+            if customer:
+                qs = qs.filter(customer_id=customer)
+            wa_phone = params.get("wa_phone")
+            if wa_phone:
+                qs = qs.filter(wa_phone=wa_phone)
+            location_filter_id = params.get("district") or params.get("city") or params.get("location_node")
+            if location_filter_id:
+                qs = filter_queryset_by_hierarchy(qs, {"location_node": location_filter_id})
+            status_code = params.get("status")
+            if status_code:
+                normalized = status_code.strip().lower()
+                bucket = {
+                    "in_progress": "started",
+                    "progressing": "started",
+                    "processing": "started",
+                    "new": "pending",
+                }.get(normalized, normalized)
+                q = _status_bucket_q(bucket)
+                if q:
+                    qs = qs.filter(q)
+                else:
+                    qs = qs.filter(status__status_code=status_code)
 
         # ----------------------------------------------------------
         # Per-staff scoping: a staff member only sees the tickets that
@@ -225,7 +241,83 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             assigned_by=_actor_user(request),
             assignment_reason=request.data.get("reason"),
         )
+        if new_staff and (not from_staff or new_staff.staff_unique_id != from_staff.staff_unique_id):
+            notification_service.notify(
+                ticket,
+                "ASSIGNED",
+                f"Ticket {ticket.ticket_no} ({ticket.title or ticket.category.category_name}) has been assigned to you.",
+                staff=new_staff,
+            )
         return Response(self.get_serializer(ticket).data)
+
+    # ----------------------------------------------------------
+    # GET /tickets/{id}/assignable-staff/
+    # ----------------------------------------------------------
+    @action(detail=True, methods=["get"], url_path="assignable-staff")
+    def assignable_staff(self, request, unique_id=None):
+        """Staff options for the Assign dialog, scoped to a district/city.
+
+        Defaults to the ticket's own location; the caller (staff head) may
+        override with ?location_node=<hierarchy node id> to browse a
+        different district or city before assigning.
+        """
+        ticket = self.get_object()
+        location_node_id = (
+            request.query_params.get("location_node")
+            or request.query_params.get("district")
+            or request.query_params.get("city")
+            or ticket.location_node_id
+        )
+
+        qs = StaffcreationOfficeDetails.objects.filter(
+            is_deleted=False,
+            active_status=True,
+            approval_status=StaffcreationOfficeDetails.APPROVAL_APPROVED,
+        )
+        if location_node_id:
+            # Bidirectional: a staff member tagged to the whole district must
+            # still show up when the caller drills into one panchayat/city
+            # inside it (ancestor match), same as a staff member tagged to
+            # that exact panchayat (self/descendant match). Plain
+            # descendant-only matching would hide district-scoped staff the
+            # moment the filter gets more specific than their tag.
+            ids = covering_node_ids(location_node_id)
+            qs = qs.filter(location_node_id__in=ids) if ids else qs.none()
+
+        department_id = request.query_params.get("department")
+        if department_id:
+            qs = qs.filter(department_id__unique_id=department_id)
+
+        qs = qs.select_related("department_id", "location_node", "location_node__level").order_by("employee_name")
+
+        data = [
+            {
+                "staff_unique_id": member.staff_unique_id,
+                "employee_name": member.employee_name,
+                "department_name": getattr(member.department_id, "department_name", None),
+                "location_node_id": member.location_node_id,
+                "location_node_name": getattr(member.location_node, "name", None),
+                "location_level_name": getattr(member.location_node.level, "name", None) if member.location_node_id else None,
+            }
+            for member in qs[:200]
+        ]
+
+        location_node_name = None
+        location_level_name = None
+        if location_node_id:
+            from app.models.masters.hierarchy_tree import HierarchyNode
+            node = HierarchyNode.objects.filter(unique_id=location_node_id, is_deleted=False).select_related("level").first()
+            if node:
+                location_node_name = node.name
+                location_level_name = node.level.name
+
+        return Response({
+            "location_node": location_node_id,
+            "location_node_name": location_node_name,
+            "location_level_name": location_level_name,
+            "count": len(data),
+            "staff": data,
+        })
 
     # ----------------------------------------------------------
     # POST /tickets/{id}/resolve/
@@ -260,6 +352,13 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 comment_text=note,
                 is_internal=False,
             )
+        if ticket.assigned_staff:
+            notification_service.notify(
+                ticket,
+                "RESOLVED",
+                f"Ticket {ticket.ticket_no} has been marked resolved." + (f" Note: {note}" if note else ""),
+                staff=ticket.assigned_staff,
+            )
         return Response(self.get_serializer(ticket).data)
 
     # ----------------------------------------------------------
@@ -269,75 +368,25 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def escalate(self, request, unique_id=None):
         ticket = self.get_object()
-        current_team = ticket.assigned_team
 
         # Determine target team: explicit param, else current team's escalates_to
         team_id = request.data.get("team")
+        target = None
         if team_id:
             target = ComplaintTeam.objects.filter(unique_id=team_id, is_deleted=False).first()
             if not target:
                 return Response({"team": "Invalid team."}, status=http_status.HTTP_400_BAD_REQUEST)
-        else:
-            target = current_team.escalates_to if current_team else None
 
-        if not target:
-            return Response(
-                {"detail": "Already at the top of the escalation chain."},
-                status=http_status.HTTP_400_BAD_REQUEST,
+        try:
+            perform_escalation(
+                ticket,
+                target_team=target,
+                reason=request.data.get("reason"),
+                actor_user=_actor_user(request),
+                by_system=False,
             )
-
-        escalated_status = _resolve_status("ESCALATED")
-
-        from_team = current_team
-        from_staff = ticket.assigned_staff
-
-        # Next escalation level
-        last_level = (
-            ticket.escalation_history.aggregate(m=models.Max("escalation_level"))["m"]
-            if hasattr(ticket, "escalation_history") else None
-        )
-        base_level = last_level or (current_team.escalation_level if current_team else 1)
-        next_level = base_level + 1
-
-        ticket.assigned_team = target
-        ticket.assigned_staff = target.lead_staff
-        if escalated_status:
-            old_status = ticket.status
-            ticket.status = escalated_status
-            ticket.save(update_fields=["assigned_team", "assigned_staff", "status"])
-        else:
-            old_status = ticket.status
-            ticket.save(update_fields=["assigned_team", "assigned_staff"])
-
-        reason = request.data.get("reason")
-
-        ComplaintEscalationHistory.objects.create(
-            ticket=ticket,
-            escalation_level=next_level,
-            escalated_from_team=from_team,
-            escalated_to_team=target,
-            escalated_to_staff=target.lead_staff,
-            reason=reason,
-            escalated_by_system=False,
-        )
-        ComplaintAssignmentHistory.objects.create(
-            ticket=ticket,
-            from_team=from_team,
-            to_team=target,
-            from_staff=from_staff,
-            to_staff=target.lead_staff,
-            assigned_by=_actor_user(request),
-            assignment_reason=reason or "Escalated",
-        )
-        if escalated_status:
-            ComplaintStatusHistory.objects.create(
-                ticket=ticket,
-                from_status=old_status,
-                to_status=escalated_status,
-                changed_by_user=_actor_user(request),
-                remarks=f"Escalated to {target.team_name}" + (f": {reason}" if reason else ""),
-                visible_to_citizen=True,
-            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ticket).data)
 
     # ----------------------------------------------------------
@@ -410,6 +459,15 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             changed_by_user=_actor_user(request),
             remarks="Reopened",
         )
+        if ticket.assigned_staff:
+            notification_service.notify(
+                ticket,
+                "REOPENED",
+                f"Ticket {ticket.ticket_no} has been reopened." + (
+                    f" Reason: {request.data.get('reopen_reason')}" if request.data.get("reopen_reason") else ""
+                ),
+                staff=ticket.assigned_staff,
+            )
         return Response(self.get_serializer(ticket).data)
 
     # ----------------------------------------------------------
