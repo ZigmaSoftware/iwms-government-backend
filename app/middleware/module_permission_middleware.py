@@ -59,6 +59,7 @@ PLATFORM_PREFIXES = (
 
 PUBLIC_PREFIXES = (
     "/media/",
+    "/api/v1/publicgrivence/",
 )
 
 COMMON_AUDIT_CREATE_PATHS = tuple(
@@ -135,6 +136,7 @@ MODULE_RESOURCE_ALLOWLIST = {
     },
     "complaint-ticket": {
         "ComplaintTicket",
+        "ComplaintModule",
         "ComplaintCategory",
         "ComplaintSubcategory",
         "ComplaintPriority",
@@ -393,6 +395,14 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         view_class = getattr(view_func, "cls", None)
         if not view_class:
             return None
+
+        exempt_actions = getattr(view_class, "permission_exempt_actions", None)
+        if exempt_actions:
+            bound_action = (getattr(view_func, "actions", None) or {}).get(
+                request.method.lower()
+            )
+            if bound_action in exempt_actions:
+                return None
 
         permission_resource = getattr(
             view_class,

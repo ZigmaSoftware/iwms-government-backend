@@ -3,6 +3,7 @@ from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.complaint_ticket.priority_master import ComplaintPriority
 from app.models.complaint_ticket.team_master import ComplaintTeam
+from app.models.complaint_ticket.module_master import ComplaintModule
 
 
 def generate_category_id():
@@ -19,6 +20,13 @@ class ComplaintCategory(BaseMaster):
         editable=False,
     )
 
+    module = models.ForeignKey(
+        ComplaintModule,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="categories",
+    )
     category_code = models.CharField(max_length=80, unique=True)
     category_name = models.CharField(max_length=150)
     description = models.TextField(blank=True, null=True)

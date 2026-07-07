@@ -107,6 +107,7 @@ from .complaint_ticket.source_master import ComplaintSource
 from .complaint_ticket.language_master import ComplaintLanguage
 from .complaint_ticket.priority_master import ComplaintPriority
 from .complaint_ticket.status_master import ComplaintStatus
+from .complaint_ticket.module_master import ComplaintModule
 from .complaint_ticket.category_master import ComplaintCategory
 from .complaint_ticket.subcategory_master import ComplaintSubcategory
 from .complaint_ticket.team_master import ComplaintTeam
@@ -122,6 +123,7 @@ from .complaint_ticket.reopen_history import ComplaintReopenHistory
 from .complaint_ticket.comment import ComplaintComment
 from .complaint_ticket.feedback import ComplaintFeedback
 from .complaint_ticket.address_change_request import ComplaintAddressChangeRequest
+from .complaint_ticket.notification import ComplaintNotification
 
 
 # ============================================================
