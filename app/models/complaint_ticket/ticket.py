@@ -135,6 +135,8 @@ class ComplaintTicket(BaseMaster):
     first_response_due_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
+    sla_breached = models.BooleanField(default=False)
+    sla_breached_at = models.DateTimeField(null=True, blank=True)
 
     reopened_count = models.IntegerField(default=0)
     parent_ticket = models.ForeignKey(

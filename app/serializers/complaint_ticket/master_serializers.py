@@ -4,6 +4,7 @@ from app.models.complaint_ticket.language_master import ComplaintLanguage
 from app.models.complaint_ticket.priority_master import ComplaintPriority
 from app.models.complaint_ticket.status_master import ComplaintStatus
 from app.models.complaint_ticket.team_master import ComplaintTeam
+from app.models.complaint_ticket.module_master import ComplaintModule
 from app.models.complaint_ticket.category_master import ComplaintCategory
 from app.models.complaint_ticket.subcategory_master import ComplaintSubcategory
 from app.models.complaint_ticket.sla_rule_master import ComplaintSlaRule
@@ -49,9 +50,18 @@ class ComplaintTeamSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id"]
 
 
+class ComplaintModuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ComplaintModule
+        fields = "__all__"
+        read_only_fields = ["unique_id"]
+
+
 class ComplaintCategorySerializer(serializers.ModelSerializer):
     default_priority_code = serializers.CharField(source="default_priority.priority_code", read_only=True)
     default_team_name = serializers.CharField(source="default_team.team_name", read_only=True)
+    module_code = serializers.CharField(source="module.module_code", read_only=True)
+    module_name = serializers.CharField(source="module.module_name", read_only=True)
 
     class Meta:
         model = ComplaintCategory

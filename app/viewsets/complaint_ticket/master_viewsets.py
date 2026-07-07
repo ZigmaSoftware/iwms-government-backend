@@ -8,6 +8,7 @@ from app.models.complaint_ticket.language_master import ComplaintLanguage
 from app.models.complaint_ticket.priority_master import ComplaintPriority
 from app.models.complaint_ticket.status_master import ComplaintStatus
 from app.models.complaint_ticket.team_master import ComplaintTeam
+from app.models.complaint_ticket.module_master import ComplaintModule
 from app.models.complaint_ticket.category_master import ComplaintCategory
 from app.models.complaint_ticket.subcategory_master import ComplaintSubcategory
 from app.models.complaint_ticket.sla_rule_master import ComplaintSlaRule
@@ -18,6 +19,7 @@ from app.serializers.complaint_ticket.master_serializers import (
     ComplaintPrioritySerializer,
     ComplaintStatusSerializer,
     ComplaintTeamSerializer,
+    ComplaintModuleSerializer,
     ComplaintCategorySerializer,
     ComplaintSubcategorySerializer,
     ComplaintSlaRuleSerializer,
@@ -73,14 +75,23 @@ class ComplaintTeamViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelVi
     AUDIT_ENDPOINT = "teams"
 
 
+class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    queryset = ComplaintModule.objects.filter(is_deleted=False).order_by("sort_order")
+    serializer_class = ComplaintModuleSerializer
+    lookup_field = "unique_id"
+    AUDIT_MODULE = "complaint-ticket"
+    AUDIT_ENDPOINT = "modules"
+
+
 class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplaintCategory.objects.filter(is_deleted=False).select_related(
-        "default_priority", "default_team"
+        "default_priority", "default_team", "module"
     ).order_by("sort_order")
     serializer_class = ComplaintCategorySerializer
     lookup_field = "unique_id"
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "categories"
+    permission_exempt_actions = {"list"}
 
 
 class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):

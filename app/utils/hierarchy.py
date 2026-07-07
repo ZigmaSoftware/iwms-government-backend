@@ -57,6 +57,34 @@ def descendant_ids(node_or_id):
     )
 
 
+def ancestor_ids(node_or_id):
+    node_id = _node_id(node_or_id)
+    if not node_id:
+        return []
+    return list(
+        HierarchyClosure.objects.filter(
+            descendant_id=node_id,
+            is_deleted=False,
+            ancestor__is_deleted=False,
+        ).values_list("ancestor_id", flat=True)
+    )
+
+
+def covering_node_ids(node_or_id):
+    """Nodes whose jurisdiction covers `node_or_id`: itself, every ancestor
+    (e.g. a staff member tagged to the whole district covers every panchayat
+    inside it), and every descendant (picking a district broadly should also
+    surface staff tagged more specifically within it). Use this - not
+    `descendant_ids` - when the thing being filtered (staff) is scoped at a
+    coarser or finer level than the node the caller picked; `descendant_ids`
+    alone only matches at-or-below and misses coarser-scoped staff.
+    """
+    node_id = _node_id(node_or_id)
+    if not node_id:
+        return []
+    return list(set(ancestor_ids(node_id)) | set(descendant_ids(node_id)))
+
+
 def node_contains(ancestor, descendant):
     ancestor_id = _node_id(ancestor)
     descendant_id = _node_id(descendant)
@@ -106,3 +134,44 @@ def backfill_legacy_geo_from_node(attrs, *, node_attr=LOCATION_FIELD):
 def agreed_weight_for_node(node):
     props = getattr(node, "custom_properties", None) or {}
     return props.get("agreed_weight_kg") or props.get("daily_agreed_weight_kg") or 0
+
+
+CITY_LEVEL_NAMES = {"Corporation", "Municipality", "Town Panchayat", "Panchayat Union", "Panchayat"}
+
+
+def district_and_city_for_node(node_id, cache=None):
+    """Resolve the District ancestor and the city/local-body ancestor of a node.
+
+    Walks the closure table once (including the self row at depth 0) so a
+    node that IS the District (or the city) resolves to itself. Returns
+    ``{"district_id", "district_name", "city_id", "city_name"}`` - values are
+    None if the node has no such ancestor. Pass a dict as `cache` to reuse
+    lookups across many nodes that share the same district/city (e.g. a page
+    of tickets) within a single request.
+    """
+    empty = {"district_id": None, "district_name": None, "city_id": None, "city_name": None}
+    if not node_id:
+        return empty
+    if cache is not None and node_id in cache:
+        return cache[node_id]
+
+    links = HierarchyClosure.objects.filter(
+        descendant_id=node_id, is_deleted=False
+    ).select_related("ancestor", "ancestor__level")
+
+    result = dict(empty)
+    for link in links:
+        ancestor = link.ancestor
+        if not ancestor or ancestor.is_deleted or not ancestor.level_id:
+            continue
+        level_name = ancestor.level.name
+        if level_name == "District":
+            result["district_id"] = ancestor.unique_id
+            result["district_name"] = ancestor.name
+        elif level_name in CITY_LEVEL_NAMES:
+            result["city_id"] = ancestor.unique_id
+            result["city_name"] = ancestor.name
+
+    if cache is not None:
+        cache[node_id] = result
+    return result
