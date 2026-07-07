@@ -6,8 +6,6 @@ from .custom_router import GroupedRouter
 # IMPORTS
 # ============================================================
 
-# Superadmin masters
-
 # Common masters
 from ..viewsets.common_masters.continent_viewset import ContinentViewSet
 from ..viewsets.common_masters.country_viewset import CountryViewSet
@@ -82,10 +80,30 @@ from ..viewsets.customers.wastecollection_viewset import WasteCollectionViewSet
 from ..viewsets.customers.feedback_viewset import FeedBackViewSet
 from ..viewsets.customers.userchargerule_viewset import UserChargeRuleViewSet
 
-# Grievances
-from ..viewsets.grivences.complaint_viewset import ComplaintViewSet
-from ..viewsets.grivences.main_category_viewset import MainCategoryViewSet
-from ..viewsets.grivences.sub_category_viewset import SubCategoryViewSet
+# Complaint Ticketing
+from ..viewsets.complaint_ticket.master_viewsets import (
+    ComplaintSourceViewSet,
+    ComplaintLanguageViewSet,
+    ComplaintPriorityViewSet,
+    ComplaintStatusViewSet,
+    ComplaintTeamViewSet,
+    ComplaintModuleViewSet,
+    ComplaintCategoryViewSet,
+    ComplaintSubcategoryViewSet,
+    ComplaintSlaRuleViewSet,
+)
+from ..viewsets.complaint_ticket.ticket_viewset import ComplaintTicketViewSet
+from ..viewsets.complaint_ticket.citizen_viewset import (
+    CitizenComplaintTicketViewSet,
+    PublicGrievanceViewSet,
+)
+from ..viewsets.complaint_ticket.address_change_viewset import ComplaintAddressChangeViewSet
+from ..viewsets.complaint_ticket.secondary_viewsets import (
+    ComplaintRoutingRuleViewSet,
+    ComplaintFeedbackViewSet,
+    ComplaintReopenHistoryViewSet,
+)
+from ..viewsets.complaint_ticket.notification_viewset import ComplaintNotificationViewSet
 
 # Transport masters
 from ..viewsets.transport_masters.vehicletypecreation_viewset import VehicleTypeCreationViewSet
@@ -135,10 +153,6 @@ from ..viewsets.attendance_view.external_attendance import ExternalAttendanceVie
 
 
 router = GroupedRouter()
-
-# ============================================================
-# GROUP: SUPERADMIN MASTERS
-# ============================================================
 
 # ============================================================
 # GROUP: COMMON MASTERS
@@ -225,11 +239,40 @@ router.register_group("customer-masters", "feedbacks",         FeedBackViewSet)
 router.register_group("customer-masters", "user-charge-rules", UserChargeRuleViewSet)
 
 # ============================================================
-# GROUP: GRIEVANCES
+# GROUP: COMPLAINT TICKETING
 # ============================================================
-router.register_group("grivences", "complaints", ComplaintViewSet)
-router.register_group("grivences","main-category", MainCategoryViewSet, basename="main-category")
-router.register_group("grivences","sub-category", SubCategoryViewSet, basename="sub-category")
+router.register_group("complaint-ticket", "tickets", ComplaintTicketViewSet)
+router.register_group("complaint-ticket", "modules", ComplaintModuleViewSet)
+router.register_group("complaint-ticket", "categories", ComplaintCategoryViewSet)
+router.register_group("complaint-ticket", "subcategories", ComplaintSubcategoryViewSet)
+router.register_group("complaint-ticket", "priorities", ComplaintPriorityViewSet)
+router.register_group("complaint-ticket", "statuses", ComplaintStatusViewSet)
+router.register_group("complaint-ticket", "sources", ComplaintSourceViewSet)
+router.register_group("complaint-ticket", "languages", ComplaintLanguageViewSet)
+router.register_group("complaint-ticket", "teams", ComplaintTeamViewSet)
+router.register_group("complaint-ticket", "sla-rules", ComplaintSlaRuleViewSet)
+router.register_group("complaint-ticket", "routing-rules", ComplaintRoutingRuleViewSet)
+router.register_group("complaint-ticket", "feedback", ComplaintFeedbackViewSet)
+router.register_group("complaint-ticket", "reopen-history", ComplaintReopenHistoryViewSet)
+router.register_group("complaint-ticket", "notifications", ComplaintNotificationViewSet, basename="complaint-notifications")
+router.register_group("complaint-ticket", "address-change", ComplaintAddressChangeViewSet)
+
+# ============================================================
+# GROUP: CITIZEN (mobile app, auth-only — no module permission check)
+# ============================================================
+router.register_group(
+    "citizen",
+    "complaint-tickets",
+    CitizenComplaintTicketViewSet,
+    basename="citizen-complaint-tickets",
+)
+router.register_group(
+    "public",
+    "publicgrivence",
+    PublicGrievanceViewSet,
+    basename="publicgrivence",
+    include_group_in_prefix=False,
+)
 
 # ============================================================
 # GROUP: TRANSPORT MASTERS
@@ -326,20 +369,6 @@ router.register_group(
     "login",
     DesktopLoginViewSet,
     basename="mobile-login",
-    include_group_in_prefix=False,
-)
-router.register_group(
-    "mobile",
-    "main-category",
-    MainCategoryViewSet,
-    basename="mobile-main-category",
-    include_group_in_prefix=False,
-)
-router.register_group(
-    "mobile",
-    "sub-category",
-    SubCategoryViewSet,
-    basename="mobile-sub-category",
     include_group_in_prefix=False,
 )
 router.register_group(

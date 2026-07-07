@@ -38,8 +38,6 @@ API_AUTH_PREFIXES = (
 )
 
 AUTH_ONLY_SUFFIXES = (
-    "main-category/",
-    "sub-category/",
     "register/",
     "recognize/",
     "employee/",
@@ -61,6 +59,7 @@ PLATFORM_PREFIXES = (
 
 PUBLIC_PREFIXES = (
     "/media/",
+    "/api/v1/publicgrivence/",
 )
 
 COMMON_AUDIT_CREATE_PATHS = tuple(
@@ -135,10 +134,21 @@ MODULE_RESOURCE_ALLOWLIST = {
         "FeedBack",
         "UserChargeRule",
     },
-    "grivences": {
-        "Complaint",
-        "MainCategory",
-        "SubCategory",
+    "complaint-ticket": {
+        "ComplaintTicket",
+        "ComplaintModule",
+        "ComplaintCategory",
+        "ComplaintSubcategory",
+        "ComplaintPriority",
+        "ComplaintStatus",
+        "ComplaintSource",
+        "ComplaintLanguage",
+        "ComplaintTeam",
+        "ComplaintSlaRule",
+        "ComplaintRoutingRule",
+        "ComplaintFeedback",
+        "ComplaintReopenHistory",
+        "ComplaintAddressChange",
     },
     "transport-masters": {
         "VehicleTypeCreation",
@@ -168,15 +178,11 @@ MODULE_RESOURCE_ALLOWLIST = {
     },
 }
 
-# alias safety
-MODULE_RESOURCE_ALLOWLIST["grievance"] = MODULE_RESOURCE_ALLOWLIST["grivences"]
-
 PROTECTED_MODULES = tuple(MODULE_RESOURCE_ALLOWLIST.keys())
 
 MODULE_PERMISSION_ALIASES = {
     "customer-masters": "customers",
     "process-items": "process",
-    "grievance": "grivences",
 }
 
 RESOURCE_PERMISSION_ALIASES = {
@@ -389,6 +395,14 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         view_class = getattr(view_func, "cls", None)
         if not view_class:
             return None
+
+        exempt_actions = getattr(view_class, "permission_exempt_actions", None)
+        if exempt_actions:
+            bound_action = (getattr(view_func, "actions", None) or {}).get(
+                request.method.lower()
+            )
+            if bound_action in exempt_actions:
+                return None
 
         permission_resource = getattr(
             view_class,

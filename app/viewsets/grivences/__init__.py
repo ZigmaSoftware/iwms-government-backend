@@ -1,1 +1,0 @@
-# Complaint handling module viewsets
