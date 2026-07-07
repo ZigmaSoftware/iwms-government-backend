@@ -19,6 +19,8 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     module_name = serializers.CharField(source="category.module.module_name", read_only=True)
     category_name = serializers.CharField(source="category.category_name", read_only=True)
     category_code = serializers.CharField(source="category.category_code", read_only=True)
+    waste_type_names = serializers.SerializerMethodField()
+    waste_type_name = serializers.SerializerMethodField()
     subcategory_name = serializers.CharField(source="subcategory.subcategory_name", read_only=True)
     priority_code = serializers.CharField(source="priority.priority_code", read_only=True)
     status_code = serializers.CharField(source="status.status_code", read_only=True)
@@ -46,6 +48,14 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
             "unique_id", "ticket_no", "resolved_at", "closed_at", "reopened_count",
             "sla_breached", "sla_breached_at",
         ]
+
+    def get_waste_type_names(self, obj):
+        return [w.waste_type_name for w in obj.waste_types.all()]
+
+    def get_waste_type_name(self, obj):
+        """Comma-joined display string - kept for table/kanban columns that show one text value."""
+        names = self.get_waste_type_names(obj)
+        return ", ".join(names) if names else None
 
     def _geo(self, obj):
         cache = self.context.setdefault("_geo_cache", {})
