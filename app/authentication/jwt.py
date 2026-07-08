@@ -6,6 +6,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.district_leader_login import DistrictLeaderLogin
 
 
 class JWTUserAuthentication(BaseAuthentication):
@@ -68,6 +69,14 @@ class JWTUserAuthentication(BaseAuthentication):
         if leader:
             request.jwt_payload = payload
             return (leader, None)
+
+        # Try to find user in DistrictLeaderLogin (uses unique_id with prefix DLDR-)
+        district_leader = DistrictLeaderLogin.objects.select_related(
+            "district_id"
+        ).filter(unique_id=unique_id).first()
+        if district_leader:
+            request.jwt_payload = payload
+            return (district_leader, None)
 
         # Fall back to Django User (platform super admin)
         UserModel = get_user_model()
