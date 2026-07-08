@@ -61,6 +61,12 @@ ASSIGNABLE_ENTITIES = {
         "pk_field": "unique_id",
         "name_attr": "leader_name",
     },
+    "district_leader": {
+        "label": "District Leader",
+        "model_path": "app.models.masters.district_leader_login.DistrictLeaderLogin",
+        "pk_field": "unique_id",
+        "name_attr": "leader_name",
+    },
     "bin": {
         "label": "Bin",
         "model_path": "app.models.assets.bins.Bins",

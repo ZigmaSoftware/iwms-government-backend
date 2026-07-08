@@ -67,8 +67,8 @@ from app.management.commands.seeders.collections import COLLECTION_SEEDERS
 # customer-masters (router: customer-masters/customercreations, ...)
 from app.management.commands.seeders.customers import CUSTOMER_SEEDERS
 
-# grivences (router: grivences/complaints, main-category, sub-category)
-from app.management.commands.seeders.grivences import GRIEVANCE_SEEDERS
+# complaint-ticket (router: complaint-ticket/tickets, categories, subcategories, ...)
+from app.management.commands.seeders.complaint_ticket import COMPLAINT_TICKET_SEEDERS
 
 # audits (router: audits/vehicle-trip-audit, trip-exception-log, ...)
 
@@ -162,8 +162,8 @@ CUSTOMER_MASTERS_SEEDERS = [
     *CUSTOMER_SEEDERS,
 ]
 
-GRIVENCES_SEEDERS = [
-    *GRIEVANCE_SEEDERS,
+COMPLAINT_TICKET_SEEDER_GROUP = [
+    *COMPLAINT_TICKET_SEEDERS,
 ]
 
 
@@ -187,7 +187,7 @@ ORDERED_GROUPS = [
     "screen-managements",   # screen permissions
     "collections",          # panchayat-wise, ward-wise, zone-wise
     "customer-masters",     # customer creations, feedback, charge rules
-    "grivences",            # complaints, main/sub categories
+    "complaint-ticket",     # tickets, categories, teams, sla-rules, routing-rules
     # "audits",               # vehicle-trip-audit, trip-exception-log, ...
     "reports",              # monthly-waste-comparison
 ]
@@ -209,7 +209,7 @@ SEED_GROUPS = {
     "collections":        COLLECTIONS_SEEDERS,
     "customer-masters":   CUSTOMER_MASTERS_SEEDERS,
     "customers":          CUSTOMER_MASTERS_SEEDERS,  # alias
-    "grivences":          GRIVENCES_SEEDERS,
+    "complaint-ticket":   COMPLAINT_TICKET_SEEDER_GROUP,
     "reports":            REPORTS_SEEDERS,
     # Legacy aliases
     "staff":              USER_CREATIONS_SEEDERS,
@@ -245,7 +245,7 @@ class Command(BaseCommand):
                 "superadmin | common-masters | masters | waste-types | assets | "
                 "role-assigns | user-creations | transport-masters | process-items | "
                 "schedule-masters | screen-managements | collections | customer-masters | "
-                "grivences | audits | reports | all"
+                "complaint-ticket | audits | reports | all"
             ),
         )
 

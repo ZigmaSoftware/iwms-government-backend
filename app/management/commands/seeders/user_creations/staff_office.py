@@ -6,6 +6,7 @@ from app.models.masters.designation import Designation
 from app.models.masters.district import District
 from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.utils.hierarchy import CITY_LEVEL_NAMES
 
 
 def _district_node(district):
@@ -20,26 +21,39 @@ def _district_node(district):
     ).first()
 
 
+def _local_body_node(name):
+    """Resolve a specific city/town/panchayat node by name (finer-grained
+    than a district) - e.g. "Sample Panchayat" mirrored by GeoToHierarchySeeder."""
+    if not name:
+        return None
+    return HierarchyNode.objects.filter(
+        is_deleted=False, name=name, level__name__in=CITY_LEVEL_NAMES,
+    ).first()
+
+
 class StaffOfficeSeeder(BaseSeeder):
     name = "StaffOfficeSeeder"
 
-    # (employee_name, username, dept_code, designation_name, district_name)
+    # (employee_name, username, dept_code, designation_name, district_name, local_body_name)
+    # local_body_name is optional - most staff cover a whole district; a couple
+    # are tagged to one specific town/panchayat inside it, so district- and
+    # city-scoped assignment filtering both have real data to prove out.
     STAFF = [
-        ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",          "Erode"),
-        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode"),
-        ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",        "Salem"),
-        ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",          "Salem"),
-        ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector",    "Coimbatore"),
+        ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",          "Erode",      None),
+        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode",      "Sample Panchayat"),
+        ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",        "Salem",      None),
+        ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",          "Salem",      None),
+        ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector",    "Coimbatore", None),
     ]
 
     def run(self):
         count = 0
         updated = 0
-        for emp_name, username, dept_code, desig_name, district_name in self.STAFF:
+        for emp_name, username, dept_code, desig_name, district_name, local_body_name in self.STAFF:
             dept = Department.objects.filter(department_code=dept_code).first()
             desig = Designation.objects.filter(designation_name=desig_name).first()
             district = District.objects.filter(name=district_name).first()
-            location_node = _district_node(district)
+            location_node = _local_body_node(local_body_name) or _district_node(district)
 
             defaults = {
                 "employee_name": emp_name,
