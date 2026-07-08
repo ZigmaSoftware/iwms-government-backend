@@ -10,6 +10,7 @@ from django.utils.deprecation import MiddlewareMixin
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.district_leader_login import DistrictLeaderLogin
 from app.utils.permission_response import resolve_permission_payload
 
 
@@ -45,6 +46,7 @@ AUTH_ONLY_SUFFIXES = (
     "waste/",
     "attendance-list/",
     "localbody/",        # panchayat leader portal — auth only, no module permission check
+    "districtbody/",     # district leader portal — auth only, no module permission check
 )
 
 AUTH_ONLY_PREFIXES = tuple(
@@ -284,6 +286,15 @@ def _authenticate_request(request):
     ).filter(unique_id=unique_id).first()
     if leader:
         request.user = leader
+        request.jwt_payload = payload
+        return None
+
+    # District leader (districtbody portal)
+    district_leader = DistrictLeaderLogin.objects.select_related(
+        "district_id"
+    ).filter(unique_id=unique_id).first()
+    if district_leader:
+        request.user = district_leader
         request.jwt_payload = payload
         return None
 

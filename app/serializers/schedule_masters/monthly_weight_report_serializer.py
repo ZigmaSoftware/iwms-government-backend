@@ -28,8 +28,8 @@ def _status(actual, agreed):
 
 
 class MonthlyWeightReportSerializer(serializers.ModelSerializer):
-    panchayat_name = serializers.CharField(
-        source="panchayat_id.panchayat_name", read_only=True
+    location_node_name = serializers.CharField(
+        source="location_node.name", read_only=True
     )
     waste_type_name = serializers.CharField(
         source="waste_type_id.waste_type_name", read_only=True
@@ -39,8 +39,8 @@ class MonthlyWeightReportSerializer(serializers.ModelSerializer):
         model = MonthlyWeightReport
         fields = [
             "unique_id",
-            "panchayat_id",
-            "panchayat_name",
+            "location_node",
+            "location_node_name",
             "month",
             "waste_type_id",
             "waste_type_name",

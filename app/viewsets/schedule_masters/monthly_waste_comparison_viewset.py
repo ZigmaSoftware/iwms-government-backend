@@ -2,17 +2,18 @@
 Monthly Waste Comparison — computed live from DailyTripLog.
 
 Data source: DailyTripLog (Submitted + Verified logs only)
-  actual_weight      = Sum(collected_weight_kg) per (month, panchayat, waste_type)
-  agreed_weight      = Panchayat.agreed_weight_kg × COUNT(DISTINCT trip_date)
-                       where distinct trip_date is counted ACROSS ALL waste types
-                       for that (month, panchayat) pair — preventing double-count.
+  actual_weight      = Sum(collected_weight_kg) per (month, location_node, waste_type)
+  agreed_weight      = 0 (no per-location monthly target source exists yet —
+                       DailyTripLog has no panchayat/district reference, only
+                       location_node; see the parallel note in
+                       app/viewsets/districtbody/districtbody_dashboard_viewset.py)
   distinct_trip_days = per-row count of unique dates for that waste-type group
                        (used only for the per-row result table display)
 
 Query params:
   source  bin (default) | household | all
   month   YYYY-MM
-  panchayat_id, waste_type_id  optional filters
+  location_node_id, waste_type_id  optional filters
 """
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -67,7 +68,7 @@ def performance_status(actual, agreed):
 class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     permission_resource = "MonthlyWasteComparisonReport"
     queryset = MonthlyWeightReport.objects.select_related(
-        "panchayat_id", "waste_type_id"
+        "location_node", "waste_type_id"
     )
     serializer_class = MonthlyWeightReportSerializer
     lookup_field = "unique_id"
@@ -75,7 +76,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         base_qs = DailyTripLog.objects.select_related(
-            "panchayat_id", "waste_type_id",
+            "location_node", "waste_type_id",
         ).filter(
             is_deleted=False,
             log_status__in=[
@@ -86,9 +87,9 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
 
         base_qs = self.filter_queryset(base_qs)
 
-        # ── month / panchayat / waste_type filters ───────────────────────
+        # ── month / location_node / waste_type filters ───────────────────
         month_param = request.query_params.get("month")
-        panchayat_param = request.query_params.get("panchayat_id")
+        location_node_param = request.query_params.get("location_node_id")
         waste_type_param = request.query_params.get("waste_type_id")
 
         if month_param:
@@ -101,8 +102,8 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             except (ValueError, AttributeError):
                 pass
 
-        if panchayat_param:
-            base_qs = base_qs.filter(panchayat_id=panchayat_param)
+        if location_node_param:
+            base_qs = base_qs.filter(location_node_id=location_node_param)
         if waste_type_param:
             base_qs = base_qs.filter(waste_type_id=waste_type_param)
 
@@ -115,32 +116,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         else:
             weight_field = "collected_weight_kg"
 
-        # ── Pre-aggregate: distinct trip days per (year, month, panchayat)
-        # This is used for agreed-weight calculation in summary views.
-        # Grouping WITHOUT waste_type gives the true cross-waste-type distinct dates.
-        trip_days_qs = base_qs.values(
-            "trip_date__year",
-            "trip_date__month",
-            "panchayat_id",
-            "panchayat_id__agreed_weight_kg",
-        ).annotate(
-            distinct_trip_days=Count("trip_date", distinct=True),
-        )
-
-        # (month_str, panchayat_id) → {agreed_per_day, distinct_trip_days, agreed_total}
-        panchayat_month_info: dict[tuple, dict] = {}
-        for r in trip_days_qs:
-            m = f"{r['trip_date__year']}-{r['trip_date__month']:02d}"
-            key = (m, r["panchayat_id"])
-            agreed_per_day = decimal_value(r["panchayat_id__agreed_weight_kg"])
-            trip_days = int(r["distinct_trip_days"] or 0)
-            panchayat_month_info[key] = {
-                "agreed_per_day": agreed_per_day,
-                "distinct_trip_days": trip_days,
-                "agreed_total": agreed_per_day * Decimal(str(trip_days)),
-            }
-
-        # ── Aggregate by (year, month, panchayat, waste_type) ────────────
+        # ── Aggregate by (year, month, location_node, waste_type) ────────
         annotation_kwargs = {
             "total_trips": Count("unique_id"),
             "collection_points_covered": Count("collection_point_id", distinct=True),
@@ -160,9 +136,8 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         grouped_qs = base_qs.values(
             "trip_date__year",
             "trip_date__month",
-            "panchayat_id",
-            "panchayat_id__panchayat_name",
-            "panchayat_id__agreed_weight_kg",
+            "location_node",
+            "location_node__name",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
@@ -173,11 +148,8 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             month_val = row["trip_date__month"]
             month_str = f"{year_val}-{month_val:02d}"
 
-            # Per-row agreed: agreed_per_day × distinct_trip_days for THIS waste-type group.
-            # Used in the detailed breakdown table only.
-            trip_days_row = int(row["distinct_trip_days"] or 0)
-            agreed_per_day = decimal_value(row["panchayat_id__agreed_weight_kg"])
-            agreed      = agreed_per_day * Decimal(str(trip_days_row))
+            # No per-location monthly target source exists yet — see module docstring.
+            agreed      = ZERO
 
             actual      = decimal_value(row["total_actual_weight"])
             variance    = actual - agreed
@@ -185,15 +157,15 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             points      = int(row["collection_points_covered"] or 0)
 
             unique_id = (
-                f"MWR-{month_str}-{row['panchayat_id']}-{row['waste_type_id']}"
+                f"MWR-{month_str}-{row['location_node']}-{row['waste_type_id']}"
             )
 
             rows.append({
                 "unique_id": unique_id,
                 "month": month_str,
-                "panchayat_id": row["panchayat_id"],
-                "panchayat_name": (
-                    row["panchayat_id__panchayat_name"] or row["panchayat_id"]
+                "location_node_id": row["location_node"],
+                "location_node_name": (
+                    row["location_node__name"] or row["location_node"]
                 ),
                 "waste_type_id": row["waste_type_id"],
                 "waste_type": (
@@ -224,36 +196,27 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         return Response({
             "source": source,
             "results": rows,
-            "monthly_trends": self._build_monthly_trends(rows, panchayat_month_info),
-            "panchayat_comparison": self._build_panchayat_comparison(rows, panchayat_month_info),
-            "kpis": self._build_totals(rows, panchayat_month_info),
+            "monthly_trends": self._build_monthly_trends(rows),
+            "location_comparison": self._build_location_comparison(rows),
+            "kpis": self._build_totals(rows),
         })
 
     # ── analytics helpers ────────────────────────────────────────────────
 
-    def _build_monthly_trends(self, rows, panchayat_month_info):
-        """Aggregate by month. Use cross-waste-type distinct trip days for agreed."""
+    def _build_monthly_trends(self, rows):
+        """Aggregate by month."""
         trends: dict = {}
-        seen_agreed: set = set()
         for row in rows:
-            m   = row["month"]
-            pid = row["panchayat_id"]
+            m = row["month"]
             trends.setdefault(m, {
                 "month": m,
                 "total_agreed_weight": 0.0, "total_actual_weight": 0.0,
                 "total_trips": 0, "collection_points_covered": 0,
             })
             trends[m]["total_actual_weight"]       += row["total_actual_weight"]
+            trends[m]["total_agreed_weight"]       += row["total_agreed_weight"]
             trends[m]["total_trips"]               += row["total_trips"]
             trends[m]["collection_points_covered"] += row["collection_points_covered"]
-
-            key = (m, pid)
-            if key not in seen_agreed:
-                seen_agreed.add(key)
-                info = panchayat_month_info.get(key, {})
-                trends[m]["total_agreed_weight"] += float(
-                    info.get("agreed_total", ZERO)
-                )
 
         result = []
         for item in sorted(trends.values(), key=lambda x: str(x["month"])):
@@ -270,36 +233,29 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             })
         return result
 
-    def _build_panchayat_comparison(self, rows, panchayat_month_info):
-        """Aggregate by panchayat. Use cross-waste-type distinct trip days for agreed."""
-        panchayats: dict = {}
-        seen_agreed: set = set()
+    def _build_location_comparison(self, rows):
+        """Aggregate by location_node."""
+        locations: dict = {}
         for row in rows:
-            pid   = row["panchayat_id"]
-            month = row["month"]
-            if pid not in panchayats:
-                panchayats[pid] = {
-                    "panchayat_id": pid,
-                    "panchayat_name": row["panchayat_name"],
+            lid = row["location_node_id"]
+            if lid not in locations:
+                locations[lid] = {
+                    "location_node_id": lid,
+                    "location_node_name": row["location_node_name"],
                     "total_agreed_weight": ZERO,
                     "total_actual_weight": ZERO,
                 }
-            panchayats[pid]["total_actual_weight"] += decimal_value(row["total_actual_weight"])
-
-            key = (month, pid)
-            if key not in seen_agreed:
-                seen_agreed.add(key)
-                info = panchayat_month_info.get(key, {})
-                panchayats[pid]["total_agreed_weight"] += info.get("agreed_total", ZERO)
+            locations[lid]["total_actual_weight"] += decimal_value(row["total_actual_weight"])
+            locations[lid]["total_agreed_weight"] += decimal_value(row["total_agreed_weight"])
 
         result = []
-        for item in panchayats.values():
+        for item in locations.values():
             agreed = item["total_agreed_weight"]
             actual = item["total_actual_weight"]
             variance = actual - agreed
             result.append({
-                "panchayat_id": item["panchayat_id"],
-                "panchayat_name": item["panchayat_name"],
+                "location_node_id": item["location_node_id"],
+                "location_node_name": item["location_node_name"],
                 "total_agreed_weight": float(rounded(agreed)),
                 "total_actual_weight": float(rounded(actual)),
                 "variance_kg": float(rounded(variance)),
@@ -308,9 +264,8 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             })
         return sorted(result, key=lambda r: abs(r["variance_kg"]), reverse=True)
 
-    def _build_totals(self, rows, panchayat_month_info):
-        """Overall KPI totals. Use cross-waste-type distinct trip days for agreed."""
-        seen_agreed: set = set()
+    def _build_totals(self, rows):
+        """Overall KPI totals."""
         total_agreed = ZERO
         total_actual = ZERO
         total_trips  = 0
@@ -318,14 +273,9 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
 
         for r in rows:
             total_actual += decimal_value(r["total_actual_weight"])
+            total_agreed += decimal_value(r["total_agreed_weight"])
             total_trips  += r["total_trips"]
             total_points += r["collection_points_covered"]
-
-            key = (r["month"], r["panchayat_id"])
-            if key not in seen_agreed:
-                seen_agreed.add(key)
-                info = panchayat_month_info.get(key, {})
-                total_agreed += info.get("agreed_total", ZERO)
 
         return {
             "total_agreed_weight":           float(rounded(total_agreed)),
