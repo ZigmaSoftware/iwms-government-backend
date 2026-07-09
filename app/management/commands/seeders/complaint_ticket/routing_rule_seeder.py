@@ -19,7 +19,8 @@ class ComplaintRoutingRuleSeeder(BaseSeeder):
             ComplaintRoutingRule.objects.get_or_create(
                 category=category,
                 subcategory=None,
-                location_node=None,
+                state=None,
+                district=None,
                 priority=None,
                 defaults={
                     "team": category.default_team,

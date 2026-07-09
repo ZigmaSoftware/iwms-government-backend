@@ -1,10 +1,10 @@
 """Routing + SLA resolution for complaint tickets.
 
-Given a ticket's category/subcategory/location_node/priority/source, finds the
-most specific matching ComplaintRoutingRule (to assign a team/user) and the
-most specific matching ComplaintSlaRule (to compute due dates), then fills
-only the ticket fields that are still empty — an explicit assignment or a
-manually-set due date is never overwritten.
+Given a ticket's category/subcategory/flat geo (state/district/local body)/
+priority/source, finds the most specific matching ComplaintRoutingRule (to
+assign a team/user) and the most specific matching ComplaintSlaRule (to
+compute due dates), then fills only the ticket fields that are still empty —
+an explicit assignment or a manually-set due date is never overwritten.
 """
 from django.db.models import Max
 from django.utils import timezone
@@ -46,11 +46,26 @@ def _add_business_minutes(start, minutes):
     return current
 
 
+# Flat geo FK attnames shared by ComplaintRoutingRule and ComplaintTicket.
+# An empty rule field means "any"; a set field must match the ticket exactly.
+ROUTING_GEO_ATTNAMES = (
+    "state_id",
+    "district_id",
+    "corporation_id",
+    "municipality_id",
+    "town_panchayat_id",
+    "panchayat_union_id",
+    "panchayat_id",
+)
+
+
 def _routing_matches(rule, ticket):
     if rule.subcategory_id and rule.subcategory_id != ticket.subcategory_id:
         return False
-    if rule.location_node_id and rule.location_node_id != ticket.location_node_id:
-        return False
+    for attname in ROUTING_GEO_ATTNAMES:
+        rule_value = getattr(rule, attname, None)
+        if rule_value and rule_value != getattr(ticket, attname, None):
+            return False
     if rule.priority_id and rule.priority_id != ticket.priority_id:
         return False
     return True
@@ -59,8 +74,8 @@ def _routing_matches(rule, ticket):
 def _routing_specificity(rule):
     return sum([
         bool(rule.subcategory_id),
-        bool(rule.location_node_id),
         bool(rule.priority_id),
+        *[bool(getattr(rule, attname, None)) for attname in ROUTING_GEO_ATTNAMES],
     ])
 
 

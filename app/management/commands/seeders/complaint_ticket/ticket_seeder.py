@@ -11,7 +11,6 @@ from app.models.complaint_ticket.subcategory_master import ComplaintSubcategory
 from app.models.complaint_ticket.team_master import ComplaintTeam
 from app.models.complaint_ticket.ticket import ComplaintTicket
 from app.models.customers.customercreation import CustomerCreation
-from app.utils.hierarchy import node_for_flat_geo
 
 
 class ComplaintTicketSeeder(BaseSeeder):
@@ -131,7 +130,13 @@ class ComplaintTicketSeeder(BaseSeeder):
                     "location_text": location_text,
                     "latitude": customer.latitude or None,
                     "longitude": customer.longitude or None,
-                    "location_node": node_for_flat_geo(customer),
+                    "state": customer.state,
+                    "district": customer.district,
+                    "corporation": customer.corporation,
+                    "municipality": customer.municipality,
+                    "town_panchayat": customer.town_panchayat,
+                    "panchayat_union": customer.panchayat_union,
+                    "panchayat": customer.panchayat,
                     "assigned_team": team,
                     "assigned_staff": getattr(team, "lead_staff", None) if team else None,
                     "resolved_at": now if status.status_code in ("RESOLVED", "CLOSED") else None,

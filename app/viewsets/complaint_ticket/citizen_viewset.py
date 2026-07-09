@@ -30,26 +30,42 @@ from app.models.complaint_ticket.status_master import ComplaintStatus
 from app.models.complaint_ticket.source_master import ComplaintSource
 from app.models.complaint_ticket.status_history import ComplaintStatusHistory
 from app.models.complaint_ticket.ticket_attachment import ComplaintAttachment
-from app.models.masters.hierarchy_tree import HierarchyNode
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.serializers.complaint_ticket.transaction_serializers import (
     ComplaintTicketSerializer,
     ComplaintTicketDetailSerializer,
 )
-from app.services.hierarchy_tree_service import get_descendants
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, _add_business_minutes
 from app.utils.email_utils import send_grievance_confirmation_email
-from app.utils.hierarchy import node_for_flat_geo
 
 # Public grievance duplicate-submission cooldown: after this window has
 # passed, the same device may submit another grievance. Location is not used
 # for dedup since multiple citizens can legitimately report the same spot.
 PUBLIC_GRIEVANCE_DUPLICATE_WINDOW = timedelta(hours=6)
 
-# Local-body levels one below District in the Hierarchy Tree - the "city"
-# choice on the public form (mirrors geoHierarchyApi.citiesInDistrict on the
-# frontend).
-LOCAL_BODY_LEVEL_NAMES = {"Corporation", "Municipality", "Town Panchayat", "Panchayat Union", "Panchayat"}
+# Flat local-body masters one level below District - the "city" choice on the
+# public form (mirrors geoApi.localBodies on the frontend). Each entry is
+# (ticket field name, model, display-name attribute).
+LOCAL_BODY_SOURCES = (
+    ("corporation", Corporation, "corporation_name"),
+    ("municipality", Municipality, "municipality_name"),
+    ("town_panchayat", TownPanchayat, "town_panchayat_name"),
+    ("panchayat_union", PanchayatUnion, "union_name"),
+    ("panchayat", Panchayat, "panchayat_name"),
+)
+
+# Flat geo FK field names copied from a customer onto their ticket.
+CUSTOMER_GEO_FIELDS = (
+    "state", "district", "corporation", "municipality",
+    "town_panchayat", "panchayat_union", "panchayat",
+)
 
 
 def _as_customer(request):
@@ -164,6 +180,12 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             )
 
         description = str(data.get("description") or "").strip()
+        # The ticket inherits the citizen's own flat geo (state/district/
+        # local body) straight from their customer record.
+        customer_geo = {
+            f"{field}_id": getattr(customer, f"{field}_id", None)
+            for field in CUSTOMER_GEO_FIELDS
+        }
         ticket = ComplaintTicket.objects.create(
             customer=customer,
             category=category,
@@ -176,7 +198,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             location_text=str(data.get("location_text") or ""),
             wa_phone=customer.contact_no,
             profile_name=customer.customer_name,
-            location_node=node_for_flat_geo(customer),
+            **customer_geo,
         )
         ComplaintStatusHistory.objects.create(
             ticket=ticket,
@@ -258,29 +280,43 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             ],
         })
 
-    # ---- GET /publicgrivence/districts/ ----
-    # Read-only, name-only passthrough onto the Hierarchy Tree masters so the
-    # public form can offer a district/city picker without needing a login
-    # (the real /masters/hierarchy-nodes/ API is behind auth).
+    # ---- GET /publicgrivence/states/ ----
+    # Read-only, name-only passthroughs onto the flat geo masters so the
+    # public form can offer a state/district/city picker without needing a
+    # login (the real /common-masters/ and /masters/ APIs are behind auth).
+    @action(detail=False, methods=["get"])
+    def states(self, request):
+        rows = State.objects.filter(is_deleted=False, is_active=True).order_by("name")
+        return Response([{"unique_id": s.unique_id, "name": s.name} for s in rows])
+
+    # ---- GET /publicgrivence/districts/?state=<state id> ----
     @action(detail=False, methods=["get"])
     def districts(self, request):
-        nodes = HierarchyNode.objects.filter(
-            level__name="District", is_deleted=False, is_active=True
-        ).order_by("name")
-        return Response([{"unique_id": n.unique_id, "name": n.name} for n in nodes])
+        rows = District.objects.filter(is_deleted=False, is_active=True)
+        state_id = request.query_params.get("state")
+        if state_id:
+            rows = rows.filter(state_id=state_id)
+        rows = rows.order_by("name")
+        return Response([
+            {"unique_id": d.unique_id, "name": d.name, "state_id": d.state_id_id}
+            for d in rows
+        ])
 
-    # ---- GET /publicgrivence/cities/?district=<node id> ----
+    # ---- GET /publicgrivence/cities/?district=<district id> ----
     @action(detail=False, methods=["get"])
     def cities(self, request):
         district_id = request.query_params.get("district")
         if not district_id:
             return Response([])
-        try:
-            descendants = get_descendants(district_id)
-        except HierarchyNode.DoesNotExist:
-            return Response([])
-        cities = [d for d in descendants if d.get("level_name") in LOCAL_BODY_LEVEL_NAMES]
-        return Response([{"unique_id": c["unique_id"], "name": c["name"]} for c in cities])
+        options = []
+        for field, model, name_attr in LOCAL_BODY_SOURCES:
+            rows = model.objects.filter(is_deleted=False, is_active=True, district_id=district_id)
+            options.extend(
+                {"unique_id": row.unique_id, "name": getattr(row, name_attr, None), "type": field}
+                for row in rows
+            )
+        options.sort(key=lambda item: (item["name"] or "").lower())
+        return Response(options)
 
     @transaction.atomic
     def create(self, request):
@@ -331,9 +367,26 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
 
-        location_node = HierarchyNode.objects.filter(
-            unique_id=data.get("location_node"), is_deleted=False
-        ).first()
+        # Flat geo chosen on the public form: State -> District -> City
+        # (city = one of the five local-body masters; `city_type` says which
+        # one, otherwise all five are checked).
+        state = State.objects.filter(unique_id=data.get("state"), is_deleted=False).first()
+        district = District.objects.filter(unique_id=data.get("district"), is_deleted=False).first()
+        city_id = data.get("city")
+        city_type = str(data.get("city_type") or "").strip()
+        local_body_fields = {}
+        if city_id:
+            for field, model, _ in LOCAL_BODY_SOURCES:
+                if city_type and city_type != field:
+                    continue
+                local_body = model.objects.filter(unique_id=city_id, is_deleted=False).first()
+                if local_body:
+                    local_body_fields[field] = local_body
+                    if not district:
+                        district = local_body.district_id
+                    break
+        if district and not state:
+            state = district.state_id
 
         # Category is required by ComplaintTicket; when the form did not send
         # one (legacy waste-type-only submissions) fall back to OTHER so
@@ -416,9 +469,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             location_text=location_text,
             latitude=latitude,
             longitude=longitude,
-            location_node=location_node,
+            state=state,
+            district=district,
             idempotency_key=idempotency_key,
             assigned_team=assigned_team,
+            **local_body_fields,
         )
         ticket.waste_types.set(waste_types)
         ComplaintStatusHistory.objects.create(

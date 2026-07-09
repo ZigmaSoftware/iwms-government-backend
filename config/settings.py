@@ -55,6 +55,7 @@ ALLOWED_HOSTS = [
     '192.168.3.120',
     '10.152.141.197',
     '192.168.3.112',
+    '192.168.5.240', #sathya ip addr
     "aura-haustorial-elayne.ngrok-free.dev",
 ]
 
