@@ -62,7 +62,14 @@ class ComplaintTicket(BaseMaster):
         related_name="complaint_tickets",
     )
     wa_phone = models.CharField(max_length=20, null=True, blank=True)
+    email = models.EmailField(max_length=254, null=True, blank=True)
     profile_name = models.CharField(max_length=150, null=True, blank=True)
+    GENDER_CHOICES = [
+        ("male", "Male"),
+        ("female", "Female"),
+        ("transgender", "Transgender"),
+    ]
+    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, null=True, blank=True)
     language = models.ForeignKey(
         ComplaintLanguage,
         on_delete=models.SET_NULL,

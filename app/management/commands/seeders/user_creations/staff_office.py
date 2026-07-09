@@ -42,7 +42,7 @@ class StaffOfficeSeeder(BaseSeeder):
     # city-scoped assignment filtering both have real data to prove out.
     STAFF = [
         ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",          "Erode",      None),
-        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode",      "Sample Panchayat"),
+        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode",      "Anthiyur Panchayat"),
         ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",        "Salem",      None),
         ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",          "Salem",      None),
         ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector",    "Coimbatore", None),
