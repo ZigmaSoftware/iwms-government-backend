@@ -53,6 +53,7 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
     display_code = serializers.SerializerMethodField()
     panchayat_name = serializers.SerializerMethodField()
     collection_point = serializers.SerializerMethodField()
+    breakdown_info = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = BinCollectionEvent
@@ -84,6 +85,8 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "notes",
             "panchayat_name",
             "collection_point",
+            "vehicle_breakdown_id",
+            "breakdown_info",
             "created_by",
             "updated_by",
             "is_active",
@@ -95,6 +98,8 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "unique_id",
             "collection_point_id",
             "panchayat_id",
+            "vehicle_breakdown_id",
+            "breakdown_info",
             "created_at",
             "updated_at",
         ]
@@ -141,8 +146,21 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             attrs["waste_type_id"] = getattr(bin_obj, "wastetype_id", None)
         if hasattr(BinCollectionEvent, "vehicle_id"):
             attrs["vehicle_id"] = self._resolve_vehicle(assignment)
+        if hasattr(BinCollectionEvent, "vehicle_breakdown_id"):
+            attrs["vehicle_breakdown_id"] = self._resolve_approved_breakdown(assignment)
 
         return attrs
+
+    def _resolve_approved_breakdown(self, assignment):
+        from app.models.schedule_masters.vehicle_breakdown import VehicleBreakdown
+
+        try:
+            breakdown = assignment.vehicle_breakdown
+        except Exception:
+            return None
+        if breakdown.approval_status != VehicleBreakdown.APPROVAL_APPROVED:
+            return None
+        return breakdown
 
     def _resolve_vehicle(self, assignment):
         return getattr(assignment, "vehicle_id", None) or getattr(
@@ -267,3 +285,16 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         if not cp:
             return None
         return {"unique_id": getattr(cp, "unique_id", None), "cp_name": getattr(cp, "cp_name", None)}
+
+    def get_breakdown_info(self, obj):
+        breakdown = getattr(obj, "vehicle_breakdown_id", None)
+        if not breakdown:
+            return None
+        replacement_vehicle = getattr(breakdown, "replacement_vehicle_id", None)
+        return {
+            "unique_id": breakdown.unique_id,
+            "status": breakdown.status,
+            "approval_status": breakdown.approval_status,
+            "breakdown_reason": breakdown.breakdown_reason,
+            "replacement_vehicle_no": getattr(replacement_vehicle, "vehicle_no", None),
+        }
