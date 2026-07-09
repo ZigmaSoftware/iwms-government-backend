@@ -282,3 +282,7 @@ Uses the configured administrative hierarchy and geo-coordinates.
 Produces ready-to-use data for daily field operations.
 
 
+backend logs:
+Forbidden: /api/v1/user-creations/staffcreation/
+[07/Jul/2026 14:58:30] "GET /api/v1/user-creations/staffcreation/ HTTP/1.1" 403 106
+

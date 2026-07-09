@@ -71,11 +71,9 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                     collection_type=plan.collection_type,
                     customer_id=None,
                     defaults={
-                        "panchayat_id": plan.panchayat_id,
-                        "corporation_id": plan.corporation_id,
-                        "municipality_id": plan.municipality_id,
-                        "town_panchayat_id": plan.town_panchayat_id,
-                        "panchayat_union_id": plan.panchayat_union_id,
+                        # Both TripPlan and TripPlanCollectionPoint now carry a
+                        # single location_node instead of per-hierarchy FKs.
+                        "location_node": plan.location_node,
                         "sequence": sequence,
                         "is_active": True,
                         "is_deleted": False,
