@@ -15,6 +15,16 @@ def geneate_collection_point_id():
     return f"CP-{generate_unique_id()}"
 
 class Collection_point(BaseMaster):
+    COLLECTION_TYPE_BIN = "bin_collection"
+    COLLECTION_TYPE_HOUSEHOLD = "household_collection"
+    COLLECTION_TYPE_BULK = "bulk_waste_collection"
+
+    COLLECTION_TYPE_CHOICES = [
+        (COLLECTION_TYPE_BIN, "Secondary Collection Point"),
+        (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
+        (COLLECTION_TYPE_BULK, "Bulk Waste Collection"),
+    ]
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -96,6 +106,11 @@ class Collection_point(BaseMaster):
     )
 
     cp_name = models.CharField(max_length=100)
+    collection_type = models.CharField(
+        max_length=30,
+        choices=COLLECTION_TYPE_CHOICES,
+        default=COLLECTION_TYPE_BIN,
+    )
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     coordinates = models.JSONField(default=list, blank=True)

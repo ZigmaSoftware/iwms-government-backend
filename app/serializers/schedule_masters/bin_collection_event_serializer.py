@@ -130,11 +130,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             )
 
         collection_point = attrs.get("collection_point_id")
-        attrs["panchayat_id"] = getattr(assignment, "panchayat_id", None) or getattr(
-            collection_point,
-            "panchayat_id",
-            None,
-        )
         attrs["collection_date"] = (
             attrs.get("collection_date")
             or getattr(assignment, "trip_date", None)
@@ -256,11 +251,15 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         return getattr(alt_template, "display_code", None) if alt_template else None
 
     def get_panchayat_name(self, obj):
-        panchayat = obj.panchayat_id or getattr(obj.collection_point_id, "panchayat_id", None)
+        panchayat = getattr(getattr(obj, "collection_point_id", None), "panchayat_id", None)
+        if not panchayat:
+            panchayat = getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
         return getattr(panchayat, "panchayat_name", None)
 
     def get_panchayat_id(self, obj):
-        panchayat = obj.panchayat_id or getattr(obj.collection_point_id, "panchayat_id", None)
+        panchayat = getattr(getattr(obj, "collection_point_id", None), "panchayat_id", None)
+        if not panchayat:
+            panchayat = getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
         return getattr(panchayat, "unique_id", None)
 
     def get_collection_point(self, obj):

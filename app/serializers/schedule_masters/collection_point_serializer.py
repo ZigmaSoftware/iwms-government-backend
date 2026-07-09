@@ -1,5 +1,7 @@
+from django.db import transaction
 from rest_framework import serializers
 
+from app.models.assets.bins import Bins, BinType
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.common_masters.state import State
 from app.models.masters.district import District
@@ -9,9 +11,19 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+
+
+class CollectionPointBinInputSerializer(serializers.Serializer):
+    unique_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    wastetype_id = serializers.CharField()
+    bin_name = serializers.CharField()
+    bin_capacity = serializers.IntegerField()
+    bin_type = serializers.ChoiceField(choices=BinType.choices)
+    is_active = serializers.BooleanField(default=True)
 
 
 class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
@@ -31,6 +43,9 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
     panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
     panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
     panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
+
+    bins = CollectionPointBinInputSerializer(many=True, write_only=True, required=False)
+    bins_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Collection_point
@@ -53,9 +68,12 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "panchayat_id",
             "panchayat_name",
             "cp_name",
+            "collection_type",
             "latitude",
             "longitude",
             "coordinates",
+            "bins",
+            "bins_detail",
             "is_active",
             "created_at",
             "updated_at",
@@ -64,6 +82,65 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "is_deleted",
         ]
         read_only_fields = ["unique_id", "created_at", "updated_at"]
+
+    def get_bins_detail(self, obj):
+        bins = obj.bin.filter(is_deleted=False)
+        return [{
+            "unique_id": bin_obj.unique_id,
+            "bin_name": bin_obj.bin_name,
+            "bin_capacity": bin_obj.bin_capacity,
+            "bin_type": bin_obj.bin_type,
+            "wastetype_id": bin_obj.wastetype_id_id,
+            "wastetype_name": getattr(bin_obj.wastetype_id, "waste_type_name", None),
+            "is_active": bin_obj.is_active,
+        } for bin_obj in bins]
+
+    def _sync_bins(self, collection_point, bins):
+        if bins is None:
+            return
+        submitted_ids = {bin_data["unique_id"] for bin_data in bins if bin_data.get("unique_id")}
+        Bins.objects.filter(collection_point_id=collection_point).exclude(unique_id__in=submitted_ids).update(
+            is_active=False, is_deleted=True,
+        )
+        for bin_data in bins:
+            waste_type = WasteType.objects.get(unique_id=bin_data["wastetype_id"])
+            unique_id = bin_data.get("unique_id")
+            existing = (
+                Bins.objects.filter(unique_id=unique_id, collection_point_id=collection_point).first()
+                if unique_id else None
+            )
+            if existing:
+                existing.wastetype_id = waste_type
+                existing.bin_name = bin_data["bin_name"]
+                existing.bin_capacity = bin_data["bin_capacity"]
+                existing.bin_type = bin_data["bin_type"]
+                existing.is_active = bin_data.get("is_active", True)
+                existing.is_deleted = False
+                existing.save()
+            else:
+                Bins.objects.create(
+                    collection_point_id=collection_point,
+                    wastetype_id=waste_type,
+                    bin_name=bin_data["bin_name"],
+                    bin_capacity=bin_data["bin_capacity"],
+                    bin_type=bin_data["bin_type"],
+                    bin_image="default.png",
+                    is_active=bin_data.get("is_active", True),
+                )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        bins = validated_data.pop("bins", None)
+        collection_point = super().create(validated_data)
+        self._sync_bins(collection_point, bins)
+        return collection_point
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        bins = validated_data.pop("bins", None)
+        collection_point = super().update(instance, validated_data)
+        self._sync_bins(collection_point, bins)
+        return collection_point
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
