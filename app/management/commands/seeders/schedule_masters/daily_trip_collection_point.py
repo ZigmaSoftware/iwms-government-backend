@@ -7,7 +7,6 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.utils.hierarchy import flat_geo_fields_for_node
 
 
 class DailyTripCollectionPointSeeder(BaseSeeder):
@@ -39,12 +38,7 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
         for assignment in assignments:
             cp_qs = Collection_point.objects.filter(is_deleted=False)
             if assignment.district_id:
-                matching_ids = [
-                    cp.unique_id
-                    for cp in cp_qs.select_related("location_node")
-                    if flat_geo_fields_for_node(cp.location_node).get("district") == assignment.district_id
-                ]
-                cp_qs = cp_qs.filter(unique_id__in=matching_ids)
+                cp_qs = cp_qs.filter(district_id=assignment.district_id)
             cps = list(cp_qs.order_by("cp_name"))
 
             if not cps:
