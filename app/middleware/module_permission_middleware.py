@@ -10,6 +10,7 @@ from django.utils.deprecation import MiddlewareMixin
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.district_leader_login import DistrictLeaderLogin
 from app.utils.permission_response import resolve_permission_payload
 
 
@@ -45,6 +46,7 @@ AUTH_ONLY_SUFFIXES = (
     "waste/",
     "attendance-list/",
     "localbody/",        # panchayat leader portal — auth only, no module permission check
+    "districtbody/",     # district leader portal — auth only, no module permission check
 )
 
 AUTH_ONLY_PREFIXES = tuple(
@@ -114,6 +116,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "userscreenpermissions",
         "companywisescreenpermissions",
         "column-permissions",
+        "DashboardWidgetPermission",
     },
     "role-assigns": {
         "UserType",
@@ -123,6 +126,7 @@ MODULE_RESOURCE_ALLOWLIST = {
     "user-creations": {
         "UsersCreation",
         "StaffCreation",
+        "StaffAccessConfiguration",
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
         "UnassignedStaffPool",
@@ -287,6 +291,15 @@ def _authenticate_request(request):
         request.jwt_payload = payload
         return None
 
+    # District leader (districtbody portal)
+    district_leader = DistrictLeaderLogin.objects.select_related(
+        "district_id"
+    ).filter(unique_id=unique_id).first()
+    if district_leader:
+        request.user = district_leader
+        request.jwt_payload = payload
+        return None
+
     # Platform user
     UserModel = get_user_model()
     user = UserModel.objects.filter(unique_id=unique_id).first()
@@ -444,7 +457,7 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         permissions = _resolve_permissions_for_request(request)
         permission_module = MODULE_PERMISSION_ALIASES.get(module, module)
         allowed_actions = self._resolve_allowed_actions(
-            permissions.get(permission_module, {}),
+            self._lookup_module_permissions(permissions, permission_module),
             permission_resource,
             route_resource,
         )
@@ -467,6 +480,21 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         if not name:
             return ""
         return re.sub(r"[\W_]+", "", name).lower()
+
+    @classmethod
+    def _lookup_module_permissions(cls, permissions, module_name):
+        if not permissions:
+            return {}
+
+        if module_name in permissions:
+            return permissions[module_name]
+
+        target = cls._normalize_permission_key(module_name)
+        for key, value in permissions.items():
+            if cls._normalize_permission_key(key) == target:
+                return value
+
+        return {}
 
     def _resolve_allowed_actions(self, permissions_map, resource_name, route_resource=None):
         if not permissions_map:

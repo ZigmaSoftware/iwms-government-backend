@@ -25,7 +25,7 @@ class DailyTripLogSeeder(BaseSeeder):
                 "alt_staff_template_id",
                 "alt_staff_template_id__driver_id",
                 "alt_staff_template_id__operator_id",
-                "location_node",
+                "district",
                 "waste_type_id",
             )
             .filter(is_deleted=False)
@@ -47,7 +47,7 @@ class DailyTripLogSeeder(BaseSeeder):
         skipped = 0
 
         for idx, assignment in enumerate(assignments):
-            if not assignment.location_node_id:
+            if not assignment.district_id:
                 skipped += 1
                 continue
             if DailyTripLog.objects.filter(trip_assignment_id=assignment, is_deleted=False).exists():

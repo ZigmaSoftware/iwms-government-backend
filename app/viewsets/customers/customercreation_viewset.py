@@ -25,26 +25,10 @@ from app.utils.customer_qr import generate_customer_qr_content, generate_apartme
 
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.hierarchy_tree import HierarchyNode
-from app.utils.hierarchy import filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 
 from app.models.customers.customercreation import CustomerCreation
 from app.utils.audit_mixin import AuditViewSetMixin
-
-
-def node_for_source(source_type, source_obj):
-    """Find the hierarchy node mirrored from a legacy geo master (used by the
-    CSV bulk-import to translate imported district/panchayat names into the
-    single location_node the model now stores)."""
-    if not source_obj:
-        return None
-    return (
-        HierarchyNode.objects.filter(
-            is_deleted=False,
-            custom_properties__source_type=source_type,
-            custom_properties__source_id=source_obj.unique_id,
-        ).first()
-    )
 
 PROPERTY_GROUPING = {
     "apartment": {
@@ -136,7 +120,9 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         CustomerCreation.objects
         .filter(is_deleted=False)
         .select_related(
-            "location_node", "location_node__level",
+            "state", "district", "area_type",
+            "corporation", "municipality", "town_panchayat",
+            "panchayat_union", "panchayat",
             "property_ref", "sub_property",
         )
         .prefetch_related("waste_types")
@@ -147,9 +133,17 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        # Geography filtering is now node-based: ?location_node=<id> matches the
-        # node and everything beneath it (closure roll-up).
-        queryset = filter_queryset_by_hierarchy(queryset, self.request.query_params)
+        params = self.request.query_params
+        for field in (
+            "state_id", "district_id", "area_type_id",
+            "corporation_id", "municipality_id", "town_panchayat_id",
+            "panchayat_union_id", "panchayat_id",
+        ):
+            value = params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
     
@@ -507,20 +501,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     })
                     continue
 
-                # Resolve the single hierarchy node from the imported geography.
-                # Prefer the deepest available (panchayat), else district.
-                location_node = (
-                    node_for_source("panchayat", panchayat)
-                    or node_for_source("district", district)
-                )
-                if not location_node:
-                    errors.append({
-                        "row": index,
-                        "error": "No hierarchy node found for the given district/panchayat. "
-                                 "Mirror geography into the hierarchy first (seed geo_to_hierarchy)."
-                    })
-                    continue
-
                 if invalid_waste_types:
                     errors.append({
                         "row": index,
@@ -540,7 +520,9 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     "block_no": block_no or None,
                     "flat_no": flat_no or None,
 
-                    "location_node_id": location_node.unique_id,
+                    "state_id": state.unique_id,
+                    "district_id": district.unique_id,
+                    "panchayat_id": panchayat.unique_id,
 
                     "pincode": clean(row.get("pincode")),
                     "latitude": clean(row.get("latitude")),

@@ -3,6 +3,7 @@ from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.panchayat_serializer import PanchayatSerializer
 from rest_framework.response import Response
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 
 
@@ -17,6 +18,12 @@ class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT ="panchayat"
+
+    SCOPE_FIELD_MAP = {
+        "panchayat": "unique_id",
+        "district": "district_id_id",
+        "state": "state_id_id",
+    }
 
     def get_queryset(self):
         queryset = Panchayat.objects.filter(is_deleted=False)
@@ -35,6 +42,10 @@ class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(state_id__unique_id=state_uid)
         if area_type_uid:
             queryset = queryset.filter(area_type_id__unique_id=area_type_uid)
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(
+            queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP
+        )
 
         return queryset
 

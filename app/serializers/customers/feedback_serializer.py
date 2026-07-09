@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from app.models.customers.feedback import FeedBack
 from app.models.customers.customercreation import CustomerCreation
+from app.utils.hierarchy import flat_geo_display
 
 
 class CustomerField(serializers.SlugRelatedField):
@@ -32,9 +33,8 @@ class FeedBackSerializer(serializers.ModelSerializer):
     # Expose customer identifier as `customer_id`
     customer_id = serializers.CharField(source="customer.unique_id", read_only=True)
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
-    # Geography is now the customer's single hierarchy node.
-    location_name = serializers.CharField(source="customer.location_node.name", read_only=True, default=None)
-    location_level = serializers.CharField(source="customer.location_node.level.name", read_only=True, default=None)
+    location_name = serializers.SerializerMethodField(read_only=True)
+    location_level = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = FeedBack
@@ -42,4 +42,12 @@ class FeedBackSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "customer": {"write_only": True},
         }
-    
+
+    def get_location_name(self, obj):
+        name, _ = flat_geo_display(obj.customer)
+        return name
+
+    def get_location_level(self, obj):
+        _, level = flat_geo_display(obj.customer)
+        return level
+

@@ -12,6 +12,7 @@ class CompanyUserScreenColumnPermissionSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(source="column_id.display_name", read_only=True)
     data_type = serializers.CharField(source="column_id.data_type", read_only=True)
     userscreen_name = serializers.CharField(source="userscreen_id.userscreen_name", read_only=True)
+    can_view = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = CompanyUserScreenColumnPermission
@@ -48,6 +49,7 @@ class UserScreenColumnPermissionSerializer(serializers.ModelSerializer):
             "userscreencolumn_id",
             "column_name",
             "is_active",
+            "field_permission_state",
         ]
 
 
@@ -66,6 +68,10 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
     governmentUserTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     usertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     is_active = serializers.BooleanField(default=True)
+    field_permission_state = serializers.ChoiceField(
+        choices=CompanyUserScreenColumnPermission.FIELD_PERMISSION_STATE_CHOICES,
+        required=False,
+    )
     order_no = serializers.IntegerField(default=1, required=False)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -90,6 +96,12 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
             or data.get("governmentUserTypeId")
             or ""
         ).strip() or None
+        if "field_permission_state" not in data:
+            data["field_permission_state"] = (
+                CompanyUserScreenColumnPermission.VISIBLE
+                if data.get("is_active", True)
+                else CompanyUserScreenColumnPermission.HIDDEN
+            )
         userscreen_id = data.get("userscreen_id")
         column_id = data.get("column_id")
         if userscreen_id and column_id:

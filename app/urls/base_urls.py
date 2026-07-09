@@ -15,6 +15,7 @@ from ..viewsets.common_masters.state_viewset import StateViewSet
 from ..viewsets.masters.district_viewset import DistrictViewSet
 from ..viewsets.masters.panchayat_viweset import PanhayatViewSet
 from ..viewsets.masters.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
+from ..viewsets.masters.district_leader_viewset import DistrictLeaderLoginViewSet
 from ..viewsets.masters.areatype_viewset import AreaTypeViewSet
 from ..viewsets.masters.hierarchy_viewset import AdministrativeHierarchyViewSet
 from ..viewsets.masters.hierarchy_tree_viewset import (
@@ -44,6 +45,7 @@ from ..viewsets.screen_managements.userscreen_viewset import UserScreenViewSet
 from ..viewsets.screen_managements.userscreenaction_viewset import UserScreenActionViewSet
 from ..viewsets.screen_managements.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
 from ..viewsets.screen_managements.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
+from ..viewsets.screen_managements.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
 from ..viewsets.screen_managements.permission_api_views import (
     PermissionAssignAPIView,
     UserScreenColumnsAPIView,
@@ -59,6 +61,7 @@ from ..viewsets.role_assigns.governmentstaffusertype_viewset import GovernmentSt
 # User creations
 from ..viewsets.user_creations.staff_viewset import StaffViewSet
 from ..viewsets.user_creations.staffcreation_viewset import StaffcreationViewset
+from ..viewsets.user_creations.staff_access_configuration_viewset import StaffAccessConfigurationViewSet
 from ..viewsets.user_creations.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
@@ -132,6 +135,9 @@ from ..viewsets.audits.common_audit_viewset import CommonAuditViewSet
 # Localbody
 from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardViewSet
 
+# Districtbody
+from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyDashboardViewSet
+
 # Operator mobile
 from ..viewsets.operator_mobile.my_trip_today_viewset import MyTripTodayViewSet
 from ..viewsets.operator_mobile.validate_bin_qr_viewset import ValidateBinQrViewSet
@@ -167,6 +173,7 @@ router.register_group("common-masters", "states",        StateViewSet)
 router.register_group("masters", "districts",     DistrictViewSet)
 router.register_group("masters", "panchayat",         PanhayatViewSet)
 router.register_group("masters", "panchayat-leaders", PanchayatLeaderLoginViewSet)
+router.register_group("masters", "district-leaders", DistrictLeaderLoginViewSet)
 router.register_group("masters", "areatypes",         AreaTypeViewSet)
 router.register_group("masters", "hierarchy",         AdministrativeHierarchyViewSet)
 router.register_group("masters", "hierarchy-levels",      HierarchyLevelViewSet)
@@ -206,6 +213,7 @@ router.register_group(
     basename="screen-managements-companywisescreenpermissions-legacy",
 )
 router.register_group("screen-managements", "column-permissions", CompanyUserScreenColumnPermissionViewSet)
+router.register_group("screen-managements", "dashboard-widget-permissions", DashboardWidgetPermissionViewSet)
 
 # ============================================================
 # GROUP: USER & ROLE ASSIGNMENT 
@@ -223,6 +231,7 @@ router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUser
 # ============================================================
 router.register_group("user-creations", "users-creation",  StaffViewSet)
 router.register_group("user-creations", "staffcreation",   StaffcreationViewset)
+router.register_group("user-creations", "staff-access-configuration", StaffAccessConfigurationViewSet)
 
 # ============================================================
 # GROUP: AUTHENTICATION
@@ -234,7 +243,7 @@ router.register_group("login", "my-permissions",     PermissionViewSet, basename
 # GROUP: CUSTOMER MODULES
 # ============================================================
 router.register_group("customer-masters", "customercreations", CustomerCreationViewSet)
-router.register_group("customer-masters", "wastecollections",  WasteCollectionViewSet)
+router.register_group("schedule-masters", "wastecollections",  WasteCollectionViewSet)
 router.register_group("customer-masters", "feedbacks",         FeedBackViewSet)
 router.register_group("customer-masters", "user-charge-rules", UserChargeRuleViewSet)
 
@@ -324,6 +333,11 @@ router.register_group(
 # GROUP: LOCALBODY (panchayat leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("localbody", "dashboard", LocalBodyDashboardViewSet, basename="localbody-dashboard")
+
+# ============================================================
+# GROUP: DISTRICTBODY (district leader portal — auth-only, no module permission check)
+# ============================================================
+router.register_group("districtbody", "dashboard", DistrictBodyDashboardViewSet, basename="districtbody-dashboard")
 
 # ============================================================
 # GROUP: OPERATOR MOBILE

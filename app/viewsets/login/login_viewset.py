@@ -10,6 +10,7 @@ from django.utils import timezone
 from app.models.user_creations.loginAudit import LoginAudit
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
+from app.utils.hierarchy import staff_scope_payload
 
 
 def _client_ip(request):
@@ -120,6 +121,14 @@ class LoginViewSet(ViewSet):
             )
             role = "panchayat_leader"
             email = getattr(target, "email", None)
+        elif user_type == "district_leader":
+            target = profile_object or user
+            name = (
+                getattr(target, "leader_name", None)
+                or getattr(target, "username", None)
+            )
+            role = "district_leader"
+            email = getattr(target, "email", None)
 
         # -------------------------
         # JWT CREATION
@@ -137,8 +146,10 @@ class LoginViewSet(ViewSet):
             "email": email,
         }
 
+        data_scope = None
         if user_type == "staff":
             staff_source = profile_object or user
+            data_scope = staff_scope_payload(staff_source)
             profile_payload.update(
                 {
                     "staff_unique_id": emp_id,
@@ -146,6 +157,7 @@ class LoginViewSet(ViewSet):
                     "employee_name": getattr(staff_source, "employee_name", None) or name,
                     "emp_id": emp_id,
                     "staffusertype_unique_id": staffusertype_unique_id,
+                    "data_scope": data_scope,
                 }
             )
         elif user_type == "customer":
@@ -173,6 +185,18 @@ class LoginViewSet(ViewSet):
                     "employee_name": getattr(contractor_source, "employee_name", None) or name,
                     "emp_id": emp_id,
                     "contractorusertype_unique_id": contractorusertype_unique_id,
+                    "data_scope": staff_scope_payload(contractor_source),
+                }
+            )
+        elif user_type == "government":
+            government_source = profile_object or user
+            profile_payload.update(
+                {
+                    "staff_unique_id": emp_id,
+                    "employee_id": employee_id,
+                    "employee_name": getattr(government_source, "employee_name", None) or name,
+                    "emp_id": emp_id,
+                    "data_scope": staff_scope_payload(government_source),
                 }
             )
         elif user_type == "panchayat_leader":
@@ -184,6 +208,17 @@ class LoginViewSet(ViewSet):
                     "leader_name": getattr(leader_source, "leader_name", None) or name,
                     "panchayat_unique_id": getattr(panchayat, "unique_id", None) if panchayat else None,
                     "panchayat_name": getattr(panchayat, "panchayat_name", None) if panchayat else None,
+                }
+            )
+        elif user_type == "district_leader":
+            leader_source = profile_object or user
+            district = getattr(leader_source, "district_id", None)
+            profile_payload.update(
+                {
+                    "district_leader_unique_id": getattr(leader_source, "unique_id", None),
+                    "leader_name": getattr(leader_source, "leader_name", None) or name,
+                    "district_unique_id": getattr(district, "unique_id", None) if district else None,
+                    "district_name": getattr(district, "name", None) if district else None,
                 }
             )
 

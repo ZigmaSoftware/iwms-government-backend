@@ -8,7 +8,7 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 )
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.hierarchy import hierarchy_payload
+from app.utils.hierarchy import flat_geo_display, hierarchy_payload
 
 
 class DailyTripCollectionPointSerializer(
@@ -48,11 +48,6 @@ class DailyTripCollectionPointSerializer(
             "trip_assignment",
             "collection_point_id",
             "collection_point",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "hierarchy",
             "bin_id",
             "bin",
@@ -72,11 +67,6 @@ class DailyTripCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "created_at",
             "updated_at",
         ]
@@ -110,7 +100,8 @@ class DailyTripCollectionPointSerializer(
         }
 
     def get_hierarchy(self, obj):
-        return hierarchy_payload(obj)
+        name, level = flat_geo_display(obj)
+        return {"location_name": name, "location_level": level}
 
     def get_bin(self, obj):
         bin_obj = obj.bin_id

@@ -8,6 +8,7 @@ from app.models.schedule_masters.trip_plan_collection_point import TripPlanColle
 from app.models.schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
 from app.signals.trip_plan_signals import _create_daily_household_collections
+from app.utils.hierarchy import FLAT_GEO_FIELDS
 
 
 def run_for_date(target_date=None, logger=None):
@@ -69,9 +70,10 @@ def run_for_date(target_date=None, logger=None):
             "staff_template_id": plan.staff_template_id,
             "vehicle_id": plan.vehicle_id,
             "waste_type_id": plan.waste_type_id,
-            "location_node": plan.location_node,
             "scheduled_time": plan.scheduled_time,
         }
+        for field in FLAT_GEO_FIELDS:
+            defaults[f"{field}_id"] = getattr(plan, f"{field}_id", None)
 
         with transaction.atomic():
             assignment, created = DailyTripAssignment.objects.get_or_create(

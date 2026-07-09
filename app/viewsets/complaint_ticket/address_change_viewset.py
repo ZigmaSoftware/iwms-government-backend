@@ -15,6 +15,7 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.serializers.complaint_ticket.transaction_serializers import (
     ComplaintAddressChangeRequestSerializer,
 )
+from app.utils.hierarchy import flat_geo_fields_for_node
 
 
 def _resolve_status(status_code):
@@ -29,7 +30,14 @@ def _snapshot_customer_address(customer):
         "pincode": customer.pincode,
         "latitude": customer.latitude,
         "longitude": customer.longitude,
-        "location_node_id": customer.location_node_id,
+        "state_id": customer.state_id,
+        "district_id": customer.district_id,
+        "area_type_id": customer.area_type_id,
+        "corporation_id": customer.corporation_id,
+        "municipality_id": customer.municipality_id,
+        "town_panchayat_id": customer.town_panchayat_id,
+        "panchayat_union_id": customer.panchayat_union_id,
+        "panchayat_id": customer.panchayat_id,
     }
 
 
@@ -106,8 +114,19 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             customer.latitude = req.new_latitude
         if req.new_longitude is not None:
             customer.longitude = req.new_longitude
+        new_geo_fields = {}
         if req.new_location_node_id:
-            customer.location_node = req.new_location_node
+            new_geo_fields = flat_geo_fields_for_node(req.new_location_node)
+            # Clear any previously-set local body before applying the new one,
+            # since only one of corporation/municipality/.../panchayat should
+            # be populated at a time.
+            for field in (
+                "state", "district", "area_type", "corporation",
+                "municipality", "town_panchayat", "panchayat_union", "panchayat",
+            ):
+                setattr(customer, field, None)
+            for field, value in new_geo_fields.items():
+                setattr(customer, f"{field}_id", value)
         customer.save()
 
         req.approved_by = request.user if request.user.is_authenticated else None
@@ -133,9 +152,14 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # Flag route reassignment if the new location isn't covered by any active trip plan
         if req.new_location_node_id:
-            covered = TripPlan.objects.filter(
-                location_node_id=req.new_location_node_id, is_deleted=False
-            ).exists()
+            # Most specific populated level wins - a district-only match still
+            # counts as "covered" if no local-body-level plan exists.
+            covered = False
+            for field in ("panchayat", "panchayat_union", "town_panchayat", "municipality", "corporation", "district", "state"):
+                value = new_geo_fields.get(field)
+                if value and TripPlan.objects.filter(**{f"{field}_id": value}, is_deleted=False).exists():
+                    covered = True
+                    break
             if not covered:
                 route_warning = (
                     f"New location {req.new_location_node_id} is not covered by any active TripPlan - "

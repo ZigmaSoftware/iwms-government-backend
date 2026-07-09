@@ -6,7 +6,7 @@ from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.hierarchy import hierarchy_payload
+from app.utils.hierarchy import flat_geo_display
 
 
 class DailyTripHouseholdCollectionSerializer(
@@ -24,7 +24,6 @@ class DailyTripHouseholdCollectionSerializer(
 
     trip_assignment = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
-    panchayat = serializers.SerializerMethodField()
     hierarchy = serializers.SerializerMethodField()
 
     class Meta:
@@ -37,12 +36,6 @@ class DailyTripHouseholdCollectionSerializer(
             "customer",
             "collection_type",
             "waste_collection_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
-            "panchayat",
             "hierarchy",
             "sequence",
             "is_collected",
@@ -54,11 +47,6 @@ class DailyTripHouseholdCollectionSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "waste_collection_id",
             "created_at",
             "updated_at",
@@ -82,17 +70,16 @@ class DailyTripHouseholdCollectionSerializer(
         customer = obj.customer_id
         if not customer:
             return None
+        name, level = flat_geo_display(customer)
         return {
             "unique_id": customer.unique_id,
             "customer_name": getattr(customer, "customer_name", None),
             "building_no": getattr(customer, "building_no", None),
             "street": getattr(customer, "street", None),
-            **hierarchy_payload(customer),
+            "location_name": name,
+            "location_level": level,
         }
 
-    def get_panchayat(self, obj):
-        p = obj.panchayat_id
-        return None if not p else {"unique_id": p.unique_id, "panchayat_name": p.panchayat_name}
-
     def get_hierarchy(self, obj):
-        return hierarchy_payload(obj)
+        name, level = flat_geo_display(obj)
+        return {"location_name": name, "location_level": level}
