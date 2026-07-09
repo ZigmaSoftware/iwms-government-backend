@@ -8,7 +8,7 @@ from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.hierarchy import HIERARCHY_FIELDS, hierarchy_payload, selected_hierarchy_values
+from app.utils.hierarchy import FLAT_GEO_FIELDS, flat_geo_display, hierarchy_payload
 
 
 class TripPlanCollectionPointSerializer(
@@ -99,26 +99,29 @@ class TripPlanCollectionPointSerializer(
         c = obj.customer_id
         if not c:
             return None
+        name, level = flat_geo_display(c)
         return {
             "unique_id": c.unique_id,
             "customer_name": c.customer_name,
-            **hierarchy_payload(c),
+            "location_name": name,
+            "location_level": level,
         }
 
     def get_hierarchy(self, obj):
-        return hierarchy_payload(obj)
+        name, level = flat_geo_display(obj)
+        return {"location_name": name, "location_level": level}
 
     def get_local_body(self, obj):
-        node = getattr(obj, "location_node", None)
-        if not node:
-            return None
-        level = getattr(node, "level", None)
-        return {
-            "field": "location_node",
-            "label": getattr(level, "name", None),
-            "unique_id": node.unique_id,
-            "name": node.name,
-        }
+        for field in ("panchayat", "panchayat_union", "town_panchayat", "municipality", "corporation"):
+            value = getattr(obj, field, None)
+            if value:
+                return {
+                    "field": field,
+                    "label": field.replace("_", " ").title(),
+                    "unique_id": value.unique_id,
+                    "name": flat_geo_display(obj)[0],
+                }
+        return None
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
@@ -155,8 +158,8 @@ class TripPlanCollectionPointSerializer(
             TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
             TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
         }:
-            selected_hierarchy = selected_hierarchy_values(trip_plan) if trip_plan else {}
-            if not customer and not selected_hierarchy:
+            has_trip_plan_geo = bool(trip_plan and any(getattr(trip_plan, field, None) for field in FLAT_GEO_FIELDS))
+            if not customer and not has_trip_plan_geo:
                 raise serializers.ValidationError(
                     {
                         "customer_id": (
@@ -190,10 +193,10 @@ class TripPlanCollectionPointSerializer(
             return
         trip_plan = instance.trip_plan_id
         updates = []
-        for field in HIERARCHY_FIELDS:
-            value = getattr(trip_plan, field, None)
-            if getattr(instance, field) != value:
-                setattr(instance, field, value)
+        for field in FLAT_GEO_FIELDS:
+            value = getattr(trip_plan, f"{field}_id", None)
+            if getattr(instance, f"{field}_id") != value:
+                setattr(instance, f"{field}_id", value)
                 updates.append(field)
         if updates:
             instance.save(update_fields=updates)

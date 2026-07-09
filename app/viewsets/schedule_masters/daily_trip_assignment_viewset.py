@@ -11,7 +11,6 @@ from app.serializers.schedule_masters.daily_trip_assignment_serializer import (
     DailyTripAssignmentApprovalSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_queryset_by_hierarchy
 from rest_framework import viewsets
 
 
@@ -26,11 +25,12 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     queryset = DailyTripAssignment.objects.select_related(
         "trip_plan_id",
-        "trip_plan_id__panchayat_id",
-        "trip_plan_id__corporation_id",
-        "trip_plan_id__municipality_id",
-        "trip_plan_id__town_panchayat_id",
-        "trip_plan_id__panchayat_union_id",
+        "trip_plan_id__district",
+        "trip_plan_id__panchayat",
+        "trip_plan_id__corporation",
+        "trip_plan_id__municipality",
+        "trip_plan_id__town_panchayat",
+        "trip_plan_id__panchayat_union",
         "trip_plan_id__vehicle_id",
         "trip_plan_id__waste_type_id",
         "staff_template_id",
@@ -39,11 +39,14 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "alt_staff_template_id",
         "alt_staff_template_id__driver_id",
         "alt_staff_template_id__operator_id",
-        "corporation_id",
-        "municipality_id",
-        "town_panchayat_id",
-        "panchayat_union_id",
-        "panchayat_id",
+        "state",
+        "district",
+        "area_type",
+        "corporation",
+        "municipality",
+        "town_panchayat",
+        "panchayat_union",
+        "panchayat",
         "waste_type_id",
         "vehicle_id",
     ).filter(is_deleted=False)
@@ -84,7 +87,12 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if waste_type:
             qs = qs.filter(waste_type_id=waste_type)
 
-        return filter_queryset_by_hierarchy(qs, params)
+        for field in ("state_id", "district_id", "area_type_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
+            value = params.get(field)
+            if value:
+                qs = qs.filter(**{field: value})
+
+        return qs
 
     # ----------------------------------------------------------
     # UPDATE — only allowed when Scheduled

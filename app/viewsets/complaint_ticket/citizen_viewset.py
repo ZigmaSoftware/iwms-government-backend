@@ -36,6 +36,7 @@ from app.serializers.complaint_ticket.transaction_serializers import (
 )
 from app.services.hierarchy_tree_service import get_descendants
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, _add_business_minutes
+from app.utils.hierarchy import node_for_flat_geo
 
 # Public grievance duplicate-submission cooldown: after this window has
 # passed, the same device/location may submit another grievance.
@@ -171,7 +172,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             location_text=str(data.get("location_text") or ""),
             wa_phone=customer.contact_no,
             profile_name=customer.customer_name,
-            location_node=customer.location_node,
+            location_node=node_for_flat_geo(customer),
         )
         ComplaintStatusHistory.objects.create(
             ticket=ticket,

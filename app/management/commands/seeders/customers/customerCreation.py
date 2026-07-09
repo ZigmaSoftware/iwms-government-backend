@@ -1,20 +1,8 @@
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.masters.panchayat import Panchayat
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
-
-
-def _node_for(source_type, source_obj):
-    """Resolve the hierarchy node mirrored from a legacy geo master."""
-    if not source_obj:
-        return None
-    return HierarchyNode.objects.filter(
-        is_deleted=False,
-        custom_properties__source_type=source_type,
-        custom_properties__source_id=source_obj.unique_id,
-    ).first()
 
 
 class CustomerCreationSeeder(BaseSeeder):
@@ -39,11 +27,6 @@ class CustomerCreationSeeder(BaseSeeder):
             self.log("Property/SubProperty not found — run PropertySeeder first.")
             return
 
-        # Fallback node so the seeder still works if a panchayat wasn't mirrored.
-        fallback_node = HierarchyNode.objects.filter(
-            is_deleted=False, custom_properties__source_type="district",
-        ).first()
-
         count = 0
         for idx, (
             cust_name, contact, building_no, street, area,
@@ -52,16 +35,10 @@ class CustomerCreationSeeder(BaseSeeder):
             panchayat = Panchayat.objects.filter(
                 panchayat_name=panchayat_name,
                 is_deleted=False,
-            ).select_related("district_id").first()
+            ).select_related("district_id", "state_id", "area_type_id").first()
 
-            # Geography is now a single hierarchy node (deepest available).
-            location_node = (
-                _node_for("panchayat", panchayat)
-                or _node_for("district", getattr(panchayat, "district_id", None))
-                or fallback_node
-            )
-            if not location_node:
-                self.log(f"No hierarchy node for {cust_name} — run geo_to_hierarchy seeder first. Skipping.")
+            if not panchayat:
+                self.log(f"No panchayat '{panchayat_name}' for {cust_name} — run geo seeders first. Skipping.")
                 continue
 
             _, created = CustomerCreation.objects.update_or_create(
@@ -72,7 +49,10 @@ class CustomerCreationSeeder(BaseSeeder):
                     "building_no": building_no,
                     "street": street,
                     "area": area,
-                    "location_node": location_node,
+                    "state": panchayat.state_id,
+                    "district": panchayat.district_id,
+                    "area_type": panchayat.area_type_id,
+                    "panchayat": panchayat,
                     "pincode": pincode,
                     "latitude": lat,
                     "longitude": lon,

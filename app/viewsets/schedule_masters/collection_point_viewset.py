@@ -4,7 +4,7 @@ from app.serializers.schedule_masters.collection_point_serializer import Collect
 from rest_framework.response import Response
 from app.utils.audit_mixin import AuditViewSetMixin
 from rest_framework import viewsets
-from app.utils.hierarchy import filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 
 
 class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -18,11 +18,31 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Collection_point.objects.select_related(
-            "location_node",
-            "location_node__level",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
         ).filter(is_deleted=False)
 
-        queryset = filter_queryset_by_hierarchy(queryset, self.request.query_params)
+        for field in (
+            "state_id",
+            "district_id",
+            "area_type_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
+            "panchayat_id",
+        ):
+            value = self.request.query_params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
 

@@ -7,6 +7,7 @@ import os
 import datetime
 from django.conf import settings
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from rest_framework import viewsets
 
 def save_uploaded_file(file, folder_name):
@@ -68,27 +69,41 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Bins.objects.select_related(
-            "location_node",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
             "collection_point_id",
-            "collection_point_id__location_node",
             "wastetype_id",
         ).filter(is_deleted=False)
 
-        location_uid = (
-            self.request.query_params.get("location_node")
-            or self.request.query_params.get("panchayat")
-            or self.request.query_params.get("panchayat_id")
-        )
         collection_point_uid = (
             self.request.query_params.get("collection_point")
             or self.request.query_params.get("collection_point_id")
         )
 
-        if location_uid:
-            queryset = queryset.filter(location_node__unique_id=location_uid)
+        for field in (
+            "state_id",
+            "district_id",
+            "area_type_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
+            "panchayat_id",
+        ):
+            value = self.request.query_params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
 
         if collection_point_uid:
             queryset = queryset.filter(collection_point_id__unique_id=collection_point_uid)
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
     

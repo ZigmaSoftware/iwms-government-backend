@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.utils import timezone
 
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
@@ -7,13 +6,9 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.user_creations.staffcreation import Staffcreation
-from app.permissions.platform import SuperAdminApprovalPermission
-from app.serializers.user_creations.staffcreation_serializer import (
-    StaffApprovalActionSerializer,
-    StaffcreationSerializer,
-)
+from app.serializers.user_creations.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_queryset_by_hierarchy, filter_queryset_by_requester_scope
+from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 from rest_framework import viewsets
 
 
@@ -47,13 +42,6 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     ]
     ordering_fields = ["staff_unique_id", "employee_name", "created_at"]
 
-    approval_action_names = {"approve", "reject", "suspend", "reactivate"}
-
-    def get_permissions(self):
-        if getattr(self, "action", None) in self.approval_action_names:
-            return [SuperAdminApprovalPermission()]
-        return super().get_permissions()
-
     def get_queryset(self):
         queryset = Staffcreation.objects.select_related(
             "personal_details",
@@ -70,8 +58,15 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
         department_id = self.request.query_params.get("department_id", None)
         staffusertype_id = self.request.query_params.get("staffusertype_id", None)
         contractorusertype_id = self.request.query_params.get("contractorusertype_id", None)
-        approval_status = self.request.query_params.get("approval_status", None)
         login_enabled = self.request.query_params.get("login_enabled", None)
+        state_id = self.request.query_params.get("state_id", None)
+        district_id = self.request.query_params.get("district_id", None)
+        area_type_id = self.request.query_params.get("area_type_id", None)
+        corporation_id = self.request.query_params.get("corporation_id", None)
+        municipality_id = self.request.query_params.get("municipality_id", None)
+        town_panchayat_id = self.request.query_params.get("town_panchayat_id", None)
+        panchayat_union_id = self.request.query_params.get("panchayat_union_id", None)
+        panchayat_id = self.request.query_params.get("panchayat_id", None)
 
         if site_name:
             queryset = queryset.filter(site_name__icontains=site_name)
@@ -94,121 +89,34 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
         if contractorusertype_id:
             queryset = queryset.filter(contractorusertype_id__unique_id=contractorusertype_id)
 
-        if approval_status:
-            queryset = queryset.filter(approval_status=approval_status.upper())
-
         if login_enabled in ["0", "1", "true", "false", "True", "False"]:
             queryset = queryset.filter(login_enabled=str(login_enabled).lower() in ["1", "true"])
 
+        if state_id:
+            queryset = queryset.filter(state_id=state_id)
+        if district_id:
+            queryset = queryset.filter(district_id=district_id)
+        if area_type_id:
+            queryset = queryset.filter(area_type_id=area_type_id)
+        if corporation_id:
+            queryset = queryset.filter(corporation_id=corporation_id)
+        if municipality_id:
+            queryset = queryset.filter(municipality_id=municipality_id)
+        if town_panchayat_id:
+            queryset = queryset.filter(town_panchayat_id=town_panchayat_id)
+        if panchayat_union_id:
+            queryset = queryset.filter(panchayat_union_id=panchayat_union_id)
+        if panchayat_id:
+            queryset = queryset.filter(panchayat_id=panchayat_id)
+
         # A District-level (etc.) staff member automatically sees every staff
-        # record at their own node and all descendant nodes beneath it (e.g.
-        # every Corporation/Municipality/Town Panchayat/Panchayat Union/
-        # Panchayat under their District). ?location_node=<id> lets a broader
-        # user (e.g. State/super admin) drill into one specific node.
-        queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
-        queryset = filter_queryset_by_hierarchy(queryset, self.request.query_params)
+        # record scoped at or beneath their own geo scope (e.g. every
+        # Corporation/Municipality/Town Panchayat/Panchayat Union/Panchayat
+        # under their District). ?state_id=/?district_id=/etc. let a broader
+        # user (e.g. State/super admin) drill into one specific area.
+        queryset = filter_staff_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset.order_by("-created_at")
-
-    def _approval_response(self, staff, message):
-        return Response(
-            {
-                "status": True,
-                "message": message,
-                "data": {
-                    "staff_unique_id": staff.staff_unique_id,
-                    "employee_name": staff.employee_name,
-                    "approval_status": staff.approval_status,
-                    "login_enabled": staff.login_enabled,
-                    "approved_by": getattr(staff.approved_by, "unique_id", None),
-                    "approved_at": staff.approved_at,
-                    "rejected_reason": staff.rejected_reason,
-                },
-            },
-            status=status.HTTP_200_OK,
-        )
-
-    @action(detail=True, methods=["post"], url_path="approve")
-    def approve(self, request, staff_unique_id=None):
-        staff = self.get_object()
-        staff.approval_status = Staffcreation.APPROVAL_APPROVED
-        staff.login_enabled = True
-        staff.approved_by = request.user
-        staff.approved_at = timezone.now()
-        staff.rejected_reason = None
-        staff.save(
-            update_fields=[
-                "approval_status",
-                "login_enabled",
-                "approved_by",
-                "approved_at",
-                "rejected_reason",
-                "updated_at",
-            ]
-        )
-        return self._approval_response(staff, "User approved successfully")
-
-    @action(detail=True, methods=["post"], url_path="reject")
-    def reject(self, request, staff_unique_id=None):
-        serializer = StaffApprovalActionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        staff = self.get_object()
-        staff.approval_status = Staffcreation.APPROVAL_REJECTED
-        staff.login_enabled = False
-        staff.approved_by = None
-        staff.approved_at = None
-        staff.rejected_reason = serializer.validated_data.get("rejected_reason") or None
-        staff.save(
-            update_fields=[
-                "approval_status",
-                "login_enabled",
-                "approved_by",
-                "approved_at",
-                "rejected_reason",
-                "updated_at",
-            ]
-        )
-        return self._approval_response(staff, "User rejected successfully")
-
-    @action(detail=True, methods=["post"], url_path="suspend")
-    def suspend(self, request, staff_unique_id=None):
-        serializer = StaffApprovalActionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        staff = self.get_object()
-        staff.approval_status = Staffcreation.APPROVAL_SUSPENDED
-        staff.login_enabled = False
-        staff.rejected_reason = serializer.validated_data.get("rejected_reason") or None
-        staff.save(
-            update_fields=[
-                "approval_status",
-                "login_enabled",
-                "rejected_reason",
-                "updated_at",
-            ]
-        )
-        return self._approval_response(staff, "User suspended successfully")
-
-    @action(detail=True, methods=["post"], url_path="reactivate")
-    def reactivate(self, request, staff_unique_id=None):
-        staff = self.get_object()
-        staff.approval_status = Staffcreation.APPROVAL_APPROVED
-        staff.login_enabled = True
-        staff.approved_by = request.user
-        staff.approved_at = timezone.now()
-        staff.rejected_reason = None
-        staff.failed_login_attempts = 0
-        staff.save(
-            update_fields=[
-                "approval_status",
-                "login_enabled",
-                "approved_by",
-                "approved_at",
-                "rejected_reason",
-                "failed_login_attempts",
-                "updated_at",
-            ]
-        )
-        return self._approval_response(staff, "User reactivated successfully")
 
     @action(detail=False, methods=["get"], url_path="staff-head-options")
     def staff_head_options(self, request):

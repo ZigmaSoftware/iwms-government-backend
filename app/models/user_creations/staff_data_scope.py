@@ -1,33 +1,50 @@
 from django.db import models
-from app.utils.base_models import BaseMaster
-from app.utils.comfun import generate_unique_id
-from django.core.exceptions import ValidationError
+
 from app.models.common_masters.state import State
-from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
+from app.models.masters.district import District
+from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.utils.base_models import BaseMaster
+from app.utils.comfun import generate_unique_id
 
-def geneate_collection_point_id():
-    return f"CP-{generate_unique_id()}"
 
-class Collection_point(BaseMaster):
+def generate_staff_data_scope_id():
+    return f"STAFFSCOPE-{generate_unique_id()}"
+
+
+class StaffDataScope(BaseMaster):
     unique_id = models.CharField(
-        max_length=30,
+        max_length=60,
         primary_key=True,
-        default=geneate_collection_point_id,
-        editable=False
+        unique=True,
+        default=generate_staff_data_scope_id,
+        editable=False,
     )
-
+    staff = models.ForeignKey(
+        StaffcreationOfficeDetails,
+        on_delete=models.CASCADE,
+        to_field="staff_unique_id",
+        db_column="staff_id",
+        related_name="data_scopes",
+    )
+    location_nodes = models.ManyToManyField(
+        HierarchyNode,
+        blank=True,
+        related_name="scoped_staff",
+    )
     state = models.ForeignKey(
         State,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="state_id",
     )
@@ -36,7 +53,7 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="district_id",
     )
@@ -45,7 +62,7 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="area_type_id",
     )
@@ -54,7 +71,7 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="corporation_id",
     )
@@ -63,7 +80,7 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="municipality_id",
     )
@@ -72,7 +89,7 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="town_panchayat_id",
     )
@@ -81,7 +98,7 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="panchayat_union_id",
     )
@@ -90,25 +107,36 @@ class Collection_point(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="collection_points",
+        related_name="scoped_staff",
         to_field="unique_id",
         db_column="panchayat_id",
     )
-
-    cp_name = models.CharField(max_length=100)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6)
-    coordinates = models.JSONField(default=list, blank=True)
+    depot = models.ForeignKey(
+        HierarchyNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="depot_staff",
+        to_field="unique_id",
+        db_column="depot_id",
+    )
+    vehicle = models.ForeignKey(
+        VehicleCreation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_data_scopes",
+        to_field="unique_id",
+        db_column="vehicle_id",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
-
-    def clean(self):
-        if not self.district_id:
-            raise ValidationError("Collection Point must belong to a district.")
-        
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Staff Data Scope"
+        verbose_name_plural = "Staff Data Scopes"
 
     def __str__(self):
-        return f"{self.cp_name} ({self.district})" if self.district_id else self.cp_name
+        return f"Data scope for {self.staff_id}"

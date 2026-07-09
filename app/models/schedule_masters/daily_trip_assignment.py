@@ -7,7 +7,15 @@ from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.utils.hierarchy import copy_hierarchy
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.utils.hierarchy import copy_flat_geo
 
 
 def _generate_trip_assignment_unique_id():
@@ -98,14 +106,77 @@ class DailyTripAssignment(BaseMaster):
     # LOCATION
     # ------------------------------------------------------------------
 
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
+    state = models.ForeignKey(
+        State,
         on_delete=models.SET_NULL,
-        db_column="location_node_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
         null=True,
         blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_assignments",
+        to_field="unique_id",
+        db_column="panchayat_id",
     )
 
     # ------------------------------------------------------------------
@@ -186,7 +257,7 @@ class DailyTripAssignment(BaseMaster):
         indexes = [
             models.Index(fields=["trip_date", "status"]),
             models.Index(fields=["trip_plan_id", "trip_date"]),
-            models.Index(fields=["location_node", "trip_date"]),
+            models.Index(fields=["district", "trip_date"]),
         ]
 
     # ------------------------------------------------------------------
@@ -198,7 +269,7 @@ class DailyTripAssignment(BaseMaster):
             self.staff_template_id = self.staff_template_id or self.trip_plan_id.staff_template_id
             self.vehicle_id = self.vehicle_id or self.trip_plan_id.vehicle_id
             self.waste_type_id = self.waste_type_id or self.trip_plan_id.waste_type_id
-            copy_hierarchy(self, self.trip_plan_id, only_empty=True)
+            copy_flat_geo(self, self.trip_plan_id, only_empty=True)
             self.scheduled_time = self.scheduled_time or self.trip_plan_id.scheduled_time
         if not self.unique_id:
             self.unique_id = _generate_trip_assignment_unique_id()

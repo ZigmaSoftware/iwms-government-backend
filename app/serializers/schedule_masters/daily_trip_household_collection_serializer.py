@@ -6,7 +6,7 @@ from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.hierarchy import hierarchy_payload
+from app.utils.hierarchy import flat_geo_display
 
 
 class DailyTripHouseholdCollectionSerializer(
@@ -70,13 +70,16 @@ class DailyTripHouseholdCollectionSerializer(
         customer = obj.customer_id
         if not customer:
             return None
+        name, level = flat_geo_display(customer)
         return {
             "unique_id": customer.unique_id,
             "customer_name": getattr(customer, "customer_name", None),
             "building_no": getattr(customer, "building_no", None),
             "street": getattr(customer, "street", None),
-            **hierarchy_payload(customer),
+            "location_name": name,
+            "location_level": level,
         }
 
     def get_hierarchy(self, obj):
-        return hierarchy_payload(obj)
+        name, level = flat_geo_display(obj)
+        return {"location_name": name, "location_level": level}

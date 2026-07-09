@@ -7,6 +7,7 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
+from app.utils.hierarchy import flat_geo_fields_for_node
 
 
 class DailyTripCollectionPointSeeder(BaseSeeder):
@@ -18,7 +19,7 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
             DailyTripAssignment.objects
             .filter(trip_date=today, is_deleted=False)
             .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
-            .select_related("location_node", "waste_type_id")
+            .select_related("district", "waste_type_id")
         )
 
         if not assignments.exists():
@@ -26,7 +27,7 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
                 DailyTripAssignment.objects
                 .filter(is_deleted=False)
                 .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
-                .select_related("location_node", "waste_type_id")
+                .select_related("district", "waste_type_id")
                 .order_by("-trip_date", "-scheduled_time")[:3]
             )
 
@@ -37,8 +38,13 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
         total_created = 0
         for assignment in assignments:
             cp_qs = Collection_point.objects.filter(is_deleted=False)
-            if assignment.location_node_id:
-                cp_qs = cp_qs.filter(location_node=assignment.location_node_id)
+            if assignment.district_id:
+                matching_ids = [
+                    cp.unique_id
+                    for cp in cp_qs.select_related("location_node")
+                    if flat_geo_fields_for_node(cp.location_node).get("district") == assignment.district_id
+                ]
+                cp_qs = cp_qs.filter(unique_id__in=matching_ids)
             cps = list(cp_qs.order_by("cp_name"))
 
             if not cps:

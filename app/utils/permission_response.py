@@ -8,9 +8,10 @@ from app.models.screen_managements.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
 from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
+from app.models.screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
 
 
-ACTION_KEYS = ("show", "view", "add", "edit", "delete")
+ACTION_KEYS = ("show", "view", "add", "edit", "delete", "approve", "export")
 
 APP_SURFACE_CONFIG = {
     "citizen": {
@@ -92,7 +93,7 @@ def build_permission_details(action_queryset, column_queryset=None):
             },
         )
         screen_meta[perm.userscreen_id_id] = (main_name, screen_name)
-        if action_name in screen_payload["permissions"]:
+        if action_name:
             screen_payload["permissions"][action_name] = True
 
     if column_queryset is None:
@@ -185,6 +186,13 @@ def build_column_permissions(column_queryset):
     }
 
 
+def build_dashboard_permissions(queryset):
+    permissions = {}
+    for permission in queryset.order_by("order_no"):
+        permissions[permission.widget_name] = permission.is_enabled
+    return permissions
+
+
 def build_module_access(action_queryset, column_queryset=None):
     modules = {}
     screen_lookup = {}
@@ -229,7 +237,7 @@ def build_module_access(action_queryset, column_queryset=None):
         )
         screen_lookup[userscreen.unique_id] = screen_entry
 
-        if action_name in screen_entry["permissions"]:
+        if action_name:
             screen_entry["permissions"][action_name] = True
 
     if column_queryset is None:
@@ -316,7 +324,7 @@ def build_fallback_module_access(permissions):
             action_map = base_action_map()
             for action_name in action_names or []:
                 normalized = normalize_permission_key(action_name)
-                if normalized in action_map:
+                if normalized:
                     action_map[normalized] = True
             module_entry["screens"].append(
                 {
@@ -490,12 +498,20 @@ def permission_querysets(
         "contractorusertype_id",
         "governmentusertype_id",
     )
+    dashboard_queryset = DashboardWidgetPermission.objects.filter(
+        is_active=True,
+        is_deleted=False,
+    ).select_related(
+        "staffusertype_id",
+        "contractorusertype_id",
+        "governmentusertype_id",
+    )
 
     if include_all:
-        return action_queryset, column_queryset
+        return action_queryset, column_queryset, dashboard_queryset
 
     if not usertype_unique_id:
-        return action_queryset.none(), column_queryset.none()
+        return action_queryset.none(), column_queryset.none(), dashboard_queryset.none()
 
     filters = {
         "usertype_id_id": usertype_unique_id,
@@ -511,16 +527,21 @@ def permission_querysets(
         filters["contractorusertype_id__isnull"] = True
         filters["governmentusertype_id__isnull"] = True
 
-    return action_queryset.filter(**filters), column_queryset.filter(**filters)
+    return (
+        action_queryset.filter(**filters),
+        column_queryset.filter(**filters),
+        dashboard_queryset.filter(**filters),
+    )
 
 
 def resolve_permission_payload(**filters):
-    action_queryset, column_queryset = permission_querysets(**filters)
+    action_queryset, column_queryset, dashboard_queryset = permission_querysets(**filters)
     payload = {
         "permissions": build_action_permissions(action_queryset),
         "permission_details": build_permission_details(action_queryset, column_queryset),
         "column_permissions": build_column_permissions(column_queryset),
         "module_access": build_module_access(action_queryset, column_queryset),
+        "dashboard_permissions": build_dashboard_permissions(dashboard_queryset),
     }
     return finalize_permission_payload(
         payload,

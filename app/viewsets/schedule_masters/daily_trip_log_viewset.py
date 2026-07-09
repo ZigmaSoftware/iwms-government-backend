@@ -26,7 +26,14 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "trip_assignment_id__alt_staff_template_id",
             "trip_assignment_id__alt_staff_template_id__driver_id",
             "trip_assignment_id__alt_staff_template_id__operator_id",
-            "location_node",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
             "collection_point_id",
             "waste_type_id",
             "driver_id",
@@ -100,7 +107,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if assignment:
             qs = qs.filter(trip_assignment_id=assignment)
         if panchayat:
-            qs = qs.filter(location_node__unique_id=panchayat)
+            qs = qs.filter(panchayat_id=panchayat)
         if collection_point:
             qs = qs.filter(collection_point_id=collection_point)
         if waste_type:

@@ -13,7 +13,16 @@ from app.models.schedule_masters.alternative_staff_template import AlternativeSt
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.utils.base_models import Account, BaseMaster
+from app.utils.hierarchy import copy_flat_geo
 
 
 def _generate_daily_trip_log_unique_id():
@@ -70,12 +79,77 @@ class DailyTripLog(BaseMaster):
         blank=True,
     )
 
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
-        on_delete=models.PROTECT,
-        db_column="location_node_id",
-        to_field="unique_id",
+    state = models.ForeignKey(
+        State,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="panchayat_id",
     )
     collection_point_id = models.ForeignKey(
         Collection_point,
@@ -186,7 +260,7 @@ class DailyTripLog(BaseMaster):
         if not assignment:
             return
 
-        self.location_node = assignment.location_node
+        copy_flat_geo(self, assignment)
         if not self.collection_point_id:
             first_child = (
                 assignment.trip_collection_points

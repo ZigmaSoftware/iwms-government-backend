@@ -11,10 +11,20 @@ is never executed by a plain `migrate`. By default it runs in DRY-RUN mode and
 changes nothing; pass --apply to actually remove data.
 
 What --apply does (in order):
-  - Verifies all customers/staff/leaders have location_node set (unless --force).
+  - Verifies all panchayat leaders have location_node set, and staff/customers
+    have a state/district set (unless --force).
   - Soft-deletes legacy geo rows (Panchayat, AreaType, District, State, Country,
     Continent) so any lingering FK reads return nothing, WITHOUT a destructive
     schema change.
+
+WARNING: `StaffcreationOfficeDetails` and `CustomerCreation` now store their
+own state/district/area_type/corporation/municipality/town_panchayat/
+panchayat_union/panchayat FKs (SET_NULL on delete) instead of a single
+location_node. Running --apply soft-deletes those legacy geo rows and will
+NULL OUT every staff member's AND customer's geo fields as a result — this
+command's "legacy geo retirement" no longer applies cleanly to either. Do not
+run --apply until staff/customer scoping is migrated off these FKs too (or an
+equivalent replacement master is in place).
 
 NOTE: physically dropping the columns/tables is a follow-up schema migration you
 generate after also removing the old FK fields from the model files. This command
@@ -89,20 +99,24 @@ class Command(BaseCommand):
     def _coverage(self):
         out = []
         try:
+            from django.db import models as django_models
             from app.models.customers.customercreation import CustomerCreation
+            has_geo = django_models.Q(state__isnull=False) | django_models.Q(district__isnull=False)
             out.append((
                 "customer",
                 CustomerCreation.objects.filter(is_deleted=False).count(),
-                CustomerCreation.objects.filter(is_deleted=False, location_node__isnull=False).count(),
+                CustomerCreation.objects.filter(is_deleted=False).filter(has_geo).count(),
             ))
         except Exception:
             pass
         try:
+            from django.db import models as django_models
             from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+            has_geo = django_models.Q(state__isnull=False) | django_models.Q(district__isnull=False)
             out.append((
                 "staff",
                 StaffcreationOfficeDetails.objects.filter(is_deleted=False).count(),
-                StaffcreationOfficeDetails.objects.filter(is_deleted=False, location_node__isnull=False).count(),
+                StaffcreationOfficeDetails.objects.filter(is_deleted=False).filter(has_geo).count(),
             ))
         except Exception:
             pass

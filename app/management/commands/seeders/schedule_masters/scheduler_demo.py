@@ -80,20 +80,16 @@ class SchedulerDemoSeeder(BaseSeeder):
             self.log("No WasteType — run WasteTypeSeeder first. Aborting.")
             return
 
-        # Geography is now a single hierarchy node.
-        location_node = node_for_source("panchayat", panchayat) or node_for_source("district", district)
-        if not location_node:
-            self.log("No hierarchy node for the demo panchayat — run geo_to_hierarchy first. Aborting.")
-            return
-
         # ---- 2. Create / refresh the demo TripPlan -------------------------
         # Guaranteed-scheduled: ACTIVE + APPROVED + auto-assign + every weekday.
         plan, created = TripPlan.objects.update_or_create(
-            location_node=location_node,
+            district=district,
+            panchayat=panchayat,
             collection_type=TripPlan.COLLECTION_TYPE_BIN,
             trip_trigger_weight_kg=DEMO_TRIGGER_KG,  # our sentinel
             is_deleted=False,
             defaults={
+                "state": district.state_id,
                 "staff_template_id": template,
                 "vehicle_id": vehicle,
                 "waste_type_id": waste_type,
@@ -111,11 +107,14 @@ class SchedulerDemoSeeder(BaseSeeder):
         self.log(f"{verb} demo TripPlan {plan.display_code} ({plan.unique_id}) on {panchayat.panchayat_name}.")
 
         # ---- 3. Give it real bin stops (so daily points are generated) -----
+        # Geography on Collection_point is still a single hierarchy node;
+        # resolve the demo panchayat's mirrored node to find matching stops.
+        location_node = node_for_source("panchayat", panchayat) or node_for_source("district", district)
         cps = list(
             Collection_point.objects.filter(
                 location_node=location_node, is_deleted=False, is_active=True
             ).order_by("cp_name")[:3]
-        )
+        ) if location_node else []
         if not cps:
             # Fall back to any collection points so the demo still produces stops.
             cps = list(Collection_point.objects.filter(is_deleted=False, is_active=True).order_by("cp_name")[:3])

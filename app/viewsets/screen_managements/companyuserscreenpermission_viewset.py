@@ -227,7 +227,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # Queryset
     # ---------------------------------------------------------
     def get_queryset(self):
-        return UserScreenPermission.objects.filter(is_deleted=False).select_related(
+        queryset = UserScreenPermission.objects.filter(is_deleted=False).select_related(
             "usertype_id",
             "staffusertype_id",
             "contractorusertype_id",
@@ -236,6 +236,14 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "userscreen_id",
             "userscreenaction_id",
         )
+
+        request = getattr(self, "request", None)
+        if request is not None and getattr(self, "action", None) == "list":
+            permission_for, role_id = self._role_from_request(request)
+            if role_id:
+                queryset = queryset.filter(**self._role_filter_kwargs(permission_for, role_id))
+
+        return queryset
 
     @swagger_auto_schema(responses={200: UserScreenPermissionSerializer(many=True)})
     def list(self, request, *args, **kwargs):

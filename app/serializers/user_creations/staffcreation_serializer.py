@@ -4,19 +4,18 @@ from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
-from app.models.masters.hierarchy_tree import HierarchyNode
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
-
-
-class StaffApprovalActionSerializer(serializers.Serializer):
-    rejected_reason = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-    )
 
 
 class StaffcreationSerializer(serializers.ModelSerializer):
@@ -63,17 +62,77 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         source="governmentusertype_id.level",
         read_only=True,
     )
-    location_node_id = serializers.SlugRelatedField(
-        source="location_node",
-        queryset=HierarchyNode.objects.filter(is_deleted=False),
+    state_id = serializers.SlugRelatedField(
+        source="state",
+        queryset=State.objects.filter(is_deleted=False),
         slug_field="unique_id",
         required=False,
         allow_null=True,
     )
-    location_node_name = serializers.CharField(
-        source="location_node.name",
-        read_only=True,
+    state_name = serializers.CharField(source="state.name", read_only=True)
+
+    district_id = serializers.SlugRelatedField(
+        source="district",
+        queryset=District.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
     )
+    district_name = serializers.CharField(source="district.name", read_only=True)
+
+    area_type_id = serializers.SlugRelatedField(
+        source="area_type",
+        queryset=AreaType.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
+
+    corporation_id = serializers.SlugRelatedField(
+        source="corporation",
+        queryset=Corporation.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    corporation_name = serializers.CharField(source="corporation.name", read_only=True)
+
+    municipality_id = serializers.SlugRelatedField(
+        source="municipality",
+        queryset=Municipality.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    municipality_name = serializers.CharField(source="municipality.name", read_only=True)
+
+    town_panchayat_id = serializers.SlugRelatedField(
+        source="town_panchayat",
+        queryset=TownPanchayat.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    town_panchayat_name = serializers.CharField(source="town_panchayat.name", read_only=True)
+
+    panchayat_union_id = serializers.SlugRelatedField(
+        source="panchayat_union",
+        queryset=PanchayatUnion.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    panchayat_union_name = serializers.CharField(source="panchayat_union.name", read_only=True)
+
+    panchayat_id = serializers.SlugRelatedField(
+        source="panchayat",
+        queryset=Panchayat.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    panchayat_name = serializers.CharField(source="panchayat.name", read_only=True)
     department_id = serializers.PrimaryKeyRelatedField(
         queryset=Department.objects.filter(is_deleted=False),
         required=False,
@@ -262,14 +321,24 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "governmentusertype_level",
 
             # Geographic hierarchy for government staff
-            "location_node_id",
-            "location_node_name",
+            "state_id",
+            "state_name",
+            "district_id",
+            "district_name",
+            "area_type_id",
+            "area_type_name",
+            "corporation_id",
+            "corporation_name",
+            "municipality_id",
+            "municipality_name",
+            "town_panchayat_id",
+            "town_panchayat_name",
+            "panchayat_union_id",
+            "panchayat_union_name",
+            "panchayat_id",
+            "panchayat_name",
 
-            "approval_status",
             "login_enabled",
-            "approved_by",
-            "approved_at",
-            "rejected_reason",
             "failed_login_attempts",
             "last_login_at",
             "last_login_ip",
@@ -284,10 +353,6 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "unique_id",
             "qr_code",
-            "approval_status",
-            "approved_by",
-            "approved_at",
-            "rejected_reason",
             "failed_login_attempts",
             "last_login_at",
             "last_login_ip",

@@ -8,7 +8,34 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
-from app.utils.hierarchy import HIERARCHY_FIELDS, selected_hierarchy_values
+# Most specific level first: a stop/trip plan scoped to a single Panchayat
+# should only match customers in that exact Panchayat, not the whole District.
+# area_type is a category (urban/rural), not a containment level, so it's
+# excluded here - it can't meaningfully narrow a customer match on its own.
+_GEO_MATCH_FIELDS = (
+    "panchayat",
+    "panchayat_union",
+    "town_panchayat",
+    "municipality",
+    "corporation",
+    "district",
+    "state",
+)
+
+
+def _geo_filter_for(obj):
+    """The exact (field, value) filter matching CustomerCreation rows scoped
+    to precisely `obj`'s most specific populated geo field (e.g. a stop
+    scoped to a Panchayat only matches customers whose `panchayat` FK
+    equals that panchayat) - not its ancestors/descendants. Returns None if
+    `obj` has no geo field populated."""
+    if not obj:
+        return None
+    for field in _GEO_MATCH_FIELDS:
+        value = getattr(obj, f"{field}_id", None)
+        if value:
+            return f"{field}_id", value
+    return None
 
 
 def _customers_for_household_stop(stop):
@@ -22,17 +49,17 @@ def _customers_for_household_stop(stop):
             is_bulkwaste_generator=is_bulk_stop,
         )
 
-    hierarchy = selected_hierarchy_values(stop) or selected_hierarchy_values(stop.trip_plan_id)
-    customers = CustomerCreation.objects.filter(
+    geo_filter = _geo_filter_for(stop) or _geo_filter_for(stop.trip_plan_id)
+    if not geo_filter:
+        return CustomerCreation.objects.none()
+
+    field, value = geo_filter
+    return CustomerCreation.objects.filter(
         is_deleted=False,
         is_active=True,
         is_bulkwaste_generator=is_bulk_stop,
+        **{field: value},
     )
-    for field in HIERARCHY_FIELDS:
-        value = hierarchy.get(field)
-        if value:
-            return customers.filter(**{field: value})
-    return CustomerCreation.objects.none()
 
 
 def _create_daily_household_collections(assignment, stop):

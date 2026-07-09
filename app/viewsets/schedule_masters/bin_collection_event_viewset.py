@@ -11,6 +11,7 @@ from app.serializers.schedule_masters.bin_collection_event_serializer import (
     BinCollectionEventSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_queryset_by_requester_scope
 from rest_framework import viewsets
 
 
@@ -68,6 +69,8 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(collection_date__gte=date_from)
         if date_to:
             queryset = queryset.filter(collection_date__lte=date_to)
+
+        queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
 
