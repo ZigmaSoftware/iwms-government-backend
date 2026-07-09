@@ -66,16 +66,13 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                 TripPlan.COLLECTION_TYPE_BULK,
             }:
                 sequence += 1
+                # location_node is auto-copied from trip_plan_id in
+                # TripPlanCollectionPoint.save() — no need to set it here.
                 _, created = TripPlanCollectionPoint.objects.update_or_create(
                     trip_plan_id=plan,
                     collection_type=plan.collection_type,
                     customer_id=None,
                     defaults={
-                        "panchayat_id": plan.panchayat_id,
-                        "corporation_id": plan.corporation_id,
-                        "municipality_id": plan.municipality_id,
-                        "town_panchayat_id": plan.town_panchayat_id,
-                        "panchayat_union_id": plan.panchayat_union_id,
                         "sequence": sequence,
                         "is_active": True,
                         "is_deleted": False,

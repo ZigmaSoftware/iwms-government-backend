@@ -9,6 +9,8 @@ logged-in citizen, so a citizen can only ever see/raise their own tickets.
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta
 
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -36,9 +38,11 @@ from app.serializers.complaint_ticket.transaction_serializers import (
 )
 from app.services.hierarchy_tree_service import get_descendants
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, _add_business_minutes
+from app.utils.email_utils import send_grievance_confirmation_email
 
 # Public grievance duplicate-submission cooldown: after this window has
-# passed, the same device/location may submit another grievance.
+# passed, the same device may submit another grievance. Location is not used
+# for dedup since multiple citizens can legitimately report the same spot.
 PUBLIC_GRIEVANCE_DUPLICATE_WINDOW = timedelta(hours=6)
 
 # Local-body levels one below District in the Hierarchy Tree - the "city"
@@ -234,10 +238,22 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def meta(self, request):
         waste_types = WasteType.objects.filter(is_deleted=False, is_active=True).order_by("waste_type_name")
+        categories = ComplaintCategory.objects.filter(is_deleted=False, is_active=True).order_by("sort_order")
+        subcategories = ComplaintSubcategory.objects.filter(
+            is_deleted=False, is_active=True, category__is_deleted=False, category__is_active=True
+        ).order_by("sort_order")
         return Response({
             "waste_types": [
                 {"unique_id": w.unique_id, "waste_type_name": w.waste_type_name}
                 for w in waste_types
+            ],
+            "categories": [
+                {"unique_id": c.unique_id, "category_name": c.category_name}
+                for c in categories
+            ],
+            "subcategories": [
+                {"unique_id": s.unique_id, "category": s.category_id, "subcategory_name": s.subcategory_name}
+                for s in subcategories
             ],
         })
 
@@ -272,8 +288,19 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         description = str(data.get("description") or "").strip()
         location_text = str(data.get("location_text") or "").strip()
         device_id = str(data.get("device_id") or "").strip()
+        phone = str(data.get("phone") or data.get("wa_phone") or "").strip()
+        email = str(data.get("email") or "").strip()
+        gender = str(data.get("gender") or "").strip().lower()
+        if gender not in dict(ComplaintTicket.GENDER_CHOICES):
+            gender = ""
         latitude = _decimal_from_input(data.get("latitude"))
         longitude = _decimal_from_input(data.get("longitude"))
+
+        if email:
+            try:
+                validate_email(email)
+            except ValidationError:
+                return Response({"email": "Enter a valid email address."}, status=http_status.HTTP_400_BAD_REQUEST)
 
         if not person_name:
             return Response({"person_name": "This field is required."}, status=http_status.HTTP_400_BAD_REQUEST)
@@ -286,19 +313,32 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         waste_types = list(WasteType.objects.filter(
             unique_id__in=waste_type_ids, is_deleted=False, is_active=True
         ))
-        if not waste_types:
-            return Response({"waste_type": "Select at least one waste type."}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        # Complaint Type / Sub-Type chosen on the public form.
+        selected_category = ComplaintCategory.objects.filter(
+            unique_id=data.get("category"), is_deleted=False, is_active=True
+        ).first()
+        subcategory = ComplaintSubcategory.objects.filter(
+            unique_id=data.get("subcategory"), is_deleted=False, is_active=True
+        ).first()
+        if subcategory and (not selected_category or subcategory.category_id != selected_category.unique_id):
+            subcategory = None
+
+        if not waste_types and not selected_category:
+            return Response(
+                {"waste_type": "Select a complaint type."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
 
         location_node = HierarchyNode.objects.filter(
             unique_id=data.get("location_node"), is_deleted=False
         ).first()
 
-        # Category is still required by ComplaintTicket for legacy reporting
-        # and as a fallback for routing/SLA when none of the selected waste
-        # types has a default team/priority/SLA configured - see the
-        # waste_type-first assignment below.
-        category = ComplaintCategory.objects.filter(
-            category_code="GENERAL", is_deleted=False, is_active=True
+        # Category is required by ComplaintTicket; when the form did not send
+        # one (legacy waste-type-only submissions) fall back to OTHER so
+        # reporting and the routing/SLA engine still have something to key on.
+        category = selected_category or ComplaintCategory.objects.filter(
+            category_code="OTHER", is_deleted=False, is_active=True
         ).first()
         if not category:
             category = ComplaintCategory.objects.filter(is_deleted=False, is_active=True).order_by("sort_order").first()
@@ -321,9 +361,12 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             default=None,
         )
 
-        priority = waste_type_priority or category.default_priority or ComplaintPriority.objects.filter(
-            priority_code="P3", is_deleted=False
-        ).first()
+        priority = (
+            waste_type_priority
+            or (subcategory.default_priority if subcategory else None)
+            or category.default_priority
+            or ComplaintPriority.objects.filter(priority_code="P3", is_deleted=False).first()
+        )
         status_obj = ComplaintStatus.objects.filter(status_code="SUBMITTED", is_deleted=False).first()
         if not priority or not status_obj:
             return Response(
@@ -331,31 +374,27 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
 
-        cutoff = timezone.now() - PUBLIC_GRIEVANCE_DUPLICATE_WINDOW
+        # The device key is still stored on the ticket for traceability, but the
+        # 6-hour same-device cooldown is disabled so citizens can register
+        # multiple complaints from one device.
         idempotency_key = f"publicgrivence:{device_id}" if device_id else None
-        duplicate = None
-        if idempotency_key:
-            duplicate = ComplaintTicket.objects.filter(
-                idempotency_key=idempotency_key,
-                is_deleted=False,
-                created__gte=cutoff,
-            ).order_by("-created").first()
-        if not duplicate:
-            duplicate = ComplaintTicket.objects.filter(
-                latitude=latitude,
-                longitude=longitude,
-                is_deleted=False,
-                created__gte=cutoff,
-            ).order_by("-created").first()
-        if duplicate:
-            return Response(
-                {
-                    "detail": "A public grievance was already submitted from this device or location. Please try again after 6 hours.",
-                    "ticket_no": duplicate.ticket_no,
-                    "unique_id": duplicate.unique_id,
-                },
-                status=http_status.HTTP_409_CONFLICT,
-            )
+        # cutoff = timezone.now() - PUBLIC_GRIEVANCE_DUPLICATE_WINDOW
+        # duplicate = None
+        # if idempotency_key:
+        #     duplicate = ComplaintTicket.objects.filter(
+        #         idempotency_key=idempotency_key,
+        #         is_deleted=False,
+        #         created__gte=cutoff,
+        #     ).order_by("-created").first()
+        # if duplicate:
+        #     return Response(
+        #         {
+        #             "detail": "A public grievance was already submitted from this device. Please try again after 6 hours.",
+        #             "ticket_no": duplicate.ticket_no,
+        #             "unique_id": duplicate.unique_id,
+        #         },
+        #         status=http_status.HTTP_409_CONFLICT,
+        #     )
 
         source, _ = ComplaintSource.objects.get_or_create(
             source_code="PUBLIC_GRIEVANCE",
@@ -364,10 +403,14 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         ticket = ComplaintTicket.objects.create(
             source=source,
             category=category,
+            subcategory=subcategory,
             priority=priority,
             status=status_obj,
             profile_name=person_name,
-            title=(description or ", ".join(w.waste_type_name for w in waste_types))[:120],
+            wa_phone=phone or None,
+            email=email or None,
+            gender=gender or None,
+            title=(description or (subcategory.subcategory_name if subcategory else "") or category.category_name)[:120],
             description=description,
             location_text=location_text,
             latitude=latitude,
@@ -417,6 +460,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
 
         apply_routing_and_sla(ticket, save=True)
 
+        if ticket.email:
+            transaction.on_commit(
+                lambda: send_grievance_confirmation_email(ticket.email, ticket.ticket_no, person_name)
+            )
+
         return Response(
             {
                 "message": "Public grievance submitted successfully.",
@@ -425,3 +473,52 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             },
             status=http_status.HTTP_201_CREATED,
         )
+
+    # ---- GET /publicgrivence/status/?ticket_no=... or ?mobile=... ----
+    @action(detail=False, methods=["get"])
+    def status(self, request):
+        ticket_no = str(request.query_params.get("ticket_no") or "").strip()
+        mobile = str(request.query_params.get("mobile") or "").strip()
+        if not ticket_no and not mobile:
+            return Response(
+                {"detail": "Provide a ticket number or mobile number."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = (
+            ComplaintTicket.objects.filter(is_deleted=False)
+            .select_related("status", "category", "subcategory")
+            .prefetch_related("status_history", "status_history__to_status")
+        )
+        qs = qs.filter(ticket_no__iexact=ticket_no) if ticket_no else qs.filter(wa_phone=mobile)
+        tickets = list(qs.order_by("-created")[:20])
+        if not tickets:
+            return Response({"detail": "No grievance found."}, status=http_status.HTTP_404_NOT_FOUND)
+
+        def timeline_for(ticket):
+            entries = [h for h in ticket.status_history.all() if h.visible_to_citizen]
+            entries.sort(key=lambda h: h.changed_at)
+            return [
+                {
+                    "status": h.to_status.status_name if h.to_status else None,
+                    "status_code": h.to_status.status_code if h.to_status else None,
+                    "at": h.changed_at,
+                    "remarks": h.remarks or "",
+                }
+                for h in entries
+            ]
+
+        return Response([
+            {
+                "ticket_no": t.ticket_no,
+                "status": t.status.status_name if t.status else None,
+                "status_code": t.status.status_code if t.status else None,
+                "category": t.category.category_name if t.category else None,
+                "subcategory": t.subcategory.subcategory_name if t.subcategory else None,
+                "description": t.description,
+                "location_text": t.location_text,
+                "created": t.created,
+                "timeline": timeline_for(t),
+            }
+            for t in tickets
+        ])

@@ -261,11 +261,11 @@ class Command(BaseCommand):
         group = options.get("group")
 
         if group:
-            seeders = SEED_GROUPS.get(group)
-            if not seeders:
+            if group not in SEED_GROUPS:
                 valid = ", ".join(k for k in SEED_GROUPS if k not in ("all",))
                 self.stdout.write(self.style.ERROR(f"Invalid group '{group}'. Use one of: {valid}"))
                 return
+            seeders = SEED_GROUPS[group]
         else:
             seeders = SEED_GROUPS["all"]
 

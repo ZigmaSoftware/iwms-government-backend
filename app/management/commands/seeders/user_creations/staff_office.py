@@ -23,7 +23,7 @@ def _district_node(district):
 
 def _local_body_node(name):
     """Resolve a specific city/town/panchayat node by name (finer-grained
-    than a district) - e.g. "Sample Panchayat" mirrored by GeoToHierarchySeeder."""
+    than a district) - e.g. "Anthiyur Panchayat" mirrored by GeoToHierarchySeeder."""
     if not name:
         return None
     return HierarchyNode.objects.filter(
@@ -40,7 +40,7 @@ class StaffOfficeSeeder(BaseSeeder):
     # city-scoped assignment filtering both have real data to prove out.
     STAFF = [
         ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",          "Erode",      None),
-        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode",      "Sample Panchayat"),
+        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode",      "Anthiyur Panchayat"),
         ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",        "Salem",      None),
         ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",          "Salem",      None),
         ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector",    "Coimbatore", None),
