@@ -21,7 +21,7 @@ from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_escalation
-from app.utils.hierarchy import filter_queryset_by_hierarchy, covering_node_ids
+from app.utils.hierarchy import filter_queryset_by_hierarchy, district_and_city_for_node
 from app.services import notification_service
 
 from app.models.complaint_ticket.ticket import ComplaintTicket
@@ -272,49 +272,75 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = StaffcreationOfficeDetails.objects.filter(
             is_deleted=False,
             active_status=True,
-            approval_status=StaffcreationOfficeDetails.APPROVAL_APPROVED,
+            login_enabled=True,
         )
+
+        geo = district_and_city_for_node(location_node_id) if location_node_id else None
         if location_node_id:
             # Bidirectional: a staff member tagged to the whole district must
             # still show up when the caller drills into one panchayat/city
-            # inside it (ancestor match), same as a staff member tagged to
-            # that exact panchayat (self/descendant match). Plain
-            # descendant-only matching would hide district-scoped staff the
-            # moment the filter gets more specific than their tag.
-            ids = covering_node_ids(location_node_id)
-            qs = qs.filter(location_node_id__in=ids) if ids else qs.none()
+            # inside it, same as a staff member tagged to that exact
+            # panchayat/local body. Match staff whose district equals the
+            # resolved district OR whose local-body FK equals the resolved
+            # city/local-body — covers both coarser- and finer-scoped staff.
+            district_id = geo["district_id"] if geo else None
+            city_id = geo["city_id"] if geo else None
+            local_body_filter = models.Q()
+            if city_id:
+                local_body_filter = (
+                    models.Q(corporation_id=city_id)
+                    | models.Q(municipality_id=city_id)
+                    | models.Q(town_panchayat_id=city_id)
+                    | models.Q(panchayat_union_id=city_id)
+                    | models.Q(panchayat_id=city_id)
+                )
+            if district_id and local_body_filter:
+                qs = qs.filter(models.Q(district_id=district_id) | local_body_filter)
+            elif district_id:
+                qs = qs.filter(district_id=district_id)
+            elif local_body_filter:
+                qs = qs.filter(local_body_filter)
+            else:
+                qs = qs.none()
 
         department_id = request.query_params.get("department")
         if department_id:
             qs = qs.filter(department_id__unique_id=department_id)
 
-        qs = qs.select_related("department_id", "location_node", "location_node__level").order_by("employee_name")
+        qs = qs.select_related(
+            "department_id", "district", "corporation", "municipality",
+            "town_panchayat", "panchayat_union", "panchayat",
+        ).order_by("employee_name")
 
-        data = [
-            {
+        def _local_body(member):
+            for level, obj in (
+                ("Corporation", member.corporation),
+                ("Municipality", member.municipality),
+                ("Town Panchayat", member.town_panchayat),
+                ("Panchayat Union", member.panchayat_union),
+                ("Panchayat", member.panchayat),
+            ):
+                if obj:
+                    return level, obj.name
+            return None, None
+
+        data = []
+        for member in qs[:200]:
+            level_name, local_body_name = _local_body(member)
+            data.append({
                 "staff_unique_id": member.staff_unique_id,
                 "employee_name": member.employee_name,
                 "department_name": getattr(member.department_id, "department_name", None),
-                "location_node_id": member.location_node_id,
-                "location_node_name": getattr(member.location_node, "name", None),
-                "location_level_name": getattr(member.location_node.level, "name", None) if member.location_node_id else None,
-            }
-            for member in qs[:200]
-        ]
-
-        location_node_name = None
-        location_level_name = None
-        if location_node_id:
-            from app.models.masters.hierarchy_tree import HierarchyNode
-            node = HierarchyNode.objects.filter(unique_id=location_node_id, is_deleted=False).select_related("level").first()
-            if node:
-                location_node_name = node.name
-                location_level_name = node.level.name
+                "district_name": getattr(member.district, "name", None),
+                "local_body_name": local_body_name,
+                "location_level_name": level_name or ("District" if member.district_id else None),
+            })
 
         return Response({
-            "location_node": location_node_id,
-            "location_node_name": location_node_name,
-            "location_level_name": location_level_name,
+            "district_id": geo["district_id"] if geo else None,
+            "district_name": geo["district_name"] if geo else None,
+            "city_id": geo["city_id"] if geo else None,
+            "city_name": geo["city_name"] if geo else None,
             "count": len(data),
             "staff": data,
         })

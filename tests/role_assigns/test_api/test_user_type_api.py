@@ -16,7 +16,6 @@ def _staff_auth_client(api_client, company, project, user_type):
         user_type_id=user_type,
         company_id=company,
         project_id=project,
-        approval_status=Staffcreation.APPROVAL_APPROVED,
         login_enabled=True,
     )
     token = jwt.encode(

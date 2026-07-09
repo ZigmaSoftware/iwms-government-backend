@@ -7,130 +7,324 @@ from app.models.screen_managements.userscreen import UserScreen
 class PermissionSeeder(BaseSeeder):
     name = "PermissionSeeder"
 
-    SCREEN_TYPES = [
-        "Dashboard",
-        "Masters",
-        "Schedule",
-        "Schedule Setup",
-        "Schedule Operations",
-        "Schedule Reports",
-        "Reports",
-        "Settings",
-    ]
+    def _get_unique_value(self, model_class, field_name, preferred_value, exclude_pk=None):
+        if not preferred_value:
+            preferred_value = "screen"
 
-    # (type_name, screen_name, icon_name, order_no, description)
-    SCREENS = [
-        # Dashboard
-        ("Dashboard", "Home Dashboard", "home", 1, "Main dashboard overview"),
+        candidate = preferred_value
+        counter = 2
+        while model_class.objects.filter(**{field_name: candidate}).exclude(pk=exclude_pk).exists():
+            candidate = f"{preferred_value}-{counter}"
+            counter += 1
 
-        # Masters
-        ("Masters", "Staff Management", "people", 1, "Manage staff records"),
-        ("Masters", "Hierarchy Management", "account_tree", 2, "Manage dynamic hierarchy configuration"),
+        return candidate
 
-        # Schedule Setup
-        ("Schedule Setup", "Staff Templates",             "group",         1, "Manage staff team templates"),
-        ("Schedule Setup", "Alternative Staff Templates", "swap_horiz",    2, "Manage alternative staff templates"),
-        ("Schedule Setup", "Collection Points",           "place",         3, "Manage secondary collection points"),
-        ("Schedule Setup", "Trip Plans",                  "route",         4, "Create and manage trip plans"),
-        ("Schedule Setup", "Trip Plan Collection Points", "pin_drop",      5, "Manage stops per trip plan"),
+    def _get_or_create_main_screen(self, mainscreentype, name, order_no, icon_name, description):
+        existing = MainScreen.objects.filter(mainscreen_name=name).first()
+        icon_name = self._get_unique_value(
+            MainScreen,
+            "icon_name",
+            icon_name,
+            exclude_pk=existing.pk if existing else None,
+        )
 
-        # Schedule Operations
-        ("Schedule Operations", "Daily Trip Assignment",          "event",          1, "Assign daily trips to staff"),
-        ("Schedule Operations", "Daily Trip Collection Point",    "location_on",    2, "Track daily collection point visits"),
-        ("Schedule Operations", "Daily Trip Household Collection","home_work",       3, "Household-level daily waste collection"),
-        ("Schedule Operations", "Daily Trip Tracking",            "track_changes",  4, "Live tracking of daily trips"),
-        ("Schedule Operations", "Bin Collection Event",           "recycling",      5, "Secondary bin pickup events"),
-        ("Schedule Operations", "Daily Trip Log",                 "list_alt",       6, "Daily trip execution logs"),
+        return MainScreen.objects.update_or_create(
+            mainscreen_name=name,
+            defaults={
+                "mainscreentype_id": mainscreentype,
+                "icon_name": icon_name,
+                "order_no": order_no,
+                "description": description,
+                "is_active": True,
+                "is_deleted": False,
+            },
+        )
 
-        # Schedule Reports
-        ("Schedule Reports", "Daily Waste Comparison",   "bar_chart",   1, "Compare daily waste collected vs target"),
-        ("Schedule Reports", "Monthly Waste Comparison", "analytics",   2, "Monthly aggregated waste report"),
+    def _get_or_create_user_screen(
+        self,
+        main_screen,
+        userscreen_name,
+        order_no,
+        folder_name,
+        icon_name,
+        description,
+    ):
+        existing = UserScreen.objects.filter(userscreen_name=userscreen_name).first()
+        folder_name = self._get_unique_value(
+            UserScreen,
+            "folder_name",
+            folder_name,
+            exclude_pk=existing.pk if existing else None,
+        )
+        icon_name = self._get_unique_value(
+            UserScreen,
+            "icon_name",
+            icon_name,
+            exclude_pk=existing.pk if existing else None,
+        )
 
-        # Reports
-        ("Reports", "Waste Reports", "summarize", 1, "View waste collection reports"),
+        return UserScreen.objects.update_or_create(
+            userscreen_name=userscreen_name,
+            defaults={
+                "mainscreen_id": main_screen,
+                "folder_name": folder_name,
+                "icon_name": icon_name,
+                "order_no": order_no,
+                "description": description,
+                "model_app_label": None,
+                "model_name": None,
+                "is_active": True,
+                "is_deleted": False,
+            },
+        )
 
-        # Settings
-        ("Settings", "System Settings", "settings", 1, "Application settings"),
-    ]
+    def _move_mainscreen_orders_out_of_range(self, mainscreentype, reserved_count):
+        screens = list(
+            MainScreen.objects.filter(mainscreentype_id=mainscreentype)
+            .order_by("order_no", "unique_id")
+        )
+        if not screens:
+            return
 
-    # (main_screen_name, user_screen_name, folder_name, icon_name, order_no, description, app_label, model_name)
-    USER_SCREENS = [
-        (
-            "Hierarchy Management",
-            "Hierarchy Tree Levels",
-            "hierarchy-levels",
-            "account_tree_level",
-            1,
-            "Create and manage configurable hierarchy tree levels",
-            "app",
-            "HierarchyLevel",
-        ),
-    ]
+        max_order = max((screen.order_no or 0) for screen in screens)
+        offset = max_order + len(screens) + reserved_count + 1000
+        for idx, screen in enumerate(screens, start=1):
+            screen.order_no = offset + idx
+            screen.save(update_fields=["order_no"])
+
+    def _move_userscreen_orders_out_of_range(self, main_screen, reserved_count):
+        screens = list(
+            UserScreen.objects.filter(mainscreen_id=main_screen)
+            .order_by("order_no", "unique_id")
+        )
+        if not screens:
+            return
+
+        max_order = max((screen.order_no or 0) for screen in screens)
+        offset = max_order + len(screens) + reserved_count + 1000
+        for idx, screen in enumerate(screens, start=1):
+            screen.order_no = offset + idx
+            screen.save(update_fields=["order_no"])
 
     def run(self):
-        type_cache = {}
-        for type_name in self.SCREEN_TYPES:
-            obj, _ = MainScreenType.objects.get_or_create(
-                type_name=type_name,
-                defaults={"is_active": True, "is_deleted": False},
-            )
-            type_cache[type_name] = obj
+        megamenu, _ = MainScreenType.objects.get_or_create(
+            type_name="megamenu",
+            defaults={
+                "is_active": True,
+                "is_deleted": False,
+            },
+        )
 
-        count = 0
-        screen_cache = {}
-        for type_name, screen_name, icon_name, order_no, description in self.SCREENS:
-            screen_type = type_cache.get(type_name)
-            if not screen_type:
-                continue
+        sidebar_modules = [
+            {
+                "module": "dashboard",
+                "screen": "Dashboard",
+                "icon": "dashboard",
+                "order": 1,
+                "description": "Dashboard landing page",
+                "subitems": [],
+            },
+            {
+                "module": "masters",
+                "screen": "masters",
+                "icon": "layers",
+                "order": 2,
+                "description": "Administrative and geo master data",
+                "subitems": [
+                    ("hierarchy-levels", "hierarchy-levels", "hierarchy-levels", 1, "Hierarchy levels"),
+                    ("hierarchy-nodes", "hierarchy-nodes", "hierarchy-nodes", 2, "Hierarchy nodes"),
+                    ("hierarchy-assignments", "hierarchy-assignments", "hierarchy-assignments", 3, "Hierarchy assignments"),
+                ],
+            },
+            {
+                "module": "waste-types",
+                "screen": "waste-types",
+                "icon": "recycling",
+                "order": 3,
+                "description": "Waste type configuration",
+                "subitems": [
+                    ("properties", "properties", "properties", 1, "Property definitions"),
+                    ("subproperties", "subproperties", "subproperties", 2, "Sub-property definitions"),
+                ],
+            },
+            {
+                "module": "assets",
+                "screen": "assets",
+                "icon": "inventory_2",
+                "order": 4,
+                "description": "Asset and waste handling screens",
+                "subitems": [
+                    ("bins", "bins", "bins", 1, "Bin creation"),
+                    ("wastetypes", "wastetypes", "wastetypes", 2, "Waste type maintenance"),
+                ],
+            },
+            {
+                "module": "screen-managements",
+                "screen": "screen-managements",
+                "icon": "settings",
+                "order": 5,
+                "description": "Screen setup and permission management",
+                "subitems": [
+                    ("mainscreentype", "mainscreentype", "mainscreentype", 1, "Main screen types"),
+                    ("mainscreens", "mainscreens", "mainscreens", 2, "Main screens"),
+                    ("userscreens", "userscreens", "userscreens", 3, "User screens"),
+                    ("userscreen-action", "userscreen-action", "userscreen-action", 4, "User screen actions"),
+                    ("userscreenpermissions", "userscreenpermissions", "userscreenpermissions", 5, "User screen permissions"),
+                ],
+            },
+            {
+                "module": "role-assigns",
+                "screen": "role-assigns",
+                "icon": "admin_panel_settings",
+                "order": 6,
+                "description": "Role assignment configuration",
+                "subitems": [
+                    ("user-type", "user-type", "user-type", 1, "User types"),
+                    ("staff-user-type", "staff-user-type", "staff-user-type", 2, "Staff user types"),
+                ],
+            },
+            {
+                "module": "user-creations",
+                "screen": "user-creations",
+                "icon": "group_add",
+                "order": 7,
+                "description": "User and staff creation",
+                "subitems": [
+                    ("staffcreation", "staffcreation", "staffcreation", 1, "Staff creation"),
+                ],
+            },
+            {
+                "module": "customers",
+                "screen": "customers",
+                "icon": "groups",
+                "order": 8,
+                "description": "Customer master screens",
+                "subitems": [
+                    ("customercreations", "customercreations", "customercreations", 1, "Customer creation"),
+                    ("customercreations", "apartment-list", "apartment-list", 2, "Apartment list"),
+                    ("feedbacks", "feedbacks", "feedbacks", 3, "Feedback"),
+                ],
+            },
+            {
+                "module": "complaint-ticket",
+                "screen": "complaint-ticket",
+                "icon": "support_agent",
+                "order": 9,
+                "description": "Complaint ticket management",
+                "subitems": [
+                    ("tickets", "tickets", "tickets", 1, "Complaint tickets"),
+                    ("categories", "categories", "categories", 2, "Categories"),
+                    ("subcategories", "subcategories", "subcategories", 3, "Subcategories"),
+                    ("priorities", "priorities", "priorities", 4, "Priorities"),
+                    ("statuses", "statuses", "statuses", 5, "Statuses"),
+                    ("sources", "sources", "sources", 6, "Sources"),
+                    ("teams", "teams", "teams", 7, "Teams"),
+                    ("feedback", "feedback", "feedback", 8, "Feedback"),
+                ],
+            },
+            {
+                "module": "transport-masters",
+                "screen": "transport-masters",
+                "icon": "local_shipping",
+                "order": 10,
+                "description": "Transport and vehicle setup",
+                "subitems": [
+                    ("vehicle-type", "vehicle-type", "vehicle-type", 1, "Vehicle type"),
+                    ("vehicle-creation", "vehicle-creation", "vehicle-creation", 2, "Vehicle creation"),
+                    ("fuels", "fuels", "fuels", 3, "Fuels"),
+                ],
+            },
+            {
+                "module": "schedule-masters",
+                "screen": "schedule-masters",
+                "icon": "event_note",
+                "order": 11,
+                "description": "Schedule planning and operations",
+                "subitems": [
+                    ("staff-templates", "staff-templates", "staff-templates", 1, "Staff templates"),
+                    ("alternative-staff-templates", "alternative-staff-templates", "alternative-staff-templates", 2, "Alternative staff templates"),
+                    ("collection-points", "collection-points", "collection-points", 3, "Collection points"),
+                    ("trip-plans", "trip-plans", "trip-plans", 4, "Trip plans"),
+                    ("trip-plan-collection-points", "trip-plan-collection-points", "trip-plan-collection-points", 5, "Trip plan collection points"),
+                    ("daily-trip-assignments", "daily-trip-assignments", "daily-trip-assignments", 6, "Daily trip assignments"),
+                    ("daily-trip-collection-points", "daily-trip-collection-points", "daily-trip-collection-points", 7, "Daily trip collection points"),
+                    ("daily-trip-household-collections", "daily-trip-household-collections", "daily-trip-household-collections", 8, "Daily trip household collections"),
+                    ("bin-collection-events", "bin-collection-events", "bin-collection-events", 9, "Bin collection events"),
+                    ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 10, "Daily trip logs"),
+                    ("wastecollections", "waste-collected-data", "recycling", 11, "Waste collected data"),
+                ],
+            },
+            {
+                "module": "audits",
+                "screen": "audits",
+                "icon": "fact_check",
+                "order": 12,
+                "description": "Audit and activity logs",
+                "subitems": [
+                    ("common-audit", "common-audit", "common-audit", 1, "Common audit"),
+                    ("login-audit", "login-audit", "login-audit", 2, "Login audit"),
+                ],
+            },
+            {
+                "module": "fleet-reports",
+                "screen": "FleetReports",
+                "icon": "bar_chart",
+                "order": 13,
+                "description": "Vehicle and workforce reports",
+                "subitems": [
+                    ("VehicleTrack", "VehicleTrack", "VehicleTrack", 1, "Vehicle tracking"),
+                    ("VehicleHistory", "VehicleHistory", "VehicleHistory", 2, "Vehicle history"),
+                    ("TripSummary", "TripSummary", "TripSummary", 3, "Trip summary"),
+                    ("MonthlyDistance", "MonthlyDistance", "MonthlyDistance", 4, "Monthly distance"),
+                    ("WasteCollectedSummary", "WasteCollectedSummary", "WasteCollectedSummary", 5, "Waste collected summary"),
+                    ("WorkforceManagement", "WorkforceManagement", "WorkforceManagement", 6, "Workforce management"),
+                ],
+            },
+            {
+                "module": "leader-login",
+                "screen": "leader-login",
+                "icon": "badge",
+                "order": 14,
+                "description": "Leader login management",
+                "subitems": [
+                    ("plb-leader-creation", "plb-leader-creation", "plb-leader-creation", 1, "PLB leader creation"),
+                ],
+            },
+        ]
 
-            screen, created = MainScreen.objects.get_or_create(
-                mainscreen_name=screen_name,
-                defaults={
-                    "mainscreentype_id": screen_type,
-                    "icon_name": icon_name,
-                    "order_no": order_no,
-                    "description": description,
-                    "is_active": True,
-                    "is_deleted": False,
-                },
+        self._move_mainscreen_orders_out_of_range(megamenu, len(sidebar_modules))
+
+        main_screens = {}
+        created_main_screens = 0
+        created_user_screens = 0
+
+        for section in sidebar_modules:
+            main_screen, created = self._get_or_create_main_screen(
+                megamenu,
+                section["module"],
+                section["order"],
+                section["icon"],
+                section["description"],
             )
-            screen_cache[screen_name] = screen
+            main_screens[section["module"]] = main_screen
             if created:
-                count += 1
+                created_main_screens += 1
 
-        user_screen_count = 0
-        for (
-            main_screen_name,
-            user_screen_name,
-            folder_name,
-            icon_name,
-            order_no,
-            description,
-            model_app_label,
-            model_name,
-        ) in self.USER_SCREENS:
-            main_screen = screen_cache.get(main_screen_name)
-            if not main_screen:
-                continue
+            self._move_userscreen_orders_out_of_range(main_screen, len(section.get("subitems", [])))
 
-            _, created = UserScreen.objects.get_or_create(
-                userscreen_name=user_screen_name,
-                defaults={
-                    "mainscreen_id": main_screen,
-                    "folder_name": folder_name,
-                    "icon_name": icon_name,
-                    "order_no": order_no,
-                    "description": description,
-                    "model_app_label": model_app_label,
-                    "model_name": model_name,
-                    "is_active": True,
-                    "is_deleted": False,
-                },
-            )
-            if created:
-                user_screen_count += 1
+            for index, subitem in enumerate(section.get("subitems", []), start=1):
+                userscreen_name, folder_name, icon_name, order_no, description = subitem
+                _, created = self._get_or_create_user_screen(
+                    main_screen,
+                    userscreen_name,
+                    order_no or index,
+                    folder_name,
+                    icon_name,
+                    description,
+                )
+                if created:
+                    created_user_screens += 1
 
         self.log(
-            f"---Screen permissions seeded ({count} main screens created, "
-            f"{user_screen_count} user screens created)---"
+            f"Sidebar-based permission screens seeded: {created_main_screens} main screens and {created_user_screens} user screens."
         )

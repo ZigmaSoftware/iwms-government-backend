@@ -116,6 +116,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "userscreenpermissions",
         "companywisescreenpermissions",
         "column-permissions",
+        "DashboardWidgetPermission",
     },
     "role-assigns": {
         "UserType",
@@ -125,6 +126,7 @@ MODULE_RESOURCE_ALLOWLIST = {
     "user-creations": {
         "UsersCreation",
         "StaffCreation",
+        "StaffAccessConfiguration",
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
         "UnassignedStaffPool",
@@ -455,7 +457,7 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         permissions = _resolve_permissions_for_request(request)
         permission_module = MODULE_PERMISSION_ALIASES.get(module, module)
         allowed_actions = self._resolve_allowed_actions(
-            permissions.get(permission_module, {}),
+            self._lookup_module_permissions(permissions, permission_module),
             permission_resource,
             route_resource,
         )
@@ -478,6 +480,21 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         if not name:
             return ""
         return re.sub(r"[\W_]+", "", name).lower()
+
+    @classmethod
+    def _lookup_module_permissions(cls, permissions, module_name):
+        if not permissions:
+            return {}
+
+        if module_name in permissions:
+            return permissions[module_name]
+
+        target = cls._normalize_permission_key(module_name)
+        for key, value in permissions.items():
+            if cls._normalize_permission_key(key) == target:
+                return value
+
+        return {}
 
     def _resolve_allowed_actions(self, permissions_map, resource_name, route_resource=None):
         if not permissions_map:

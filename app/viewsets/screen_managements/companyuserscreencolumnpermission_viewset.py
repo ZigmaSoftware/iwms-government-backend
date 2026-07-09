@@ -49,7 +49,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
     def get_queryset(self):
         qs = CompanyUserScreenColumnPermission.objects.filter(
             is_deleted=False,
-            can_view = True,
         ).select_related(
             "usertype_id",
             "staffusertype_id",
@@ -164,7 +163,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
                 column_id=column,
                 is_deleted=False,
                 defaults={
-                    "can_view": vd.get("is_active", True),
+                    "field_permission_state": vd.get("field_permission_state"),
                     "order_no": vd.get("order_no", 1),
                     "description": vd.get("description") or "",
                     "created_by": account,
@@ -172,8 +171,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
             )
 
             if not created:
-                # Update can_view in-place; never create a duplicate
-                instance.can_view = vd.get("is_active", True)
+                instance.field_permission_state = vd.get("field_permission_state")
                 if hasattr(instance, "updated_by"):
                     instance.updated_by = account
                 instance.save()
@@ -208,6 +206,9 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         is_active = request.data.get("is_active")
         if is_active is not None:
             instance.can_view = bool(is_active)
+        field_permission_state = request.data.get("field_permission_state")
+        if field_permission_state is not None:
+            instance.field_permission_state = field_permission_state
 
         account = None
         if hasattr(instance, "updated_by"):

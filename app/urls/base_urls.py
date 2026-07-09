@@ -45,6 +45,7 @@ from ..viewsets.screen_managements.userscreen_viewset import UserScreenViewSet
 from ..viewsets.screen_managements.userscreenaction_viewset import UserScreenActionViewSet
 from ..viewsets.screen_managements.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
 from ..viewsets.screen_managements.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
+from ..viewsets.screen_managements.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
 from ..viewsets.screen_managements.permission_api_views import (
     PermissionAssignAPIView,
     UserScreenColumnsAPIView,
@@ -60,6 +61,7 @@ from ..viewsets.role_assigns.governmentstaffusertype_viewset import GovernmentSt
 # User creations
 from ..viewsets.user_creations.staff_viewset import StaffViewSet
 from ..viewsets.user_creations.staffcreation_viewset import StaffcreationViewset
+from ..viewsets.user_creations.staff_access_configuration_viewset import StaffAccessConfigurationViewSet
 from ..viewsets.user_creations.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
@@ -211,6 +213,7 @@ router.register_group(
     basename="screen-managements-companywisescreenpermissions-legacy",
 )
 router.register_group("screen-managements", "column-permissions", CompanyUserScreenColumnPermissionViewSet)
+router.register_group("screen-managements", "dashboard-widget-permissions", DashboardWidgetPermissionViewSet)
 
 # ============================================================
 # GROUP: USER & ROLE ASSIGNMENT 
@@ -228,6 +231,7 @@ router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUser
 # ============================================================
 router.register_group("user-creations", "users-creation",  StaffViewSet)
 router.register_group("user-creations", "staffcreation",   StaffcreationViewset)
+router.register_group("user-creations", "staff-access-configuration", StaffAccessConfigurationViewSet)
 
 # ============================================================
 # GROUP: AUTHENTICATION
@@ -239,7 +243,7 @@ router.register_group("login", "my-permissions",     PermissionViewSet, basename
 # GROUP: CUSTOMER MODULES
 # ============================================================
 router.register_group("customer-masters", "customercreations", CustomerCreationViewSet)
-router.register_group("customer-masters", "wastecollections",  WasteCollectionViewSet)
+router.register_group("schedule-masters", "wastecollections",  WasteCollectionViewSet)
 router.register_group("customer-masters", "feedbacks",         FeedBackViewSet)
 router.register_group("customer-masters", "user-charge-rules", UserChargeRuleViewSet)
 

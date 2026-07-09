@@ -2,6 +2,7 @@ from rest_framework import filters, viewsets
 from app.models.common_masters.state import State
 from app.serializers.common_masters.state_serializer import StateSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 
 
@@ -19,6 +20,10 @@ class StateViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
     AUDIT_MODULE = "common-masters"
     AUDIT_ENDPOINT = "states"
 
+    SCOPE_FIELD_MAP = {
+        "state": "unique_id",
+    }
+
     def get_queryset(self):
         queryset = State.objects.filter(is_deleted=False)\
             .select_related("country_id", "continent_id")\
@@ -35,6 +40,10 @@ class StateViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
             queryset = queryset.filter(
                 continent_id__unique_id=continent_uid
             )
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(
+            queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP
+        )
 
         return queryset
 

@@ -22,9 +22,11 @@ from django.db.models.functions import Coalesce
 from rest_framework import viewsets
 from rest_framework.response import Response
 
+from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.schedule_masters.monthly_weight_report import MonthlyWeightReport
 from app.serializers.schedule_masters.monthly_weight_report_serializer import MonthlyWeightReportSerializer
+from app.utils.hierarchy import agreed_weight_for_node
 
 
 ZERO = Decimal("0")
@@ -69,6 +71,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     permission_resource = "MonthlyWasteComparisonReport"
     queryset = MonthlyWeightReport.objects.select_related(
         "location_node", "waste_type_id"
+        "location_node", "waste_type_id"
     )
     serializer_class = MonthlyWeightReportSerializer
     lookup_field = "unique_id"
@@ -76,6 +79,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         base_qs = DailyTripLog.objects.select_related(
+            "location_node", "waste_type_id",
             "location_node", "waste_type_id",
         ).filter(
             is_deleted=False,
@@ -102,8 +106,8 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             except (ValueError, AttributeError):
                 pass
 
-        if location_node_param:
-            base_qs = base_qs.filter(location_node_id=location_node_param)
+        if panchayat_param:
+            base_qs = base_qs.filter(location_node__unique_id=panchayat_param)
         if waste_type_param:
             base_qs = base_qs.filter(waste_type_id=waste_type_param)
 
@@ -115,6 +119,39 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             weight_field = None
         else:
             weight_field = "collected_weight_kg"
+
+        # ── Pre-aggregate: distinct trip days per (year, month, location_node)
+        # This is used for agreed-weight calculation in summary views.
+        # Grouping WITHOUT waste_type gives the true cross-waste-type distinct dates.
+        trip_days_qs = base_qs.values(
+            "trip_date__year",
+            "trip_date__month",
+            "location_node",
+        ).annotate(
+            distinct_trip_days=Count("trip_date", distinct=True),
+        )
+
+        nodes_by_id = {
+            node.unique_id: node
+            for node in HierarchyNode.objects.filter(
+                unique_id__in=base_qs.values_list("location_node", flat=True).distinct()
+            )
+        }
+
+        # (month_str, location_node_id) → {agreed_per_day, distinct_trip_days, agreed_total}
+        panchayat_month_info: dict[tuple, dict] = {}
+        for r in trip_days_qs:
+            m = f"{r['trip_date__year']}-{r['trip_date__month']:02d}"
+            key = (m, r["location_node"])
+            agreed_per_day = decimal_value(
+                agreed_weight_for_node(nodes_by_id.get(r["location_node"]))
+            )
+            trip_days = int(r["distinct_trip_days"] or 0)
+            panchayat_month_info[key] = {
+                "agreed_per_day": agreed_per_day,
+                "distinct_trip_days": trip_days,
+                "agreed_total": agreed_per_day * Decimal(str(trip_days)),
+            }
 
         # ── Aggregate by (year, month, location_node, waste_type) ────────
         annotation_kwargs = {
@@ -137,7 +174,6 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             "trip_date__year",
             "trip_date__month",
             "location_node",
-            "location_node__name",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
@@ -148,8 +184,12 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             month_val = row["trip_date__month"]
             month_str = f"{year_val}-{month_val:02d}"
 
-            # No per-location monthly target source exists yet — see module docstring.
-            agreed      = ZERO
+            # Per-row agreed: agreed_per_day × distinct_trip_days for THIS waste-type group.
+            # Used in the detailed breakdown table only.
+            trip_days_row = int(row["distinct_trip_days"] or 0)
+            node = nodes_by_id.get(row["location_node"])
+            agreed_per_day = decimal_value(agreed_weight_for_node(node))
+            agreed      = agreed_per_day * Decimal(str(trip_days_row))
 
             actual      = decimal_value(row["total_actual_weight"])
             variance    = actual - agreed
@@ -158,14 +198,15 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
 
             unique_id = (
                 f"MWR-{month_str}-{row['location_node']}-{row['waste_type_id']}"
+                f"MWR-{month_str}-{row['location_node']}-{row['waste_type_id']}"
             )
 
             rows.append({
                 "unique_id": unique_id,
                 "month": month_str,
-                "location_node_id": row["location_node"],
-                "location_node_name": (
-                    row["location_node__name"] or row["location_node"]
+                "panchayat_id": row["location_node"],
+                "panchayat_name": (
+                    getattr(node, "name", None) or row["location_node"]
                 ),
                 "waste_type_id": row["waste_type_id"],
                 "waste_type": (

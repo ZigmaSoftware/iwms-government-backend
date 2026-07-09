@@ -17,7 +17,7 @@ from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 
 
-SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "show", "view"}
+SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "show", "view", "approve", "export"}
 
 
 class UserScreenPermissionSerializer(serializers.ModelSerializer):
@@ -119,6 +119,7 @@ class ScreenActionSerializer(serializers.Serializer):
                     "column_id": column_id,
                     "field_name": column.get("fieldName") or column.get("field_name"),
                     "can_view": column.get("canView", column.get("can_view", True)),
+                    "field_permission_state": column.get("fieldPermissionState") or column.get("field_permission_state"),
                     "order_no": column.get("orderNo") or column.get("order_no"),
                     "is_required": column.get("isRequired", column.get("is_required")),
                 })
@@ -558,9 +559,16 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             column_id = column_permission["column_id"]
             order_no = column_permission.get("order_no") or fallback_order_no
             can_view = bool(column_permission.get("can_view", True))
+            field_permission_state = column_permission.get("field_permission_state")
+            if not field_permission_state:
+                field_permission_state = (
+                    CompanyUserScreenColumnPermission.VISIBLE
+                    if can_view
+                    else CompanyUserScreenColumnPermission.HIDDEN
+                )
             permission = existing.get(column_id)
             if permission:
-                permission.can_view = can_view
+                permission.field_permission_state = field_permission_state
                 permission.order_no = order_no
                 permission.description = description
                 permission.is_deleted = False
@@ -577,7 +585,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     governmentusertype_id_id=governmentusertype_id,
                     userscreen_id_id=userscreen_id,
                     column_id_id=column_id,
-                    can_view=can_view,
+                    field_permission_state=field_permission_state,
                     order_no=order_no,
                     description=description,
                     is_deleted=False,
@@ -597,7 +605,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         if updated:
             CompanyUserScreenColumnPermission.objects.bulk_update(
                 updated,
-                ["can_view", "order_no", "description", "is_deleted", "is_active", "updated_at"],
+                ["field_permission_state", "order_no", "description", "is_deleted", "is_active", "updated_at"],
             )
         if deleted:
             CompanyUserScreenColumnPermission.objects.bulk_update(
