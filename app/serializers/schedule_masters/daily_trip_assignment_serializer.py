@@ -37,7 +37,13 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     trip_plan = serializers.SerializerMethodField(read_only=True)
     staff_template = serializers.SerializerMethodField(read_only=True)
     effective_staff = serializers.SerializerMethodField(read_only=True)
+    state = serializers.SerializerMethodField(read_only=True)
     district = serializers.SerializerMethodField(read_only=True)
+    area_type = serializers.SerializerMethodField(read_only=True)
+    corporation = serializers.SerializerMethodField(read_only=True)
+    municipality = serializers.SerializerMethodField(read_only=True)
+    town_panchayat = serializers.SerializerMethodField(read_only=True)
+    panchayat_union = serializers.SerializerMethodField(read_only=True)
     panchayat = serializers.SerializerMethodField(read_only=True)
     waste_type = serializers.SerializerMethodField(read_only=True)
     vehicle = serializers.SerializerMethodField(read_only=True)
@@ -50,7 +56,8 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "waste_type_id", "household_waste_type_ids", "household_waste_types",
             "vehicle_id", "alt_staff_template_id", "trip_plan", "staff_template",
-            "effective_staff", "district", "panchayat", "waste_type", "vehicle", "collection_types",
+            "effective_staff", "state", "district", "area_type", "corporation", "municipality",
+            "town_panchayat", "panchayat_union", "panchayat", "waste_type", "vehicle", "collection_types",
             "trip_date", "scheduled_time", "actual_start_time", "actual_end_time",
             "status", "approval_status", "remarks", "created_at", "updated_at",
         ]
@@ -90,8 +97,26 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     def get_panchayat(self, obj):
         return self._panchayat_payload(obj.panchayat)
 
+    def get_state(self, obj):
+        return self._ref(obj.state)
+
     def get_district(self, obj):
         return self._ref(obj.district)
+
+    def get_area_type(self, obj):
+        return self._ref(obj.area_type)
+
+    def get_corporation(self, obj):
+        return self._ref(obj.corporation, "corporation_name")
+
+    def get_municipality(self, obj):
+        return self._ref(obj.municipality, "municipality_name")
+
+    def get_town_panchayat(self, obj):
+        return self._ref(obj.town_panchayat, "town_panchayat_name")
+
+    def get_panchayat_union(self, obj):
+        return self._ref(obj.panchayat_union, "union_name")
 
     def _ref(self, value, label_attr="name"):
         if not value:
