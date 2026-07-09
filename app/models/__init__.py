@@ -18,6 +18,7 @@ from .masters.district import District
 from .masters.department import Department
 from .masters.designation import Designation
 from .masters.panchayat_leader_login import PanchayatLeaderLogin
+from .masters.district_leader_login import DistrictLeaderLogin
 from .masters.areatype import AreaType
 from .masters.corporation import Corporation
 from .masters.municipality import Municipality
@@ -175,6 +176,7 @@ __all__ = [
     "Department",
     "Designation",
     "PanchayatLeaderLogin",
+    "DistrictLeaderLogin",
     "Municipality",
     "TownPanchayat",
     "PanchayatUnion",
