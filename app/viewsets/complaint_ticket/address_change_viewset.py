@@ -15,7 +15,18 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.serializers.complaint_ticket.transaction_serializers import (
     ComplaintAddressChangeRequestSerializer,
 )
-from app.utils.hierarchy import flat_geo_fields_for_node
+
+# (customer field, request "new_*" field) pairs for the flat geo overwrite.
+GEO_FIELD_MAP = (
+    ("state", "new_state"),
+    ("district", "new_district"),
+    ("area_type", "new_area_type"),
+    ("corporation", "new_corporation"),
+    ("municipality", "new_municipality"),
+    ("town_panchayat", "new_town_panchayat"),
+    ("panchayat_union", "new_panchayat_union"),
+    ("panchayat", "new_panchayat"),
+)
 
 
 def _resolve_status(status_code):
@@ -114,19 +125,19 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             customer.latitude = req.new_latitude
         if req.new_longitude is not None:
             customer.longitude = req.new_longitude
-        new_geo_fields = {}
-        if req.new_location_node_id:
-            new_geo_fields = flat_geo_fields_for_node(req.new_location_node)
+        new_geo_fields = {
+            customer_field: getattr(req, f"{request_field}_id", None)
+            for customer_field, request_field in GEO_FIELD_MAP
+        }
+        if any(new_geo_fields.values()):
             # Clear any previously-set local body before applying the new one,
             # since only one of corporation/municipality/.../panchayat should
             # be populated at a time.
-            for field in (
-                "state", "district", "area_type", "corporation",
-                "municipality", "town_panchayat", "panchayat_union", "panchayat",
-            ):
-                setattr(customer, field, None)
-            for field, value in new_geo_fields.items():
-                setattr(customer, f"{field}_id", value)
+            for customer_field, _ in GEO_FIELD_MAP:
+                setattr(customer, customer_field, None)
+            for customer_field, value in new_geo_fields.items():
+                if value:
+                    setattr(customer, f"{customer_field}_id", value)
         customer.save()
 
         req.approved_by = request.user if request.user.is_authenticated else None
@@ -151,7 +162,7 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             )
 
         # Flag route reassignment if the new location isn't covered by any active trip plan
-        if req.new_location_node_id:
+        if any(new_geo_fields.values()):
             # Most specific populated level wins - a district-only match still
             # counts as "covered" if no local-body-level plan exists.
             covered = False
@@ -161,8 +172,13 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     covered = True
                     break
             if not covered:
+                most_specific = None
+                for customer_field, _ in reversed(GEO_FIELD_MAP):
+                    if new_geo_fields.get(customer_field):
+                        most_specific = new_geo_fields[customer_field]
+                        break
                 route_warning = (
-                    f"New location {req.new_location_node_id} is not covered by any active TripPlan - "
+                    f"New location {most_specific} is not covered by any active TripPlan - "
                     "manual route reassignment required."
                 )
 

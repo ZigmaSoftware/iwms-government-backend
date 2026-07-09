@@ -24,7 +24,7 @@ from datetime import time
 
 from django.utils import timezone
 
-from app.management.commands.seeders.base import BaseSeeder, node_for_source
+from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.collection_point import Collection_point
@@ -107,14 +107,17 @@ class SchedulerDemoSeeder(BaseSeeder):
         self.log(f"{verb} demo TripPlan {plan.display_code} ({plan.unique_id}) on {panchayat.panchayat_name}.")
 
         # ---- 3. Give it real bin stops (so daily points are generated) -----
-        # Geography on Collection_point is still a single hierarchy node;
-        # resolve the demo panchayat's mirrored node to find matching stops.
-        location_node = node_for_source("panchayat", panchayat) or node_for_source("district", district)
         cps = list(
             Collection_point.objects.filter(
-                location_node=location_node, is_deleted=False, is_active=True
+                panchayat=panchayat, is_deleted=False, is_active=True
             ).order_by("cp_name")[:3]
-        ) if location_node else []
+        )
+        if not cps:
+            cps = list(
+                Collection_point.objects.filter(
+                    district=district, is_deleted=False, is_active=True
+                ).order_by("cp_name")[:3]
+            )
         if not cps:
             # Fall back to any collection points so the demo still produces stops.
             cps = list(Collection_point.objects.filter(is_deleted=False, is_active=True).order_by("cp_name")[:3])

@@ -4,7 +4,13 @@ from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.hierarchy_tree import HierarchyNode
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 from app.models.complaint_ticket.source_master import ComplaintSource
 from app.models.complaint_ticket.language_master import ComplaintLanguage
@@ -32,7 +38,9 @@ def generate_ticket_no():
 
 
 class ComplaintTicket(BaseMaster):
-    """Main complaint ticket. Citizen = CustomerCreation; geo = HierarchyNode."""
+    """Main complaint ticket. Citizen = CustomerCreation; geo = flat
+    State/District/local-body FKs (same pattern as CustomerCreation and
+    StaffcreationOfficeDetails)."""
 
     unique_id = models.CharField(
         max_length=30,
@@ -111,15 +119,82 @@ class ComplaintTicket(BaseMaster):
     location_text = models.TextField(blank=True, null=True)
     latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
-    location_node = models.ForeignKey(
-        HierarchyNode,
+    state = models.ForeignKey(
+        State,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="complaint_tickets",
-        to_field="unique_id",
-        db_column="location_node_id",
+        db_column="state_id",
     )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="district_id",
+    )
+    # Only one of the local-body FKs below should be populated at a time -
+    # it is the ticket's "city" (the level right below District).
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="panchayat_id",
+    )
+
+    LOCAL_BODY_FIELDS = (
+        ("corporation", "corporation_name"),
+        ("municipality", "municipality_name"),
+        ("town_panchayat", "town_panchayat_name"),
+        ("panchayat_union", "union_name"),
+        ("panchayat", "panchayat_name"),
+    )
+
+    @property
+    def local_body(self):
+        """(field_name, instance, display_name) of the populated local-body
+        FK - the ticket's "city" - or (None, None, None)."""
+        for field, name_attr in self.LOCAL_BODY_FIELDS:
+            obj = getattr(self, field, None)
+            if obj:
+                return field, obj, getattr(obj, name_attr, None)
+        return None, None, None
 
     assigned_team = models.ForeignKey(
         ComplaintTeam,
