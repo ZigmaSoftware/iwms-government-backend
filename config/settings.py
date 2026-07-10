@@ -55,6 +55,7 @@ ALLOWED_HOSTS = [
     '192.168.3.120',
     '10.152.141.197',
     '192.168.3.112',
+    '192.168.5.240', #sathya ip addr
     "aura-haustorial-elayne.ngrok-free.dev",
 ]
 
@@ -118,7 +119,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {   
     'default': {
         'ENGINE': os.getenv("DB_ENGINE", "django.db.backends.mysql"),
-        'NAME': os.getenv("DB_NAME", "iwmsdb-government"), 
+        'NAME': os.getenv("DB_NAME", "iwmsdbGovernment"), 
         'USER': os.getenv("DB_USER", "root"),
         'PASSWORD': os.getenv("DB_PASSWORD", "admin@123"),
         'HOST': os.getenv("DB_HOST", "localhost"),
@@ -204,6 +205,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$",
     r"^http://192\.168\.4\.\d{1,3}(:\d+)?$",
     r"^http://192\.168\.5\.\d{1,3}(:\d+)?$",
+    r"^http://192\.168\.3\.\d{1,3}(:\d+)?$",
     r"^http://192\.168\.1\.\d{1,3}(:\d+)?$",
     r"^http://127\.0\.0\.1(:\d+)?$",
     r"^http://125\.17\.238\.158(:\d+)?$",

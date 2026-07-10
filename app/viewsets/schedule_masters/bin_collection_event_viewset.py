@@ -11,6 +11,7 @@ from app.serializers.schedule_masters.bin_collection_event_serializer import (
     BinCollectionEventSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_queryset_by_requester_scope
 from rest_framework import viewsets
 
 
@@ -40,7 +41,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "collection_point_id",
                 "bin_id",
                 "bin_id__wastetype_id",
-                "panchayat_id",
+                "location_node",
             )
             .filter(is_deleted=False)
         )
@@ -61,13 +62,15 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if bin_id:
             queryset = queryset.filter(bin_id=bin_id)
         if panchayat:
-            queryset = queryset.filter(panchayat_id=panchayat)
+            queryset = queryset.filter(location_node__unique_id=panchayat)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
         if date_from:
             queryset = queryset.filter(collection_date__gte=date_from)
         if date_to:
             queryset = queryset.filter(collection_date__lte=date_to)
+
+        queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
 

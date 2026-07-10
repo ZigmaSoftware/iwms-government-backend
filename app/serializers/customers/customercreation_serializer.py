@@ -1,31 +1,96 @@
 from rest_framework import serializers
 
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.hierarchy_tree import HierarchyNode
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.validators.unique_name_validator import unique_name_validator
-from app.utils.hierarchy import validate_single_hierarchy
-from app.services.hierarchy_tree_service import get_path
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
 
 
 class CustomerCreationSerializer(serializers.ModelSerializer):
 
-    # ---- geography is now a single dynamic hierarchy node ----------------
-    location_node_id = serializers.SlugRelatedField(
-        source="location_node",
-        queryset=HierarchyNode.objects.filter(is_deleted=False),
+    # ---- geography: state/district/area type/local body ------------------
+    state_id = serializers.SlugRelatedField(
+        source="state",
+        queryset=State.objects.filter(is_deleted=False),
         slug_field="unique_id",
-        required=True,
-        allow_null=False,
+        required=False,
+        allow_null=True,
     )
-    location_node_name = serializers.CharField(source="location_node.name", read_only=True)
-    location_name = serializers.CharField(source="location_node.name", read_only=True)
-    location_level = serializers.CharField(source="location_node.level.name", read_only=True)
-    location_path = serializers.SerializerMethodField(read_only=True)
+    state_name = serializers.CharField(source="state.name", read_only=True)
+
+    district_id = serializers.SlugRelatedField(
+        source="district",
+        queryset=District.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    district_name = serializers.CharField(source="district.name", read_only=True)
+
+    area_type_id = serializers.SlugRelatedField(
+        source="area_type",
+        queryset=AreaType.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
+
+    corporation_id = serializers.SlugRelatedField(
+        source="corporation",
+        queryset=Corporation.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True)
+
+    municipality_id = serializers.SlugRelatedField(
+        source="municipality",
+        queryset=Municipality.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True)
+
+    town_panchayat_id = serializers.SlugRelatedField(
+        source="town_panchayat",
+        queryset=TownPanchayat.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True)
+
+    panchayat_union_id = serializers.SlugRelatedField(
+        source="panchayat_union",
+        queryset=PanchayatUnion.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
+
+    panchayat_id = serializers.SlugRelatedField(
+        source="panchayat",
+        queryset=Panchayat.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=False,
+        allow_null=True,
+    )
+    panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
 
     property_id = serializers.SlugRelatedField(
         source="property_ref",
@@ -79,11 +144,22 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
             "industry_name",
             "industry_type",
             "group_qr_id",
-            "location_node_id",
-            "location_node_name",
-            "location_name",
-            "location_level",
-            "location_path",
+            "state_id",
+            "state_name",
+            "district_id",
+            "district_name",
+            "area_type_id",
+            "area_type_name",
+            "corporation_id",
+            "corporation_name",
+            "municipality_id",
+            "municipality_name",
+            "town_panchayat_id",
+            "town_panchayat_name",
+            "panchayat_union_id",
+            "panchayat_union_name",
+            "panchayat_id",
+            "panchayat_name",
             "pincode",
             "latitude",
             "longitude",
@@ -149,11 +225,9 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         # )(self, attrs)
 
         instance = getattr(self, "instance", None)
-        validate_single_hierarchy(
-            attrs,
-            instance,
-            "Customer must be assigned to a hierarchy node.",
-        )
+        district = attrs.get("district") or getattr(instance, "district", None)
+        if not district:
+            raise serializers.ValidationError({"district_id": "Customer must be assigned to a district."})
         name = attrs.get("customer_name") or getattr(instance, "customer_name", None)
         mobile = attrs.get("contact_no") or getattr(instance, "contact_no", None)
 
@@ -192,15 +266,6 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError("Industry name required")
 
         return attrs
-
-    def get_location_path(self, obj):
-        """Full ancestry of the customer's node, root -> node (for breadcrumbs)."""
-        if not obj.location_node_id:
-            return []
-        return [
-            {"unique_id": e["unique_id"], "name": e["name"], "level_name": e.get("level_name")}
-            for e in get_path(obj.location_node_id)
-        ]
 
     def get_waste_types(self, obj):
         return [

@@ -5,9 +5,17 @@ from app.models.assets.bins import Bins
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.trip_plan import TripPlan
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.utils.hierarchy import copy_hierarchy
+from app.utils.hierarchy import copy_flat_geo
 
 
 def generate_tpcp_id():
@@ -80,14 +88,77 @@ class TripPlanCollectionPoint(BaseMaster):
         blank=True,
     )
 
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
+    state = models.ForeignKey(
+        State,
         on_delete=models.SET_NULL,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="location_node_id",
         null=True,
         blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plan_collection_points",
+        to_field="unique_id",
+        db_column="panchayat_id",
     )
     sequence = models.PositiveIntegerField(
         help_text="Visit order within the route.",
@@ -124,18 +195,18 @@ class TripPlanCollectionPoint(BaseMaster):
             if not self.bin_id_id:
                 raise ValidationError({"bin_id": "Bin is required for bin collection."})
         elif self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK}:
-            if not self.customer_id_id and not self.location_node_id and not self.trip_plan_id_id:
+            if not self.customer_id_id and not self.district_id and not self.trip_plan_id_id:
                 raise ValidationError(
-                    {"customer_id": "Select a customer or assign collection to a hierarchy node."}
+                    {"customer_id": "Select a customer or assign collection to a geographic area."}
                 )
 
     def save(self, *args, **kwargs):
         if self.collection_point_id_id:
-            copy_hierarchy(self, self.collection_point_id)
+            copy_flat_geo(self, self.collection_point_id)
         elif self.customer_id_id:
-            copy_hierarchy(self, self.customer_id)
+            copy_flat_geo(self, self.customer_id)
         elif self.trip_plan_id_id:
-            copy_hierarchy(self, self.trip_plan_id)
+            copy_flat_geo(self, self.trip_plan_id)
         super().save(*args, **kwargs)
 
     def __str__(self):

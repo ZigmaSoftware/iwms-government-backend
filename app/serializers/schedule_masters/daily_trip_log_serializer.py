@@ -6,6 +6,7 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import flat_geo_display
 
 
 class DailyTripLogSerializer(serializers.ModelSerializer):
@@ -20,7 +21,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "alt_staff_template_id",
             "alt_staff_template_id__driver_id",
             "alt_staff_template_id__operator_id",
-            "panchayat_id",
+            "district",
             "waste_type_id",
         ).filter(is_deleted=False),
         write_only=True,
@@ -40,7 +41,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
 
     trip_assignment = serializers.SerializerMethodField(read_only=True)
     staff_template = serializers.SerializerMethodField(read_only=True)
-    panchayat = serializers.SerializerMethodField(read_only=True)
+    location_name = serializers.SerializerMethodField(read_only=True)
+    location_level = serializers.SerializerMethodField(read_only=True)
     collection_point = serializers.SerializerMethodField(read_only=True)
     collection_points = serializers.SerializerMethodField(read_only=True)
     waste_type = serializers.SerializerMethodField(read_only=True)
@@ -62,8 +64,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "staff_template_id",
             "staff_template",
             "alt_staff_template_id",
-            "panchayat_id",
-            "panchayat",
+            "location_name",
+            "location_level",
             "collection_point_id",
             "collection_point",
             "collection_points",
@@ -99,7 +101,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "unique_id",
             "staff_template_id",
             "alt_staff_template_id",
-            "panchayat_id",
             "collection_point_id",
             "waste_type_id",
             "trip_date",
@@ -237,9 +238,13 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             })
         return result
 
-    def get_panchayat(self, obj):
-        p = obj.panchayat_id
-        return None if not p else {"unique_id": p.unique_id, "panchayat_name": p.panchayat_name}
+    def get_location_name(self, obj):
+        name, _ = flat_geo_display(obj)
+        return name
+
+    def get_location_level(self, obj):
+        _, level = flat_geo_display(obj)
+        return level
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id

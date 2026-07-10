@@ -4,11 +4,12 @@ from rest_framework import filters, viewsets
 from app.models.masters.areatype import AreaType
 from app.serializers.masters.areatype_serializer import AreaTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 
 
 class AreaTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
-    
+
     serializer_class = AreaTypeSerializer
     lookup_field = "unique_id"
     permission_resource = "AreaType"
@@ -20,6 +21,11 @@ class AreaTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT ="areatype"
 
+    SCOPE_FIELD_MAP = {
+        "area_type": "unique_id",
+        "district": "district_id_id",
+        "state": "state_id_id",
+    }
 
     def get_queryset(self):
         queryset = AreaType.objects.filter(is_deleted=False)
@@ -30,6 +36,10 @@ class AreaTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(state_id__unique_id=state_uid)
         if district_uid:
             queryset = queryset.filter(district_id__unique_id=district_uid)
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(
+            queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP
+        )
 
         return queryset
     

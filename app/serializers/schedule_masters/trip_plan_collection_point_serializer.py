@@ -8,7 +8,7 @@ from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.hierarchy import HIERARCHY_FIELDS, hierarchy_payload, selected_hierarchy_values
+from app.utils.hierarchy import FLAT_GEO_FIELDS, flat_geo_display, hierarchy_payload
 
 
 class TripPlanCollectionPointSerializer(
@@ -56,11 +56,6 @@ class TripPlanCollectionPointSerializer(
             "customer_id",
             "customer",
             "local_body",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "hierarchy",
             "sequence",
             "is_active",
@@ -70,11 +65,6 @@ class TripPlanCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
-            "corporation_id",
-            "municipality_id",
-            "town_panchayat_id",
-            "panchayat_union_id",
-            "panchayat_id",
             "created_at",
             "updated_at",
         ]
@@ -109,31 +99,27 @@ class TripPlanCollectionPointSerializer(
         c = obj.customer_id
         if not c:
             return None
+        name, level = flat_geo_display(c)
         return {
             "unique_id": c.unique_id,
             "customer_name": c.customer_name,
-            **hierarchy_payload(c),
+            "location_name": name,
+            "location_level": level,
         }
 
     def get_hierarchy(self, obj):
-        return hierarchy_payload(obj)
+        name, level = flat_geo_display(obj)
+        return {"location_name": name, "location_level": level}
 
     def get_local_body(self, obj):
-        local_bodies = [
-            ("corporation_id", "Corporation", "corporation_name"),
-            ("municipality_id", "Municipality", "municipality_name"),
-            ("town_panchayat_id", "Town Panchayat", "town_panchayat_name"),
-            ("panchayat_union_id", "Panchayat Union", "union_name"),
-            ("panchayat_id", "Panchayat / PLB", "panchayat_name"),
-        ]
-        for field, label, name_attr in local_bodies:
+        for field in ("panchayat", "panchayat_union", "town_panchayat", "municipality", "corporation"):
             value = getattr(obj, field, None)
             if value:
                 return {
                     "field": field,
-                    "label": label,
-                    "unique_id": getattr(value, "unique_id", None),
-                    "name": getattr(value, name_attr, None),
+                    "label": field.replace("_", " ").title(),
+                    "unique_id": value.unique_id,
+                    "name": flat_geo_display(obj)[0],
                 }
         return None
 
@@ -172,8 +158,8 @@ class TripPlanCollectionPointSerializer(
             TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
             TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
         }:
-            selected_hierarchy = selected_hierarchy_values(trip_plan) if trip_plan else {}
-            if not customer and not selected_hierarchy:
+            has_trip_plan_geo = bool(trip_plan and any(getattr(trip_plan, field, None) for field in FLAT_GEO_FIELDS))
+            if not customer and not has_trip_plan_geo:
                 raise serializers.ValidationError(
                     {
                         "customer_id": (
@@ -207,10 +193,10 @@ class TripPlanCollectionPointSerializer(
             return
         trip_plan = instance.trip_plan_id
         updates = []
-        for field in HIERARCHY_FIELDS:
-            value = getattr(trip_plan, field, None)
-            if getattr(instance, field) != value:
-                setattr(instance, field, value)
+        for field in FLAT_GEO_FIELDS:
+            value = getattr(trip_plan, f"{field}_id", None)
+            if getattr(instance, f"{field}_id") != value:
+                setattr(instance, f"{field}_id", value)
                 updates.append(field)
         if updates:
             instance.save(update_fields=updates)

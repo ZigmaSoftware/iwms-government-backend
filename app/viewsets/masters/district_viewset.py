@@ -2,6 +2,7 @@ from rest_framework import filters, viewsets
 from app.models.masters.district import District
 from app.serializers.masters.district_serializer import DistrictSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 
 class DistrictViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -17,6 +18,11 @@ class DistrictViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT ="districts"
+
+    SCOPE_FIELD_MAP = {
+        "district": "unique_id",
+        "state": "state_id_id",
+    }
 
     def get_queryset(self):
         queryset = District.objects.filter(is_deleted=False)
@@ -36,6 +42,10 @@ class DistrictViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         if continent_uid:
             queryset = queryset.filter(continent_id__unique_id=continent_uid)
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(
+            queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP
+        )
 
         return queryset
 

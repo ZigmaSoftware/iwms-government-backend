@@ -5,7 +5,6 @@ from app.serializers.schedule_masters.trip_plan_collection_point_serializer impo
     TripPlanCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_queryset_by_hierarchy
 from rest_framework import viewsets
 
 
@@ -22,11 +21,14 @@ class TripPlanCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             TripPlanCollectionPoint.objects.select_related(
                 "trip_plan_id",
                 "collection_point_id",
-                "corporation_id",
-                "municipality_id",
-                "town_panchayat_id",
-                "panchayat_union_id",
-                "panchayat_id",
+                "state",
+                "district",
+                "area_type",
+                "corporation",
+                "municipality",
+                "town_panchayat",
+                "panchayat_union",
+                "panchayat",
                 "bin_id",
                 "customer_id",
             )
@@ -45,4 +47,9 @@ class TripPlanCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if collection_type:
             queryset = queryset.filter(collection_type=collection_type)
 
-        return filter_queryset_by_hierarchy(queryset, params)
+        for field in ("state_id", "district_id", "area_type_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
+            value = params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
+
+        return queryset

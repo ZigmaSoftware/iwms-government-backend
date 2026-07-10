@@ -222,13 +222,49 @@ class TestLoginStaffBranch:
             project_id=project,
             user_type_id=user_type,
             staffusertype_id=staff_user_type,
-            approval_status=Staffcreation.APPROVAL_APPROVED,
             login_enabled=True,
         )
 
         resp = api_client.post(
             LOGIN_BASE,
             {"username": "admin", "password": "12345678"},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.data["user_type"] == "staff"
+
+    def test_staff_login_allowed_when_login_enabled(
+        self,
+        api_client,
+        company,
+        project,
+        user_type,
+    ):
+        from app.models.role_assigns.staffUserType import StaffUserType
+        from app.models.user_creations.staffcreation import Staffcreation
+        from app.utils.password_encryption import encrypt_password
+
+        staff_user_type = StaffUserType.objects.create(
+            usertype_id=user_type,
+            name="company_admin_pending",
+            company_id=company,
+            project_id=project,
+        )
+        Staffcreation.objects.create(
+            username="login_enabled_admin",
+            password=encrypt_password("12345678"),
+            employee_name="login enabled admin",
+            company_id=company,
+            project_id=project,
+            user_type_id=user_type,
+            staffusertype_id=staff_user_type,
+            login_enabled=True,
+        )
+
+        resp = api_client.post(
+            LOGIN_BASE,
+            {"username": "login_enabled_admin", "password": "12345678"},
             format="json",
         )
 

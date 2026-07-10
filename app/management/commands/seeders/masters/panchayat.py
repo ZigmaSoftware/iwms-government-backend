@@ -4,7 +4,6 @@ from app.models.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
-from app.models.masters.panchayat_union import PanchayatUnion
 
 
 class PanchayatSeeder(BaseSeeder):

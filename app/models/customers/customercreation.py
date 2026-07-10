@@ -3,6 +3,14 @@ from app.utils.base_models import BaseMaster
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.utils.comfun import generate_unique_id
 from app.utils.customer_qr import (
     QR_SUBPROPERTY_APARTMENT,
@@ -85,14 +93,77 @@ class CustomerCreation(BaseMaster):
     street = models.CharField(max_length=100, null=True, blank=True)
     area = models.CharField(max_length=50, null=True, blank=True)
 
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
+    state = models.ForeignKey(
+        State,
         on_delete=models.SET_NULL,
-        related_name="customer_creations",
-        to_field="unique_id",
-        db_column="location_node_id",
         null=True,
         blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_creations",
+        to_field="unique_id",
+        db_column="panchayat_id",
     )
 
     pincode = models.CharField(max_length=10)
@@ -223,7 +294,18 @@ class CustomerCreation(BaseMaster):
         ordering = ["customer_name"]
 
     def __str__(self):
-        location = getattr(self.location_node, "name", "")
+        for local_body, name_attr in (
+            (self.corporation, "corporation_name"),
+            (self.municipality, "municipality_name"),
+            (self.town_panchayat, "town_panchayat_name"),
+            (self.panchayat_union, "union_name"),
+            (self.panchayat, "panchayat_name"),
+        ):
+            if local_body:
+                location = getattr(local_body, name_attr, "")
+                break
+        else:
+            location = getattr(self.district, "name", "")
         return f"{self.customer_name} ({location})"
 
     def delete(self, *args, **kwargs):

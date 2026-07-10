@@ -3,40 +3,29 @@ from decimal import Decimal
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.geo import coordinates
 from app.models.common_masters.state import State
+from app.models.masters.areatype import AreaType
 from app.models.masters.district import District
 from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.schedule_masters.collection_point import Collection_point
 
 
-# hierarchy_field (legacy) -> node custom_properties.source_type
-_FIELD_TO_SOURCE = {
-    "corporation_id": "corporation",
-    "municipality_id": "municipality",
-    "town_panchayat_id": "town_panchayat",
-    "panchayat_union_id": "panchayat_union",
-    "panchayat_id": "panchayat",
+_FIELD_TO_AREA_TYPE = {
+    "corporation": "Urban Local Body",
+    "municipality": "Urban Local Body",
+    "town_panchayat": "Urban Local Body",
+    "panchayat_union": "Rural Local Body",
+    "panchayat": "Rural Local Body",
 }
-
-
-def _node_for(source_type, source_obj):
-    if not source_obj:
-        return None
-    return HierarchyNode.objects.filter(
-        is_deleted=False,
-        custom_properties__source_type=source_type,
-        custom_properties__source_id=source_obj.unique_id,
-    ).first()
 
 
 class CollectionPointSeeder(BaseSeeder):
     name = "CollectionPointSeeder"
 
-    # (cp_name, hierarchy_field, hierarchy_name, latitude, longitude, coordinates)
+    # (cp_name, local_body_field, local_body_name, latitude, longitude, coordinates)
     COLLECTION_POINTS = [
         ("CP-Erode-Corp-01", "corporation_id", "Erode Corporation", Decimal("11.3410"), Decimal("77.7172"), coordinates((11.3410, 77.7172), (11.3430, 77.7190))),
         ("CP-Bhavani-Muni-01", "municipality_id", "Bhavani Municipality", Decimal("11.4437"), Decimal("77.6845"), coordinates((11.4437, 77.6845), (11.4460, 77.6870))),
@@ -49,11 +38,11 @@ class CollectionPointSeeder(BaseSeeder):
         ("CP-Modakkurichi-PLB-01", "panchayat_id", "Modakkurichi Panchayat", Decimal("11.3805"), Decimal("77.7032"), coordinates((11.3805, 77.7032), (11.3827, 77.7054))),
     ]
     LOOKUPS = {
-        "corporation_id": (Corporation, "corporation_name"),
-        "municipality_id": (Municipality, "municipality_name"),
-        "town_panchayat_id": (TownPanchayat, "town_panchayat_name"),
-        "panchayat_union_id": (PanchayatUnion, "union_name"),
-        "panchayat_id": (Panchayat, "panchayat_name"),
+        "corporation": (Corporation, "corporation_name"),
+        "municipality": (Municipality, "municipality_name"),
+        "town_panchayat": (TownPanchayat, "town_panchayat_name"),
+        "panchayat_union": (PanchayatUnion, "union_name"),
+        "panchayat": (Panchayat, "panchayat_name"),
     }
 
     def run(self):
@@ -65,26 +54,38 @@ class CollectionPointSeeder(BaseSeeder):
             return
 
         count = 0
-        for cp_name, hierarchy_field, hierarchy_name, lat, lon, geo_coordinates in self.COLLECTION_POINTS:
-            model, name_field = self.LOOKUPS[hierarchy_field]
-            hierarchy_obj = model.objects.filter(
-                **{name_field: hierarchy_name},
+        for cp_name, local_body_field, local_body_name, lat, lon, geo_coordinates in self.COLLECTION_POINTS:
+            model, name_field = self.LOOKUPS[local_body_field]
+            local_body = model.objects.filter(
+                **{name_field: local_body_name},
                 is_deleted=False,
             ).select_related("district_id").first()
-            if not hierarchy_obj:
-                self.log(f"Hierarchy '{hierarchy_name}' not found — skipping.")
+            if not local_body:
+                self.log(f"Local body '{local_body_name}' not found — skipping.")
                 continue
 
-            # Geography is now a single hierarchy node.
-            location_node = _node_for(_FIELD_TO_SOURCE[hierarchy_field], hierarchy_obj)
-            if not location_node:
-                self.log(f"No hierarchy node for '{hierarchy_name}' — run geo_to_hierarchy seeder first. Skipping.")
+            area_type = AreaType.objects.filter(
+                state_id=tamil_nadu,
+                district_id=district,
+                name=_FIELD_TO_AREA_TYPE[local_body_field],
+                is_deleted=False,
+            ).first()
+            if not area_type:
+                self.log(f"Area type for '{local_body_name}' not found — run AreaTypeSeeder first. Skipping.")
                 continue
 
             _, created = Collection_point.objects.update_or_create(
                 cp_name=cp_name,
-                location_node=location_node,
                 defaults={
+                    "state": tamil_nadu,
+                    "district": district,
+                    "area_type": area_type,
+                    "corporation": None,
+                    "municipality": None,
+                    "town_panchayat": None,
+                    "panchayat_union": None,
+                    "panchayat": None,
+                    local_body_field: local_body,
                     "latitude": lat,
                     "longitude": lon,
                     "coordinates": geo_coordinates,

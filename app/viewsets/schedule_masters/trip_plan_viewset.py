@@ -7,17 +7,19 @@ from app.serializers.schedule_masters.trip_plan_serializer import (
     TripPlanSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = TripPlan.objects.select_related(
-        "district_id",
-        "corporation_id",
-        "municipality_id",
-        "town_panchayat_id",
-        "panchayat_union_id",
-        "panchayat_id",
+        "state",
+        "district",
+        "area_type",
+        "corporation",
+        "municipality",
+        "town_panchayat",
+        "panchayat_union",
+        "panchayat",
         "staff_template_id",
         "staff_template_id__driver_id",
         "staff_template_id__operator_id",
@@ -37,10 +39,15 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
-        if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
-        return filter_queryset_by_hierarchy(queryset, self.request.query_params)
+
+        params = self.request.query_params
+        for field in ("state_id", "district_id", "area_type_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
+            value = params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
+
+        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
+        return queryset
 
     @swagger_auto_schema(request_body=TripPlanSerializer)
     def create(self, request, *args, **kwargs):

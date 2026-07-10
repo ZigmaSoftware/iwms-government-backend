@@ -5,7 +5,18 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
-from app.utils.hierarchy import HIERARCHY_FIELDS, selected_hierarchy_values
+
+
+FLAT_HIERARCHY_FIELDS = (
+    "panchayat",
+    "panchayat_union",
+    "town_panchayat",
+    "municipality",
+    "corporation",
+    "area_type",
+    "district",
+    "state",
+)
 
 
 class TripPlanCollectionPointSeeder(BaseSeeder):
@@ -25,12 +36,11 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                 stop.is_deleted = True
                 stop.save(update_fields=["sequence", "is_active", "is_deleted", "updated_at"])
             sequence = 0
-            hierarchy = selected_hierarchy_values(plan)
 
             if plan.collection_type == TripPlan.COLLECTION_TYPE_BIN:
                 cps = Collection_point.objects.filter(is_deleted=False, is_active=True)
-                for field in HIERARCHY_FIELDS:
-                    value = hierarchy.get(field)
+                for field in FLAT_HIERARCHY_FIELDS:
+                    value = getattr(plan, field, None)
                     if value:
                         cps = cps.filter(**{field: value})
                         break
@@ -66,6 +76,8 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                 TripPlan.COLLECTION_TYPE_BULK,
             }:
                 sequence += 1
+                # location_node is auto-copied from trip_plan_id in
+                # TripPlanCollectionPoint.save() — no need to set it here.
                 _, created = TripPlanCollectionPoint.objects.update_or_create(
                     trip_plan_id=plan,
                     collection_type=plan.collection_type,

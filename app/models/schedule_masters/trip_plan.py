@@ -12,6 +12,14 @@ from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 
 
 def generate_trip_plan_id():
@@ -57,12 +65,77 @@ class TripPlan(BaseMaster):
     # ---- tenancy ---------------------------------------------------
 
     # ---- WHERE -----------------------------------------------------
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    state = models.ForeignKey(
+        State,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="trip_plans",
-        db_column="location_node_id",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trip_plans",
+        to_field="unique_id",
+        db_column="panchayat_id",
     )
     # ---- WHO -------------------------------------------------------
     staff_template_id = models.ForeignKey(
@@ -179,7 +252,7 @@ class TripPlan(BaseMaster):
             models.Index(fields=["collection_type"]),
             models.Index(fields=["status", "approval_status"]),
             models.Index(fields=["display_code"]),
-            models.Index(fields=["location_node"]),
+            models.Index(fields=["district"]),
         ]
 
     def _generate_display_code(self):
