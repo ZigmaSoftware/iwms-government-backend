@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from app.management.commands.seeders.base import BaseSeeder, node_for_source
+from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
 from app.models.user_creations.waste_collection_bluetooth import WasteType
@@ -30,13 +30,8 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
         for idx, panchayat in enumerate(panchayats):
             collection_date = today - timedelta(days=idx)
 
-            location_node = node_for_source("panchayat", panchayat)
-            if not location_node:
-                self.log(f"No hierarchy node for '{panchayat.panchayat_name}' — skipping.")
-                continue
-
             already_exists = DailyWasteComparison.objects.filter(
-                location_node=location_node,
+                panchayat=panchayat,
                 collection_date=collection_date,
                 waste_type_id=waste_type,
             ).exists()
@@ -44,20 +39,16 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
                 self.log(f"Record for '{panchayat.panchayat_name}' on {collection_date} exists — skipping.")
                 continue
 
-            agreed = Decimal("500.00") + (Decimal(idx) * Decimal("50.00"))
-            actual = agreed - (Decimal("20.00") * Decimal(idx + 1))
-            variance = agreed - actual
-            variance_pct = (variance / agreed * 100).quantize(Decimal("0.01"))
+            actual = Decimal("480.00") - (Decimal("20.00") * Decimal(idx))
 
             DailyWasteComparison.objects.create(
-                location_node=location_node,
+                panchayat=panchayat,
+                district=panchayat.district_id,
+                state=panchayat.state_id,
+                area_type=panchayat.area_type_id,
                 collection_date=collection_date,
                 waste_type_id=waste_type,
-                agreed_weight_kg=agreed,
                 actual_weight_kg=actual,
-                variance_kg=variance,
-                variance_percent=variance_pct,
-                report_status="Verified",
                 total_trips=2 + idx,
                 collection_points_covered=3 + idx,
             )
