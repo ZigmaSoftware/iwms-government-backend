@@ -124,6 +124,7 @@ from ..viewsets.schedule_masters.daily_trip_assignment_viewset import DailyTripA
 from ..viewsets.schedule_masters.daily_trip_collection_point_viewset import DailyTripCollectionPointViewSet
 from ..viewsets.schedule_masters.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
 from ..viewsets.schedule_masters.bin_collection_event_viewset import BinCollectionEventViewSet
+from ..viewsets.schedule_masters.vehicle_breakdown_viewset import VehicleBreakdownViewSet
 from ..viewsets.schedule_masters.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.schedule_masters.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet
 from ..viewsets.schedule_masters.daily_waste_comparison_viewset import DailyWasteComparisonViewSet
@@ -303,6 +304,7 @@ router.register_group("schedule-masters", "daily-trip-assignments", DailyTripAss
 router.register_group("schedule-masters", "daily-trip-collection-points", DailyTripCollectionPointViewSet)
 router.register_group("schedule-masters", "daily-trip-household-collections", DailyTripHouseholdCollectionViewSet)
 router.register_group("schedule-masters", "bin-collection-events", BinCollectionEventViewSet)
+router.register_group("schedule-masters", "vehicle-breakdowns", VehicleBreakdownViewSet)
 router.register_group("schedule-masters", "daily-waste-comparisons", DailyWasteComparisonViewSet)
 router.register_group("schedule-masters", "daily-trip-logs", DailyTripLogViewSet)
 router.register_group("schedule-masters", "monthly-waste-comparison", MonthlyWasteComparisonReportViewSet, basename="monthly-waste-comparison")

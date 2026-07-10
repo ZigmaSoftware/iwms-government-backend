@@ -1,3 +1,5 @@
+from datetime import datetime, time as datetime_time, timedelta
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -5,6 +7,12 @@ from rest_framework.response import Response
 
 from app.management.commands.generate_daily_trips import run_for_date
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.schedule_masters.scheduler_config import SchedulerConfig
+from app.services.daily_trip_scheduler import (
+    notify_scheduler_config_changed,
+    run_daily_trip_job,
+    scheduler_status as get_scheduler_status,
+)
 from app.serializers.schedule_masters.daily_trip_assignment_serializer import (
     DailyTripAssignmentSerializer,
     DailyTripAssignmentStatusSerializer,
@@ -57,6 +65,29 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     AUDIT_MODULE = "trip-assignments"
     AUDIT_ENDPOINT = "daily-trip-assignments"
+
+    def _scheduler_config_payload(self, config):
+        now = timezone.localtime()
+        run_at_today = datetime.combine(now.date(), config.run_time, tzinfo=now.tzinfo)
+        next_run = run_at_today if run_at_today > now else run_at_today + timedelta(days=1)
+        return {
+            "run_time": config.run_time.strftime("%H:%M"),
+            "is_enabled": config.is_enabled,
+            "next_run_at": next_run.isoformat() if config.is_enabled else None,
+        }
+
+    def _parse_bool(self, value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        if value in {0, 1}:
+            return bool(value)
+        return None
 
     # ----------------------------------------------------------
     # QUERYSET FILTERS
@@ -204,6 +235,84 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             DailyTripAssignmentSerializer(instance, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
+
+    # ----------------------------------------------------------
+    # ACTIONS: BACKGROUND SCHEDULER STATUS / CONFIG / MANUAL RUN
+    # GET        /daily-trip-assignments/scheduler-status/
+    # GET|PATCH  /daily-trip-assignments/scheduler-config/
+    # POST       /daily-trip-assignments/run-scheduler/
+    # ----------------------------------------------------------
+
+    @action(detail=False, methods=["get"], url_path="scheduler-status")
+    def scheduler_status(self, request):
+        data = get_scheduler_status()
+        config = SchedulerConfig.get_singleton()
+        data.update(self._scheduler_config_payload(config))
+        data["enabled"] = config.is_enabled
+        return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get", "patch"], url_path="scheduler-config")
+    def scheduler_config(self, request):
+        config = SchedulerConfig.get_singleton()
+        if request.method == "GET":
+            return Response(
+                self._scheduler_config_payload(config),
+                status=status.HTTP_200_OK,
+            )
+        if not self._has_approval_role(request):
+            return Response(
+                {"detail": "Only supervisors and admins can change the scheduler config."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        run_time_str = request.data.get("run_time")
+        is_enabled = request.data.get("is_enabled")
+        if run_time_str is not None:
+            try:
+                hour, minute = str(run_time_str).split(":", 1)
+                parsed_hour = int(hour)
+                parsed_minute = int(minute)
+                if not (0 <= parsed_hour <= 23 and 0 <= parsed_minute <= 59):
+                    raise ValueError
+                config.run_time = datetime_time(parsed_hour, parsed_minute)
+            except (ValueError, TypeError):
+                return Response(
+                    {"run_time": "Use HH:MM 24-hour format (e.g. 00:00, 04:00, 12:30)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if is_enabled is not None:
+            parsed_enabled = self._parse_bool(is_enabled)
+            if parsed_enabled is None:
+                return Response(
+                    {"is_enabled": "Use true or false."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config.is_enabled = parsed_enabled
+        config.save()
+        notify_scheduler_config_changed()
+        return Response(
+            self._scheduler_config_payload(config),
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path="run-scheduler")
+    def run_scheduler(self, request):
+        if not self._has_approval_role(request):
+            return Response(
+                {"detail": "Only supervisors and admins can run the daily scheduler."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        raw_date = request.data.get("date")
+        target_date = None
+        if raw_date:
+            try:
+                target_date = timezone.datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"date": "Use YYYY-MM-DD format."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        result = run_daily_trip_job(target_date=target_date, force=True)
+        return Response(result, status=status.HTTP_200_OK)
 
     # ----------------------------------------------------------
     # ACTION: MANUAL JOB-SCHEDULER RUN  (for testing / on-demand)

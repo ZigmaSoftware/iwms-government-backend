@@ -16,6 +16,9 @@ class ApiConfig(AppConfig):
         import app.signals.permission_signals  # Register signals on app startup
         import app.signals.trip_plan_signals  # Register transport plan signals
 
+        from app.services.daily_trip_scheduler import start_daily_trip_scheduler
+        start_daily_trip_scheduler()
+
         def sync_userscreen_columns_after_migrate(sender, **kwargs):
             if sender.name != self.name:
                 return
