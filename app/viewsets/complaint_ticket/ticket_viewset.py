@@ -357,15 +357,17 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ).order_by("employee_name")
 
         def _local_body(member):
-            for level, obj in (
-                ("Corporation", member.corporation),
-                ("Municipality", member.municipality),
-                ("Town Panchayat", member.town_panchayat),
-                ("Panchayat Union", member.panchayat_union),
-                ("Panchayat", member.panchayat),
+            # Each local-body master has its own name field (corporation_name,
+            # panchayat_name, ...) — there is no common `name` attribute.
+            for level, obj, name_attr in (
+                ("Corporation", member.corporation, "corporation_name"),
+                ("Municipality", member.municipality, "municipality_name"),
+                ("Town Panchayat", member.town_panchayat, "town_panchayat_name"),
+                ("Panchayat Union", member.panchayat_union, "union_name"),
+                ("Panchayat", member.panchayat, "panchayat_name"),
             ):
                 if obj:
-                    return level, obj.name
+                    return level, getattr(obj, name_attr, None) or getattr(obj, "name", None)
             return None, None
 
         data = []

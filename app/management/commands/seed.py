@@ -57,6 +57,7 @@ from app.management.commands.seeders.schedule_masters.daily_trip_household_colle
 from app.management.commands.seeders.schedule_masters.daily_trip_log import DailyTripLogSeeder
 from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
+from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
@@ -148,6 +149,7 @@ SCHEDULE_MASTERS_SEEDERS = [
     DailyTripLogSeeder,             # 8. daily-trip-logs
     TripAttendanceSeeder,
     BinCollectionEventSeeder,       # 9. bin-collection-events
+    VehicleBreakdownSeeder,         # 10. vehicle-breakdowns
 ]
 
 SCREEN_MANAGEMENTS_SEEDERS = [
@@ -220,6 +222,7 @@ SEED_GROUPS = {
     "bin-collection-events": [BinCollectionEventSeeder],
     "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],
+    "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
 }
 

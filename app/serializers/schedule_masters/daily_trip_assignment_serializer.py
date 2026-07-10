@@ -34,9 +34,14 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     alt_staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=AlternativeStaffTemplate.objects.all(), write_only=True, required=False, allow_null=True)
 
+    collection_points_input = serializers.ListField(child=serializers.DictField(), write_only=True, required=False)
+
     trip_plan = serializers.SerializerMethodField(read_only=True)
     staff_template = serializers.SerializerMethodField(read_only=True)
     effective_staff = serializers.SerializerMethodField(read_only=True)
+    collection_points = serializers.SerializerMethodField(read_only=True)
+    household_collection_points = serializers.SerializerMethodField(read_only=True)
+    breakdown_info = serializers.SerializerMethodField(read_only=True)
     state = serializers.SerializerMethodField(read_only=True)
     district = serializers.SerializerMethodField(read_only=True)
     area_type = serializers.SerializerMethodField(read_only=True)
@@ -55,9 +60,10 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "unique_id", "trip_plan_id", "staff_template_id", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "waste_type_id", "household_waste_type_ids", "household_waste_types",
-            "vehicle_id", "alt_staff_template_id", "trip_plan", "staff_template",
+            "vehicle_id", "alt_staff_template_id", "collection_points_input", "trip_plan", "staff_template",
             "effective_staff", "state", "district", "area_type", "corporation", "municipality",
             "town_panchayat", "panchayat_union", "panchayat", "waste_type", "vehicle", "collection_types",
+            "collection_points", "household_collection_points", "breakdown_info",
             "trip_date", "scheduled_time", "actual_start_time", "actual_end_time",
             "status", "approval_status", "remarks", "created_at", "updated_at",
         ]
@@ -154,6 +160,101 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "has_household": TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD in stops,
             "has_bulk": TripPlanCollectionPoint.COLLECTION_TYPE_BULK in stops,
         }
+
+    def get_collection_points(self, obj):
+        stops = obj.trip_collection_points.filter(is_deleted=False).select_related(
+            "collection_point_id", "bin_id", "collected_by",
+        ).order_by("sequence")
+        return [{
+            "unique_id": stop.unique_id,
+            "collection_point_id": stop.collection_point_id_id,
+            "collection_point": {
+                "unique_id": stop.collection_point_id.unique_id,
+                "cp_name": stop.collection_point_id.cp_name,
+                "latitude": stop.collection_point_id.latitude,
+                "longitude": stop.collection_point_id.longitude,
+            } if stop.collection_point_id else None,
+            "bin_id": stop.bin_id_id,
+            "bin": {"unique_id": stop.bin_id.unique_id, "bin_name": stop.bin_id.bin_name} if stop.bin_id else None,
+            "sequence": stop.sequence,
+            "is_collected": stop.is_collected,
+            "collected_at": stop.collected_at,
+            "collected_weight_kg": stop.collected_weight_kg,
+            "status": stop.status,
+        } for stop in stops]
+
+    def get_household_collection_points(self, obj):
+        stops = obj.trip_household_collections.filter(is_deleted=False).select_related("customer_id").order_by("sequence")
+        return [{
+            "unique_id": stop.unique_id,
+            "customer_id": stop.customer_id_id,
+            "customer": {
+                "unique_id": getattr(stop.customer_id, "unique_id", None),
+                "customer_name": getattr(stop.customer_id, "customer_name", None),
+                "building_no": getattr(stop.customer_id, "building_no", None),
+                "street": getattr(stop.customer_id, "street", None),
+            } if stop.customer_id else None,
+            "collection_type": stop.collection_type,
+            "sequence": stop.sequence,
+            "is_collected": stop.is_collected,
+            "collected_at": stop.collected_at,
+            "collected_weight_kg": stop.collected_weight_kg,
+            "status": stop.status,
+        } for stop in stops]
+
+    def get_breakdown_info(self, obj):
+        try:
+            bd = obj.vehicle_breakdown
+        except Exception:
+            return None
+        if not bd or getattr(bd, "is_deleted", False):
+            return None
+        return {
+            "unique_id": bd.unique_id,
+            "status": bd.status,
+            "approval_status": bd.approval_status,
+            "breakdown_reason": bd.breakdown_reason,
+            "breakdown_time": str(bd.breakdown_time) if bd.breakdown_time else None,
+            "breakdown_location": bd.breakdown_location,
+            "breakdown_vehicle_no": getattr(bd.breakdown_vehicle_id, "vehicle_no", None),
+            "replacement_vehicle_no": getattr(bd.replacement_vehicle_id, "vehicle_no", None),
+            "replacement_driver": getattr(bd.replacement_driver_id, "employee_name", None),
+            "replacement_operator": getattr(bd.replacement_operator_id, "employee_name", None),
+        }
+
+    def _sync_collection_points(self, assignment, points):
+        # Update-only sync: stops are generated from the Trip Plan by signals;
+        # this applies inline edits (sequence, weight, collected, status) from the form.
+        if points is None:
+            return
+        from app.models.schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
+
+        for item in points:
+            unique_id = item.get("unique_id")
+            if not unique_id:
+                continue
+            stop = DailyTripCollectionPoint.objects.filter(
+                unique_id=unique_id,
+                trip_assignment_id=assignment,
+                is_deleted=False,
+            ).first()
+            if not stop:
+                continue
+            for field in ["sequence", "is_collected", "collected_at", "collected_weight_kg", "status"]:
+                if field in item:
+                    value = item.get(field)
+                    setattr(stop, field, value if value != "" else None)
+            stop.save()
+
+    def create(self, validated_data):
+        validated_data.pop("collection_points_input", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        collection_points = validated_data.pop("collection_points_input", None)
+        assignment = super().update(instance, validated_data)
+        self._sync_collection_points(assignment, collection_points)
+        return assignment
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
