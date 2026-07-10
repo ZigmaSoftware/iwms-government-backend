@@ -91,11 +91,7 @@ class DailyWasteComparison(models.Model):
         db_column="panchayat_id",
     )
 
-    agreed_weight_kg = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     actual_weight_kg = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    variance_kg = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    variance_percent = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    report_status = models.CharField(max_length=50, blank=True, null=True)
     total_trips = models.PositiveIntegerField(default=0)
     collection_points_covered = models.PositiveIntegerField(default=0)
 

@@ -39,10 +39,7 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
                 self.log(f"Record for '{panchayat.panchayat_name}' on {collection_date} exists — skipping.")
                 continue
 
-            agreed = Decimal("500.00") + (Decimal(idx) * Decimal("50.00"))
-            actual = agreed - (Decimal("20.00") * Decimal(idx + 1))
-            variance = agreed - actual
-            variance_pct = (variance / agreed * 100).quantize(Decimal("0.01"))
+            actual = Decimal("480.00") - (Decimal("20.00") * Decimal(idx))
 
             DailyWasteComparison.objects.create(
                 panchayat=panchayat,
@@ -51,11 +48,7 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
                 area_type=panchayat.area_type_id,
                 collection_date=collection_date,
                 waste_type_id=waste_type,
-                agreed_weight_kg=agreed,
                 actual_weight_kg=actual,
-                variance_kg=variance,
-                variance_percent=variance_pct,
-                report_status="Verified",
                 total_trips=2 + idx,
                 collection_points_covered=3 + idx,
             )

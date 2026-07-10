@@ -1,18 +1,24 @@
 """
-Daily Waste Comparison — computed live from DailyTripLog.
+Daily Waste Collection Report — computed live from DailyTripLog.
 
-Data source: DailyTripLog (Submitted + Verified logs only)
+Pure collection reporting (no agreed/target comparison):
   actual_weight_kg  = Sum(collected_weight_kg) per (date, local body, waste_type)
                       OR household_collected_weight_kg when source=household
                       OR both combined when source=all
-  agreed_weight_kg  = Panchayat.agreed_weight_kg when the local body is a Panchayat,
-                      else 0 (no per-location daily target source exists for the
-                      other local body types yet)
   total_trips       = Count of trip logs in the group
   points_covered    = Count of distinct collection_point_id in the group
 
+Response:
+  results               per (date, local body, waste type) row, including
+                        local_body_type/local_body_name for display
+  date_trends           totals per date
+  location_comparison   totals per local body (across all waste types)
+  waste_type_breakdown  totals per waste type (for composition charts)
+  kpis                  overall totals
+
 Query params:
   source  bin (default) | household | all
+  date, month  optional date filters
   Any of: corporation_id | municipality_id | town_panchayat_id |
           panchayat_union_id | panchayat_id — optional local body filter
 """
@@ -38,6 +44,22 @@ LOCAL_BODY_FIELDS = (
     "panchayat",
 )
 
+LOCAL_BODY_LABELS = {
+    "corporation": "Corporation",
+    "municipality": "Municipality",
+    "town_panchayat": "Town Panchayat",
+    "panchayat_union": "Panchayat Union",
+    "panchayat": "Panchayat",
+}
+
+LOCAL_BODY_NAME_FIELDS = {
+    "corporation": "corporation__corporation_name",
+    "municipality": "municipality__municipality_name",
+    "town_panchayat": "town_panchayat__town_panchayat_name",
+    "panchayat_union": "panchayat_union__union_name",
+    "panchayat": "panchayat__panchayat_name",
+}
+
 
 def decimal_value(value):
     if value is None:
@@ -54,23 +76,6 @@ def percent(numerator, denominator):
     if d == ZERO:
         return ZERO
     return rounded(decimal_value(numerator) / d * Decimal("100"))
-
-
-def variance_pct(actual, agreed):
-    agreed_d = decimal_value(agreed)
-    if agreed_d == ZERO:
-        return ZERO
-    return rounded((decimal_value(actual) - agreed_d) / agreed_d * Decimal("100"))
-
-
-def performance_status(actual, agreed):
-    actual = decimal_value(actual)
-    agreed = decimal_value(agreed)
-    if actual > agreed:
-        return "Surplus"
-    if actual < agreed:
-        return "Deficit"
-    return "On Target"
 
 
 class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
@@ -148,10 +153,11 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             )
 
         group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
+        name_fields = list(LOCAL_BODY_NAME_FIELDS.values())
         grouped_qs = queryset.values(
             "trip_date",
             *group_fields,
-            "panchayat__agreed_weight_kg",
+            *name_fields,
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
@@ -161,11 +167,8 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             local_body_field, local_body_id = self._local_body_from_row(row)
             if not local_body_id:
                 continue
-            agreed = decimal_value(
-                row.get("panchayat__agreed_weight_kg") if local_body_field == "panchayat" else 0
-            )
+            local_body_name = row.get(LOCAL_BODY_NAME_FIELDS[local_body_field]) or local_body_id
             actual = decimal_value(row["total_actual_weight"])
-            variance = actual - agreed
             total_trips = int(row["total_trips"] or 0)
             points = int(row["collection_points_covered"] or 0)
 
@@ -177,38 +180,33 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
                 "unique_id": unique_id,
                 "collection_date": str(row["trip_date"]),
                 "local_body_field": local_body_field,
+                "local_body_type": LOCAL_BODY_LABELS.get(local_body_field, local_body_field),
                 "local_body_id": local_body_id,
+                "local_body_name": local_body_name,
                 "waste_type_id": row["waste_type_id"],
                 "waste_type": (
                     row["waste_type_id__waste_type_name"] or row["waste_type_id"]
                 ),
-                "agreed_weight_kg": float(rounded(agreed)),
                 "actual_weight_kg": float(rounded(actual)),
-                "variance_kg": float(rounded(variance)),
-                "variance_percent": float(variance_pct(actual, agreed)),
-                "report_status": performance_status(actual, agreed),
                 "total_trips": total_trips,
                 "collection_points_covered": points,
-                "collection_efficiency_percent": float(percent(actual, agreed)),
-                "coverage_efficiency_percent": float(percent(points, total_trips)),
                 "average_weight_per_trip": float(
                     rounded(actual / Decimal(total_trips)) if total_trips else ZERO
                 ),
             })
 
-        sort_mode = request.query_params.get("sort", "absolute").lower()
-        if sort_mode == "deficit":
-            rows.sort(key=lambda r: r["variance_kg"])
-        elif sort_mode == "surplus":
-            rows.sort(key=lambda r: r["variance_kg"], reverse=True)
+        sort_mode = request.query_params.get("sort", "weight").lower()
+        if sort_mode == "trips":
+            rows.sort(key=lambda r: r["total_trips"], reverse=True)
         else:
-            rows.sort(key=lambda r: abs(r["variance_kg"]), reverse=True)
+            rows.sort(key=lambda r: r["actual_weight_kg"], reverse=True)
 
         return Response({
             "source": source,
             "results": rows,
             "date_trends": self._build_date_trends(rows),
             "location_comparison": self._build_location_comparison(rows),
+            "waste_type_breakdown": self._build_waste_type_breakdown(rows),
             "kpis": self._build_totals(rows),
         })
 
@@ -230,23 +228,20 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             date = row["collection_date"]
             trends.setdefault(date, {
                 "collection_date": date,
-                "agreed_weight_kg": 0.0, "actual_weight_kg": 0.0,
-                "total_trips": 0, "collection_points_covered": 0,
+                "actual_weight_kg": 0.0,
+                "total_trips": 0,
+                "collection_points_covered": 0,
             })
             trends[date]["actual_weight_kg"]          += row["actual_weight_kg"]
-            trends[date]["agreed_weight_kg"]          += row["agreed_weight_kg"]
             trends[date]["total_trips"]               += row["total_trips"]
             trends[date]["collection_points_covered"] += row["collection_points_covered"]
 
         result = []
         for item in sorted(trends.values(), key=lambda x: str(x["collection_date"])):
-            agreed = Decimal(str(item["agreed_weight_kg"]))
             actual = Decimal(str(item["actual_weight_kg"]))
             trips  = item["total_trips"]
             result.append({
                 **item,
-                "variance_kg": float(rounded(actual - agreed)),
-                "collection_efficiency_percent": float(percent(actual, agreed)),
                 "average_weight_per_trip": float(
                     rounded(actual / Decimal(trips)) if trips else ZERO
                 ),
@@ -254,57 +249,91 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         return result
 
     def _build_location_comparison(self, rows):
+        """Aggregate by local body — the report's per-location totals."""
         locations = {}
         for row in rows:
             lid = row["local_body_id"]
             if lid not in locations:
                 locations[lid] = {
                     "local_body_field": row["local_body_field"],
+                    "local_body_type": row["local_body_type"],
                     "local_body_id": lid,
-                    "agreed_weight_kg": ZERO,
+                    "local_body_name": row["local_body_name"],
                     "actual_weight_kg": ZERO,
+                    "total_trips": 0,
+                    "collection_points_covered": 0,
                 }
             locations[lid]["actual_weight_kg"] += decimal_value(row["actual_weight_kg"])
-            locations[lid]["agreed_weight_kg"] += decimal_value(row["agreed_weight_kg"])
+            locations[lid]["total_trips"] += row["total_trips"]
+            locations[lid]["collection_points_covered"] += row["collection_points_covered"]
 
         result = []
         for item in locations.values():
-            agreed = item["agreed_weight_kg"]
             actual = item["actual_weight_kg"]
-            variance = actual - agreed
+            trips = item["total_trips"]
             result.append({
                 "local_body_field": item["local_body_field"],
+                "local_body_type": item["local_body_type"],
                 "local_body_id": item["local_body_id"],
-                "agreed_weight_kg": float(rounded(agreed)),
+                "local_body_name": item["local_body_name"],
                 "actual_weight_kg": float(rounded(actual)),
-                "variance_kg": float(rounded(variance)),
-                "collection_efficiency_percent": float(percent(actual, agreed)),
-                "report_status": performance_status(actual, agreed),
+                "total_trips": trips,
+                "collection_points_covered": item["collection_points_covered"],
+                "average_weight_per_trip": float(
+                    rounded(actual / Decimal(trips)) if trips else ZERO
+                ),
             })
-        return sorted(result, key=lambda r: abs(r["variance_kg"]), reverse=True)
+        return sorted(result, key=lambda r: r["actual_weight_kg"], reverse=True)
+
+    def _build_waste_type_breakdown(self, rows):
+        """Aggregate by waste type — for the waste composition pie chart."""
+        types: dict = {}
+        for row in rows:
+            key = row["waste_type_id"]
+            if key not in types:
+                types[key] = {
+                    "waste_type_id": key,
+                    "waste_type": row["waste_type"],
+                    "actual_weight_kg": ZERO,
+                    "total_trips": 0,
+                    "collection_points_covered": 0,
+                }
+            types[key]["actual_weight_kg"] += decimal_value(row["actual_weight_kg"])
+            types[key]["total_trips"] += row["total_trips"]
+            types[key]["collection_points_covered"] += row["collection_points_covered"]
+
+        total_actual = sum((t["actual_weight_kg"] for t in types.values()), ZERO)
+
+        result = []
+        for item in types.values():
+            actual = item["actual_weight_kg"]
+            result.append({
+                "waste_type_id": item["waste_type_id"],
+                "waste_type": item["waste_type"],
+                "actual_weight_kg": float(rounded(actual)),
+                "total_trips": item["total_trips"],
+                "collection_points_covered": item["collection_points_covered"],
+                "share_percent": float(percent(actual, total_actual)),
+            })
+        return sorted(result, key=lambda r: r["actual_weight_kg"], reverse=True)
 
     def _build_totals(self, rows):
-        total_agreed = ZERO
         total_actual = ZERO
         total_trips  = 0
         total_points = 0
 
         for r in rows:
             total_actual += decimal_value(r["actual_weight_kg"])
-            total_agreed += decimal_value(r["agreed_weight_kg"])
             total_trips  += r["total_trips"]
             total_points += r["collection_points_covered"]
 
         return {
-            "total_agreed_weight_kg":          float(rounded(total_agreed)),
-            "total_actual_weight_kg":          float(rounded(total_actual)),
-            "variance_kg":                     float(rounded(total_actual - total_agreed)),
-            "collection_efficiency_percent":   float(percent(total_actual, total_agreed)),
-            "average_weight_per_trip":         float(
+            "total_actual_weight_kg":    float(rounded(total_actual)),
+            "average_weight_per_trip":   float(
                 rounded(total_actual / Decimal(total_trips)) if total_trips else ZERO
             ),
-            "coverage_efficiency_percent":     float(percent(total_points, total_trips)),
-            "total_trips":                     total_trips,
-            "collection_points_covered":       total_points,
-            "report_status":                   performance_status(total_actual, total_agreed),
+            "total_trips":               total_trips,
+            "collection_points_covered": total_points,
+            "waste_type_count":          len({r["waste_type_id"] for r in rows}),
+            "local_body_count":          len({r["local_body_id"] for r in rows}),
         }
