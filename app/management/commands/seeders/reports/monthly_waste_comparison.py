@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from app.management.commands.seeders.base import BaseSeeder, node_for_source
+from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
 from app.models.user_creations.waste_collection_bluetooth import WasteType
@@ -30,13 +30,8 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
         for idx, panchayat in enumerate(panchayats):
             collection_date = today - timedelta(days=idx)
 
-            location_node = node_for_source("panchayat", panchayat)
-            if not location_node:
-                self.log(f"No hierarchy node for '{panchayat.panchayat_name}' — skipping.")
-                continue
-
             already_exists = DailyWasteComparison.objects.filter(
-                location_node=location_node,
+                panchayat=panchayat,
                 collection_date=collection_date,
                 waste_type_id=waste_type,
             ).exists()
@@ -50,7 +45,10 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
             variance_pct = (variance / agreed * 100).quantize(Decimal("0.01"))
 
             DailyWasteComparison.objects.create(
-                location_node=location_node,
+                panchayat=panchayat,
+                district=panchayat.district_id,
+                state=panchayat.state_id,
+                area_type=panchayat.area_type_id,
                 collection_date=collection_date,
                 waste_type_id=waste_type,
                 agreed_weight_kg=agreed,

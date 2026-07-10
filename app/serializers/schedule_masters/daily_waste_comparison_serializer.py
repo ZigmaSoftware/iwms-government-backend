@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from rest_framework import serializers
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
+from app.utils.hierarchy import flat_geo_display
 
 ZERO = Decimal("0")
 TWO = Decimal("0.01")
@@ -28,9 +29,8 @@ def _status(actual, agreed):
 
 
 class DailyWasteComparisonSerializer(serializers.ModelSerializer):
-    location_node_name = serializers.CharField(
-        source="location_node.name", read_only=True
-    )
+    location_name = serializers.SerializerMethodField()
+    location_level = serializers.SerializerMethodField()
     waste_type_name = serializers.CharField(
         source="waste_type_id.waste_type_name", read_only=True
     )
@@ -39,8 +39,16 @@ class DailyWasteComparisonSerializer(serializers.ModelSerializer):
         model = DailyWasteComparison
         fields = [
             "unique_id",
-            "location_node",
-            "location_node_name",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
+            "location_name",
+            "location_level",
             "collection_date",
             "waste_type_id",
             "waste_type_name",
@@ -58,6 +66,14 @@ class DailyWasteComparisonSerializer(serializers.ModelSerializer):
             "variance_percent",
             "report_status",
         ]
+
+    def get_location_name(self, obj):
+        name, _level = flat_geo_display(obj)
+        return name
+
+    def get_location_level(self, obj):
+        _name, level = flat_geo_display(obj)
+        return level
 
     def create(self, validated_data):
         agreed = validated_data.get("agreed_weight_kg", ZERO)

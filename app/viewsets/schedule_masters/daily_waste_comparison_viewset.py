@@ -2,20 +2,19 @@
 Daily Waste Comparison — computed live from DailyTripLog.
 
 Data source: DailyTripLog (Submitted + Verified logs only)
-  actual_weight_kg  = Sum(collected_weight_kg) per (date, location_node, waste_type)
+  actual_weight_kg  = Sum(collected_weight_kg) per (date, local body, waste_type)
                       OR household_collected_weight_kg when source=household
                       OR both combined when source=all
-  agreed_weight_kg  = 0 (no per-location daily target source exists yet —
-                      DailyTripLog has no panchayat/district reference, only
-                      location_node, and the Hierarchy Tree carries no agreed
-                      weight config; see app/viewsets/districtbody/districtbody_dashboard_viewset.py
-                      for the parallel note on this gap)
+  agreed_weight_kg  = Panchayat.agreed_weight_kg when the local body is a Panchayat,
+                      else 0 (no per-location daily target source exists for the
+                      other local body types yet)
   total_trips       = Count of trip logs in the group
   points_covered    = Count of distinct collection_point_id in the group
 
 Query params:
   source  bin (default) | household | all
-  location_node_id  optional filter
+  Any of: corporation_id | municipality_id | town_panchayat_id |
+          panchayat_union_id | panchayat_id — optional local body filter
 """
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -24,14 +23,20 @@ from django.db.models.functions import Coalesce
 from rest_framework import viewsets
 from rest_framework.response import Response
 
-from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.serializers.schedule_masters.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
-from app.utils.hierarchy import agreed_weight_for_node
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
+
+LOCAL_BODY_FIELDS = (
+    "corporation",
+    "municipality",
+    "town_panchayat",
+    "panchayat_union",
+    "panchayat",
+)
 
 
 def decimal_value(value):
@@ -72,8 +77,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
     queryset = DailyWasteComparison.objects.select_related(
-        "location_node", "waste_type_id"
-        "location_node", "waste_type_id"
+        "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id"
     )
     serializer_class = DailyWasteComparisonSerializer
     lookup_field = "unique_id"
@@ -81,8 +85,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         queryset = DailyTripLog.objects.select_related(
-            "location_node", "waste_type_id",
-            "location_node", "waste_type_id",
+            "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id",
         ).filter(
             is_deleted=False,
             log_status__in=[
@@ -93,10 +96,9 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
 
         queryset = self.filter_queryset(queryset)
 
-        # ── date / month / location_node / waste_type filters ────────────
+        # ── date / month / local body / waste_type filters ───────────────
         date_param = request.query_params.get("date")
         month_param = request.query_params.get("month")
-        location_node_param = request.query_params.get("location_node_id")
         waste_type_param = request.query_params.get("waste_type_id")
 
         if date_param:
@@ -111,8 +113,11 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             except (ValueError, AttributeError):
                 pass
 
-        if panchayat_param:
-            queryset = queryset.filter(location_node__unique_id=panchayat_param)
+        for field in LOCAL_BODY_FIELDS:
+            value = request.query_params.get(f"{field}_id")
+            if value:
+                queryset = queryset.filter(**{f"{field}_id": value})
+
         if waste_type_param:
             queryset = queryset.filter(waste_type_id=waste_type_param)
 
@@ -125,7 +130,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         else:
             weight_field = "collected_weight_kg"
 
-        # ── aggregate by (trip_date, location_node, waste_type) ──────────
+        # ── aggregate by (trip_date, local body, waste_type) ──────────────
         annotation_kwargs = {
             "total_trips": Count("unique_id"),
             "collection_points_covered": Count("collection_point_id", distinct=True),
@@ -142,41 +147,37 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
                 )
             )
 
-        nodes_by_id = {
-            node.unique_id: node
-            for node in HierarchyNode.objects.filter(
-                unique_id__in=queryset.values_list("location_node", flat=True).distinct()
-            )
-        }
-
+        group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
         grouped_qs = queryset.values(
             "trip_date",
-            "location_node",
+            *group_fields,
+            "panchayat__agreed_weight_kg",
             "waste_type_id",
             "waste_type_id__waste_type_name",
         ).annotate(**annotation_kwargs)
 
         rows = []
         for row in grouped_qs:
-            node = nodes_by_id.get(row["location_node"])
-            agreed = decimal_value(agreed_weight_for_node(node))
+            local_body_field, local_body_id = self._local_body_from_row(row)
+            if not local_body_id:
+                continue
+            agreed = decimal_value(
+                row.get("panchayat__agreed_weight_kg") if local_body_field == "panchayat" else 0
+            )
             actual = decimal_value(row["total_actual_weight"])
             variance = actual - agreed
             total_trips = int(row["total_trips"] or 0)
             points = int(row["collection_points_covered"] or 0)
 
             unique_id = (
-                f"DWC-{row['trip_date']}-{row['location_node']}-{row['waste_type_id']}"
-                f"DWC-{row['trip_date']}-{row['location_node']}-{row['waste_type_id']}"
+                f"DWC-{row['trip_date']}-{local_body_id}-{row['waste_type_id']}"
             )
 
             rows.append({
                 "unique_id": unique_id,
                 "collection_date": str(row["trip_date"]),
-                "panchayat_id": row["location_node"],
-                "panchayat_name": (
-                    getattr(node, "name", None) or row["location_node"]
-                ),
+                "local_body_field": local_body_field,
+                "local_body_id": local_body_id,
                 "waste_type_id": row["waste_type_id"],
                 "waste_type": (
                     row["waste_type_id__waste_type_name"] or row["waste_type_id"]
@@ -211,11 +212,19 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             "kpis": self._build_totals(rows),
         })
 
+    # ── local body resolution ────────────────────────────────────────────
+
+    def _local_body_from_row(self, row):
+        """Most specific populated local-body field for a grouped row."""
+        for field in LOCAL_BODY_FIELDS:
+            value = row.get(f"{field}_id")
+            if value:
+                return field, value
+        return None, None
+
     # ── analytics helpers ────────────────────────────────────────────────
 
     def _build_date_trends(self, rows):
-        # agreed_weight_kg is always 0 today (see module docstring) — summed
-        # per-row is equivalent to counting it once per (date, location) pair.
         trends = {}
         for row in rows:
             date = row["collection_date"]
@@ -247,11 +256,11 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     def _build_location_comparison(self, rows):
         locations = {}
         for row in rows:
-            lid = row["location_node_id"]
+            lid = row["local_body_id"]
             if lid not in locations:
                 locations[lid] = {
-                    "location_node_id": lid,
-                    "location_node_name": row["location_node_name"],
+                    "local_body_field": row["local_body_field"],
+                    "local_body_id": lid,
                     "agreed_weight_kg": ZERO,
                     "actual_weight_kg": ZERO,
                 }
@@ -264,8 +273,8 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             actual = item["actual_weight_kg"]
             variance = actual - agreed
             result.append({
-                "location_node_id": item["location_node_id"],
-                "location_node_name": item["location_node_name"],
+                "local_body_field": item["local_body_field"],
+                "local_body_id": item["local_body_id"],
                 "agreed_weight_kg": float(rounded(agreed)),
                 "actual_weight_kg": float(rounded(actual)),
                 "variance_kg": float(rounded(variance)),
