@@ -43,6 +43,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     staff_template = serializers.SerializerMethodField(read_only=True)
     location_name = serializers.SerializerMethodField(read_only=True)
     location_level = serializers.SerializerMethodField(read_only=True)
+    location = serializers.SerializerMethodField(read_only=True)
     collection_point = serializers.SerializerMethodField(read_only=True)
     collection_points = serializers.SerializerMethodField(read_only=True)
     waste_type = serializers.SerializerMethodField(read_only=True)
@@ -66,6 +67,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "alt_staff_template_id",
             "location_name",
             "location_level",
+            "location",
             "collection_point_id",
             "collection_point",
             "collection_points",
@@ -245,6 +247,25 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     def get_location_level(self, obj):
         _, level = flat_geo_display(obj)
         return level
+
+    def get_location(self, obj):
+        # Full location detail straight from the geo master FKs on the log
+        # (falling back to its assignment) — no hierarchy tree/assignment lookup.
+        source = obj if obj.district_id or obj.panchayat_id or obj.corporation_id else obj.trip_assignment_id
+        if not source:
+            source = obj
+        name, level = flat_geo_display(source)
+        area_type = getattr(source, "area_type", None)
+        district = getattr(source, "district", None)
+        state = getattr(source, "state", None)
+        return {
+            "state": getattr(state, "name", None),
+            "district": getattr(district, "name", None),
+            # "Urban Local Body" / "Rural Local Body" from the AreaType master
+            "classification": getattr(area_type, "name", None),
+            "local_body_name": name,
+            "local_body_level": level,
+        }
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id

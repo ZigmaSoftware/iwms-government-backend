@@ -245,7 +245,6 @@ class PermissionSeeder(BaseSeeder):
                     ("alternative-staff-templates", "alternative-staff-templates", "alternative-staff-templates", 2, "Alternative staff templates"),
                     ("collection-points", "collection-points", "collection-points", 3, "Collection points"),
                     ("trip-plans", "trip-plans", "trip-plans", 4, "Trip plans"),
-                    ("trip-plan-collection-points", "trip-plan-collection-points", "trip-plan-collection-points", 5, "Trip plan collection points"),
                     ("daily-trip-assignments", "daily-trip-assignments", "daily-trip-assignments", 6, "Daily trip assignments"),
                     ("daily-trip-collection-points", "daily-trip-collection-points", "daily-trip-collection-points", 7, "Daily trip collection points"),
                     ("daily-trip-household-collections", "daily-trip-household-collections", "daily-trip-household-collections", 8, "Daily trip household collections"),
