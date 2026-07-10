@@ -46,8 +46,10 @@ class HierarchyAssignment(BaseMaster):
         db_column="node_id",
     )
 
-    # Logical master identity. entity_type is a free string key registered in
-    # app/utils/hierarchy_entities.py; entity_id is that master's unique_id.
+    # Logical master identity. entity_type is a free string key; entity_id is
+    # that master's unique_id. The admin API for managing these assignments
+    # has been removed — this model remains only because other masters still
+    # carry a live FK into HierarchyNode.
     entity_type = models.CharField(max_length=60)
     entity_id = models.CharField(max_length=60)
 

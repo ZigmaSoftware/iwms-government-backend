@@ -96,6 +96,7 @@ class TripPlanSeeder(BaseSeeder):
                     is_deleted=False,
                     defaults={
                         "state": district.state_id,
+                        "area_type": panchayat.area_type_id,
                         "staff_template_id": template,
                         "vehicle_id": vehicle,
                         "supervisor_id": supervisor,
