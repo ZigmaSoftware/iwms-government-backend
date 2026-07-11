@@ -12,6 +12,10 @@ from app.serializers.schedule_masters.daily_trip_log_serializer import (
 )
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.base_models import Account
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+)
 from app.utils.pagination import LimitOffsetWithPage
 
 
@@ -93,7 +97,6 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         trip_date = params.get("date") or params.get("trip_date")
         status_value = params.get("status") or params.get("log_status")
         assignment = params.get("trip_assignment_id")
-        panchayat = params.get("panchayat_id")
         collection_point = params.get("collection_point_id")
         waste_type = params.get("waste_type_id")
         driver = params.get("driver_id")
@@ -106,8 +109,6 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(log_status=status_value)
         if assignment:
             qs = qs.filter(trip_assignment_id=assignment)
-        if panchayat:
-            qs = qs.filter(panchayat_id=panchayat)
         if collection_point:
             qs = qs.filter(collection_point_id=collection_point)
         if waste_type:
@@ -142,6 +143,9 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         }
         if ordering in allowed_ordering:
             qs = qs.order_by(ordering)
+
+        qs = filter_flat_geo_queryset_by_params(qs, params)
+        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         return qs
 
