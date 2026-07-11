@@ -9,6 +9,10 @@ from app.serializers.schedule_masters.alternative_staff_template_serializer impo
     AlternativeStaffTemplateSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+)
 
 
 
@@ -23,7 +27,11 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = AlternativeStaffTemplate.objects.select_related(
         "staff_template",
         "driver_id",
+        "driver_id__designation_id",
+        "driver_id__corporation",
         "operator_id",
+        "operator_id__designation_id",
+        "operator_id__corporation",
     )
     serializer_class = AlternativeStaffTemplateSerializer
 
@@ -54,12 +62,27 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if to_date:
             qs = qs.filter(to_date__lte=to_date)
 
+        qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
+        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+
         return qs.select_related(
             "staff_template",
             "driver_id",
+            "driver_id__designation_id",
+            "driver_id__corporation",
             "operator_id",
+            "operator_id__designation_id",
+            "operator_id__corporation",
             # "requested_by",
             "approved_by",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
         )
 
     # --------------------------------------------------

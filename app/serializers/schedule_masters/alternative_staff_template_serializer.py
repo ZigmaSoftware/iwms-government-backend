@@ -3,7 +3,16 @@ from rest_framework import serializers
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.user_creations.staffcreation import Staffcreation
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import FLAT_GEO_FIELDS, normalize_flat_geo_attrs
 
 
 
@@ -73,6 +82,92 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
     driver_name = serializers.SerializerMethodField(read_only=True)
     operator_name = serializers.SerializerMethodField(read_only=True)
     extra_operator_names = serializers.SerializerMethodField(read_only=True)
+    driver_designation = serializers.SerializerMethodField(read_only=True)
+    operator_designation = serializers.SerializerMethodField(read_only=True)
+    corporation_name = serializers.SerializerMethodField(read_only=True)
+
+    # ---- Geo hierarchy (write via *_id, read via nested objects) ----
+    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+
+    state = serializers.SerializerMethodField(read_only=True)
+    district = serializers.SerializerMethodField(read_only=True)
+    area_type = serializers.SerializerMethodField(read_only=True)
+    corporation = serializers.SerializerMethodField(read_only=True)
+    municipality = serializers.SerializerMethodField(read_only=True)
+    town_panchayat = serializers.SerializerMethodField(read_only=True)
+    panchayat_union = serializers.SerializerMethodField(read_only=True)
+    panchayat = serializers.SerializerMethodField(read_only=True)
+
+    @staticmethod
+    def _ref(obj, attr, label_attr="name"):
+        value = getattr(obj, attr, None)
+        if not value:
+            return None
+        return {"unique_id": getattr(value, "unique_id", None), label_attr: getattr(value, label_attr, None)}
+
+    def get_state(self, obj):
+        return self._ref(obj, "state")
+
+    def get_district(self, obj):
+        return self._ref(obj, "district")
+
+    def get_area_type(self, obj):
+        return self._ref(obj, "area_type")
+
+    def get_corporation(self, obj):
+        return self._ref(obj, "corporation", "corporation_name")
+
+    def get_municipality(self, obj):
+        return self._ref(obj, "municipality", "municipality_name")
+
+    def get_town_panchayat(self, obj):
+        return self._ref(obj, "town_panchayat", "town_panchayat_name")
+
+    def get_panchayat_union(self, obj):
+        return self._ref(obj, "panchayat_union", "union_name")
+
+    def get_panchayat(self, obj):
+        return self._ref(obj, "panchayat", "panchayat_name")
+
+    @staticmethod
+    def _staff_designation(staff):
+        if not staff:
+            return None
+        designation = getattr(staff, "designation_id", None)
+        if designation and getattr(designation, "designation_name", None):
+            return designation.designation_name
+        return getattr(staff, "designation", None)
+
+    @staticmethod
+    def _staff_corporation(staff):
+        if not staff:
+            return None
+        corporation = getattr(staff, "corporation", None)
+        if corporation and getattr(corporation, "corporation_name", None):
+            return corporation.corporation_name
+        return None
+
+    def get_driver_designation(self, obj):
+        return self._staff_designation(getattr(obj, "driver_id", None))
+
+    def get_operator_designation(self, obj):
+        return self._staff_designation(getattr(obj, "operator_id", None))
+
+    def get_corporation_name(self, obj):
+        template_corp = getattr(obj, "corporation", None)
+        if template_corp and getattr(template_corp, "corporation_name", None):
+            return template_corp.corporation_name
+        return (
+            self._staff_corporation(getattr(obj, "driver_id", None))
+            or self._staff_corporation(getattr(obj, "operator_id", None))
+        )
     staff_template_display_code = serializers.CharField(
         source="staff_template.display_code",
         read_only=True,
@@ -129,10 +224,30 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
             # 'effective_date',
             'driver',
             'driver_name',
+            'driver_designation',
             'operator',
             'operator_name',
+            'operator_designation',
             'extra_operator',
             'extra_operator_names',
+            # Geo hierarchy — write via *_id, read via nested objects
+            'state_id',
+            'district_id',
+            'area_type_id',
+            'corporation_id',
+            'municipality_id',
+            'town_panchayat_id',
+            'panchayat_union_id',
+            'panchayat_id',
+            'state',
+            'district',
+            'area_type',
+            'corporation',
+            'municipality',
+            'town_panchayat',
+            'panchayat_union',
+            'panchayat',
+            'corporation_name',
             'change_reason',
             'change_remarks',
             # 'requested_by',
@@ -168,6 +283,23 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
         staff_template = attrs.get(
             "staff_template", getattr(instance, "staff_template", None)
         )
+        if staff_template:
+            has_explicit_geo = any(field in attrs for field in FLAT_GEO_FIELDS)
+            has_existing_geo = any(
+                getattr(instance, field, None) for field in FLAT_GEO_FIELDS
+            ) if instance else False
+            if not has_explicit_geo and not has_existing_geo:
+                for field in FLAT_GEO_FIELDS:
+                    attrs[field] = getattr(staff_template, field, None)
+
+        errors = normalize_flat_geo_attrs(
+            attrs,
+            instance=instance,
+            require_geo=True,
+        )
+        if errors:
+            raise serializers.ValidationError(errors)
+
         if staff_template and from_date and to_date:
             overlap_qs = AlternativeStaffTemplate.objects.filter(
                 staff_template=staff_template,
