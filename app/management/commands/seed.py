@@ -58,6 +58,7 @@ from app.management.commands.seeders.schedule_masters.daily_trip_log import Dail
 from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
+from app.management.commands.seeders.schedule_masters.waste_collection import WasteCollectionSeeder
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
@@ -162,6 +163,9 @@ COLLECTIONS_SEEDERS = [
 
 CUSTOMER_MASTERS_SEEDERS = [
     *CUSTOMER_SEEDERS,
+    # Household waste-collection records depend on customers (this group) and
+    # optionally on daily trip assignments (already seeded in schedule-masters).
+    WasteCollectionSeeder,
 ]
 
 COMPLAINT_TICKET_SEEDER_GROUP = [
@@ -221,6 +225,7 @@ SEED_GROUPS = {
     "scheduler-demo":     [SchedulerDemoSeeder],   # one ready-to-run demo TripPlan for the job scheduler
     "bin-collection-events": [BinCollectionEventSeeder],
     "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
+    "waste-collections": [WasteCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],
     "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
