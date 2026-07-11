@@ -16,6 +16,20 @@ def generate_companyuserscreencolumnpermission_id():
 
 
 class CompanyUserScreenColumnPermission(BaseMaster):
+    VISIBLE = "VISIBLE"
+    HIDDEN = "HIDDEN"
+    EDITABLE = "EDITABLE"
+    READ_ONLY = "READ_ONLY"
+    MANDATORY = "MANDATORY"
+
+    FIELD_PERMISSION_STATE_CHOICES = [
+        (VISIBLE, "Visible"),
+        (HIDDEN, "Hidden"),
+        (EDITABLE, "Editable"),
+        (READ_ONLY, "Read Only"),
+        (MANDATORY, "Mandatory"),
+    ]
+
     unique_id = models.CharField(
         max_length=70,
         primary_key=True,
@@ -75,7 +89,11 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         db_column="column_id",
     )
 
-    can_view = models.BooleanField(default=True)
+    field_permission_state = models.CharField(
+        max_length=20,
+        choices=FIELD_PERMISSION_STATE_CHOICES,
+        default=VISIBLE,
+    )
     order_no = models.IntegerField(default=1)
     description = models.CharField(max_length=255, blank=True, null=True)
 
@@ -111,6 +129,14 @@ class CompanyUserScreenColumnPermission(BaseMaster):
     @property
     def userscreencolumn_id(self):
         return self.column_id
+
+    @property
+    def can_view(self):
+        return self.field_permission_state != self.HIDDEN
+
+    @can_view.setter
+    def can_view(self, value):
+        self.field_permission_state = self.VISIBLE if value else self.HIDDEN
 
     def __str__(self):
         return f"{self.userscreen_id} - {self.column_id}"

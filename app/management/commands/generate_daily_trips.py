@@ -8,9 +8,10 @@ from app.models.schedule_masters.trip_plan_collection_point import TripPlanColle
 from app.models.schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
 from app.signals.trip_plan_signals import _create_daily_household_collections
+from app.utils.hierarchy import FLAT_GEO_FIELDS
 
 
-def run_for_date(target_date=None, logger=None):
+def run_for_date(target_date=None, logger=None, force=False):
     """Generate DailyTripAssignment + operational child records for one date.
 
     This is the single source of truth for the nightly job scheduler. Both the
@@ -25,6 +26,8 @@ def run_for_date(target_date=None, logger=None):
     Args:
         target_date: a `date` to generate for. Defaults to today (local).
         logger: optional callable(str) for progress lines (e.g. stdout.write).
+        force: when True (manual runs), also include not-yet-approved active
+            plans and ignore the repeat-day weekday check.
 
     Returns:
         dict summary: {"date", "weekday", "created", "skipped", "details": [...]}
@@ -39,39 +42,42 @@ def run_for_date(target_date=None, logger=None):
     plans = TripPlan.objects.filter(
         is_deleted=False,
         status=TripPlan.Status.ACTIVE,
-        approval_status=TripPlan.ApprovalStatus.APPROVED,
         is_auto_assign=True,
     )
+    if not force:
+        plans = plans.filter(approval_status=TripPlan.ApprovalStatus.APPROVED)
 
     created_count = 0
     skipped_count = 0
     details = []
 
     for plan in plans.all():
-        repeat_days = plan.repeat_days or []
-        if not repeat_days:
-            # No repeat days configured; nothing to schedule.
-            skipped_count += 1
-            continue
-        try:
-            allowed = [int(d) for d in repeat_days]
-        except (TypeError, ValueError):
-            log(f"TripPlan {plan.unique_id} has invalid repeat_days: {repeat_days}")
-            skipped_count += 1
-            continue
+        if not force:
+            repeat_days = plan.repeat_days or []
+            if not repeat_days:
+                # No repeat days configured; nothing to schedule.
+                skipped_count += 1
+                continue
+            try:
+                allowed = [int(d) for d in repeat_days]
+            except (TypeError, ValueError):
+                log(f"TripPlan {plan.unique_id} has invalid repeat_days: {repeat_days}")
+                skipped_count += 1
+                continue
 
-        if weekday not in allowed:
-            # Plan does not run on today's weekday.
-            skipped_count += 1
-            continue
+            if weekday not in allowed:
+                # Plan does not run on today's weekday.
+                skipped_count += 1
+                continue
 
         defaults = {
             "staff_template_id": plan.staff_template_id,
             "vehicle_id": plan.vehicle_id,
             "waste_type_id": plan.waste_type_id,
-            "location_node": plan.location_node,
             "scheduled_time": plan.scheduled_time,
         }
+        for field in FLAT_GEO_FIELDS:
+            defaults[f"{field}_id"] = getattr(plan, f"{field}_id", None)
 
         with transaction.atomic():
             assignment, created = DailyTripAssignment.objects.get_or_create(
@@ -161,6 +167,12 @@ class Command(BaseCommand):
             help="Optional date (YYYY-MM-DD) to generate trips for. Defaults to today.",
             required=False,
         )
+        parser.add_argument(
+            "--force",
+            dest="force",
+            action="store_true",
+            help="Include not-yet-approved active plans and ignore repeat-day checks.",
+        )
 
     def handle(self, *args, **options):
         target_date = None
@@ -171,4 +183,8 @@ class Command(BaseCommand):
                 self.stderr.write(f"Invalid date: {e}")
                 return
 
-        run_for_date(target_date=target_date, logger=self.stdout.write)
+        run_for_date(
+            target_date=target_date,
+            logger=self.stdout.write,
+            force=bool(options.get("force")),
+        )

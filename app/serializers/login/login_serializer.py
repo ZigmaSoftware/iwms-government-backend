@@ -163,14 +163,6 @@ class LoginSerializer(serializers.Serializer):
             )
             raise serializers.ValidationError("Login is disabled for this user")
 
-        if staff_record.approval_status != Staffcreation.APPROVAL_APPROVED:
-            Staffcreation.objects.filter(pk=staff_record.pk).update(
-                failed_login_attempts=F("failed_login_attempts") + 1
-            )
-            raise serializers.ValidationError(
-                f"User approval status is {staff_record.approval_status}"
-            )
-
         user_type = staff_record.user_type_id or getattr(login_user, "user_type_id", None)
         if not user_type:
             raise serializers.ValidationError("Invalid user type")
@@ -341,14 +333,6 @@ class LoginSerializer(serializers.Serializer):
                     failed_login_attempts=F("failed_login_attempts") + 1
                 )
                 raise serializers.ValidationError("Login is disabled for this user")
-
-            if candidate.approval_status != Staffcreation.APPROVAL_APPROVED:
-                Staffcreation.objects.filter(pk=candidate.pk).update(
-                    failed_login_attempts=F("failed_login_attempts") + 1
-                )
-                raise serializers.ValidationError(
-                    f"User approval status is {candidate.approval_status}"
-                )
 
             return self._build_staff_payload(candidate)
 

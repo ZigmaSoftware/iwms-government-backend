@@ -2,7 +2,9 @@ from rest_framework import serializers
 
 from app.models.assets.bins import Bins
 from app.models.customers.customercreation import CustomerCreation
+from app.models.common_masters.state import State
 from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
@@ -18,7 +20,6 @@ from app.models.user_creations.waste_collection_bluetooth import WasteType
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.hierarchy import HIERARCHY_FIELDS, selected_hierarchy_from_attrs, validate_single_hierarchy
 
 
 class TripPlanStopInputSerializer(serializers.Serializer):
@@ -34,12 +35,14 @@ class TripPlanStopInputSerializer(serializers.Serializer):
 
 
 class TripPlanSerializer(serializers.ModelSerializer):
-    district_id = UniqueIdOrPkField(slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), write_only=True)
-    corporation_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    municipality_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    town_panchayat_id = UniqueIdOrPkField(slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_union_id = UniqueIdOrPkField(slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), write_only=True)
+    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True)
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True)
     supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
@@ -59,7 +62,9 @@ class TripPlanSerializer(serializers.ModelSerializer):
     is_auto_assign = serializers.BooleanField(required=False)
     repeat_days = serializers.ListField(child=serializers.IntegerField(min_value=0, max_value=6), required=False, allow_null=True)
 
+    state = serializers.SerializerMethodField()
     district = serializers.SerializerMethodField()
+    area_type = serializers.SerializerMethodField()
     corporation = serializers.SerializerMethodField()
     municipality = serializers.SerializerMethodField()
     town_panchayat = serializers.SerializerMethodField()
@@ -77,10 +82,10 @@ class TripPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = TripPlan
         fields = [
-            "unique_id", "display_code", "district_id", "corporation_id",
+            "unique_id", "display_code", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "staff_template_id", "vehicle_id", "supervisor_id", "property_id",
-            "sub_property_id", "waste_type_id", "waste_type_ids", "district", "corporation",
+            "sub_property_id", "waste_type_id", "waste_type_ids", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
             "staff_template", "vehicle", "supervisor", "property", "sub_property",
             "waste_type", "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
@@ -96,23 +101,29 @@ class TripPlanSerializer(serializers.ModelSerializer):
             return None
         return {"unique_id": getattr(value, "unique_id", None), label_attr: getattr(value, label_attr, None)}
 
+    def get_state(self, obj):
+        return self._ref(obj, "state")
+
     def get_district(self, obj):
-        return self._ref(obj, "district_id")
+        return self._ref(obj, "district")
+
+    def get_area_type(self, obj):
+        return self._ref(obj, "area_type")
 
     def get_corporation(self, obj):
-        return self._ref(obj, "corporation_id", "corporation_name")
+        return self._ref(obj, "corporation", "corporation_name")
 
     def get_municipality(self, obj):
-        return self._ref(obj, "municipality_id", "municipality_name")
+        return self._ref(obj, "municipality", "municipality_name")
 
     def get_town_panchayat(self, obj):
-        return self._ref(obj, "town_panchayat_id", "town_panchayat_name")
+        return self._ref(obj, "town_panchayat", "town_panchayat_name")
 
     def get_panchayat_union(self, obj):
-        return self._ref(obj, "panchayat_union_id", "union_name")
+        return self._ref(obj, "panchayat_union", "union_name")
 
     def get_panchayat(self, obj):
-        return self._ref(obj, "panchayat_id", "panchayat_name")
+        return self._ref(obj, "panchayat", "panchayat_name")
 
     def get_staff_template(self, obj):
         st = obj.staff_template_id
@@ -169,13 +180,23 @@ class TripPlanSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
-        validate_single_hierarchy(
-            attrs,
-            instance,
-            "Trip plan must belong to exactly one hierarchy level.",
-        )
-        trip_hierarchy = selected_hierarchy_from_attrs(attrs, instance)
-        trip_hierarchy_field, trip_hierarchy_obj = next(iter(trip_hierarchy.items()))
+
+        def value_for(field):
+            return attrs.get(field, getattr(instance, field, None))
+
+        # Most specific populated geo field wins - a trip plan scoped to one
+        # Panchayat validates stops/customers against that Panchayat; one
+        # scoped only to a District validates against the District.
+        trip_hierarchy_field = None
+        trip_hierarchy_obj = None
+        for field in ("panchayat", "panchayat_union", "town_panchayat", "municipality", "corporation", "district"):
+            candidate = value_for(field)
+            if candidate:
+                trip_hierarchy_field, trip_hierarchy_obj = field, candidate
+                break
+
+        if not trip_hierarchy_obj:
+            raise serializers.ValidationError({"district_id": "Trip plan must be assigned to at least a district."})
 
         trigger = attrs.get("trip_trigger_weight_kg", getattr(instance, "trip_trigger_weight_kg", None))
         capacity = attrs.get("max_vehicle_capacity_kg", getattr(instance, "max_vehicle_capacity_kg", None))

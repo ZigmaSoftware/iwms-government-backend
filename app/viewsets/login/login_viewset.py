@@ -10,6 +10,7 @@ from django.utils import timezone
 from app.models.user_creations.loginAudit import LoginAudit
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
+from app.utils.hierarchy import staff_scope_payload
 
 
 def _client_ip(request):
@@ -145,8 +146,10 @@ class LoginViewSet(ViewSet):
             "email": email,
         }
 
+        data_scope = None
         if user_type == "staff":
             staff_source = profile_object or user
+            data_scope = staff_scope_payload(staff_source)
             profile_payload.update(
                 {
                     "staff_unique_id": emp_id,
@@ -154,6 +157,7 @@ class LoginViewSet(ViewSet):
                     "employee_name": getattr(staff_source, "employee_name", None) or name,
                     "emp_id": emp_id,
                     "staffusertype_unique_id": staffusertype_unique_id,
+                    "data_scope": data_scope,
                 }
             )
         elif user_type == "customer":
@@ -181,6 +185,18 @@ class LoginViewSet(ViewSet):
                     "employee_name": getattr(contractor_source, "employee_name", None) or name,
                     "emp_id": emp_id,
                     "contractorusertype_unique_id": contractorusertype_unique_id,
+                    "data_scope": staff_scope_payload(contractor_source),
+                }
+            )
+        elif user_type == "government":
+            government_source = profile_object or user
+            profile_payload.update(
+                {
+                    "staff_unique_id": emp_id,
+                    "employee_id": employee_id,
+                    "employee_name": getattr(government_source, "employee_name", None) or name,
+                    "emp_id": emp_id,
+                    "data_scope": staff_scope_payload(government_source),
                 }
             )
         elif user_type == "panchayat_leader":

@@ -68,6 +68,7 @@ from .screen_managements.companyuserscreenpermission import (
     UserScreenPermission,
 )
 from .screen_managements.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
+from .screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
 
 
 # ============================================================
@@ -80,6 +81,7 @@ from .user_creations.staffcreation import (
 from .schedule_masters.staff_template import StaffTemplate
 from .schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from .user_creations.unassigned_staff_pool import UnassignedStaffPool
+from .user_creations.staff_data_scope import StaffDataScope
 
 
 # ============================================================
@@ -156,6 +158,8 @@ from .schedule_masters.daily_trip_log import DailyTripLog
 from .schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
 from .schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
 from .schedule_masters.bin_collection_event import BinCollectionEvent
+from .schedule_masters.scheduler_config import SchedulerConfig
+from .schedule_masters.vehicle_breakdown import VehicleBreakdown
 
 
 # ============================================================
@@ -210,6 +214,7 @@ __all__ = [
     "UserScreenPermission",
     "CompanyUserScreenPermission",
     "CompanyUserScreenColumnPermission",
+    "DashboardWidgetPermission",
 
     # User Creation & Staff
     "StaffcreationOfficeDetails",
@@ -217,6 +222,7 @@ __all__ = [
     "StaffTemplate",
     "AlternativeStaffTemplate",
     "UnassignedStaffPool",
+    "StaffDataScope",
 
     # Auth / Audit
     "LoginAudit",

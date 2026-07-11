@@ -15,7 +15,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
     def run(self):
         today = timezone.localdate()
 
-        # Only use active, approved plans with a location node set.
+        # Only use active, approved plans with a geographic area set.
         plans = list(
             TripPlan.objects.filter(
                 is_deleted=False,
@@ -25,7 +25,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 "staff_template_id",
                 "waste_type_id",
                 "vehicle_id",
-                "location_node",
+                "district",
             )
         )
 
@@ -43,7 +43,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 if created_count >= TARGET:
                     break
 
-                if not plan.location_node_id:
+                if not plan.district_id:
                     continue
 
                 already_exists = DailyTripAssignment.objects.filter(
@@ -59,9 +59,17 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 DailyTripAssignment.objects.create(
                     trip_plan_id=plan,
                     staff_template_id=plan.staff_template_id,
-                    location_node=plan.location_node,
                     waste_type_id=plan.waste_type_id,
                     vehicle_id=plan.vehicle_id,
+                    # Copy the plan's full geographic scope from the masters
+                    state=plan.state,
+                    district=plan.district,
+                    area_type=plan.area_type,
+                    corporation=plan.corporation,
+                    municipality=plan.municipality,
+                    town_panchayat=plan.town_panchayat,
+                    panchayat_union=plan.panchayat_union,
+                    panchayat=plan.panchayat,
                     trip_date=trip_date,
                     scheduled_time=plan.scheduled_time,
                     status=DailyTripAssignment.STATUS_SCHEDULED,

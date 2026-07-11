@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from app.utils.hierarchy import district_and_city_for_node
 from app.models.complaint_ticket.ticket import ComplaintTicket
 from app.models.complaint_ticket.ticket_extra_detail import ComplaintTicketExtraDetail
 from app.models.complaint_ticket.ticket_attachment import ComplaintAttachment
@@ -31,11 +30,13 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     assigned_staff_name = serializers.CharField(source="assigned_staff.employee_name", read_only=True)
     assigned_department_name = serializers.CharField(source="assigned_team.department.department_name", read_only=True)
     escalation_level = serializers.IntegerField(source="assigned_team.escalation_level", read_only=True)
-    location_node_name = serializers.CharField(source="location_node.name", read_only=True)
-    district_id = serializers.SerializerMethodField()
-    district_name = serializers.SerializerMethodField()
+    state_id = serializers.CharField(read_only=True)
+    state_name = serializers.CharField(source="state.name", read_only=True)
+    district_id = serializers.CharField(read_only=True)
+    district_name = serializers.CharField(source="district.name", read_only=True)
     city_id = serializers.SerializerMethodField()
     city_name = serializers.SerializerMethodField()
+    city_type = serializers.SerializerMethodField()
     sla_time_remaining_seconds = serializers.SerializerMethodField()
     public_timeline = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
@@ -57,21 +58,17 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
         names = self.get_waste_type_names(obj)
         return ", ".join(names) if names else None
 
-    def _geo(self, obj):
-        cache = self.context.setdefault("_geo_cache", {})
-        return district_and_city_for_node(obj.location_node_id, cache)
-
-    def get_district_id(self, obj):
-        return self._geo(obj)["district_id"]
-
-    def get_district_name(self, obj):
-        return self._geo(obj)["district_name"]
-
     def get_city_id(self, obj):
-        return self._geo(obj)["city_id"]
+        _, body, _ = obj.local_body
+        return body.unique_id if body else None
 
     def get_city_name(self, obj):
-        return self._geo(obj)["city_name"]
+        _, _, name = obj.local_body
+        return name
+
+    def get_city_type(self, obj):
+        field, _, _ = obj.local_body
+        return field
 
     def _active_attachments(self, obj):
         """Attachments ordered newest-first (model default ordering)."""

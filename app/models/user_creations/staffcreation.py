@@ -1,5 +1,4 @@
 import hashlib
-from django.conf import settings
 from django.db import models
 from app.utils.base_models import Account, BaseMaster
 from app.utils.comfun import generate_unique_id
@@ -9,6 +8,14 @@ from ..role_assigns.contractorUserType import ContractorUserType
 from ..role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.utils.customer_qr import generate_customer_qr_content
 
 
@@ -18,18 +25,6 @@ def generate_staff_unique_id():
 
 
 class StaffcreationOfficeDetails(BaseMaster):
-    APPROVAL_PENDING = "PENDING"
-    APPROVAL_APPROVED = "APPROVED"
-    APPROVAL_REJECTED = "REJECTED"
-    APPROVAL_SUSPENDED = "SUSPENDED"
-
-    APPROVAL_STATUS_CHOICES = [
-        (APPROVAL_PENDING, "Pending"),
-        (APPROVAL_APPROVED, "Approved"),
-        (APPROVAL_REJECTED, "Rejected"),
-        (APPROVAL_SUSPENDED, "Suspended"),
-    ]
-
     staff_unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -134,23 +129,7 @@ class StaffcreationOfficeDetails(BaseMaster):
 
     is_superuser = models.BooleanField(default=False)
 
-    approval_status = models.CharField(
-        max_length=20,
-        choices=APPROVAL_STATUS_CHOICES,
-        default=APPROVAL_PENDING,
-        db_index=True,
-    )
     login_enabled = models.BooleanField(default=False, db_index=True)
-    approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="approved_staff_users",
-        db_column="approved_by",
-    )
-    approved_at = models.DateTimeField(null=True, blank=True)
-    rejected_reason = models.TextField(null=True, blank=True)
     failed_login_attempts = models.PositiveIntegerField(default=0)
     last_login_at = models.DateTimeField(null=True, blank=True)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
@@ -192,14 +171,77 @@ class StaffcreationOfficeDetails(BaseMaster):
         related_name="staff_users"
     )
 
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
+    state = models.ForeignKey(
+        State,
         on_delete=models.SET_NULL,
-        related_name="staff_location",
-        to_field="unique_id",
-        db_column="location_node_id",
         null=True,
         blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_members",
+        to_field="unique_id",
+        db_column="panchayat_id",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

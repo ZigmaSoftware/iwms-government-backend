@@ -3,7 +3,14 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.hierarchy_tree import HierarchyNode
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.models.complaint_ticket.ticket import ComplaintTicket
 
 
@@ -73,14 +80,71 @@ class ComplaintAddressChangeRequest(BaseMaster):
     new_longitude = models.CharField(max_length=100, null=True, blank=True)
     new_full_address = models.TextField(null=True, blank=True)
 
-    new_location_node = models.ForeignKey(
-        HierarchyNode,
+    # Requested new flat geo (same FK family as CustomerCreation). Only one
+    # of the local-body FKs should be populated at a time.
+    new_state = models.ForeignKey(
+        State,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="address_change_requests",
-        to_field="unique_id",
-        db_column="new_location_node_id",
+        db_column="new_state_id",
+    )
+    new_district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_district_id",
+    )
+    new_area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_area_type_id",
+    )
+    new_corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_corporation_id",
+    )
+    new_municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_municipality_id",
+    )
+    new_town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_town_panchayat_id",
+    )
+    new_panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_panchayat_union_id",
+    )
+    new_panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="address_change_requests",
+        db_column="new_panchayat_id",
     )
 
     proof_type = models.CharField(
