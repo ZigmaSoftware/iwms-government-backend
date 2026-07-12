@@ -12,10 +12,10 @@ from app.permissions.operator_permission import IsOperatorRole
 from app.serializers.operator_mobile.scan_serializers import (
     ScanBinRequestSerializer,
 )
+from app.utils.hierarchy import node_for_flat_geo
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
     build_scan_context,
-    maybe_resolve_driver,
     progress_payload,
     resolve_operator_staff,
     serialize_assignment_brief,
@@ -72,15 +72,14 @@ class ScanBinViewSet(viewsets.ViewSet):
                     trip_collection_point_id=ctx.trip_cp,
                     collection_point_id=ctx.bin.collection_point_id,
                     bin_id=ctx.bin,
-                    panchayat_id=ctx.assignment.panchayat_id,
+                    # Hierarchy visibility: stamp the audit row with the
+                    # collection point's location node so scope filtering works.
+                    location_node=node_for_flat_geo(ctx.bin.collection_point_id),
                     waste_type_id=ctx.assignment.waste_type_id,
                     vehicle_id=ctx.assignment.vehicle_id,
-                    operator_id=operator,
-                    driver_id=maybe_resolve_driver(ctx.assignment),
                     collected_weight_kg=weight,
-                    scanned_qr=payload["bin_qr"],
-                    latitude=payload.get("latitude"),
-                    longitude=payload.get("longitude"),
+                    driver_latitude=payload.get("latitude"),
+                    driver_longitude=payload.get("longitude"),
                     notes=payload.get("notes"),
                 )
 
@@ -105,7 +104,7 @@ class ScanBinViewSet(viewsets.ViewSet):
                 "trip_progress": progress,
                 "event": {
                     "unique_id": event.unique_id,
-                    "event_at": event.event_at.isoformat(),
+                    "event_at": event.created_at.isoformat(),
                     "collected_weight_kg": str(event.collected_weight_kg),
                 },
             },
@@ -132,6 +131,9 @@ class ScanBinViewSet(viewsets.ViewSet):
 
         existing = DailyTripLog.objects.filter(trip_assignment_id=assignment).first()
         if existing:
+            # A verified log is read-only; don't fail the scan trying to update it.
+            if existing.log_status == DailyTripLog.LOG_STATUS_VERIFIED:
+                return
             existing.collected_weight_kg = total_weight
             existing.log_status = DailyTripLog.LOG_STATUS_SUBMITTED
             existing.save()

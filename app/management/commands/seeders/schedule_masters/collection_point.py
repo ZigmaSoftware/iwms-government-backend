@@ -55,6 +55,9 @@ class CollectionPointSeeder(BaseSeeder):
 
         count = 0
         for cp_name, local_body_field, local_body_name, lat, lon, geo_coordinates in self.COLLECTION_POINTS:
+            # COLLECTION_POINTS carries db_column-style names (e.g. "corporation_id"),
+            # but the model attribute / lookup keys are un-suffixed (e.g. "corporation").
+            local_body_field = local_body_field.removesuffix("_id")
             model, name_field = self.LOOKUPS[local_body_field]
             local_body = model.objects.filter(
                 **{name_field: local_body_name},

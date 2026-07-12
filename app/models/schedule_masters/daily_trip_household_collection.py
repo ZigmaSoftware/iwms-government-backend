@@ -180,6 +180,17 @@ class DailyTripHouseholdCollection(BaseMaster):
         db_index=True,
     )
 
+    # Captured when a driver/operator marks the stop Skipped/Missed from the app
+    # (waste/mark-household-status/). No WasteCollection exists in that case, so
+    # the reason and the device location are recorded here for audit.
+    status_reason = models.TextField(null=True, blank=True)
+    status_latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    status_longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

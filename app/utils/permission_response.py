@@ -26,6 +26,10 @@ APP_SURFACE_CONFIG = {
         "label": "Driver",
         "route": "/driver/home",
     },
+    "supervisor": {
+        "label": "Supervisor",
+        "route": "/supervisor/home",
+    },
     "admin": {
         "label": "Admin",
         "route": "/admin/home",
@@ -360,7 +364,9 @@ def infer_app_surfaces(module_access, permissions, role_name=None, user_type=Non
         surface_keys.append("driver")
     elif "operator" in role_key:
         surface_keys.append("operator")
-    elif any(token in role_key for token in ("admin", "superadmin", "supervisor", "platform")):
+    elif "supervisor" in role_key:
+        surface_keys.append("supervisor")
+    elif any(token in role_key for token in ("admin", "superadmin", "platform")):
         surface_keys.append("admin")
     elif module_keys & {
         "screen-managements",

@@ -33,6 +33,9 @@ from app.management.commands.seeders.role_assigns import ROLE_ASSIGN_SEEDERS
 
 # user-creations (router: user-creations/staffcreation, ...)
 from app.management.commands.seeders.user_creations.auth_user_seeder import AuthUserSeeder
+from app.management.commands.seeders.user_creations.driver_user import DriverUserSeeder
+from app.management.commands.seeders.user_creations.supervisor_user import SupervisorUserSeeder
+from app.management.commands.seeders.customers.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.user_creations.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.user_creations.staff_personal import StaffPersonalSeeder
 
@@ -58,6 +61,7 @@ from app.management.commands.seeders.schedule_masters.daily_trip_log import Dail
 from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
+from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
@@ -124,8 +128,8 @@ USER_CREATIONS_SEEDERS = [
 
 TRANSPORT_MASTERS_SEEDERS = [
     VehicleTypeCreationSeeder,   # transport-masters/vehicle-type
+    FuelSeeder,                  # transport-masters/fuels (must precede vehicles)
     VehicleCreationSeeder,       # transport-masters/vehicle-creation
-    FuelSeeder,                  # transport-masters/fuels
 ]
 
 PROCESS_ITEMS_SEEDERS = [
@@ -173,6 +177,14 @@ REPORTS_SEEDERS = [
     *REPORT_SEEDERS,
 ]
 
+# Mobile demo logins — must run last (need today's assignments + customers).
+DRIVER_DEMO_SEEDERS = [
+    DriverUserSeeder,
+    SupervisorUserSeeder,
+    SupervisorMonthDataSeeder,  # a month of trips + logs for the supervisor graph
+    CustomerUserSeeder,
+]
+
 # ============================================================
 # ORDER MATTERS — follows URL group dependency chain
 # ============================================================
@@ -192,6 +204,7 @@ ORDERED_GROUPS = [
     "complaint-ticket",     # tickets, categories, teams, sla-rules, routing-rules
     # "audits",               # vehicle-trip-audit, trip-exception-log, ...
     "reports",              # monthly-waste-comparison
+    "driver-demo",          # driver_user login wired to a today trip (bin + household)
 ]
 
 SEED_GROUPS = {
@@ -213,6 +226,7 @@ SEED_GROUPS = {
     "customers":          CUSTOMER_MASTERS_SEEDERS,  # alias
     "complaint-ticket":   COMPLAINT_TICKET_SEEDER_GROUP,
     "reports":            REPORTS_SEEDERS,
+    "driver-demo":        DRIVER_DEMO_SEEDERS,
     # Legacy aliases
     "staff":              USER_CREATIONS_SEEDERS,
     "vehicles":           TRANSPORT_MASTERS_SEEDERS,
@@ -222,6 +236,7 @@ SEED_GROUPS = {
     "bin-collection-events": [BinCollectionEventSeeder],
     "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],
+    "supervisor-graph":   [SupervisorMonthDataSeeder],  # month of trips+logs for supervisor_user
     "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
 }

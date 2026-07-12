@@ -9,8 +9,16 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 class _PanchayatBriefSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
     name = serializers.CharField(source="panchayat_name")
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, allow_null=True)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, allow_null=True)
+    # Panchayat has no lat/lng columns (only a `coordinates` polygon); expose
+    # nulls so the mobile client's optional fields stay populated safely.
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+
+    def get_latitude(self, obj):
+        return None
+
+    def get_longitude(self, obj):
+        return None
 
 
 class _WasteTypeBriefSerializer(serializers.Serializer):
@@ -58,7 +66,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     scheduled_time = serializers.TimeField()
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
-    panchayat = _PanchayatBriefSerializer(source="panchayat_id")
+    panchayat = _PanchayatBriefSerializer()
     waste_type = _WasteTypeBriefSerializer(source="waste_type_id")
     vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
     progress = serializers.SerializerMethodField()

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
@@ -19,7 +20,7 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
     total_weight = sum(
         (c.collected_weight_kg or Decimal("0")) for c in children
     )
-    panchayat = assignment.panchayat_id
+    panchayat = assignment.panchayat
     waste_type = assignment.waste_type_id
     return {
         "assignment_unique_id": assignment.unique_id,
@@ -45,9 +46,9 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
 def _serialize_event(event: BinCollectionEvent) -> dict:
     return {
         "unique_id": event.unique_id,
-        "event_at": event.event_at.isoformat(),
+        "event_at": event.created_at.isoformat(),
         "collected_weight_kg": str(event.collected_weight_kg),
-        "scanned_qr": event.scanned_qr,
+        "scanned_qr": getattr(event.bin_id, "bin_qr", None),
         "bin": {
             "unique_id": event.bin_id_id,
             "bin_name": getattr(event.bin_id, "bin_name", None),
@@ -56,8 +57,12 @@ def _serialize_event(event: BinCollectionEvent) -> dict:
             "unique_id": event.collection_point_id_id,
             "name": getattr(event.collection_point_id, "cp_name", None),
         },
-        "latitude": str(event.latitude) if event.latitude is not None else None,
-        "longitude": str(event.longitude) if event.longitude is not None else None,
+        "latitude": (
+            str(event.driver_latitude) if event.driver_latitude is not None else None
+        ),
+        "longitude": (
+            str(event.driver_longitude) if event.driver_longitude is not None else None
+        ),
         "notes": event.notes,
     }
 
@@ -79,9 +84,12 @@ class TripHistoryViewSet(viewsets.ViewSet):
         return (
             DailyTripAssignment.objects
             .filter(is_deleted=False)
-            .filter(staff_template_id__operator_id=operator)
+            .filter(
+                Q(staff_template_id__operator_id=operator)
+                | Q(staff_template_id__driver_id=operator)
+            )
             .select_related(
-                "panchayat_id",
+                "panchayat",
                 "waste_type_id",
                 "vehicle_id",
             )
@@ -134,7 +142,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
             BinCollectionEvent.objects
             .filter(trip_assignment_id=assignment, is_deleted=False)
             .select_related("bin_id", "collection_point_id")
-            .order_by("event_at")
+            .order_by("created_at")
         )
         summary["events"] = [_serialize_event(e) for e in events_qs]
 

@@ -56,6 +56,14 @@ class GovernmentStaffUserType(BaseMaster):
         ("govt_panchayat_inspector",  "Panchayat Inspector"),
         ("govt_panchayat_driver",     "Panchayat Driver"),
         ("govt_panchayat_operator",   "Panchayat Operator"),
+        # Field supervisors — responsible for driver/operator trips.
+        ("govt_state_supervisor",           "State Supervisor"),
+        ("govt_district_supervisor",        "District Supervisor"),
+        ("govt_municipality_supervisor",    "Municipality Supervisor"),
+        ("govt_corporation_supervisor",     "Corporation Supervisor"),
+        ("govt_town_panchayat_supervisor",  "Town Panchayat Supervisor"),
+        ("govt_panchayat_union_supervisor", "Panchayat Union Supervisor"),
+        ("govt_panchayat_supervisor",       "Panchayat Supervisor"),
     ]
 
     unique_id = models.CharField(

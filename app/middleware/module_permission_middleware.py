@@ -363,6 +363,18 @@ def _resolve_permissions_for_request(request):
     return permissions
 
 
+def _is_oversight_role(user):
+    """True when the user holds a supervisor/admin oversight role. Such roles may
+    READ operational data across modules even without an explicit per-screen
+    grant (the mobile role permissions are not individually seeded); writes still
+    require a permission."""
+    for attr in ("staffusertype_id", "governmentusertype_id", "contractorusertype_id"):
+        name = (getattr(getattr(user, attr, None), "name", "") or "").lower()
+        if "supervisor" in name or "admin" in name:
+            return True
+    return False
+
+
 # ============================================================
 # MIDDLEWARE
 # ============================================================
@@ -450,6 +462,16 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         action = HTTP_ACTION_MAP.get(request.method)
         if not action:
             return JsonResponse({"detail": "Invalid HTTP method"}, status=405)
+
+        # Oversight roles (supervisor / admin): read operational data anywhere,
+        # and fully manage complaints (their core duty — status / assign /
+        # escalate / resolve / comment) without an explicit per-screen grant.
+        # Which tickets they can touch is still bounded by the viewset's
+        # get_queryset scoping. Writes to OTHER modules fall through to the
+        # normal permission check below.
+        if _is_oversight_role(getattr(request, "user", None)):
+            if action == "view" or module == "complaint-ticket":
+                return None
 
         permissions = _resolve_permissions_for_request(request)
         permission_module = MODULE_PERMISSION_ALIASES.get(module, module)

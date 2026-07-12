@@ -28,6 +28,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DailyTripCollectionPointSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripCollectionPoint"
+    # Mobile trip-execution reads/actions used by the merged driver+operator app.
+    # Authenticated but not module-gated (same treatment as operator-mobile).
+    permission_exempt_actions = ["tracking", "tracking_overview", "optimize_route"]
 
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "daily-trip-collection-point"
@@ -53,6 +56,10 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             is_deleted=False,
         ).select_related("collection_point_id", "bin_id").order_by("sequence")
         for stop in plan_stops:
+            # Household/bulk plan stops carry no collection point; they belong to
+            # the household-collection table, not here (collection_point is NOT NULL).
+            if not stop.collection_point_id_id:
+                continue
             if stop.collection_point_id_id in existing_cp_ids:
                 continue
             DailyTripCollectionPoint.objects.create(

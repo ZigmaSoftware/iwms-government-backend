@@ -123,6 +123,14 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             if value:
                 qs = qs.filter(**{field: value})
 
+        # `mine=true` → only trips this supervisor is responsible for
+        # (TripPlan.supervisor_id == the requesting staff). Used by the
+        # supervisor mobile app to list the trips it owns.
+        mine = params.get("mine")
+        if mine and str(mine).lower() in ("1", "true", "yes"):
+            staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
+            qs = qs.filter(trip_plan_id__supervisor_id=staff_uid) if staff_uid else qs.none()
+
         return qs
 
     # ----------------------------------------------------------

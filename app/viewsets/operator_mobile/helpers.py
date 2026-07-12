@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from typing import Optional
 
@@ -47,16 +48,23 @@ def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssign
         .filter(trip_date=today, is_deleted=False)
         .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
         .select_related(
-            "panchayat_id",
+            "panchayat",
             "waste_type_id",
             "vehicle_id",
             "staff_template_id",
             "staff_template_id__driver_id",
             "staff_template_id__operator_id",
         )
+        .order_by("unique_id")
     )
 
-    assignment = base.filter(staff_template_id__operator_id=staff).first()
+    # Driver+operator app merge: the same mobile endpoints serve both roles, so
+    # resolve today's assignment where the staff is either the template's operator
+    # OR its driver.
+    assignment = base.filter(
+        Q(staff_template_id__operator_id=staff)
+        | Q(staff_template_id__driver_id=staff)
+    ).first()
     if assignment is None:
         # Extra-operator fallback: walk staff_templates and check JSON membership in Python
         # (avoids SQLite-incompatible JSON __contains lookups).
@@ -74,10 +82,28 @@ def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssign
     return assignment
 
 
+def _extract_bin_identifier(raw: str) -> str:
+    """The printed bin QR encodes JSON like {"id": "BIN-..."} (see
+    app/utils/bin_qr.py). Card taps in the app instead send the stored bin_qr
+    image path. Pull the bin unique_id out of whatever form we receive."""
+    raw = (raw or "").strip()
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+            return str(data.get("id") or data.get("unique_id") or "").strip()
+        except (ValueError, TypeError):
+            return raw
+    return raw
+
+
 def resolve_bin_from_qr(bin_qr: str) -> Bins:
+    identifier = _extract_bin_identifier(bin_qr)
     bin_obj = (
         Bins.objects
-        .filter(bin_qr=bin_qr, is_deleted=False)
+        .filter(is_deleted=False)
+        # Match the decoded unique_id (camera scan / raw id) OR the stored
+        # bin_qr image path (app card-tap sends the path from my-trip-today).
+        .filter(Q(unique_id=identifier) | Q(bin_qr=bin_qr))
         .select_related(
             "collection_point_id",
             "collection_point_id__state",
@@ -113,8 +139,8 @@ def validate_bin_against_assignment(
         )
 
     cp = bin_obj.collection_point_id
-    cp_panchayat_id = getattr(cp, "panchayat_id_id", None)
-    if not cp_panchayat_id or str(cp_panchayat_id) != str(assignment.panchayat_id_id):
+    cp_panchayat_id = getattr(cp, "panchayat_id", None)
+    if not cp_panchayat_id or str(cp_panchayat_id) != str(assignment.panchayat_id):
         raise OperatorFlowError(
             "WRONG_PANCHAYAT",
             "This bin is outside your assigned panchayat.",
@@ -168,7 +194,9 @@ def serialize_bin_brief(bin_obj: Bins) -> dict:
     return {
         "unique_id": bin_obj.unique_id,
         "bin_name": bin_obj.bin_name,
-        "bin_qr": bin_obj.bin_qr,
+        # bin_qr is an ImageField; serialize its stored path, not the file object
+        # (DRF's encoder would otherwise stream the PNG bytes and fail).
+        "bin_qr": bin_obj.bin_qr.name if bin_obj.bin_qr else None,
         "bin_capacity": bin_obj.bin_capacity,
         "waste_type": {
             "unique_id": bin_obj.wastetype_id_id,
@@ -202,7 +230,7 @@ def serialize_trip_cp_brief(trip_cp: DailyTripCollectionPoint) -> dict:
 
 
 def serialize_assignment_brief(assignment: DailyTripAssignment) -> dict:
-    panchayat = assignment.panchayat_id
+    panchayat = assignment.panchayat
     waste_type = assignment.waste_type_id
     vehicle = assignment.vehicle_id
     return {
