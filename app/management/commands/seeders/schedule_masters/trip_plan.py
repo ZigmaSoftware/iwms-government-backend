@@ -88,13 +88,17 @@ class TripPlanSeeder(BaseSeeder):
             vehicle = vehicles[idx % len(vehicles)]
 
             for collection_type in self.COLLECTION_TYPES:
+                # Natural key: (district, panchayat, collection_type). waste_type is
+                # an attribute that can be reassigned, so it belongs in defaults — if it
+                # were part of the lookup, changing a panchayat's waste type would create
+                # a new row instead of updating the existing one.
                 plan, created = TripPlan.objects.update_or_create(
                     district=district,
                     panchayat=panchayat,
-                    waste_type_id=primary_waste_type,
                     collection_type=collection_type,
                     is_deleted=False,
                     defaults={
+                        "waste_type_id": primary_waste_type,
                         "state": district.state_id,
                         "area_type": panchayat.area_type_id,
                         "staff_template_id": template,
