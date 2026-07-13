@@ -11,7 +11,10 @@ from app.serializers.schedule_masters.bin_collection_event_serializer import (
     BinCollectionEventSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_queryset_by_requester_scope
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_queryset_by_requester_scope,
+)
 from rest_framework import viewsets
 
 
@@ -30,6 +33,14 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "trip_assignment_id__trip_plan_id",
                 "trip_assignment_id__trip_plan_id__vehicle_id",
                 "trip_assignment_id__vehicle_id",
+                "trip_assignment_id__state",
+                "trip_assignment_id__district",
+                "trip_assignment_id__area_type",
+                "trip_assignment_id__corporation",
+                "trip_assignment_id__municipality",
+                "trip_assignment_id__town_panchayat",
+                "trip_assignment_id__panchayat_union",
+                "trip_assignment_id__panchayat",
                 "trip_assignment_id__staff_template_id",
                 "trip_assignment_id__staff_template_id__driver_id",
                 "trip_assignment_id__staff_template_id__operator_id",
@@ -70,6 +81,11 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if date_to:
             queryset = queryset.filter(collection_date__lte=date_to)
 
+        queryset = filter_flat_geo_queryset_by_params(
+            queryset,
+            params,
+            prefix="trip_assignment_id__",
+        )
         queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
@@ -156,10 +172,21 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not trip_cp:
             return
 
-        trip_cp.collected_weight_kg = event.collected_weight_kg or 0
-        trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
-        trip_cp.is_collected = True
-        trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
+        if event.status == BinCollectionEvent.STATUS_NOT_COLLECTED:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_MISSED
+        elif event.status == BinCollectionEvent.STATUS_COLLECT_LATER:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_PENDING
+        else:
+            trip_cp.collected_weight_kg = event.collected_weight_kg or 0
+            trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
+            trip_cp.is_collected = True
+            trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
         trip_cp.save(update_fields=[
             "collected_weight_kg",
             "collected_at",

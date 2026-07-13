@@ -12,6 +12,11 @@ from app.serializers.schedule_masters.staff_template_serializer import (
     StaffTemplateSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+)
+from app.utils.roles import is_admin_role, is_super_admin
 
 
 class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -37,12 +42,27 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if approval_status:
             qs = qs.filter(approval_status=approval_status)
 
+        qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
+        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+
         return qs.select_related(
             "driver_id",
+            "driver_id__designation_id",
+            "driver_id__corporation",
             "operator_id",
+            "operator_id__designation_id",
+            "operator_id__corporation",
             "created_by",
             "updated_by",
             "approved_by",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
         )
 
     def destroy(self, request, *args, **kwargs):
@@ -193,14 +213,12 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # ================= AUDIT =================
 
     def _resolve_performed_role(self, user):
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "") or ""
-        role = role.lower()
-
-        if role == "admin":
+        # Recognise admin/supervisor across all three role axes (company /
+        # contractor / government) rather than only ``staffusertype_id``, so a
+        # ``govt_corporation_admin`` is logged as ADMIN and a
+        # ``govt_corporation_supervisor`` as SUPERVISOR.
+        if is_super_admin(user) or is_admin_role(user):
             return StaffTemplateAuditLog.PerformedRole.ADMIN
-
-        if role == "supervisor":
-            return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 
         return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 

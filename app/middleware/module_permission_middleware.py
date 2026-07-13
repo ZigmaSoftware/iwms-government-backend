@@ -11,7 +11,11 @@ from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.district_leader_login import DistrictLeaderLogin
-from app.utils.permission_response import resolve_permission_payload
+from app.utils.hierarchy import local_body_scope_for_staff
+from app.utils.permission_response import (
+    resolve_intersected_permission_payload,
+    resolve_permission_payload,
+)
 
 
 # ============================================================
@@ -187,13 +191,62 @@ MODULE_PERMISSION_ALIASES = {
 }
 
 RESOURCE_PERMISSION_ALIASES = {
+    "Continent": ("continents",),
+    "Country": ("countries",),
+    "State": ("states",),
+    "District": ("districts",),
+    "AreaType": ("area-types", "areatype"),
+    "Corporation": ("corporations",),
+    "Municipality": ("municipalities",),
+    "TownPanchayat": ("town-panchayats",),
+    "PanchayatUnion": ("panchayat-unions",),
+    "Panchayat": ("panchayats", "panchayat"),
+    "Property": ("properties",),
+    "SubProperty": ("subproperties",),
     "Bin": ("bins",),
+    "WasteType": ("wastetypes",),
+    "MainScreenType": ("mainscreentype",),
+    "MainScreen": ("mainscreens",),
+    "UserScreen": ("userscreens",),
+    "UserScreenAction": ("userscreen-action",),
+    "UserType": ("user-type",),
+    "StaffUserType": ("staff-user-type",),
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
+    "StaffCreation": ("staffcreation",),
+    "StaffAccessConfiguration": ("staff-access-configuration",),
+    "CustomerCreation": ("customercreations",),
+    "FeedBack": ("feedbacks", "feedback"),
+    "ComplaintTicket": ("tickets",),
+    "ComplaintModule": ("modules",),
+    "ComplaintCategory": ("categories",),
+    "ComplaintSubcategory": ("subcategories",),
+    "ComplaintPriority": ("priorities",),
+    "ComplaintStatus": ("statuses",),
+    "ComplaintSource": ("sources",),
+    "ComplaintTeam": ("teams",),
+    "ComplaintSlaRule": ("sla-rules",),
+    "ComplaintFeedback": ("feedback",),
+    "VehicleTypeCreation": ("vehicle-type", "vehicle-types"),
+    "VehicleCreation": ("vehicle-creation", "vehicles"),
+    "Fuel": ("fuels",),
     "StaffTemplateCreation": ("StaffTemplate", "staff-templates"),
+    "AlternativeStaffTemplate": ("alternative-staff-templates",),
+    "CollectionPoint": ("collection-points", "collection-point"),
+    "TripPlan": ("trip-plans",),
+    "DailyTripAssignment": ("daily-trip-assignments",),
+    "DailyTripCollectionPoint": ("daily-trip-collection-points", "daily-trip-collection-point"),
+    "BinCollectionEvent": ("bin-collection-events", "bin-collection-event"),
+    "VehicleBreakdown": ("vehicle-breakdowns",),
+    "DailyTripLog": ("daily-trip-logs",),
+    "DailyWasteComparison": ("daily-waste-comparisons",),
+    "MonthlyWasteComparisonReport": ("MonthlyWasteComparison", "monthly-waste-comparison"),
+    "CommonAudit": ("common-audit",),
+    "LoginAudit": ("login-audit",),
     "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
     "companywisescreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
     "column-permissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "DashboardWidgetPermission": ("userscreenpermissions", "dashboard-widget-permissions"),
 }
 
 
@@ -339,6 +392,43 @@ def _resolve_permissions_for_request(request):
     payload_permissions = getattr(request, "jwt_payload", {}).get("permissions")
     if payload_permissions:
         return payload_permissions
+
+    staff_id = getattr(request.user, "staff_unique_id", None)
+    if staff_id:
+        local_body_scope = local_body_scope_for_staff(request.user)
+        if local_body_scope and local_body_scope.get("local_body_id"):
+            cache_key = (
+                "module-permissions:local-body:"
+                f"{staff_id}:"
+                f"{local_body_scope['local_body_type']}:"
+                f"{local_body_scope['local_body_id']}"
+            )
+            permissions = cache.get(cache_key)
+            if permissions is None:
+                permissions = resolve_intersected_permission_payload(
+                    staff_id=staff_id, **local_body_scope
+                )["permissions"]
+                cache.set(cache_key, permissions, 60)
+            return permissions
+        if local_body_scope and local_body_scope.get("state_unique_id"):
+            cache_key = (
+                "module-permissions:geo:"
+                f"{staff_id}:"
+                f"{local_body_scope.get('state_unique_id') or 'none'}:"
+                f"{local_body_scope.get('district_unique_id') or 'none'}:"
+                f"{local_body_scope.get('area_type_unique_id') or 'none'}"
+            )
+            permissions = cache.get(cache_key)
+            if permissions is None:
+                permissions = resolve_permission_payload(
+                    staff_id=staff_id,
+                    permission_owner_kind="staff",
+                    state_unique_id=local_body_scope.get("state_unique_id"),
+                    district_unique_id=local_body_scope.get("district_unique_id"),
+                    area_type_unique_id=local_body_scope.get("area_type_unique_id"),
+                )["permissions"]
+                cache.set(cache_key, permissions, 60)
+            return permissions
 
     filters = _permission_filters_for_user(request.user)
     if not filters:

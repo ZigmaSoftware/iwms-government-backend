@@ -10,8 +10,6 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
-from app.models.role_assigns.contractorUserType import ContractorUserType
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
 from app.models.screen_managements.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
 from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
@@ -54,85 +52,82 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         normalized = []
         for permission in payload.get("permissions", []):
             normalized.append({
-                "userTypeId": (
-                    payload.get("userTypeId")
-                    or payload.get("usertypeId")
-                    or payload.get("usertype_id")
-                ),
-                "staffUserTypeId": (
-                    payload.get("staffUserTypeId")
-                    or payload.get("staffusertype_id")
-                ),
-                "contractorUserTypeId": (
-                    payload.get("contractorUserTypeId")
-                    or payload.get("contractorusertype_id")
-                ),
-                "governmentUserTypeId": (
-                    payload.get("governmentUserTypeId")
-                    or payload.get("governmentusertype_id")
-                ),
+                "stateId": payload.get("stateId") or payload.get("state_id"),
+                "districtId": payload.get("districtId") or payload.get("district_id"),
+                "areaTypeId": payload.get("areaTypeId") or payload.get("area_type_id"),
+                "localBodyType": payload.get("localBodyType") or payload.get("local_body_type"),
+                "localBodyId": payload.get("localBodyId") or payload.get("local_body_id"),
+                "permissionType": payload.get("permissionType") or payload.get("permission_type"),
                 "mainScreenId": permission.get("mainScreenId") or permission.get("mainscreen_id"),
                 "userScreens": permission.get("userScreens") or permission.get("screens") or [],
                 "description": payload.get("description", ""),
             })
         return normalized
 
-    def _role_from_request(self, request, *, default_staffusertype_id=None, default_contractorusertype_id=None, default_governmentusertype_id=None):
-        permission_for = (request.query_params.get("permission_for") or request.data.get("permission_for") or "").lower()
-        contractorusertype_id = (
-            default_contractorusertype_id
-            or request.query_params.get("contractorusertype_id")
-            or request.query_params.get("contractorUserTypeId")
-            or request.data.get("contractorusertype_id")
-            or request.data.get("contractorUserTypeId")
+    def _local_body_from_request(self, request, *, default_local_body_type=None, default_local_body_id=None):
+        local_body_type = (
+            default_local_body_type
+            or request.query_params.get("local_body_type")
+            or request.query_params.get("localBodyType")
+            or request.data.get("local_body_type")
+            or request.data.get("localBodyType")
         )
-        staffusertype_id = (
-            default_staffusertype_id
-            or request.query_params.get("staffusertype_id")
-            or request.query_params.get("staffUserTypeId")
-            or request.data.get("staffusertype_id")
-            or request.data.get("staffUserTypeId")
+        local_body_id = (
+            default_local_body_id
+            or request.query_params.get("local_body_id")
+            or request.query_params.get("localBodyId")
+            or request.data.get("local_body_id")
+            or request.data.get("localBodyId")
         )
-        governmentusertype_id = (
-            default_governmentusertype_id
-            or request.query_params.get("governmentusertype_id")
-            or request.query_params.get("governmentUserTypeId")
-            or request.data.get("governmentusertype_id")
-            or request.data.get("governmentUserTypeId")
+        state_id = (
+            request.query_params.get("state_id")
+            or request.query_params.get("stateId")
+            or request.data.get("state_id")
+            or request.data.get("stateId")
         )
+        district_id = (
+            request.query_params.get("district_id")
+            or request.query_params.get("districtId")
+            or request.data.get("district_id")
+            or request.data.get("districtId")
+        )
+        area_type_id = (
+            request.query_params.get("area_type_id")
+            or request.query_params.get("areaTypeId")
+            or request.data.get("area_type_id")
+            or request.data.get("areaTypeId")
+        )
+        permission_type = (
+            request.query_params.get("permission_type")
+            or request.query_params.get("permissionType")
+            or request.data.get("permission_type")
+            or request.data.get("permissionType")
+        )
+        return {
+            "local_body_type": local_body_type,
+            "local_body_id": local_body_id,
+            "state_id": state_id,
+            "district_id": district_id,
+            "area_type_id": area_type_id,
+            "permission_type": permission_type,
+        }
 
-        if not contractorusertype_id and staffusertype_id:
-            if str(staffusertype_id).startswith("CNTUSRTYPE-") or ContractorUserType.objects.filter(
-                unique_id=staffusertype_id,
-                is_deleted=False,
-            ).exists():
-                contractorusertype_id = staffusertype_id
-                staffusertype_id = None
-        if not governmentusertype_id and staffusertype_id:
-            if str(staffusertype_id).startswith("GOVTUSRTYPE-") or GovernmentStaffUserType.objects.filter(
-                unique_id=staffusertype_id,
-                is_deleted=False,
-            ).exists():
-                governmentusertype_id = staffusertype_id
-                staffusertype_id = None
-
-        if permission_for == "government" or governmentusertype_id:
-            return "government", governmentusertype_id
-        if permission_for == "contractor" or contractorusertype_id:
-            return "contractor", contractorusertype_id
-        return "staff", staffusertype_id
-
-    def _role_filter_kwargs(self, permission_for, role_id):
-        if permission_for == "government":
-            return {"governmentusertype_id_id": role_id}
-        if permission_for == "contractor":
-            return {"contractorusertype_id_id": role_id}
-        return {"staffusertype_id_id": role_id}
-
-    def _role_response_key(self, permission_for):
-        if permission_for == "government":
-            return "governmentusertype_id"
-        return "contractorusertype_id" if permission_for == "contractor" else "staffusertype_id"
+    def _local_body_filter_kwargs(self, scope, *, permission_owner_kind="super_admin"):
+        filters = {
+            "local_body_type": scope["local_body_type"],
+            "local_body_id": scope["local_body_id"],
+        }
+        if scope.get("state_id"):
+            filters["state_id_id"] = scope["state_id"]
+        if scope.get("district_id"):
+            filters["district_id_id"] = scope["district_id"]
+        if scope.get("area_type_id"):
+            filters["area_type_id_id"] = scope["area_type_id"]
+        if scope.get("permission_type"):
+            filters["permission_type"] = scope["permission_type"]
+        if permission_owner_kind:
+            filters["permission_owner_kind"] = permission_owner_kind
+        return filters
 
     def _sync_nested_permissions(self, request, update_only=False):
         payloads = self._normalize_permission_payloads(request.data)
@@ -170,36 +165,27 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def _sync_permissions(
         self,
         request,
-        staffusertype_id=None,
         update_only=False,
-        contractorusertype_id=None,
-        governmentusertype_id=None,
+        local_body_type=None,
+        local_body_id=None,
     ):
-        permission_for, role_id = self._role_from_request(
+        scope = self._local_body_from_request(
             request,
-            default_staffusertype_id=staffusertype_id,
-            default_contractorusertype_id=contractorusertype_id,
-            default_governmentusertype_id=governmentusertype_id,
+            default_local_body_type=local_body_type,
+            default_local_body_id=local_body_id,
         )
-        if not role_id:
+        if not scope["local_body_type"] or not scope["local_body_id"]:
             return Response(
-                {"error": f"{self._role_response_key(permission_for)} is required"},
+                {"error": "local_body_type and local_body_id are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         payload = request.data.copy()
-        if permission_for == "contractor":
-            payload["contractorusertype_id"] = role_id
-            payload["staffusertype_id"] = None
-            payload["governmentusertype_id"] = None
-        elif permission_for == "government":
-            payload["governmentusertype_id"] = role_id
-            payload["staffusertype_id"] = None
-            payload["contractorusertype_id"] = None
-        else:
-            payload["staffusertype_id"] = role_id
-            payload["contractorusertype_id"] = None
-            payload["governmentusertype_id"] = None
+        payload["localBodyType"] = scope["local_body_type"]
+        payload["localBodyId"] = scope["local_body_id"]
+        payload["stateId"] = scope.get("state_id")
+        payload["districtId"] = scope.get("district_id")
+        payload["areaTypeId"] = scope.get("area_type_id")
 
         with transaction.atomic():
             serializer = UserScreenPermissionMultiScreenSerializer(
@@ -239,9 +225,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         request = getattr(self, "request", None)
         if request is not None and getattr(self, "action", None) == "list":
-            permission_for, role_id = self._role_from_request(request)
-            if role_id:
-                queryset = queryset.filter(**self._role_filter_kwargs(permission_for, role_id))
+            scope = self._local_body_from_request(request)
+            if scope["local_body_type"] and scope["local_body_id"]:
+                # Super Admin's list shows the Local Body's own baseline
+                # grants only — per-staff rows (permission_owner_kind="staff",
+                # written by Staff Access Configuration) live in the same
+                # table but are a separate, independently-managed row set.
+                queryset = queryset.filter(**self._local_body_filter_kwargs(scope))
 
         return queryset
 
@@ -271,45 +261,31 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(instance).data)
 
     # ---------------------------------------------------------
-    # Bulk Sync / Update
+    # Bulk Sync / Update (Local Body ownership)
     # ---------------------------------------------------------
-    @action(detail=False, methods=["post"], url_path=r"bulk-sync-multi/(?P<staffusertype_id>[^/.]+)")
-    def bulk_sync_multi(self, request, staffusertype_id):
-        return self._sync_permissions(request, staffusertype_id, update_only=False)
-
-    @action(detail=False, methods=["post"], url_path=r"bulk-sync-multi-contractor/(?P<contractorusertype_id>[^/.]+)")
-    def bulk_sync_multi_contractor(self, request, contractorusertype_id):
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"bulk-sync-multi-localbody/(?P<local_body_type>[^/]+)/(?P<local_body_id>[^/.]+)",
+    )
+    def bulk_sync_multi_localbody(self, request, local_body_type, local_body_id):
         return self._sync_permissions(
             request,
-            contractorusertype_id=contractorusertype_id,
+            local_body_type=local_body_type,
+            local_body_id=local_body_id,
             update_only=False,
         )
 
-    @action(detail=False, methods=["post"], url_path=r"bulk-sync-multi-government/(?P<governmentusertype_id>[^/.]+)")
-    def bulk_sync_multi_government(self, request, governmentusertype_id):
+    @action(
+        detail=False,
+        methods=["post", "put"],
+        url_path=r"update-by-localbody/(?P<local_body_type>[^/]+)/(?P<local_body_id>[^/.]+)",
+    )
+    def update_by_localbody(self, request, local_body_type, local_body_id):
         return self._sync_permissions(
             request,
-            governmentusertype_id=governmentusertype_id,
-            update_only=False,
-        )
-
-    @action(detail=False, methods=["post", "put"], url_path=r"update-by-staffusertype/(?P<staffusertype_id>[^/.]+)")
-    def update_by_staffusertype(self, request, staffusertype_id):
-        return self._sync_permissions(request, staffusertype_id, update_only=False)
-
-    @action(detail=False, methods=["post", "put"], url_path=r"update-by-contractorusertype/(?P<contractorusertype_id>[^/.]+)")
-    def update_by_contractorusertype(self, request, contractorusertype_id):
-        return self._sync_permissions(
-            request,
-            contractorusertype_id=contractorusertype_id,
-            update_only=True,
-        )
-
-    @action(detail=False, methods=["post", "put"], url_path=r"update-by-governmentusertype/(?P<governmentusertype_id>[^/.]+)")
-    def update_by_governmentusertype(self, request, governmentusertype_id):
-        return self._sync_permissions(
-            request,
-            governmentusertype_id=governmentusertype_id,
+            local_body_type=local_body_type,
+            local_body_id=local_body_id,
             update_only=True,
         )
 
@@ -325,57 +301,60 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return self._by_user_format(request)
 
     def _by_user_format(self, request):
-        permission_for, role_id = self._role_from_request(request)
+        scope = self._local_body_from_request(request)
         mainscreen_id = request.query_params.get("mainscreen_id")
 
-        if not role_id or not mainscreen_id:
+        if not scope["local_body_type"] or not scope["local_body_id"] or not mainscreen_id:
             return Response(
-                {"error": f"{self._role_response_key(permission_for)} and mainscreen_id required"},
+                {"error": "local_body_type, local_body_id and mainscreen_id required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # 🔥 CACHE KEY
-        cache_key = f"perm_global_{permission_for}_{role_id}_{mainscreen_id}"
+        permission_type_key = scope.get("permission_type") or "screen"
+        cache_key = (
+            f"perm_global_localbody_{scope['local_body_type']}_{scope['local_body_id']}"
+            f"_{mainscreen_id}_{permission_type_key}"
+        )
         cached = cache.get(cache_key)
         if cached:
             return Response(cached)
 
-        role_filters = self._role_filter_kwargs(permission_for, role_id)
+        local_body_filters = self._local_body_filter_kwargs(scope)
+        # CompanyUserScreenColumnPermission has no permission_type column — it
+        # IS the field-permission data, so this filter only applies to the
+        # UserScreenPermission (screen/action) queryset.
+        column_local_body_filters = {k: v for k, v in local_body_filters.items() if k != "permission_type"}
 
         # 🔥 OPTIMIZED QUERY (NO MODEL LOAD)
         perms = UserScreenPermission.objects.filter(
             mainscreen_id_id=mainscreen_id,
             is_deleted=False,
-            **role_filters,
+            **local_body_filters,
         ).values(
             "unique_id",
             "userscreen_id_id",
             "userscreenaction_id_id",
-            "usertype_id_id",
             "description",
         )
 
         column_perms = CompanyUserScreenColumnPermission.objects.filter(
             userscreen_id__mainscreen_id_id=mainscreen_id,
             is_deleted=False,
-            **role_filters,
+            **column_local_body_filters,
         ).values(
             "userscreen_id_id",
             "column_id_id",
-            "can_view",
+            "field_permission_state",
         )
 
         # 🔥 FAST MAP BUILD
         screen_map = defaultdict(lambda: {"actions": [], "columns": []})
         column_map = defaultdict(list)
-        usertype_id = None
         description = ""
 
         for p in perms:
             screen_map[p["userscreen_id_id"]]["actions"].append(p["userscreenaction_id_id"])
-
-            if not usertype_id:
-                usertype_id = p["usertype_id_id"]
 
             if not description:
                 description = p["description"]
@@ -384,7 +363,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         for cp in column_perms:
             column_map[cp["userscreen_id_id"]].append({
                 "column_id": cp["column_id_id"],
-                "can_view": cp["can_view"],
+                "can_view": cp["field_permission_state"] != CompanyUserScreenColumnPermission.HIDDEN,
             })
 
         # 🔥 LIGHTWEIGHT QUERY
@@ -414,9 +393,8 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ]
 
         response_data = {
-            self._role_response_key(permission_for): role_id,
-            "permission_for": permission_for,
-            "usertype_id": usertype_id,
+            "local_body_type": scope["local_body_type"],
+            "local_body_id": scope["local_body_id"],
             "mainscreen_id": mainscreen_id,
             "screens": screens,
             "description": description,
@@ -440,50 +418,43 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def _all_screens_by_user(self, request):
         """
-        Get ALL screens assigned to a staff user type across all mainscreens.
+        Get ALL screens assigned to a Local Body across all mainscreens.
         Grouped by mainscreen for better visibility.
-        
+
         Query params:
-        - staffusertype_id: required for staff
-        - contractorusertype_id: required for contractor
-        - governmentusertype_id: required for government
-        - permission_for: staff|contractor (optional; inferred from contractorusertype_id)
+        - local_body_type / local_body_id: required
+        - state_id / district_id / area_type_id: optional, narrows scope further
         """
-        permission_for, role_id = self._role_from_request(request)
-        if not role_id:
+        scope = self._local_body_from_request(request)
+        if not scope["local_body_type"] or not scope["local_body_id"]:
             return Response(
-                {"error": f"{self._role_response_key(permission_for)} is required"},
+                {"error": "local_body_type and local_body_id are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        role_filters = self._role_filter_kwargs(permission_for, role_id)
+        local_body_filters = self._local_body_filter_kwargs(scope)
 
-        # Get ALL permissions for this role type (no mainscreen filter)
+        # Get ALL permissions for this Local Body (no mainscreen filter)
         qs = UserScreenPermission.objects.filter(
             is_deleted=False,
-            **role_filters,
-        ).select_related("mainscreen_id", "usertype_id")
+            **local_body_filters,
+        ).select_related("mainscreen_id")
 
         if not qs.exists():
             return Response(
                 {
-                    self._role_response_key(permission_for): role_id,
-                    "permission_for": permission_for,
+                    "local_body_type": scope["local_body_type"],
+                    "local_body_id": scope["local_body_id"],
                     "mainscreens": [],
                     "total_screens": 0,
-                    "usertype_id": None,
                 },
                 status=status.HTTP_200_OK,
             )
 
         # Group by mainscreen
         mainscreen_map = {}
-        usertype_id = None
 
         for perm in qs:
-            if not usertype_id and perm.usertype_id_id:
-                usertype_id = perm.usertype_id_id
-
             mainscreen_id = perm.mainscreen_id_id
             mainscreen_name = perm.mainscreen_id.mainscreen_name if perm.mainscreen_id else "Unknown"
 
@@ -516,9 +487,8 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         return Response(
             {
-                self._role_response_key(permission_for): role_id,
-                "permission_for": permission_for,
-                "usertype_id": usertype_id,
+                "local_body_type": scope["local_body_type"],
+                "local_body_id": scope["local_body_id"],
                 "mainscreens": mainscreens,
                 "total_screens": total_screens,
             },
@@ -526,21 +496,17 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
     # ---------------------------------------------------------
-    # Delete By Staff + Mainscreen (safe delete)
+    # Delete By Local Body + Mainscreen (safe delete)
     # ---------------------------------------------------------
-    @action(detail=False, methods=["delete"], url_path=r"delete-by-staffusertype/(?P<staffusertype_id>[^/.]+)/?")
-    def delete_by_staffusertype(self, request, staffusertype_id):
-        return self._delete_by_usertype(request, staffusertype_id=staffusertype_id)
+    @action(
+        detail=False,
+        methods=["delete"],
+        url_path=r"delete-by-localbody/(?P<local_body_type>[^/]+)/(?P<local_body_id>[^/.]+)/?",
+    )
+    def delete_by_localbody(self, request, local_body_type, local_body_id):
+        return self._delete_by_local_body(request, local_body_type=local_body_type, local_body_id=local_body_id)
 
-    @action(detail=False, methods=["delete"], url_path=r"delete-by-contractorusertype/(?P<contractorusertype_id>[^/.]+)/?")
-    def delete_by_contractorusertype(self, request, contractorusertype_id):
-        return self._delete_by_usertype(request, contractorusertype_id=contractorusertype_id)
-
-    @action(detail=False, methods=["delete"], url_path=r"delete-by-governmentusertype/(?P<governmentusertype_id>[^/.]+)/?")
-    def delete_by_governmentusertype(self, request, governmentusertype_id):
-        return self._delete_by_usertype(request, governmentusertype_id=governmentusertype_id)
-
-    def _delete_by_usertype(self, request, staffusertype_id=None, contractorusertype_id=None, governmentusertype_id=None):
+    def _delete_by_local_body(self, request, local_body_type=None, local_body_id=None):
         mainscreen_id = request.query_params.get("mainscreen_id")
         if not mainscreen_id:
             return Response(
@@ -548,18 +514,18 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        permission_for, role_id = self._role_from_request(
+        scope = self._local_body_from_request(
             request,
-            default_staffusertype_id=staffusertype_id,
-            default_contractorusertype_id=contractorusertype_id,
-            default_governmentusertype_id=governmentusertype_id,
+            default_local_body_type=local_body_type,
+            default_local_body_id=local_body_id,
         )
-        role_filters = self._role_filter_kwargs(permission_for, role_id)
+        local_body_filters = self._local_body_filter_kwargs(scope)
+        column_local_body_filters = {k: v for k, v in local_body_filters.items() if k != "permission_type"}
 
         qs = UserScreenPermission.objects.filter(
             mainscreen_id_id=mainscreen_id,
             is_deleted=False,
-            **role_filters,
+            **local_body_filters,
         )
 
         deleted_count = qs.count()
@@ -568,15 +534,15 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             CompanyUserScreenColumnPermission.objects.filter(
                 userscreen_id__mainscreen_id_id=mainscreen_id,
                 is_deleted=False,
-                **role_filters,
+                **column_local_body_filters,
             ).update(is_deleted=True, is_active=False)
 
         return Response(
             {
                 "message": "Permissions deleted successfully",
                 "deleted_count": deleted_count,
-                self._role_response_key(permission_for): role_id,
-                "permission_for": permission_for,
+                "local_body_type": scope["local_body_type"],
+                "local_body_id": scope["local_body_id"],
                 "mainscreen_id": mainscreen_id,
             },
             status=status.HTTP_200_OK,
