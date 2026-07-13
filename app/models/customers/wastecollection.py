@@ -2,7 +2,16 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.utils.comfun import generate_unique_id
+from app.utils.hierarchy import copy_flat_geo
 
 
 
@@ -37,6 +46,42 @@ class WasteCollection(BaseMaster):
         blank=True,
     )
 
+    # Geography (flat FKs, mirroring CustomerCreation). Auto-inherited from the
+    # linked household on save when left blank, but selectable/editable so a
+    # collection can be scoped independently.
+    state = models.ForeignKey(
+        State, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="waste_collections", to_field="unique_id", db_column="panchayat_id",
+    )
+
     #  Waste details
     wet_waste = models.FloatField(default=0.0)
     dry_waste = models.FloatField(default=0.0)
@@ -60,12 +105,16 @@ class WasteCollection(BaseMaster):
         return f"{customer_name} - {panchayat or district}"
 
     def save(self, *args, **kwargs):
-        """Auto-calculate total before save."""
+        """Auto-calculate total and inherit geography from the household."""
         self.total_quantity = (
             (self.wet_waste or 0)
             + (self.dry_waste or 0)
             + (self.mixed_waste or 0)
         )
+        # If no geography was supplied, copy the household's flat geo FKs so the
+        # record is always scoped even when created via seeders/admin/API.
+        if self.customer_id and not self.district_id:
+            copy_flat_geo(self, self.customer, only_empty=True)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

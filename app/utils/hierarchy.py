@@ -206,6 +206,112 @@ FLAT_GEO_FIELDS = (
     "panchayat",
 )
 
+FLAT_GEO_QUERY_FIELDS = tuple(f"{field}_id" for field in FLAT_GEO_FIELDS)
+
+LOCAL_BODY_FIELDS = (
+    "corporation",
+    "municipality",
+    "town_panchayat",
+    "panchayat_union",
+    "panchayat",
+)
+
+
+def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
+    """
+    Apply explicit state/district/area_type/local-body query params to a
+    queryset that has flat geo FK columns. `prefix` supports related models,
+    e.g. prefix="trip_assignment_id__" for VehicleBreakdown.
+    """
+    for field in FLAT_GEO_QUERY_FIELDS:
+        value = params.get(field)
+        if value:
+            queryset = queryset.filter(**{f"{prefix}{field}": value})
+    return queryset
+
+
+def _object_pk(value):
+    return getattr(value, "pk", value)
+
+
+def _same_fk(left, right):
+    return _object_pk(left) == _object_pk(right)
+
+
+def _resolve_geo_value(attrs, instance, field):
+    if field in attrs:
+        return attrs.get(field)
+    return getattr(instance, field, None) if instance else None
+
+
+def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False):
+    """
+    Normalize serializer attrs carrying flat geo FKs. If a corporation/
+    municipality/town_panchayat/panchayat_union/panchayat is selected, copy
+    its state, district, and area_type onto the attrs and reject contradictory
+    parent selections. Returns an error dict; an empty dict means attrs were
+    normalized successfully.
+    """
+    selected_local_bodies = [
+        field for field in LOCAL_BODY_FIELDS
+        if _resolve_geo_value(attrs, instance, field)
+    ]
+
+    if len(selected_local_bodies) > 1:
+        return {
+            "non_field_errors": (
+                "Select only one local body: corporation, municipality, "
+                "town_panchayat, panchayat_union, or panchayat."
+            )
+        }
+
+    local_body = (
+        _resolve_geo_value(attrs, instance, selected_local_bodies[0])
+        if selected_local_bodies
+        else None
+    )
+
+    if local_body:
+        for parent in ("state", "district", "area_type"):
+            parent_obj = getattr(local_body, f"{parent}_id", None)
+            if not parent_obj:
+                continue
+
+            current = attrs.get(parent)
+            if parent in attrs and current and not _same_fk(current, parent_obj):
+                return {
+                    f"{parent}_id": (
+                        f"Selected {parent.replace('_', ' ')} does not match "
+                        "the selected local body."
+                    )
+                }
+            attrs[parent] = parent_obj
+
+    district = _resolve_geo_value(attrs, instance, "district")
+    area_type = _resolve_geo_value(attrs, instance, "area_type")
+    state = _resolve_geo_value(attrs, instance, "state")
+
+    if area_type:
+        if "district" in attrs and district and not _same_fk(district, getattr(area_type, "district_id", None)):
+            return {"district_id": "Selected district does not match the selected area type."}
+        if "state" in attrs and state and not _same_fk(state, getattr(area_type, "state_id", None)):
+            return {"state_id": "Selected state does not match the selected area type."}
+        if "district" not in attrs:
+            attrs["district"] = getattr(area_type, "district_id", None)
+        if "state" not in attrs:
+            attrs["state"] = getattr(area_type, "state_id", None)
+    elif district:
+        if "state" in attrs and state and not _same_fk(state, getattr(district, "state_id", None)):
+            return {"state_id": "Selected state does not match the selected district."}
+        if "state" not in attrs:
+            attrs["state"] = getattr(district, "state_id", None)
+
+    has_geo = any(_resolve_geo_value(attrs, instance, field) for field in FLAT_GEO_FIELDS)
+    if require_geo and not has_geo:
+        return {"district_id": "A staff template must be assigned to a geographic hierarchy."}
+
+    return {}
+
 
 def copy_flat_geo(target, source, only_empty=False):
     """Copy state/district/area_type/.../panchayat FKs from `source` onto

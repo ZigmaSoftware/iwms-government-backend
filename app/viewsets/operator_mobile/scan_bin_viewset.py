@@ -7,6 +7,9 @@ from rest_framework.response import Response
 
 from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.schedule_masters.daily_trip_collection_point import (
+    DailyTripCollectionPoint,
+)
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.permissions.operator_permission import IsOperatorRole
 from app.serializers.operator_mobile.scan_serializers import (
@@ -44,9 +47,15 @@ class ScanBinViewSet(viewsets.ViewSet):
                 status=exc.http_status,
             )
 
-        weight = payload["weight_kg"]
+        action = payload["action"]
+        weight = payload.get("weight_kg")
         vehicle = ctx.assignment.vehicle_id
-        if vehicle and vehicle.capacity and Decimal(weight) > Decimal(vehicle.capacity):
+        if (
+            action == ScanBinRequestSerializer.ACTION_COLLECT
+            and vehicle
+            and vehicle.capacity
+            and Decimal(weight) > Decimal(vehicle.capacity)
+        ):
             return Response(
                 {
                     "code": "WEIGHT_EXCEEDS_CAPACITY",
@@ -62,25 +71,40 @@ class ScanBinViewSet(viewsets.ViewSet):
             with transaction.atomic():
                 self._ensure_assignment_in_progress(ctx.assignment)
 
-                ctx.trip_cp.mark_collected(
-                    weight_kg=weight,
-                    collected_by=operator,
-                )
+                if action == ScanBinRequestSerializer.ACTION_COLLECT:
+                    ctx.trip_cp.mark_collected(
+                        weight_kg=weight,
+                        collected_by=operator,
+                    )
+                    event_type = BinCollectionEvent.EVENT_COLLECTED
+                    event_weight = weight
+                    status_reason = None
+                else:
+                    if action == ScanBinRequestSerializer.ACTION_COLLECT_LATER:
+                        cp_status = DailyTripCollectionPoint.STATUS_SKIPPED
+                        event_type = BinCollectionEvent.EVENT_COLLECT_LATER
+                    else:
+                        cp_status = DailyTripCollectionPoint.STATUS_MISSED
+                        event_type = BinCollectionEvent.EVENT_NOT_AVAILABLE
 
-                event = BinCollectionEvent.objects.create(
-                    trip_assignment_id=ctx.assignment,
-                    trip_collection_point_id=ctx.trip_cp,
-                    collection_point_id=ctx.bin.collection_point_id,
-                    bin_id=ctx.bin,
-                    # Hierarchy visibility: stamp the audit row with the
-                    # collection point's location node so scope filtering works.
-                    location_node=node_for_flat_geo(ctx.bin.collection_point_id),
-                    waste_type_id=ctx.assignment.waste_type_id,
-                    vehicle_id=ctx.assignment.vehicle_id,
-                    collected_weight_kg=weight,
-                    driver_latitude=payload.get("latitude"),
-                    driver_longitude=payload.get("longitude"),
+                    status_reason = payload["status_reason"]
+                    ctx.trip_cp.mark_status(
+                        status=cp_status,
+                        reason=status_reason,
+                        latitude=payload.get("latitude"),
+                        longitude=payload.get("longitude"),
+                    )
+                    event_weight = Decimal("0.00")
+
+                event = self._create_event(
+                    ctx=ctx,
+                    action=action,
+                    event_type=event_type,
+                    weight=event_weight,
+                    latitude=payload.get("latitude"),
+                    longitude=payload.get("longitude"),
                     notes=payload.get("notes"),
+                    status_reason=status_reason,
                 )
 
                 ctx.assignment.refresh_from_db()
@@ -97,7 +121,7 @@ class ScanBinViewSet(viewsets.ViewSet):
 
         return Response(
             {
-                "bin": serialize_bin_brief(ctx.bin),
+                "bin": serialize_bin_brief(ctx.bin, request=request),
                 "collection_point": serialize_cp_brief(ctx.bin.collection_point_id),
                 "trip_collection_point": serialize_trip_cp_brief(ctx.trip_cp),
                 "assignment": serialize_assignment_brief(ctx.assignment),
@@ -105,10 +129,46 @@ class ScanBinViewSet(viewsets.ViewSet):
                 "event": {
                     "unique_id": event.unique_id,
                     "event_at": event.created_at.isoformat(),
+                    "event_type": event.event_type,
                     "collected_weight_kg": str(event.collected_weight_kg),
+                    "status_reason": event.status_reason,
                 },
             },
             status=status.HTTP_201_CREATED,
+        )
+
+    def _create_event(
+        self,
+        *,
+        ctx,
+        action,
+        event_type,
+        weight,
+        latitude,
+        longitude,
+        notes,
+        status_reason,
+    ):
+        event_notes = notes
+        if action != ScanBinRequestSerializer.ACTION_COLLECT and not event_notes:
+            event_notes = status_reason
+
+        return BinCollectionEvent.objects.create(
+            trip_assignment_id=ctx.assignment,
+            trip_collection_point_id=ctx.trip_cp,
+            collection_point_id=ctx.bin.collection_point_id,
+            bin_id=ctx.bin,
+            # Hierarchy visibility: stamp the audit row with the
+            # collection point's location node so scope filtering works.
+            location_node=node_for_flat_geo(ctx.bin.collection_point_id),
+            waste_type_id=ctx.assignment.waste_type_id,
+            vehicle_id=ctx.assignment.vehicle_id,
+            event_type=event_type,
+            status_reason=status_reason,
+            collected_weight_kg=weight,
+            driver_latitude=latitude,
+            driver_longitude=longitude,
+            notes=event_notes,
         )
 
     def _ensure_assignment_in_progress(self, assignment: DailyTripAssignment):
@@ -130,18 +190,29 @@ class ScanBinViewSet(viewsets.ViewSet):
         )
 
         existing = DailyTripLog.objects.filter(trip_assignment_id=assignment).first()
+        log_status = (
+            DailyTripLog.LOG_STATUS_SUBMITTED
+            if total_weight > 0
+            else DailyTripLog.LOG_STATUS_DRAFT
+        )
+        remarks = (
+            "Auto-generated from operator-mobile completion."
+            if total_weight > 0
+            else "Auto-generated from operator-mobile completion; no collected bin weight."
+        )
         if existing:
             # A verified log is read-only; don't fail the scan trying to update it.
             if existing.log_status == DailyTripLog.LOG_STATUS_VERIFIED:
                 return
             existing.collected_weight_kg = total_weight
-            existing.log_status = DailyTripLog.LOG_STATUS_SUBMITTED
+            existing.log_status = log_status
+            existing.remarks = existing.remarks or remarks
             existing.save()
             return
 
         DailyTripLog.objects.create(
             trip_assignment_id=assignment,
             collected_weight_kg=total_weight,
-            log_status=DailyTripLog.LOG_STATUS_SUBMITTED,
-            remarks="Auto-generated from operator-mobile completion.",
+            log_status=log_status,
+            remarks=remarks,
         )

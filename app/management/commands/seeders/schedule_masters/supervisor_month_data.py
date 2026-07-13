@@ -102,7 +102,11 @@ class SupervisorMonthDataSeeder(BaseSeeder):
             )
             scheduled_time = plan.scheduled_time or time(7, 0)
 
-            for offset in range(self.DAYS):
+            # Seed HISTORY only (yesterday back ~30 days). Today is deliberately
+            # skipped: today's assignment is the driver's live demo trip, and
+            # attaching a Submitted log here would mark it Completed and clobber
+            # the fresh Scheduled trip the DriverUserSeeder sets up.
+            for offset in range(1, self.DAYS + 1):
                 trip_date = today - timedelta(days=offset)
 
                 assignment, was_created = DailyTripAssignment.objects.get_or_create(

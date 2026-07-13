@@ -6,6 +6,9 @@ from rest_framework.response import Response
 
 from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.schedule_masters.daily_trip_collection_point import (
+    DailyTripCollectionPoint,
+)
 from app.permissions.operator_permission import IsOperatorRole
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
@@ -16,7 +19,17 @@ from app.viewsets.operator_mobile.helpers import (
 def _serialize_summary(assignment: DailyTripAssignment) -> dict:
     children = list(assignment.trip_collection_points.filter(is_deleted=False))
     total = len(children)
-    collected = sum(1 for c in children if c.is_collected)
+    collected = sum(
+        1 for c in children
+        if c.status == DailyTripCollectionPoint.STATUS_COLLECTED
+    )
+    resolved = sum(
+        1 for c in children
+        if c.status in {
+            DailyTripCollectionPoint.STATUS_COLLECTED,
+            DailyTripCollectionPoint.STATUS_MISSED,
+        }
+    )
     total_weight = sum(
         (c.collected_weight_kg or Decimal("0")) for c in children
     )
@@ -37,21 +50,37 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
         "progress": {
             "collected": collected,
             "total": total,
-            "completed": total > 0 and collected == total,
+            "resolved": resolved,
+            "completed": total > 0 and resolved == total,
         },
         "total_weight_kg": str(total_weight),
     }
 
 
-def _serialize_event(event: BinCollectionEvent) -> dict:
+def _bin_qr_image_url(bin_obj, request=None):
+    qr = getattr(bin_obj, "bin_qr", None)
+    try:
+        url = qr.url if qr else None
+    except (ValueError, AttributeError):
+        url = None
+    if not url:
+        return None
+    return request.build_absolute_uri(url) if request is not None else url
+
+
+def _serialize_event(event: BinCollectionEvent, request=None) -> dict:
     return {
         "unique_id": event.unique_id,
         "event_at": event.created_at.isoformat(),
+        "event_type": event.event_type,
         "collected_weight_kg": str(event.collected_weight_kg),
-        "scanned_qr": getattr(event.bin_id, "bin_qr", None),
+        "status_reason": event.status_reason,
+        "scanned_qr": event.bin_id_id,
         "bin": {
             "unique_id": event.bin_id_id,
             "bin_name": getattr(event.bin_id, "bin_name", None),
+            "bin_qr": event.bin_id_id,
+            "bin_qr_image_url": _bin_qr_image_url(event.bin_id, request=request),
         },
         "collection_point": {
             "unique_id": event.collection_point_id_id,
@@ -144,7 +173,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
             .select_related("bin_id", "collection_point_id")
             .order_by("created_at")
         )
-        summary["events"] = [_serialize_event(e) for e in events_qs]
+        summary["events"] = [_serialize_event(e, request=request) for e in events_qs]
 
         cps = (
             assignment.trip_collection_points
@@ -158,6 +187,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
                 "sequence": cp.sequence,
                 "is_collected": cp.is_collected,
                 "status": cp.status,
+                "status_reason": cp.status_reason,
                 "collected_at": cp.collected_at.isoformat() if cp.collected_at else None,
                 "collected_weight_kg": (
                     str(cp.collected_weight_kg) if cp.collected_weight_kg is not None else None
@@ -169,7 +199,8 @@ class TripHistoryViewSet(viewsets.ViewSet):
                 "bin": {
                     "unique_id": cp.bin_id.unique_id,
                     "bin_name": cp.bin_id.bin_name,
-                    "bin_qr": cp.bin_id.bin_qr,
+                    "bin_qr": cp.bin_id.unique_id,
+                    "bin_qr_image_url": _bin_qr_image_url(cp.bin_id, request=request),
                 },
             }
             for cp in cps

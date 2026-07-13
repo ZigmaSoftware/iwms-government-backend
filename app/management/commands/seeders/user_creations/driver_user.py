@@ -134,6 +134,23 @@ class DriverUserSeeder(BaseSeeder):
             DailyTripCollectionPoint.objects.filter(
                 trip_assignment_id=assignment
             ).delete()
+            # Reset to a fresh, workable trip. Other seeders (e.g. the supervisor
+            # month-data seeder) may have completed/logged this assignment; the
+            # driver must start today's demo trip from Scheduled with nothing
+            # collected yet.
+            assignment.status = DailyTripAssignment.STATUS_SCHEDULED
+            assignment.approval_status = DailyTripAssignment.APPROVAL_APPROVED
+            assignment.actual_start_time = None
+            assignment.actual_end_time = None
+            assignment.save(
+                update_fields=[
+                    "status",
+                    "approval_status",
+                    "actual_start_time",
+                    "actual_end_time",
+                    "updated_at",
+                ]
+            )
             # Spread the collection points across ~1 km around the trip centre so
             # they render as distinct stops on the map (not stacked on one pin).
             center_lat, center_lng = self.TRIP_CENTER

@@ -19,6 +19,10 @@ from app.serializers.schedule_masters.daily_trip_assignment_serializer import (
     DailyTripAssignmentApprovalSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+)
 from rest_framework import viewsets
 
 
@@ -118,10 +122,8 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if waste_type:
             qs = qs.filter(waste_type_id=waste_type)
 
-        for field in ("state_id", "district_id", "area_type_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
-            value = params.get(field)
-            if value:
-                qs = qs.filter(**{field: value})
+        qs = filter_flat_geo_queryset_by_params(qs, params)
+        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         # `mine=true` → only trips this supervisor is responsible for
         # (TripPlan.supervisor_id == the requesting staff). Used by the

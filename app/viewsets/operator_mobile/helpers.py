@@ -93,6 +93,12 @@ def _extract_bin_identifier(raw: str) -> str:
             return str(data.get("id") or data.get("unique_id") or "").strip()
         except (ValueError, TypeError):
             return raw
+    if "/media/bin_qr/" in raw:
+        filename = raw.rsplit("/", 1)[-1]
+        return filename.rsplit(".", 1)[0]
+    if raw.startswith("bin_qr/"):
+        filename = raw.rsplit("/", 1)[-1]
+        return filename.rsplit(".", 1)[0]
     return raw
 
 
@@ -151,6 +157,7 @@ def validate_bin_against_assignment(
         .filter(
             trip_assignment_id=assignment,
             collection_point_id=cp,
+            bin_id=bin_obj,
             is_deleted=False,
         )
         .select_related("collection_point_id", "bin_id")
@@ -159,13 +166,19 @@ def validate_bin_against_assignment(
     if not trip_cp:
         raise OperatorFlowError(
             "CP_NOT_IN_TRIP",
-            "This collection point is not part of your trip.",
+            "This bin is not part of your assigned collection points.",
         )
 
     if trip_cp.is_collected:
         raise OperatorFlowError(
             "ALREADY_COLLECTED",
             "This collection point has already been marked collected.",
+            http_status=409,
+        )
+    if trip_cp.status == DailyTripCollectionPoint.STATUS_MISSED:
+        raise OperatorFlowError(
+            "ALREADY_MISSED",
+            "This collection point is already marked not available.",
             http_status=409,
         )
 
@@ -182,21 +195,44 @@ def build_scan_context(bin_qr: str, operator: Staffcreation) -> ScanContext:
 def progress_payload(assignment: DailyTripAssignment) -> dict:
     children = list(assignment.trip_collection_points.filter(is_deleted=False))
     total = len(children)
-    collected = sum(1 for c in children if c.is_collected)
+    collected = sum(
+        1 for c in children
+        if c.status == DailyTripCollectionPoint.STATUS_COLLECTED
+    )
+    resolved = sum(
+        1 for c in children
+        if c.status in {
+            DailyTripCollectionPoint.STATUS_COLLECTED,
+            DailyTripCollectionPoint.STATUS_MISSED,
+        }
+    )
     return {
         "collected": collected,
         "total": total,
-        "completed": total > 0 and collected == total,
+        "resolved": resolved,
+        "completed": total > 0 and resolved == total,
     }
 
 
-def serialize_bin_brief(bin_obj: Bins) -> dict:
+def _bin_qr_image_url(bin_obj: Bins, request=None) -> str | None:
+    qr = getattr(bin_obj, "bin_qr", None)
+    try:
+        url = qr.url if qr else None
+    except (ValueError, AttributeError):
+        url = None
+    if not url:
+        return None
+    return request.build_absolute_uri(url) if request is not None else url
+
+
+def serialize_bin_brief(bin_obj: Bins, request=None) -> dict:
     return {
         "unique_id": bin_obj.unique_id,
         "bin_name": bin_obj.bin_name,
-        # bin_qr is an ImageField; serialize its stored path, not the file object
-        # (DRF's encoder would otherwise stream the PNG bytes and fail).
-        "bin_qr": bin_obj.bin_qr.name if bin_obj.bin_qr else None,
+        # The app sends this value back to validate/scan. Keep it as the stable
+        # bin identifier; the PNG URL is exposed separately for display.
+        "bin_qr": bin_obj.unique_id,
+        "bin_qr_image_url": _bin_qr_image_url(bin_obj, request=request),
         "bin_capacity": bin_obj.bin_capacity,
         "waste_type": {
             "unique_id": bin_obj.wastetype_id_id,
@@ -220,6 +256,7 @@ def serialize_trip_cp_brief(trip_cp: DailyTripCollectionPoint) -> dict:
         "sequence": trip_cp.sequence,
         "is_collected": trip_cp.is_collected,
         "status": trip_cp.status,
+        "status_reason": trip_cp.status_reason,
         "collected_at": trip_cp.collected_at.isoformat() if trip_cp.collected_at else None,
         "collected_weight_kg": (
             str(trip_cp.collected_weight_kg)

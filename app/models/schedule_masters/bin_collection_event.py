@@ -21,6 +21,16 @@ def generate_bin_collection_event_id():
 class BinCollectionEvent(BaseMaster):
     """One row per operator scan-and-submit. Permanent audit ledger."""
 
+    EVENT_COLLECTED = "Collected"
+    EVENT_COLLECT_LATER = "Collect Later"
+    EVENT_NOT_AVAILABLE = "Not Available"
+
+    EVENT_TYPE_CHOICES = [
+        (EVENT_COLLECTED, "Collected"),
+        (EVENT_COLLECT_LATER, "Collect Later"),
+        (EVENT_NOT_AVAILABLE, "Not Available"),
+    ]
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -96,6 +106,13 @@ class BinCollectionEvent(BaseMaster):
 
 
 
+    event_type = models.CharField(
+        max_length=30,
+        choices=EVENT_TYPE_CHOICES,
+        default=EVENT_COLLECTED,
+        db_index=True,
+    )
+    status_reason = models.TextField(null=True, blank=True)
     collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2)
     collection_date = models.DateField(
         default=timezone.localdate,
