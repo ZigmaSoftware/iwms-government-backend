@@ -5,6 +5,13 @@ from app.models.screen_managements.companyuserscreencolumnpermission import (
 )
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
+from app.models.screen_managements.companyuserscreenpermission import LocalBodyType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
+    _resolve_local_body_model,
+)
 
 
 class CompanyUserScreenColumnPermissionSerializer(serializers.ModelSerializer):
@@ -61,12 +68,22 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
 
     userscreen_id = serializers.CharField()
     column_id = serializers.CharField()
-    staffusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    contractorusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    contractorUserTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    governmentusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    governmentUserTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    usertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    state_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    stateId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    district_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    districtId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    areaTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    local_body_type = serializers.ChoiceField(
+        choices=LocalBodyType.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    localBodyType = serializers.ChoiceField(
+        choices=LocalBodyType.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    local_body_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    localBodyId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
     is_active = serializers.BooleanField(default=True)
     field_permission_state = serializers.ChoiceField(
         choices=CompanyUserScreenColumnPermission.FIELD_PERMISSION_STATE_CHOICES,
@@ -86,16 +103,31 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        data["contractorusertype_id"] = (
-            data.get("contractorusertype_id")
-            or data.get("contractorUserTypeId")
-            or ""
-        ).strip() or None
-        data["governmentusertype_id"] = (
-            data.get("governmentusertype_id")
-            or data.get("governmentUserTypeId")
-            or ""
-        ).strip() or None
+        data["state_id"] = (data.get("state_id") or data.get("stateId") or "").strip() or None
+        data["district_id"] = (data.get("district_id") or data.get("districtId") or "").strip() or None
+        data["area_type_id"] = (data.get("area_type_id") or data.get("areaTypeId") or "").strip() or None
+        data["local_body_type"] = (data.get("local_body_type") or data.get("localBodyType") or "").strip() or None
+        data["local_body_id"] = (data.get("local_body_id") or data.get("localBodyId") or "").strip() or None
+
+        if not data["local_body_type"] or not data["local_body_id"]:
+            raise serializers.ValidationError({
+                "local_body_id": "local_body_type and local_body_id are required. "
+                                  "Field Permission is owned by the Local Body hierarchy."
+            })
+
+        if data["state_id"] and not State.objects.filter(unique_id=data["state_id"], is_deleted=False).exists():
+            raise serializers.ValidationError({"state_id": "Invalid state"})
+        if data["district_id"] and not District.objects.filter(unique_id=data["district_id"], is_deleted=False).exists():
+            raise serializers.ValidationError({"district_id": "Invalid district"})
+        if data["area_type_id"] and not AreaType.objects.filter(unique_id=data["area_type_id"], is_deleted=False).exists():
+            raise serializers.ValidationError({"area_type_id": "Invalid area_type"})
+
+        local_body_model = _resolve_local_body_model(data["local_body_type"])
+        if not local_body_model:
+            raise serializers.ValidationError({"local_body_type": "Invalid local_body_type"})
+        if not local_body_model.objects.filter(unique_id=data["local_body_id"], is_deleted=False).exists():
+            raise serializers.ValidationError({"local_body_id": "Invalid local_body_id for local_body_type"})
+
         if "field_permission_state" not in data:
             data["field_permission_state"] = (
                 CompanyUserScreenColumnPermission.VISIBLE

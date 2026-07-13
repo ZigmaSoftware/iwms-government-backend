@@ -11,7 +11,11 @@ from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.district_leader_login import DistrictLeaderLogin
-from app.utils.permission_response import resolve_permission_payload
+from app.utils.hierarchy import local_body_scope_for_staff
+from app.utils.permission_response import (
+    resolve_intersected_permission_payload,
+    resolve_permission_payload,
+)
 
 
 # ============================================================
@@ -339,6 +343,24 @@ def _resolve_permissions_for_request(request):
     payload_permissions = getattr(request, "jwt_payload", {}).get("permissions")
     if payload_permissions:
         return payload_permissions
+
+    staff_id = getattr(request.user, "staff_unique_id", None)
+    if staff_id:
+        local_body_scope = local_body_scope_for_staff(request.user)
+        if local_body_scope and local_body_scope.get("local_body_id"):
+            cache_key = (
+                "module-permissions:local-body:"
+                f"{staff_id}:"
+                f"{local_body_scope['local_body_type']}:"
+                f"{local_body_scope['local_body_id']}"
+            )
+            permissions = cache.get(cache_key)
+            if permissions is None:
+                permissions = resolve_intersected_permission_payload(
+                    staff_id=staff_id, **local_body_scope
+                )["permissions"]
+                cache.set(cache_key, permissions, 60)
+            return permissions
 
     filters = _permission_filters_for_user(request.user)
     if not filters:

@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import UniqueConstraint
+from django.db.models import Q, UniqueConstraint
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
@@ -7,6 +7,10 @@ from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
+from app.models.screen_managements.companyuserscreenpermission import LocalBodyType, PermissionOwnerKind
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -74,6 +78,36 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         null=True,
         blank=True,
     )
+    state_id = models.ForeignKey(
+        State, on_delete=models.PROTECT,
+        to_field="unique_id", db_column="state_id",
+        related_name="userscreen_column_permissions",
+        null=True, blank=True,
+    )
+    district_id = models.ForeignKey(
+        District, on_delete=models.PROTECT,
+        to_field="unique_id", db_column="district_id",
+        related_name="userscreen_column_permissions",
+        null=True, blank=True,
+    )
+    area_type_id = models.ForeignKey(
+        AreaType, on_delete=models.PROTECT,
+        to_field="unique_id", db_column="area_type_id",
+        related_name="userscreen_column_permissions",
+        null=True, blank=True,
+    )
+    local_body_type = models.CharField(
+        max_length=20, choices=LocalBodyType.choices,
+        null=True, blank=True,
+    )
+    local_body_id = models.CharField(max_length=30, null=True, blank=True)
+
+    permission_owner_kind = models.CharField(
+        max_length=20, choices=PermissionOwnerKind.choices,
+        default=PermissionOwnerKind.SUPER_ADMIN,
+    )
+    staff_id = models.CharField(max_length=60, null=True, blank=True)
+
     userscreen_id = models.ForeignKey(
         UserScreen,
         on_delete=models.PROTECT,
@@ -110,6 +144,7 @@ class CompanyUserScreenColumnPermission(BaseMaster):
             models.Index(fields=["contractorusertype_id", "userscreen_id"]),
             models.Index(fields=["governmentusertype_id", "userscreen_id"]),
             models.Index(fields=["userscreen_id", "column_id", "is_active", "is_deleted"]),
+            models.Index(fields=["local_body_type", "local_body_id", "userscreen_id"]),
         ]
         constraints = [
             UniqueConstraint(
@@ -123,7 +158,22 @@ class CompanyUserScreenColumnPermission(BaseMaster):
                     "is_deleted",
                 ],
                 name="uq_screen_column_perm",
-            )
+            ),
+            UniqueConstraint(
+                fields=[
+                    "state_id",
+                    "district_id",
+                    "area_type_id",
+                    "local_body_type",
+                    "local_body_id",
+                    "permission_owner_kind",
+                    "staff_id",
+                    "userscreen_id",
+                    "column_id",
+                ],
+                condition=Q(is_deleted=False, local_body_id__isnull=False),
+                name="uq_active_local_body_column_perm",
+            ),
         ]
 
     @property

@@ -2,8 +2,6 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
@@ -13,11 +11,36 @@ from app.models.screen_managements.userscreen import UserScreen
 from app.models.screen_managements.userscreenaction import UserScreenAction
 from app.models.screen_managements.userscreencolumn import UserScreenColumn
 
-from app.models.role_assigns.contractorUserType import ContractorUserType
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.screen_managements.companyuserscreenpermission import (
+    LocalBodyType,
+    PermissionOwnerKind,
+    PermissionType,
+)
+
+LOCAL_BODY_MODELS = {
+    LocalBodyType.CORPORATION: "app.models.masters.corporation.Corporation",
+    LocalBodyType.MUNICIPALITY: "app.models.masters.municipality.Municipality",
+    LocalBodyType.PANCHAYAT: "app.models.masters.panchayat.Panchayat",
+    LocalBodyType.TOWN_PANCHAYAT: "app.models.masters.town_panchayat.TownPanchayat",
+    LocalBodyType.PANCHAYAT_UNION: "app.models.masters.panchayat_union.PanchayatUnion",
+}
 
 
-SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "show", "view", "approve", "export"}
+def _resolve_local_body_model(local_body_type):
+    import importlib
+
+    dotted = LOCAL_BODY_MODELS.get(local_body_type)
+    if not dotted:
+        return None
+    module_path, class_name = dotted.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, class_name)
+
+
+SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "view"}
 
 
 class UserScreenPermissionSerializer(serializers.ModelSerializer):
@@ -72,13 +95,19 @@ class UserScreenPermissionSerializer(serializers.ModelSerializer):
 
         data["contractorUserTypeId"] = contractorusertype_id
         data["governmentUserTypeId"] = governmentusertype_id
-        data["permission_for"] = (
-            "government"
-            if governmentusertype_id
-            else "contractor"
-            if contractorusertype_id
-            else "staff"
-        )
+        # Local-Body ownership (current model) takes precedence; the legacy
+        # role-based fields above are only ever populated on old rows kept
+        # for backward-compatible reads.
+        if data.get("local_body_type") and data.get("local_body_id"):
+            data["permission_for"] = data.get("permission_owner_kind") or "super_admin"
+        else:
+            data["permission_for"] = (
+                "government"
+                if governmentusertype_id
+                else "contractor"
+                if contractorusertype_id
+                else "staff"
+            )
         return data
 
 
@@ -172,42 +201,54 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         allow_blank=True,
     )
 
+    state_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    stateId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    district_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    districtId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    areaTypeId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    local_body_type = serializers.ChoiceField(
+        choices=LocalBodyType.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    localBodyType = serializers.ChoiceField(
+        choices=LocalBodyType.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    local_body_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    localBodyId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    permission_type = serializers.ChoiceField(
+        choices=PermissionType.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    permissionType = serializers.ChoiceField(
+        choices=PermissionType.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    permission_owner_kind = serializers.ChoiceField(
+        choices=PermissionOwnerKind.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    permissionOwnerKind = serializers.ChoiceField(
+        choices=PermissionOwnerKind.choices, required=False, allow_null=True, allow_blank=True,
+    )
+    staff_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    staffId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
     def validate(self, data):
-        data["staffusertype_id"] = (
-            data.get("staffusertype_id")
-            or data.get("staffUserTypeId")
-            or ""
-        ).strip() or None
-        data["usertype_id"] = (
-            data.get("usertype_id")
-            or data.get("usertypeId")
-            or data.get("userTypeId")
-            or ""
-        ).strip() or None
-        data["contractorusertype_id"] = (
-            data.get("contractorusertype_id")
-            or data.get("contractorUserTypeId")
-            or ""
-        ).strip() or None
-        data["governmentusertype_id"] = (
-            data.get("governmentusertype_id")
-            or data.get("governmentUserTypeId")
-            or ""
-        ).strip() or None
-        if data["staffusertype_id"] and not data["contractorusertype_id"]:
-            if str(data["staffusertype_id"]).startswith("CNTUSRTYPE-") or ContractorUserType.objects.filter(
-                unique_id=data["staffusertype_id"],
-                is_deleted=False,
-            ).exists():
-                data["contractorusertype_id"] = data["staffusertype_id"]
-                data["staffusertype_id"] = None
-        if data["staffusertype_id"] and not data["governmentusertype_id"]:
-            if str(data["staffusertype_id"]).startswith("GOVTUSRTYPE-") or GovernmentStaffUserType.objects.filter(
-                unique_id=data["staffusertype_id"],
-                is_deleted=False,
-            ).exists():
-                data["governmentusertype_id"] = data["staffusertype_id"]
-                data["staffusertype_id"] = None
+        data["state_id"] = (data.get("state_id") or data.get("stateId") or "").strip() or None
+        data["district_id"] = (data.get("district_id") or data.get("districtId") or "").strip() or None
+        data["area_type_id"] = (data.get("area_type_id") or data.get("areaTypeId") or "").strip() or None
+        data["local_body_type"] = (data.get("local_body_type") or data.get("localBodyType") or "").strip() or None
+        data["local_body_id"] = (data.get("local_body_id") or data.get("localBodyId") or "").strip() or None
+        data["permission_type"] = (
+            data.get("permission_type") or data.get("permissionType") or PermissionType.SCREEN
+        )
+        data["permission_owner_kind"] = (
+            data.get("permission_owner_kind") or data.get("permissionOwnerKind") or PermissionOwnerKind.SUPER_ADMIN
+        )
+        data["staff_id"] = (data.get("staff_id") or data.get("staffId") or "").strip() or None
+
+        if data["permission_owner_kind"] == PermissionOwnerKind.STAFF and not data["staff_id"]:
+            raise serializers.ValidationError({
+                "staff_id": "staff_id is required when permission_owner_kind is 'staff'."
+            })
+
         data["mainscreen_id"] = (data.get("mainscreen_id") or data.get("mainScreenId") or "").strip()
         data["screens"] = data.get("screens") or data.get("userScreens") or []
 
@@ -216,67 +257,43 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         if not data["screens"]:
             raise serializers.ValidationError({"screens": "At least one screen required."})
 
-        usertype = None
-        if data["usertype_id"]:
-            try:
-                usertype = UserType.objects.get(unique_id=data["usertype_id"], is_deleted=False)
-            except UserType.DoesNotExist:
-                raise serializers.ValidationError({"usertype_id": "Invalid usertype"})
-
-        staffusertype = None
-        if data["staffusertype_id"]:
-            try:
-                staffusertype = StaffUserType.objects.get(
-                    unique_id=data["staffusertype_id"],
-                    is_deleted=False,
-                )
-            except StaffUserType.DoesNotExist:
-                raise serializers.ValidationError({"staffusertype_id": "Invalid staffusertype"})
-        
-        contractorusertype = None
-
-        if data["contractorusertype_id"]:
-            try:
-                contractorusertype = ContractorUserType.objects.get(
-                    unique_id=data["contractorusertype_id"],
-                    is_deleted=False,
-                )
-            except ContractorUserType.DoesNotExist:
-                raise serializers.ValidationError({
-                    "contractorusertype_id": "Invalid contractorusertype"
-                })
-
-        governmentusertype = None
-        if data["governmentusertype_id"]:
-            try:
-                governmentusertype = GovernmentStaffUserType.objects.get(
-                    unique_id=data["governmentusertype_id"],
-                    is_deleted=False,
-                )
-            except GovernmentStaffUserType.DoesNotExist:
-                raise serializers.ValidationError({
-                    "governmentusertype_id": "Invalid governmentusertype"
-                })
-
-        selected_role_count = sum(
-            bool(role) for role in (staffusertype, contractorusertype, governmentusertype)
-        )
-        if selected_role_count > 1:
+        is_local_body_owned = bool(data["local_body_type"] and data["local_body_id"])
+        if not is_local_body_owned:
             raise serializers.ValidationError({
-                "permission_for": "Use only one of staffusertype_id, contractorusertype_id, or governmentusertype_id."
+                "local_body_id": "local_body_type and local_body_id are required. "
+                                  "Permissions are owned by the Local Body hierarchy."
             })
-        if staffusertype and usertype and staffusertype.usertype_id_id != usertype.unique_id:
-            raise serializers.ValidationError({
-                "staffusertype_id": "Staff usertype does not belong to selected usertype."
-            })
-        if contractorusertype and usertype and contractorusertype.usertype_id_id != usertype.unique_id:
-            raise serializers.ValidationError({
-                "contractorusertype_id": "Contractor usertype does not belong to selected usertype."
-            })
-        if governmentusertype and usertype and governmentusertype.usertype_id_id != usertype.unique_id:
-            raise serializers.ValidationError({
-                "governmentusertype_id": "Government usertype does not belong to selected usertype."
-            })
+
+        state = None
+        district = None
+        area_type = None
+
+        if data["state_id"]:
+            try:
+                state = State.objects.get(unique_id=data["state_id"], is_deleted=False)
+            except State.DoesNotExist:
+                raise serializers.ValidationError({"state_id": "Invalid state"})
+        if data["district_id"]:
+            try:
+                district = District.objects.get(unique_id=data["district_id"], is_deleted=False)
+            except District.DoesNotExist:
+                raise serializers.ValidationError({"district_id": "Invalid district"})
+        if data["area_type_id"]:
+            try:
+                area_type = AreaType.objects.get(unique_id=data["area_type_id"], is_deleted=False)
+            except AreaType.DoesNotExist:
+                raise serializers.ValidationError({"area_type_id": "Invalid area_type"})
+
+        local_body_model = _resolve_local_body_model(data["local_body_type"])
+        if not local_body_model:
+            raise serializers.ValidationError({"local_body_type": "Invalid local_body_type"})
+        try:
+            local_body_model.objects.get(unique_id=data["local_body_id"], is_deleted=False)
+        except local_body_model.DoesNotExist:
+            raise serializers.ValidationError({"local_body_id": "Invalid local_body_id for local_body_type"})
+
+        local_body_type = data["local_body_type"]
+        local_body_id = data["local_body_id"]
 
         try:
             mainscreen = MainScreen.objects.get(unique_id=data["mainscreen_id"], is_deleted=False)
@@ -303,9 +320,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             for action_id in screen.get("actionIds", [])
             if str(action_id).strip()
         }
-        if action_values and not data["usertype_id"]:
+        if action_values and not is_local_body_owned:
             raise serializers.ValidationError({
-                "usertype_id": "Required when assigning action permissions."
+                "local_body_id": "Required when assigning action permissions."
             })
         if action_values:
             for action_value in action_values:
@@ -403,27 +420,24 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 })
             screen["columnIds"] = normalized_column_ids
 
-        data["resolved_usertype_id"] = usertype.unique_id if usertype else None
-        data["resolved_staffusertype_id"] = staffusertype.unique_id if staffusertype else None
-        data["resolved_contractorusertype_id"] = (
-            contractorusertype.unique_id if contractorusertype else None
-        )
-        data["resolved_governmentusertype_id"] = (
-            governmentusertype.unique_id if governmentusertype else None
-        )
+        data["resolved_state_id"] = state.unique_id if state else None
+        data["resolved_district_id"] = district.unique_id if district else None
+        data["resolved_area_type_id"] = area_type.unique_id if area_type else None
+        data["resolved_local_body_type"] = local_body_type
+        data["resolved_local_body_id"] = local_body_id
         data["resolved_mainscreen_id"] = mainscreen.unique_id
         return data
 
     @transaction.atomic
     def create(self, validated_data):
-        usertype_id = validated_data["resolved_usertype_id"]
-        staffusertype_id = validated_data["resolved_staffusertype_id"]
-        contractorusertype_id = validated_data.get(
-            "resolved_contractorusertype_id"
-        )
-        governmentusertype_id = validated_data.get(
-            "resolved_governmentusertype_id"
-        )
+        state_id = validated_data.get("resolved_state_id")
+        district_id = validated_data.get("resolved_district_id")
+        area_type_id = validated_data.get("resolved_area_type_id")
+        local_body_type = validated_data["resolved_local_body_type"]
+        local_body_id = validated_data["resolved_local_body_id"]
+        permission_type = validated_data.get("permission_type") or PermissionType.SCREEN
+        permission_owner_kind = validated_data.get("permission_owner_kind") or PermissionOwnerKind.SUPER_ADMIN
+        staff_id = validated_data.get("staff_id")
         mainscreen_id = validated_data["resolved_mainscreen_id"]
         screens = validated_data["screens"]
         desc = (validated_data.get("description") or "").strip()
@@ -435,10 +449,14 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         existing_qs = UserScreenPermission.objects.select_related(
             "userscreen_id", "userscreenaction_id"
         ).filter(
-            usertype_id_id=usertype_id,
-            staffusertype_id_id=staffusertype_id,
-            contractorusertype_id_id=contractorusertype_id,
-            governmentusertype_id_id=governmentusertype_id,
+            state_id_id=state_id,
+            district_id_id=district_id,
+            area_type_id_id=area_type_id,
+            local_body_type=local_body_type,
+            local_body_id=local_body_id,
+            permission_owner_kind=permission_owner_kind,
+            staff_id=staff_id,
+            permission_type=permission_type,
             mainscreen_id_id=mainscreen_id,
         )
         existing_lookup = {
@@ -476,10 +494,14 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     })
 
                 permission = UserScreenPermission.objects.create(
-                    usertype_id_id=usertype_id,
-                    staffusertype_id_id=staffusertype_id,
-                    contractorusertype_id_id=contractorusertype_id,
-                    governmentusertype_id_id=governmentusertype_id,
+                    state_id_id=state_id,
+                    district_id_id=district_id,
+                    area_type_id_id=area_type_id,
+                    local_body_type=local_body_type,
+                    local_body_id=local_body_id,
+                    permission_type=permission_type,
+                    permission_owner_kind=permission_owner_kind,
+                    staff_id=staff_id,
                     mainscreen_id_id=mainscreen_id,
                     userscreen_id_id=screen_id,
                     userscreenaction_id_id=action_id,
@@ -492,10 +514,13 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
 
             if "columnIds" in screen and screen["columnIds"] is not None:
                 result = self._sync_column_permissions(
-                    usertype_id=usertype_id,
-                    staffusertype_id=staffusertype_id,
-                    contractorusertype_id=contractorusertype_id,
-                    governmentusertype_id=governmentusertype_id,
+                    state_id=state_id,
+                    district_id=district_id,
+                    area_type_id=area_type_id,
+                    local_body_type=local_body_type,
+                    local_body_id=local_body_id,
+                    permission_owner_kind=permission_owner_kind,
+                    staff_id=staff_id,
                     userscreen_id=screen_id,
                     column_permissions=screen.get("columnPermissions"),
                     column_ids=screen["columnIds"],
@@ -524,10 +549,13 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
     def _sync_column_permissions(
         self,
         *,
-        usertype_id,
-        staffusertype_id,
-        contractorusertype_id,
-        governmentusertype_id,
+        state_id,
+        district_id,
+        area_type_id,
+        local_body_type,
+        local_body_id,
+        permission_owner_kind,
+        staff_id,
         userscreen_id,
         column_ids,
         column_permissions,
@@ -536,10 +564,13 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         existing = {
             obj.column_id_id: obj
             for obj in CompanyUserScreenColumnPermission.objects.filter(
-                usertype_id_id=usertype_id,
-                staffusertype_id_id=staffusertype_id,
-                contractorusertype_id_id=contractorusertype_id,
-                governmentusertype_id_id=governmentusertype_id,
+                state_id_id=state_id,
+                district_id_id=district_id,
+                area_type_id_id=area_type_id,
+                local_body_type=local_body_type,
+                local_body_id=local_body_id,
+                permission_owner_kind=permission_owner_kind,
+                staff_id=staff_id,
                 userscreen_id_id=userscreen_id,
             )
         }
@@ -579,10 +610,13 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
 
             created.append(
                 CompanyUserScreenColumnPermission(
-                    usertype_id_id=usertype_id,
-                    staffusertype_id_id=staffusertype_id,
-                    contractorusertype_id_id=contractorusertype_id,
-                    governmentusertype_id_id=governmentusertype_id,
+                    state_id_id=state_id,
+                    district_id_id=district_id,
+                    area_type_id_id=area_type_id,
+                    local_body_type=local_body_type,
+                    local_body_id=local_body_id,
+                    permission_owner_kind=permission_owner_kind,
+                    staff_id=staff_id,
                     userscreen_id_id=userscreen_id,
                     column_id_id=column_id,
                     field_permission_state=field_permission_state,

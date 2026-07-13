@@ -4,10 +4,6 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
-from app.models.role_assigns.contractorUserType import ContractorUserType
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
-from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.role_assigns.userType import UserType
 from app.models.screen_managements.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
@@ -50,10 +46,9 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         qs = CompanyUserScreenColumnPermission.objects.filter(
             is_deleted=False,
         ).select_related(
-            "usertype_id",
-            "staffusertype_id",
-            "contractorusertype_id",
-            "governmentusertype_id",
+            "state_id",
+            "district_id",
+            "area_type_id",
             "userscreen_id",
             "column_id",
         )
@@ -62,23 +57,26 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         if userscreen_id:
             qs = qs.filter(userscreen_id_id=userscreen_id)
 
-        staffusertype_id = self.request.query_params.get("staffusertype_id")
-        if staffusertype_id:
-            qs = qs.filter(staffusertype_id_id=staffusertype_id)
-
-        contractorusertype_id = (
-            self.request.query_params.get("contractorusertype_id")
-            or self.request.query_params.get("contractorUserTypeId")
+        local_body_type = (
+            self.request.query_params.get("local_body_type")
+            or self.request.query_params.get("localBodyType")
         )
-        if contractorusertype_id:
-            qs = qs.filter(contractorusertype_id_id=contractorusertype_id)
-
-        governmentusertype_id = (
-            self.request.query_params.get("governmentusertype_id")
-            or self.request.query_params.get("governmentUserTypeId")
+        local_body_id = (
+            self.request.query_params.get("local_body_id")
+            or self.request.query_params.get("localBodyId")
         )
-        if governmentusertype_id:
-            qs = qs.filter(governmentusertype_id_id=governmentusertype_id)
+        if local_body_type and local_body_id:
+            qs = qs.filter(local_body_type=local_body_type, local_body_id=local_body_id)
+
+        state_id = self.request.query_params.get("state_id") or self.request.query_params.get("stateId")
+        if state_id:
+            qs = qs.filter(state_id_id=state_id)
+        district_id = self.request.query_params.get("district_id") or self.request.query_params.get("districtId")
+        if district_id:
+            qs = qs.filter(district_id_id=district_id)
+        area_type_id = self.request.query_params.get("area_type_id") or self.request.query_params.get("areaTypeId")
+        if area_type_id:
+            qs = qs.filter(area_type_id_id=area_type_id)
 
         return qs
 
@@ -117,6 +115,9 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
     # ---------------------------------------------------------
 
     def create(self, request, *args, **kwargs):
+        if not getattr(request.user, "is_superuser", False):
+            raise PermissionDenied("Only Super Admin can configure Field Permission.")
+
         write_ser = UserScreenColumnPermissionWriteSerializer(data=request.data)
         write_ser.is_valid(raise_exception=True)
         vd = write_ser.validated_data
@@ -125,40 +126,15 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         userscreen = UserScreen.objects.get(unique_id=vd["userscreen_id"])
         column = UserScreenColumn.objects.get(unique_id=vd["column_id"])
 
-        staffusertype = None
-        staffusertype_id_str = vd.get("staffusertype_id") or ""
-        if staffusertype_id_str:
-            staffusertype = StaffUserType.objects.filter(
-                unique_id=staffusertype_id_str
-            ).first()
-
-        contractorusertype = None
-        contractorusertype_id_str = vd.get("contractorusertype_id") or ""
-        if contractorusertype_id_str:
-            contractorusertype = ContractorUserType.objects.filter(
-                unique_id=contractorusertype_id_str
-            ).first()
-
-        governmentusertype = None
-        governmentusertype_id_str = vd.get("governmentusertype_id") or ""
-        if governmentusertype_id_str:
-            governmentusertype = GovernmentStaffUserType.objects.filter(
-                unique_id=governmentusertype_id_str
-            ).first()
-
-        usertype = None
-        usertype_id_str = vd.get("usertype_id") or ""
-        if usertype_id_str:
-            usertype = UserType.objects.filter(unique_id=usertype_id_str).first()
-
         account = None
 
         with transaction.atomic():
             instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
-                staffusertype_id=staffusertype,
-                contractorusertype_id=contractorusertype,
-                governmentusertype_id=governmentusertype,
-                usertype_id=usertype,
+                state_id_id=vd.get("state_id"),
+                district_id_id=vd.get("district_id"),
+                area_type_id_id=vd.get("area_type_id"),
+                local_body_type=vd["local_body_type"],
+                local_body_id=vd["local_body_id"],
                 userscreen_id=userscreen,
                 column_id=column,
                 is_deleted=False,
@@ -200,6 +176,9 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
     # ---------------------------------------------------------
 
     def update(self, request, *args, **kwargs):
+        if not getattr(request.user, "is_superuser", False):
+            raise PermissionDenied("Only Super Admin can configure Field Permission.")
+
         instance = self.get_object()
         previous_data = self._serialize_instance(instance)
 

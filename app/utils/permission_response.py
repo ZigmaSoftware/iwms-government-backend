@@ -11,7 +11,7 @@ from app.models.screen_managements.companyuserscreenpermission import UserScreen
 from app.models.screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
 
 
-ACTION_KEYS = ("show", "view", "add", "edit", "delete", "approve", "export")
+ACTION_KEYS = ("view", "add", "edit", "delete")
 
 APP_SURFACE_CONFIG = {
     "citizen": {
@@ -473,12 +473,22 @@ def permission_querysets(
     staffusertype_unique_id=None,
     contractorusertype_unique_id=None,
     governmentusertype_unique_id=None,
+    state_unique_id=None,
+    district_unique_id=None,
+    area_type_unique_id=None,
+    local_body_type=None,
+    local_body_id=None,
+    permission_owner_kind=None,
+    staff_id=None,
     include_all=False,
     **_unused,
 ):
     action_queryset = UserScreenPermission.objects.filter(
         is_active=True,
         is_deleted=False,
+        mainscreen_id__is_deleted=False,
+        userscreen_id__is_deleted=False,
+        userscreenaction_id__is_deleted=False,
     ).select_related(
         "mainscreen_id",
         "userscreen_id",
@@ -490,6 +500,8 @@ def permission_querysets(
     column_queryset = CompanyUserScreenColumnPermission.objects.filter(
         is_active=True,
         is_deleted=False,
+        userscreen_id__is_deleted=False,
+        column_id__is_deleted=False,
     ).select_related(
         "userscreen_id",
         "userscreen_id__mainscreen_id",
@@ -509,6 +521,28 @@ def permission_querysets(
 
     if include_all:
         return action_queryset, column_queryset, dashboard_queryset
+
+    if local_body_type and local_body_id:
+        filters = {
+            "local_body_type": local_body_type,
+            "local_body_id": local_body_id,
+        }
+        if state_unique_id:
+            filters["state_id_id"] = state_unique_id
+        if district_unique_id:
+            filters["district_id_id"] = district_unique_id
+        if area_type_unique_id:
+            filters["area_type_id_id"] = area_type_unique_id
+        if permission_owner_kind:
+            filters["permission_owner_kind"] = permission_owner_kind
+        if staff_id:
+            filters["staff_id"] = staff_id
+
+        return (
+            action_queryset.filter(**filters),
+            column_queryset.filter(**filters),
+            dashboard_queryset.filter(**filters),
+        )
 
     if not usertype_unique_id:
         return action_queryset.none(), column_queryset.none(), dashboard_queryset.none()
@@ -548,3 +582,108 @@ def resolve_permission_payload(**filters):
         role_name=filters.get("role_name"),
         user_type=filters.get("user_type"),
     )
+
+
+def _intersect_action_permissions(super_admin_permissions, staff_permissions):
+    """
+    Final Permission = Super Admin Screen Permission ∩ Staff Screen
+    Permission. Keeps only modules/screens/actions granted by BOTH sides.
+    """
+    intersected = {}
+    for module_name, screens in (super_admin_permissions or {}).items():
+        staff_screens = (staff_permissions or {}).get(module_name)
+        if not staff_screens:
+            continue
+        for screen_name, actions in screens.items():
+            staff_actions = staff_screens.get(screen_name)
+            if not staff_actions:
+                continue
+            common_actions = [action for action in actions if action in staff_actions]
+            if common_actions:
+                intersected.setdefault(module_name, {})[screen_name] = common_actions
+    return intersected
+
+
+def _intersect_dashboard_permissions(super_admin_widgets, staff_widgets):
+    intersected = {}
+    for widget_name, super_admin_enabled in (super_admin_widgets or {}).items():
+        staff_enabled = (staff_widgets or {}).get(widget_name, False)
+        intersected[widget_name] = bool(super_admin_enabled) and bool(staff_enabled)
+    return intersected
+
+
+def resolve_intersected_permission_payload(
+    *,
+    state_unique_id=None,
+    district_unique_id=None,
+    area_type_unique_id=None,
+    local_body_type=None,
+    local_body_id=None,
+    staff_id=None,
+    role_name=None,
+    user_type=None,
+):
+    """
+    Login-time resolution for a Local-Body-scoped staff member: Screen
+    Permission is the intersection of the Super Admin baseline (configured
+    directly on the Local Body) and this specific staff member's own grants
+    (configured via Staff Access Configuration) — both are independent row
+    sets in the same tables, distinguished by `permission_owner_kind` +
+    `staff_id`. Field Permission and Dashboard Widgets come from the Super
+    Admin baseline only; Field Permission has no staff-side counterpart to
+    intersect against, and Dashboard Widgets are intersected the same way
+    Screen Permission is (a widget must be enabled by both to show).
+    """
+    scope = {
+        "state_unique_id": state_unique_id,
+        "district_unique_id": district_unique_id,
+        "area_type_unique_id": area_type_unique_id,
+        "local_body_type": local_body_type,
+        "local_body_id": local_body_id,
+    }
+
+    super_admin_action_qs, super_admin_column_qs, super_admin_dashboard_qs = permission_querysets(
+        **scope, permission_owner_kind="super_admin",
+    )
+    staff_action_qs, _staff_column_qs, staff_dashboard_qs = permission_querysets(
+        **scope, permission_owner_kind="staff", staff_id=staff_id,
+    )
+
+    super_admin_permissions = build_action_permissions(super_admin_action_qs)
+    staff_permissions = build_action_permissions(staff_action_qs)
+    final_permissions = _intersect_action_permissions(super_admin_permissions, staff_permissions)
+
+    super_admin_dashboard = build_dashboard_permissions(super_admin_dashboard_qs)
+    staff_dashboard = build_dashboard_permissions(staff_dashboard_qs)
+    final_dashboard = _intersect_dashboard_permissions(super_admin_dashboard, staff_dashboard)
+
+    # permission_details/column_permissions must reflect exactly the
+    # (screen, action) pairs that survived the intersection — the Super
+    # Admin baseline alone may grant more screens/actions than this specific
+    # staff member was actually given.
+    granted_action_ids = set()
+    granted_userscreen_ids = set()
+    for perm in super_admin_action_qs:
+        screen_actions = final_permissions.get(perm.mainscreen_id.mainscreen_name, {}).get(
+            perm.userscreen_id.userscreen_name
+        )
+        action_name = (
+            perm.userscreenaction_id.variable_name or perm.userscreenaction_id.action_name or ""
+        ).lower()
+        if screen_actions and action_name in screen_actions:
+            granted_action_ids.add(perm.unique_id)
+            granted_userscreen_ids.add(perm.userscreen_id_id)
+
+    filtered_action_qs = super_admin_action_qs.filter(unique_id__in=granted_action_ids)
+    filtered_column_qs = super_admin_column_qs.filter(userscreen_id_id__in=granted_userscreen_ids)
+
+    payload = {
+        "permissions": final_permissions,
+        "permission_details": build_permission_details(filtered_action_qs, filtered_column_qs),
+        "column_permissions": build_column_permissions(filtered_column_qs),
+        "module_access": build_fallback_module_access(final_permissions),
+        "dashboard_permissions": final_dashboard,
+        "super_admin_permissions": super_admin_permissions,
+        "staff_permissions": staff_permissions,
+    }
+    return finalize_permission_payload(payload, role_name=role_name, user_type=user_type)
