@@ -282,7 +282,9 @@ class DailyTripAssignment(BaseMaster):
         children = self.trip_collection_points.filter(is_deleted=False)
         if not children.exists():
             return False
-        if children.filter(is_collected=False).exists():
+        # A missed stop is operationally resolved for the day but contributes
+        # zero weight. "Skipped" / collect-later remains unresolved.
+        if children.exclude(status__in=["Collected", "Missed"]).exists():
             return False
         if self.status == self.STATUS_COMPLETED:
             return True
