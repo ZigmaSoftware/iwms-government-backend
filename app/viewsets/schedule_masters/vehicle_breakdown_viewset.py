@@ -15,6 +15,8 @@ from app.serializers.schedule_masters.vehicle_breakdown_serializer import (
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.base_models import Account
 from app.utils.hierarchy import (
+    STAFF_GEO_LEVEL_FIELDS,
+    filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
     filter_staff_queryset_by_requester_scope,
 )
@@ -80,10 +82,14 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 | Q(replacement_operator_id__employee_name__icontains=search)
             )
 
+        qs = filter_flat_geo_queryset_by_params(
+            qs,
+            params,
+            prefix="trip_assignment_id__",
+        )
+
         # Breakdowns carry no geo columns of their own — scope through the
         # linked assignment's flat geo fields.
-        from app.utils.hierarchy import STAFF_GEO_LEVEL_FIELDS
-
         qs = filter_flat_geo_queryset_by_requester_scope(
             qs,
             self.request.user,

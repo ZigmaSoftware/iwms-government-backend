@@ -7,7 +7,7 @@ from app.models.schedule_masters.daily_trip_household_collection import (
 from app.serializers.schedule_masters.daily_trip_household_collection_serializer import (
     DailyTripHouseholdCollectionSerializer,
 )
-from app.utils.hierarchy import filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
 
 
 class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
@@ -63,5 +63,7 @@ class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
                 Q(customer_id__customer_name__icontains=search)
                 | Q(trip_assignment_id__unique_id__icontains=search)
             )
+
+        queryset = filter_flat_geo_queryset_by_params(queryset, params)
 
         return filter_queryset_by_hierarchy(queryset, params)

@@ -12,6 +12,10 @@ from app.serializers.schedule_masters.staff_template_serializer import (
     StaffTemplateSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+)
 
 
 class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -37,12 +41,27 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if approval_status:
             qs = qs.filter(approval_status=approval_status)
 
+        qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
+        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+
         return qs.select_related(
             "driver_id",
+            "driver_id__designation_id",
+            "driver_id__corporation",
             "operator_id",
+            "operator_id__designation_id",
+            "operator_id__corporation",
             "created_by",
             "updated_by",
             "approved_by",
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
         )
 
     def destroy(self, request, *args, **kwargs):

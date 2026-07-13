@@ -20,7 +20,7 @@ from app.serializers.schedule_masters.daily_trip_collection_point_serializer imp
     DailyTripCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
 from rest_framework import viewsets
 
 
@@ -221,6 +221,14 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             DailyTripCollectionPoint.objects.select_related(
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
+                "trip_assignment_id__state",
+                "trip_assignment_id__district",
+                "trip_assignment_id__area_type",
+                "trip_assignment_id__corporation",
+                "trip_assignment_id__municipality",
+                "trip_assignment_id__town_panchayat",
+                "trip_assignment_id__panchayat_union",
+                "trip_assignment_id__panchayat",
                 "collection_point_id",
                 "collection_point_id__state",
                 "collection_point_id__district",
@@ -276,6 +284,12 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 | Q(trip_assignment_id__unique_id__icontains=search)
                 | Q(bin_id__bin_name__icontains=search)
             )
+
+        queryset = filter_flat_geo_queryset_by_params(
+            queryset,
+            params,
+            prefix="trip_assignment_id__",
+        )
 
         return filter_queryset_by_hierarchy(queryset, params)
 

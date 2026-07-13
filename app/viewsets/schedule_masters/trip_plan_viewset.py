@@ -7,7 +7,10 @@ from app.serializers.schedule_masters.trip_plan_serializer import (
     TripPlanSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+)
 
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -40,12 +43,7 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        params = self.request.query_params
-        for field in ("state_id", "district_id", "area_type_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
-            value = params.get(field)
-            if value:
-                queryset = queryset.filter(**{field: value})
-
+        queryset = filter_flat_geo_queryset_by_params(queryset, self.request.query_params)
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
         return queryset
 
