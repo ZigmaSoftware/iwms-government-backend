@@ -352,6 +352,47 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
     return queryset
 
 
+LOCAL_BODY_TYPE_FIELDS = (
+    ("corporation", "corporation_id"),
+    ("municipality", "municipality_id"),
+    ("town_panchayat", "town_panchayat_id"),
+    ("panchayat_union", "panchayat_union_id"),
+    ("panchayat", "panchayat_id"),
+)
+
+
+def local_body_scope_for_staff(user):
+    """
+    Derive the requester's effective Local Body ownership key
+    (local_body_type, local_body_id) plus state/district/area_type, from
+    their `StaffDataScope` row. Mirrors the most-specific-populated-field
+    derivation already used for `localBodyLevel`/`localBodyId` in
+    `staff_access_configuration_serializer._data_scope_payload`.
+
+    Returns None if the requester has no resolvable data scope.
+    """
+    scope = _staff_scope(user)
+    if not scope:
+        return None
+
+    local_body_type = None
+    local_body_id = None
+    for level, field in LOCAL_BODY_TYPE_FIELDS:
+        value = getattr(scope, field, None)
+        if value:
+            local_body_type = level
+            local_body_id = value
+            break
+
+    return {
+        "state_unique_id": scope.state_id,
+        "district_unique_id": scope.district_id,
+        "area_type_unique_id": scope.area_type_id,
+        "local_body_type": local_body_type,
+        "local_body_id": local_body_id,
+    }
+
+
 def staff_scope_payload(user):
     """
     JSON-safe summary of the requester's `StaffDataScope`, for embedding in
