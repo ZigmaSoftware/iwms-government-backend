@@ -31,6 +31,8 @@ class DailyTripHouseholdCollection(BaseMaster):
 
     STATUS_PENDING = "Pending"
     STATUS_COLLECTED = "Collected"
+    STATUS_NOT_COLLECTED = "Not Collected"
+    STATUS_COLLECT_LATER = "Collect Later"
     STATUS_SKIPPED = "Skipped"
     STATUS_MISSED = "Missed"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
@@ -39,6 +41,8 @@ class DailyTripHouseholdCollection(BaseMaster):
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_COLLECTED, "Collected"),
+        (STATUS_NOT_COLLECTED, "Not Collected"),
+        (STATUS_COLLECT_LATER, "Collect Later"),
         (STATUS_SKIPPED, "Skipped"),
         (STATUS_MISSED, "Missed"),
     ]
@@ -179,6 +183,7 @@ class DailyTripHouseholdCollection(BaseMaster):
         default=STATUS_PENDING,
         db_index=True,
     )
+    status_reason = models.TextField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

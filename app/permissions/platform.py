@@ -1,5 +1,7 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+from app.utils.roles import is_admin_role, is_supervisor_role
+
 
 class PlatformSuperAdminOnly(BasePermission):
     """Allow only platform-level super admins."""
@@ -22,18 +24,17 @@ class SuperAdminApprovalPermission(PlatformSuperAdminOnly):
 
 
 class CompanyAdminOnly(BasePermission):
-    """Allow staff users with an admin role."""
+    """Allow non-superuser staff with an admin role (company or government)."""
 
     message = "Company admin only"
 
     def has_permission(self, request, view):
         user = getattr(request, "user", None)
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "")
         return bool(
             user
             and user.is_authenticated
             and not getattr(user, "is_superuser", False)
-            and (role or "").lower() in ["admin","company_admin","company admin"]
+            and is_admin_role(user)
         )
 
 
@@ -51,10 +52,9 @@ class PlatformOrCompanyAdminFullAccess(BasePermission):
             getattr(user, "is_superuser", False)
         )
 
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "")
         is_company_admin = bool(
             not getattr(user, "is_superuser", False)
-            and (role or "").lower() in ["admin","company_admin","company admin"]
+            and is_admin_role(user)
         )
 
         return is_platform_super_admin or is_company_admin
@@ -85,11 +85,10 @@ class PlatformOrCompanyAdminOnly(BasePermission):
         if is_platform_super_admin:
             return True
 
-        # ✅ Company Admin
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "")
+        # ✅ Company / government admin
         is_company_admin = bool(
             not getattr(user, "is_superuser", False)
-            and (role or "").lower() in ["admin","company_admin","company admin"]
+            and is_admin_role(user)
         )
 
         if is_company_admin:
@@ -97,6 +96,28 @@ class PlatformOrCompanyAdminOnly(BasePermission):
             return request.method in SAFE_METHODS
 
         return False
+
+
+class ScheduleModuleWriteAccess(BasePermission):
+    """Allow write access to schedule / daily-trip screens for a platform super
+    admin, any admin (company or government), or any supervisor (company or
+    government, e.g. ``govt_corporation_supervisor``). Read is open to any
+    authenticated user; per-screen limits are still enforced by the module
+    permission middleware / UserScreenPermission rows."""
+
+    message = "Schedule module write access requires an admin or supervisor role"
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return bool(
+            getattr(user, "is_superuser", False)
+            or is_admin_role(user)
+            or is_supervisor_role(user)
+        )
 
 
 class StaffUserOnly(BasePermission):

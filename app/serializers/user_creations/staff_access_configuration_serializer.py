@@ -17,7 +17,6 @@ from app.models.screen_managements.companyuserscreenpermission import UserScreen
 from app.models.screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
 from app.models.user_creations.staff_data_scope import StaffDataScope
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
@@ -44,8 +43,6 @@ class DataScopeInputSerializer(serializers.Serializer):
     townPanchayatId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     panchayatUnionId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     panchayatId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    depotId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    vehicleId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class LoginConfigInputSerializer(serializers.Serializer):
@@ -111,15 +108,15 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             staff,
             validated_data.get("dataScope") or {},
         )
-        local_body_scope = self._local_body_scope_payload(data_scope)
+        access_scope = self._access_scope_payload(data_scope)
         permission_results = self._save_permissions(
             validated_data.get("permissions") or [],
-            local_body_scope,
+            access_scope,
             staff.staff_unique_id,
         )
         dashboard_permissions = self._save_dashboard_permissions(
             validated_data.get("dashboardPermissions") or [],
-            local_body_scope,
+            access_scope,
             staff.staff_unique_id,
         )
 
@@ -130,10 +127,10 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "data_scope": data_scope,
         }
 
-    def _local_body_scope_payload(self, scope):
+    def _access_scope_payload(self, scope):
         """
-        Derive the Local Body ownership key (state/district/area_type/
-        local_body_type/local_body_id) from a saved StaffDataScope row,
+        Derive the permission ownership key (state/district/area_type/
+        optional local_body_type/local_body_id) from a saved StaffDataScope row,
         using the same most-specific-populated-field precedence as
         `_data_scope_payload`.
         """
@@ -183,22 +180,22 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "ENABLED",
             }
 
-    def _save_permissions(self, permissions, local_body_scope, staff_id):
-        if not local_body_scope.get("localBodyType") or not local_body_scope.get("localBodyId"):
+    def _save_permissions(self, permissions, access_scope, staff_id):
+        if not access_scope.get("stateId"):
             if permissions:
                 raise serializers.ValidationError({
-                    "dataScope": "A Local Body must be selected before permissions can be assigned."
+                    "dataScope": "State must be selected before permissions can be assigned."
                 })
             return []
 
         results = []
         for permission in permissions:
             payload = {
-                "stateId": local_body_scope["stateId"],
-                "districtId": local_body_scope["districtId"],
-                "areaTypeId": local_body_scope["areaTypeId"],
-                "localBodyType": local_body_scope["localBodyType"],
-                "localBodyId": local_body_scope["localBodyId"],
+                "stateId": access_scope["stateId"],
+                "districtId": access_scope["districtId"],
+                "areaTypeId": access_scope["areaTypeId"],
+                "localBodyType": access_scope["localBodyType"],
+                "localBodyId": access_scope["localBodyId"],
                 "permissionOwnerKind": "staff",
                 "staffId": staff_id,
                 "mainScreenId": permission.get("mainScreenId") or permission.get("mainscreen_id"),
@@ -213,18 +210,18 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             results.append(serializer.save())
         return results
 
-    def _save_dashboard_permissions(self, dashboard_permissions, local_body_scope, staff_id):
-        if not local_body_scope.get("localBodyType") or not local_body_scope.get("localBodyId"):
+    def _save_dashboard_permissions(self, dashboard_permissions, access_scope, staff_id):
+        if not access_scope.get("localBodyType") or not access_scope.get("localBodyId"):
             return []
 
         saved = []
         for permission in dashboard_permissions:
             obj, _ = DashboardWidgetPermission.objects.update_or_create(
-                state_id_id=local_body_scope["stateId"],
-                district_id_id=local_body_scope["districtId"],
-                area_type_id_id=local_body_scope["areaTypeId"],
-                local_body_type=local_body_scope["localBodyType"],
-                local_body_id=local_body_scope["localBodyId"],
+                state_id_id=access_scope["stateId"],
+                district_id_id=access_scope["districtId"],
+                area_type_id_id=access_scope["areaTypeId"],
+                local_body_type=access_scope["localBodyType"],
+                local_body_id=access_scope["localBodyId"],
                 permission_owner_kind="staff",
                 staff_id=staff_id,
                 widget_name=permission["widgetName"],
@@ -242,8 +239,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         if not data_scope:
             return None
 
-        depot_id = data_scope.get("depotId") or None
-        vehicle_id = data_scope.get("vehicleId") or None
         location_node_ids = data_scope.get("locationNodes") or []
         state_id = data_scope.get("stateId") or None
         district_id = data_scope.get("districtId") or None
@@ -253,11 +248,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         town_panchayat_id = data_scope.get("townPanchayatId") or None
         panchayat_union_id = data_scope.get("panchayatUnionId") or None
         panchayat_id = data_scope.get("panchayatId") or None
-
-        if depot_id and not HierarchyNode.objects.filter(unique_id=depot_id, is_deleted=False).exists():
-            raise serializers.ValidationError({"dataScope": {"depotId": "Invalid depotId."}})
-        if vehicle_id and not VehicleCreation.objects.filter(unique_id=vehicle_id, is_deleted=False).exists():
-            raise serializers.ValidationError({"dataScope": {"vehicleId": "Invalid vehicleId."}})
 
         def _validate(model, value, field_name):
             if value and not model.objects.filter(unique_id=value, is_deleted=False).exists():
@@ -290,8 +280,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             staff=staff,
             is_deleted=False,
             defaults={
-                "depot_id": depot_id,
-                "vehicle_id": vehicle_id,
                 "state_id": state_id,
                 "district_id": district_id,
                 "area_type_id": area_type_id,
@@ -311,22 +299,26 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             StaffDataScope.objects.filter(staff=staff, is_active=True, is_deleted=False)
             .first()
         )
-        local_body_scope = self._local_body_scope_payload(scope)
-        if not local_body_scope.get("localBodyType") or not local_body_scope.get("localBodyId"):
+        access_scope = self._access_scope_payload(scope)
+        if not access_scope.get("stateId"):
             return {}
 
         filters = {
-            "local_body_type": local_body_scope["localBodyType"],
-            "local_body_id": local_body_scope["localBodyId"],
             "permission_owner_kind": "staff",
             "staff_id": staff.staff_unique_id,
         }
-        if local_body_scope.get("stateId"):
-            filters["state_id_id"] = local_body_scope["stateId"]
-        if local_body_scope.get("districtId"):
-            filters["district_id_id"] = local_body_scope["districtId"]
-        if local_body_scope.get("areaTypeId"):
-            filters["area_type_id_id"] = local_body_scope["areaTypeId"]
+        if access_scope.get("stateId"):
+            filters["state_id_id"] = access_scope["stateId"]
+        if access_scope.get("districtId"):
+            filters["district_id_id"] = access_scope["districtId"]
+        if access_scope.get("areaTypeId"):
+            filters["area_type_id_id"] = access_scope["areaTypeId"]
+        if access_scope.get("localBodyType") and access_scope.get("localBodyId"):
+            filters["local_body_type"] = access_scope["localBodyType"]
+            filters["local_body_id"] = access_scope["localBodyId"]
+        else:
+            filters["local_body_type__isnull"] = True
+            filters["local_body_id__isnull"] = True
         return filters
 
     def _permission_payload(self, staff):
@@ -472,8 +464,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "panchayatId": staff.panchayat_id,
                 "localBodyLevel": local_body_level,
                 "localBodyId": local_body_id,
-                "depotId": None,
-                "vehicleId": None,
             }
 
         local_body_pairs = (
@@ -499,8 +489,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "panchayatId": scope.panchayat_id,
             "localBodyLevel": local_body_level,
             "localBodyId": local_body_id,
-            "depotId": scope.depot_id,
-            "vehicleId": scope.vehicle_id,
         }
 
     def _configuration_payload(self, staff):
@@ -527,6 +515,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "account_status": account_status,
             "basicInfo": {
                 "employeeName": staff_payload.get("employee_name") or "",
+                "staffConfigName": staff_payload.get("staff_config_name") or "",
                 "mobileNumber": staff_payload.get("contact_mobile") or "",
                 "officeEmail": staff_payload.get("contact_email") or "",
                 "departmentId": staff_payload.get("department_id") or "",
@@ -536,8 +525,8 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             },
             "loginConfig": {
                 "username": staff_payload.get("username") or "",
-                "password": "",
-                "confirmPassword": "",
+                "password": staff_payload.get("password") or "",
+                "confirmPassword": staff_payload.get("password") or "",
                 "userTypeId": usertype_id or "",
                 "governmentUserTypeId": staff_payload.get("governmentusertype_id") or "",
                 "loginEnabled": getattr(staff, "login_enabled", False),

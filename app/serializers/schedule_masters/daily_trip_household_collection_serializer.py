@@ -42,6 +42,7 @@ class DailyTripHouseholdCollectionSerializer(
             "collected_at",
             "collected_weight_kg",
             "status",
+            "status_reason",
             "created_at",
             "updated_at",
         ]

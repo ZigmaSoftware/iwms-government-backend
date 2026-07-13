@@ -2,9 +2,10 @@ from rest_framework import viewsets
 from app.models.customers.wastecollection import WasteCollection
 from app.serializers.customers.wastecollection_serializer import WasteCollectionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
 from rest_framework import viewsets
 
-class WasteCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = WasteCollection.objects.filter(is_deleted=False).select_related(
         "customer__state", "customer__district", "customer__area_type",
         "customer__corporation", "customer__municipality", "customer__town_panchayat",
@@ -20,3 +21,5 @@ class WasteCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     AUDIT_MODULE = "schedule-masters"
     AUDIT_ENDPOINT = "wastecollections"
+    # Scoping (params + requester StaffDataScope) is applied automatically by
+    # FlatGeoScopedViewSetMixin using the record-level flat geo columns (B2/G2).
