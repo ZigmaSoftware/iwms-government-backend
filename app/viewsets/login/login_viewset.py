@@ -129,6 +129,14 @@ class LoginViewSet(ViewSet):
             )
             role = "district_leader"
             email = getattr(target, "email", None)
+        elif user_type == "state_leader":
+            target = profile_object or user
+            name = (
+                getattr(target, "leader_name", None)
+                or getattr(target, "username", None)
+            )
+            role = "state_leader"
+            email = getattr(target, "email", None)
 
         # -------------------------
         # JWT CREATION
@@ -219,6 +227,17 @@ class LoginViewSet(ViewSet):
                     "leader_name": getattr(leader_source, "leader_name", None) or name,
                     "district_unique_id": getattr(district, "unique_id", None) if district else None,
                     "district_name": getattr(district, "name", None) if district else None,
+                }
+            )
+        elif user_type == "state_leader":
+            leader_source = profile_object or user
+            state = getattr(leader_source, "state_id", None)
+            profile_payload.update(
+                {
+                    "state_leader_unique_id": getattr(leader_source, "unique_id", None),
+                    "leader_name": getattr(leader_source, "leader_name", None) or name,
+                    "state_unique_id": getattr(state, "unique_id", None) if state else None,
+                    "state_name": getattr(state, "name", None) if state else None,
                 }
             )
 
