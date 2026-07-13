@@ -9,8 +9,16 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 class _PanchayatBriefSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
     name = serializers.CharField(source="panchayat_name")
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, allow_null=True)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, allow_null=True)
+    # Panchayat has no lat/lng columns (only a `coordinates` polygon); expose
+    # nulls so the mobile client's optional fields stay populated safely.
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+
+    def get_latitude(self, obj):
+        return None
+
+    def get_longitude(self, obj):
+        return None
 
 
 class _WasteTypeBriefSerializer(serializers.Serializer):
@@ -34,8 +42,23 @@ class _CollectionPointBriefSerializer(serializers.Serializer):
 class _BinBriefSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
     bin_name = serializers.CharField()
-    bin_qr = serializers.CharField()
+    bin_qr = serializers.SerializerMethodField()
+    bin_qr_image_url = serializers.SerializerMethodField()
     bin_capacity = serializers.IntegerField()
+
+    def get_bin_qr(self, obj):
+        return obj.unique_id
+
+    def get_bin_qr_image_url(self, obj):
+        qr = getattr(obj, "bin_qr", None)
+        try:
+            url = qr.url if qr else None
+        except (ValueError, AttributeError):
+            url = None
+        if not url:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request else url
 
 
 class TripCollectionPointSerializer(serializers.Serializer):
@@ -43,6 +66,7 @@ class TripCollectionPointSerializer(serializers.Serializer):
     sequence = serializers.IntegerField()
     is_collected = serializers.BooleanField()
     status = serializers.CharField()
+    status_reason = serializers.CharField(allow_null=True, required=False)
     collected_at = serializers.DateTimeField(allow_null=True)
     collected_weight_kg = serializers.DecimalField(
         max_digits=10, decimal_places=2, allow_null=True
@@ -58,7 +82,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     scheduled_time = serializers.TimeField()
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
-    panchayat = _PanchayatBriefSerializer(source="panchayat_id")
+    panchayat = _PanchayatBriefSerializer()
     waste_type = _WasteTypeBriefSerializer(source="waste_type_id")
     vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
     progress = serializers.SerializerMethodField()
@@ -69,11 +93,22 @@ class MyTripTodaySerializer(serializers.Serializer):
             obj.trip_collection_points.filter(is_deleted=False)
         )
         total = len(children)
-        collected = sum(1 for c in children if c.is_collected)
+        collected = sum(
+            1 for c in children
+            if c.status == DailyTripCollectionPoint.STATUS_COLLECTED
+        )
+        resolved = sum(
+            1 for c in children
+            if c.status in {
+                DailyTripCollectionPoint.STATUS_COLLECTED,
+                DailyTripCollectionPoint.STATUS_MISSED,
+            }
+        )
         return {
             "collected": collected,
             "total": total,
-            "completed": total > 0 and collected == total,
+            "resolved": resolved,
+            "completed": total > 0 and resolved == total,
         }
 
     def get_collection_points(self, obj):
@@ -83,4 +118,6 @@ class MyTripTodaySerializer(serializers.Serializer):
             .select_related("collection_point_id", "bin_id")
             .order_by("sequence")
         )
-        return TripCollectionPointSerializer(children, many=True).data
+        return TripCollectionPointSerializer(
+            children, many=True, context=self.context
+        ).data

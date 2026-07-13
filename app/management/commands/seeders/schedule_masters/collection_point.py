@@ -27,15 +27,15 @@ class CollectionPointSeeder(BaseSeeder):
 
     # (cp_name, local_body_field, local_body_name, latitude, longitude, coordinates)
     COLLECTION_POINTS = [
-        ("CP-Erode-Corp-01", "corporation", "Erode Corporation", Decimal("11.3410"), Decimal("77.7172"), coordinates((11.3410, 77.7172), (11.3430, 77.7190))),
-        ("CP-Bhavani-Muni-01", "municipality", "Bhavani Municipality", Decimal("11.4437"), Decimal("77.6845"), coordinates((11.4437, 77.6845), (11.4460, 77.6870))),
-        ("CP-Anthiyur-TP-01", "town_panchayat", "Anthiyur Town Panchayat", Decimal("11.5750"), Decimal("77.5900"), coordinates((11.5750, 77.5900), (11.5770, 77.5920))),
-        ("CP-Anthiyur-PU-01", "panchayat_union", "Anthiyur Panchayat Union", Decimal("11.5660"), Decimal("77.6040"), coordinates((11.5660, 77.6040), (11.5680, 77.6060))),
-        ("CP-Anthiyur-PLB-01", "panchayat", "Anthiyur Panchayat", Decimal("11.3410"), Decimal("77.5820"), coordinates((11.3410, 77.5820), (11.3430, 77.5840))),
-        ("CP-Bhavani-PLB-01", "panchayat", "Bhavani Panchayat", Decimal("11.4437"), Decimal("77.6845"), coordinates((11.4437, 77.6845), (11.4460, 77.6870))),
-        ("CP-Gobichettipalayam-PLB-01", "panchayat", "Gobichettipalayam Panchayat", Decimal("11.4524"), Decimal("77.4355"), coordinates((11.4524, 77.4355), (11.4548, 77.4380))),
-        ("CP-Kavundampalayam-PLB-01", "panchayat", "Kavundampalayam Panchayat", Decimal("11.2932"), Decimal("77.6011"), coordinates((11.2932, 77.6011), (11.2954, 77.6030))),
-        ("CP-Modakkurichi-PLB-01", "panchayat", "Modakkurichi Panchayat", Decimal("11.3805"), Decimal("77.7032"), coordinates((11.3805, 77.7032), (11.3827, 77.7054))),
+        ("CP-Erode-Corp-01", "corporation_id", "Erode Corporation", Decimal("11.3410"), Decimal("77.7172"), coordinates((11.3410, 77.7172), (11.3430, 77.7190))),
+        ("CP-Bhavani-Muni-01", "municipality_id", "Bhavani Municipality", Decimal("11.4437"), Decimal("77.6845"), coordinates((11.4437, 77.6845), (11.4460, 77.6870))),
+        ("CP-Anthiyur-TP-01", "town_panchayat_id", "Anthiyur Town Panchayat", Decimal("11.5750"), Decimal("77.5900"), coordinates((11.5750, 77.5900), (11.5770, 77.5920))),
+        ("CP-Anthiyur-PU-01", "panchayat_union_id", "Anthiyur Panchayat Union", Decimal("11.5660"), Decimal("77.6040"), coordinates((11.5660, 77.6040), (11.5680, 77.6060))),
+        ("CP-Anthiyur-PLB-01", "panchayat_id", "Anthiyur Panchayat", Decimal("11.3410"), Decimal("77.5820"), coordinates((11.3410, 77.5820), (11.3430, 77.5840))),
+        ("CP-Bhavani-PLB-01", "panchayat_id", "Bhavani Panchayat", Decimal("11.4467"), Decimal("77.6875"), coordinates((11.4467, 77.6875), (11.4490, 77.6900))),
+        ("CP-Gobichettipalayam-PLB-01", "panchayat_id", "Gobichettipalayam Panchayat", Decimal("11.4524"), Decimal("77.4355"), coordinates((11.4524, 77.4355), (11.4548, 77.4380))),
+        ("CP-Kavundampalayam-PLB-01", "panchayat_id", "Kavundampalayam Panchayat", Decimal("11.2932"), Decimal("77.6011"), coordinates((11.2932, 77.6011), (11.2954, 77.6030))),
+        ("CP-Modakkurichi-PLB-01", "panchayat_id", "Modakkurichi Panchayat", Decimal("11.3805"), Decimal("77.7032"), coordinates((11.3805, 77.7032), (11.3827, 77.7054))),
     ]
     LOOKUPS = {
         "corporation": (Corporation, "corporation_name"),
@@ -55,6 +55,9 @@ class CollectionPointSeeder(BaseSeeder):
 
         count = 0
         for cp_name, local_body_field, local_body_name, lat, lon, geo_coordinates in self.COLLECTION_POINTS:
+            # COLLECTION_POINTS carries db_column-style names (e.g. "corporation_id"),
+            # but the model attribute / lookup keys are un-suffixed (e.g. "corporation").
+            local_body_field = local_body_field.removesuffix("_id")
             model, name_field = self.LOOKUPS[local_body_field]
             local_body = model.objects.filter(
                 **{name_field: local_body_name},

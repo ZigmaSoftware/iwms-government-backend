@@ -6,6 +6,15 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.utils.hierarchy import copy_flat_geo
 
 
 def _generate_vehicle_breakdown_id():
@@ -160,6 +169,82 @@ class VehicleBreakdown(BaseMaster):
     approved_at = models.DateTimeField(null=True, blank=True)
     rejection_remarks = models.TextField(null=True, blank=True)
 
+    # ── Flat geo scope block ──────────────────────────────────────────
+    # Copied from the linked DailyTripAssignment on save so breakdowns can be
+    # corporation-scoped directly instead of only through the parent (see B1).
+    state = models.ForeignKey(
+        State,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicle_breakdowns",
+        to_field="unique_id",
+        db_column="panchayat_id",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -172,6 +257,10 @@ class VehicleBreakdown(BaseMaster):
     def save(self, *args, **kwargs):
         if not self.unique_id:
             self.unique_id = _generate_vehicle_breakdown_id()
+        # Inherit corporation / local-body scope from the parent trip
+        # assignment on first write. `only_empty` preserves explicit values.
+        if self.trip_assignment_id_id and not self.corporation_id:
+            copy_flat_geo(self, self.trip_assignment_id, only_empty=True)
         super().save(*args, **kwargs)
 
     def __str__(self):

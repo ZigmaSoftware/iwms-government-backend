@@ -33,8 +33,12 @@ from app.management.commands.seeders.role_assigns import ROLE_ASSIGN_SEEDERS
 
 # user-creations (router: user-creations/staffcreation, ...)
 from app.management.commands.seeders.user_creations.auth_user_seeder import AuthUserSeeder
+from app.management.commands.seeders.user_creations.driver_user import DriverUserSeeder
+from app.management.commands.seeders.user_creations.supervisor_user import SupervisorUserSeeder
+from app.management.commands.seeders.customers.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.user_creations.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.user_creations.staff_personal import StaffPersonalSeeder
+from app.management.commands.seeders.user_creations.corporation_access import CorporationAccessSeeder
 
 # transport-masters (router: transport-masters/vehicle-type, vehicle-creation, trip-attendance, fuels)
 from app.management.commands.seeders.transport_masters.vehicleTypeCreation import VehicleTypeCreationSeeder
@@ -58,10 +62,14 @@ from app.management.commands.seeders.schedule_masters.daily_trip_log import Dail
 from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
+from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder
 from app.management.commands.seeders.schedule_masters.waste_collection import WasteCollectionSeeder
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
+from app.management.commands.seeders.screen_managements.corporation_permissions import (
+    CorporationPermissionSeeder,
+)
 
 # collections (router: collections/panchayat-wise, ward-wise, zone-wise)
 from app.management.commands.seeders.collections import COLLECTION_SEEDERS
@@ -120,13 +128,13 @@ USER_CREATIONS_SEEDERS = [
     AuthUserSeeder,
     StaffOfficeSeeder,
     StaffPersonalSeeder,
-    
+    CorporationAccessSeeder,   # corporation admin + supervisor + StaffDataScope
 ]
 
 TRANSPORT_MASTERS_SEEDERS = [
     VehicleTypeCreationSeeder,   # transport-masters/vehicle-type
+    FuelSeeder,                  # transport-masters/fuels (must precede vehicles)
     VehicleCreationSeeder,       # transport-masters/vehicle-creation
-    FuelSeeder,                  # transport-masters/fuels
 ]
 
 PROCESS_ITEMS_SEEDERS = [
@@ -155,6 +163,7 @@ SCHEDULE_MASTERS_SEEDERS = [
 
 SCREEN_MANAGEMENTS_SEEDERS = [
     *PERMISSION_SEEDERS,
+    CorporationPermissionSeeder,   # scoped permissions for Erode corp admin + supervisor
 ]
 
 COLLECTIONS_SEEDERS = [
@@ -177,6 +186,14 @@ REPORTS_SEEDERS = [
     *REPORT_SEEDERS,
 ]
 
+# Mobile demo logins — must run last (need today's assignments + customers).
+DRIVER_DEMO_SEEDERS = [
+    DriverUserSeeder,
+    SupervisorUserSeeder,
+    SupervisorMonthDataSeeder,  # a month of trips + logs for the supervisor graph
+    CustomerUserSeeder,
+]
+
 # ============================================================
 # ORDER MATTERS — follows URL group dependency chain
 # ============================================================
@@ -196,6 +213,7 @@ ORDERED_GROUPS = [
     "complaint-ticket",     # tickets, categories, teams, sla-rules, routing-rules
     # "audits",               # vehicle-trip-audit, trip-exception-log, ...
     "reports",              # monthly-waste-comparison
+    "driver-demo",          # driver_user login wired to a today trip (bin + household)
 ]
 
 SEED_GROUPS = {
@@ -217,6 +235,7 @@ SEED_GROUPS = {
     "customers":          CUSTOMER_MASTERS_SEEDERS,  # alias
     "complaint-ticket":   COMPLAINT_TICKET_SEEDER_GROUP,
     "reports":            REPORTS_SEEDERS,
+    "driver-demo":        DRIVER_DEMO_SEEDERS,
     # Legacy aliases
     "staff":              USER_CREATIONS_SEEDERS,
     "vehicles":           TRANSPORT_MASTERS_SEEDERS,
@@ -227,6 +246,7 @@ SEED_GROUPS = {
     "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "waste-collections": [WasteCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],
+    "supervisor-graph":   [SupervisorMonthDataSeeder],  # month of trips+logs for supervisor_user
     "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
 }

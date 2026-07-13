@@ -70,6 +70,7 @@ class LoginViewSet(ViewSet):
         employee_id = None
         name = None
         role = None
+        staff_config_name = None
 
         if user_type == "customer":
             target = profile_object or user
@@ -91,6 +92,7 @@ class LoginViewSet(ViewSet):
             # Staff/contractor/government login
             target = profile_object or user
             name = getattr(target, "employee_name", None) or getattr(user, "username", None)
+            staff_config_name = getattr(target, "staff_config_name", None) or getattr(user, "staff_config_name", None)
             if user_type == "contractor":
                 role_type = getattr(target, "contractorusertype_id", None) or getattr(user, "contractorusertype_id", None)
             elif user_type == "government":
@@ -152,6 +154,7 @@ class LoginViewSet(ViewSet):
             "name": name,
             "role": role,
             "email": email,
+            "staff_config_name": staff_config_name,
         }
 
         data_scope = None
@@ -163,6 +166,7 @@ class LoginViewSet(ViewSet):
                     "staff_unique_id": emp_id,
                     "employee_id": employee_id,
                     "employee_name": getattr(staff_source, "employee_name", None) or name,
+                    "staff_config_name": getattr(staff_source, "staff_config_name", None) or staff_config_name,
                     "emp_id": emp_id,
                     "staffusertype_unique_id": staffusertype_unique_id,
                     "data_scope": data_scope,
@@ -191,6 +195,7 @@ class LoginViewSet(ViewSet):
                     "staff_unique_id": emp_id,
                     "employee_id": employee_id,
                     "employee_name": getattr(contractor_source, "employee_name", None) or name,
+                    "staff_config_name": getattr(contractor_source, "staff_config_name", None) or staff_config_name,
                     "emp_id": emp_id,
                     "contractorusertype_unique_id": contractorusertype_unique_id,
                     "data_scope": staff_scope_payload(contractor_source),
@@ -203,6 +208,7 @@ class LoginViewSet(ViewSet):
                     "staff_unique_id": emp_id,
                     "employee_id": employee_id,
                     "employee_name": getattr(government_source, "employee_name", None) or name,
+                    "staff_config_name": getattr(government_source, "staff_config_name", None) or staff_config_name,
                     "emp_id": emp_id,
                     "data_scope": staff_scope_payload(government_source),
                 }
@@ -248,6 +254,7 @@ class LoginViewSet(ViewSet):
         access["name"] = name
         access["role"] = role
         access["email"] = email
+        access["staff_config_name"] = staff_config_name
         # access["permissions"] = permissions
         # access["permission_details"] = permission_details
         # access["column_permissions"] = column_permissions
@@ -297,6 +304,7 @@ class LoginViewSet(ViewSet):
                 "user_type": user_type,
                 "name": name,
                 "role": role,
+                "staff_config_name": staff_config_name,
                 "permissions": permissions,
                 "permission_details": permission_details,
                 "column_permissions": column_permissions,

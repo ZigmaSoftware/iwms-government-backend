@@ -31,6 +31,8 @@ class DailyTripHouseholdCollection(BaseMaster):
 
     STATUS_PENDING = "Pending"
     STATUS_COLLECTED = "Collected"
+    STATUS_NOT_COLLECTED = "Not Collected"
+    STATUS_COLLECT_LATER = "Collect Later"
     STATUS_SKIPPED = "Skipped"
     STATUS_MISSED = "Missed"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
@@ -39,6 +41,8 @@ class DailyTripHouseholdCollection(BaseMaster):
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_COLLECTED, "Collected"),
+        (STATUS_NOT_COLLECTED, "Not Collected"),
+        (STATUS_COLLECT_LATER, "Collect Later"),
         (STATUS_SKIPPED, "Skipped"),
         (STATUS_MISSED, "Missed"),
     ]
@@ -178,6 +182,18 @@ class DailyTripHouseholdCollection(BaseMaster):
         choices=STATUS_CHOICES,
         default=STATUS_PENDING,
         db_index=True,
+    )
+    status_reason = models.TextField(null=True, blank=True)
+
+    # Captured when a driver/operator marks the stop Skipped/Missed from the app
+    # (waste/mark-household-status/). No WasteCollection exists in that case, so
+    # the reason and the device location are recorded here for audit.
+    status_reason = models.TextField(null=True, blank=True)
+    status_latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    status_longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

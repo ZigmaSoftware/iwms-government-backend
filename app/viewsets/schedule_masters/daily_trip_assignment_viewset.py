@@ -23,6 +23,7 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
+from app.utils.roles import can_manage_trips
 from rest_framework import viewsets
 
 
@@ -124,6 +125,14 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+
+        # `mine=true` → only trips this supervisor is responsible for
+        # (TripPlan.supervisor_id == the requesting staff). Used by the
+        # supervisor mobile app to list the trips it owns.
+        mine = params.get("mine")
+        if mine and str(mine).lower() in ("1", "true", "yes"):
+            staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
+            qs = qs.filter(trip_plan_id__supervisor_id=staff_uid) if staff_uid else qs.none()
 
         return qs
 
@@ -365,18 +374,15 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # ----------------------------------------------------------
 
     def _has_approval_role(self, request) -> bool:
-        """Returns True if the requesting user holds supervisor or admin role."""
-        user = getattr(request, "user", None)
-        if not user:
-            return False
+        """Returns True if the requesting user holds supervisor or admin role.
 
-        # Platform superadmin always has approval rights
-        if getattr(user, "is_superuser", False):
-            return True
-
-        role_obj = getattr(user, "staffusertype_id", None)
-        role_name = getattr(role_obj, "name", "") or ""
-        return role_name.lower() in ("supervisor", "admin", "company_admin")
+        Recognises the role across all three role axes (company / contractor /
+        government), so a ``govt_corporation_admin`` or
+        ``govt_corporation_supervisor`` gets approval rights the same way a
+        ``company_admin`` / ``company_supervisor`` does. Platform superadmin
+        always qualifies.
+        """
+        return can_manage_trips(getattr(request, "user", None))
 
     def perform_create(self, serializer):
         previous_data = None

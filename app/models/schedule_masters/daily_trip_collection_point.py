@@ -167,6 +167,19 @@ class DailyTripCollectionPoint(BaseMaster):
         default=STATUS_PENDING,
         db_index=True,
     )
+    status_reason = models.TextField(null=True, blank=True)
+    status_latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
+    status_longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -198,12 +211,41 @@ class DailyTripCollectionPoint(BaseMaster):
         self.collected_at = collected_at or timezone.now()
         self.is_collected = True
         self.status = self.STATUS_COLLECTED
+        self.status_reason = None
+        self.status_latitude = None
+        self.status_longitude = None
         self.save(update_fields=[
             "collected_weight_kg",
             "collected_by",
             "collected_at",
             "is_collected",
             "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
+            "updated_at",
+        ])
+        self.trip_assignment_id.mark_completed_if_all_cps_collected()
+
+    def mark_status(self, status, reason, latitude=None, longitude=None):
+        self.status = status
+        self.status_reason = reason
+        self.status_latitude = latitude
+        self.status_longitude = longitude
+        self.is_collected = False
+        self.collected_at = None
+        self.collected_by = None
+        if status in {self.STATUS_SKIPPED, self.STATUS_MISSED}:
+            self.collected_weight_kg = None
+        self.save(update_fields=[
+            "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
+            "is_collected",
+            "collected_at",
+            "collected_by",
+            "collected_weight_kg",
             "updated_at",
         ])
         self.trip_assignment_id.mark_completed_if_all_cps_collected()

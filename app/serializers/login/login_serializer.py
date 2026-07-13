@@ -189,8 +189,9 @@ class LoginSerializer(serializers.Serializer):
         has_local_body_scope = bool(
             local_body_scope and local_body_scope.get("local_body_type") and local_body_scope.get("local_body_id")
         )
+        has_geo_scope = bool(local_body_scope and local_body_scope.get("state_unique_id"))
 
-        if not role_usertype and not has_local_body_scope:
+        if not role_usertype and not has_geo_scope:
             raise serializers.ValidationError("Staff role not assigned")
 
         role_name = role_usertype.name if role_usertype else None
@@ -208,6 +209,19 @@ class LoginSerializer(serializers.Serializer):
                 area_type_unique_id=local_body_scope.get("area_type_unique_id"),
                 local_body_type=local_body_scope.get("local_body_type"),
                 local_body_id=local_body_scope.get("local_body_id"),
+                staff_id=getattr(login_user, "staff_unique_id", None),
+                role_name=role_name,
+                user_type=resolved_user_type,
+            )
+        elif has_geo_scope:
+            # State/District scoped staff access stores permissions directly
+            # against the staff row with local_body_type/local_body_id = null.
+            # There is no Local Body Super Admin ceiling to intersect here.
+            permission_payload = resolve_permission_payload(
+                state_unique_id=local_body_scope.get("state_unique_id"),
+                district_unique_id=local_body_scope.get("district_unique_id"),
+                area_type_unique_id=local_body_scope.get("area_type_unique_id"),
+                permission_owner_kind="staff",
                 staff_id=getattr(login_user, "staff_unique_id", None),
                 role_name=role_name,
                 user_type=resolved_user_type,

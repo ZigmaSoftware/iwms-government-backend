@@ -1,5 +1,7 @@
 from django.forms.models import model_to_dict
 from django.db.models.fields.files import FieldFile
+from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.utils.base_models import Account
 from app.utils.common_audit import CommonAudit
 from datetime import datetime, date, time
 from decimal import Decimal
@@ -12,6 +14,49 @@ class AuditViewSetMixin:
     AUDIT_MODULE = None
     AUDIT_ENDPOINT = None
     AUDIT_REDACT_FIELDS = set()
+
+    def _account_for_request_user(self):
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+
+        if isinstance(user, StaffcreationOfficeDetails) or hasattr(user, "staff_unique_id"):
+            account, _ = Account.objects.get_or_create(staff=user)
+            return account
+
+        if hasattr(user, "unique_id") or getattr(user, "pk", None):
+            account, _ = Account.objects.get_or_create(user=user)
+            return account
+
+        return None
+
+    @staticmethod
+    def _model_has_field(model, field_name):
+        try:
+            model._meta.get_field(field_name)
+            return True
+        except Exception:
+            return False
+
+    def _audit_save_kwargs(self, *, create=False):
+        model = getattr(getattr(self, "serializer_class", None), "Meta", None)
+        model = getattr(model, "model", None)
+        if model is None and hasattr(self, "get_serializer_class"):
+            serializer_class = self.get_serializer_class()
+            model = getattr(getattr(serializer_class, "Meta", None), "model", None)
+        if model is None:
+            return {}
+
+        account = self._account_for_request_user()
+        if not account:
+            return {}
+
+        kwargs = {}
+        if create and self._model_has_field(model, "created_by"):
+            kwargs["created_by"] = account
+        if self._model_has_field(model, "updated_by"):
+            kwargs["updated_by"] = account
+        return kwargs
 
     def get_audit_object_id(self, instance):
 
@@ -85,7 +130,7 @@ class AuditViewSetMixin:
 
     # CREATE
     def perform_create(self, serializer):
-        super().perform_create(serializer)
+        serializer.save(**self._audit_save_kwargs(create=True))
 
         instance = serializer.instance
         new_data = self._serialize_instance(instance)
@@ -103,7 +148,7 @@ class AuditViewSetMixin:
         instance = serializer.instance
         previous_data = self._serialize_instance(instance)
 
-        super().perform_update(serializer)
+        serializer.save(**self._audit_save_kwargs(create=False))
 
         updated_instance = serializer.instance
         new_data = self._serialize_instance(updated_instance)

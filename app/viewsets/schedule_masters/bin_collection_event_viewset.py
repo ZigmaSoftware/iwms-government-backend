@@ -108,7 +108,12 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not children.exists():
             return
 
-        all_collected = not children.filter(is_collected=False).exists()
+        all_collected = not children.exclude(
+            status__in=[
+                DailyTripCollectionPoint.STATUS_COLLECTED,
+                DailyTripCollectionPoint.STATUS_MISSED,
+            ]
+        ).exists()
         total_weight = children.aggregate(total=Sum("collected_weight_kg"))["total"] or 0
         vehicle_capacity = getattr(getattr(assignment, "vehicle_id", None), "capacity", None)
         trip_capacity = getattr(getattr(assignment, "trip_plan_id", None), "max_vehicle_capacity_kg", None)
@@ -172,15 +177,29 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not trip_cp:
             return
 
-        trip_cp.collected_weight_kg = event.collected_weight_kg or 0
-        trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
-        trip_cp.is_collected = True
-        trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
+        if event.status == BinCollectionEvent.STATUS_NOT_COLLECTED:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_MISSED
+        elif event.status == BinCollectionEvent.STATUS_COLLECT_LATER:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_PENDING
+        else:
+            trip_cp.collected_weight_kg = event.collected_weight_kg or 0
+            trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
+            trip_cp.is_collected = True
+            trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
         trip_cp.save(update_fields=[
             "collected_weight_kg",
             "collected_at",
             "is_collected",
             "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
             "updated_at",
         ])
         assignment = trip_cp.trip_assignment_id
