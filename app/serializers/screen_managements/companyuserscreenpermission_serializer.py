@@ -257,11 +257,10 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         if not data["screens"]:
             raise serializers.ValidationError({"screens": "At least one screen required."})
 
-        is_local_body_owned = bool(data["local_body_type"] and data["local_body_id"])
-        if not is_local_body_owned:
+        has_partial_local_body = bool(data["local_body_type"]) != bool(data["local_body_id"])
+        if has_partial_local_body:
             raise serializers.ValidationError({
-                "local_body_id": "local_body_type and local_body_id are required. "
-                                  "Permissions are owned by the Local Body hierarchy."
+                "local_body_id": "local_body_type and local_body_id must be supplied together."
             })
 
         state = None
@@ -284,16 +283,16 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             except AreaType.DoesNotExist:
                 raise serializers.ValidationError({"area_type_id": "Invalid area_type"})
 
-        local_body_model = _resolve_local_body_model(data["local_body_type"])
-        if not local_body_model:
-            raise serializers.ValidationError({"local_body_type": "Invalid local_body_type"})
-        try:
-            local_body_model.objects.get(unique_id=data["local_body_id"], is_deleted=False)
-        except local_body_model.DoesNotExist:
-            raise serializers.ValidationError({"local_body_id": "Invalid local_body_id for local_body_type"})
-
         local_body_type = data["local_body_type"]
         local_body_id = data["local_body_id"]
+        if local_body_type and local_body_id:
+            local_body_model = _resolve_local_body_model(local_body_type)
+            if not local_body_model:
+                raise serializers.ValidationError({"local_body_type": "Invalid local_body_type"})
+            try:
+                local_body_model.objects.get(unique_id=local_body_id, is_deleted=False)
+            except local_body_model.DoesNotExist:
+                raise serializers.ValidationError({"local_body_id": "Invalid local_body_id for local_body_type"})
 
         try:
             mainscreen = MainScreen.objects.get(unique_id=data["mainscreen_id"], is_deleted=False)
@@ -320,10 +319,6 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             for action_id in screen.get("actionIds", [])
             if str(action_id).strip()
         }
-        if action_values and not is_local_body_owned:
-            raise serializers.ValidationError({
-                "local_body_id": "Required when assigning action permissions."
-            })
         if action_values:
             for action_value in action_values:
                 normalized = action_value.lower()

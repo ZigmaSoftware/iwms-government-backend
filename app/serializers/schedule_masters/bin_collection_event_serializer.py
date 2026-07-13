@@ -80,6 +80,8 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "display_code",
             "collection_date",
             "collected_weight_kg",
+            "status",
+            "status_reason",
             "driver_latitude",
             "driver_longitude",
             "notes",
@@ -128,6 +130,14 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             )
         if not bin_obj:
             raise serializers.ValidationError({"bin_id": "bin_id is required."})
+        status = attrs.get(
+            "status",
+            getattr(self.instance, "status", BinCollectionEvent.STATUS_COLLECTED),
+        )
+        if status == BinCollectionEvent.STATUS_COLLECTED and attrs.get("collected_weight_kg", getattr(self.instance, "collected_weight_kg", None)) in (None, ""):
+            raise serializers.ValidationError({"collected_weight_kg": "Collected weight is required when status is Collected."})
+        if status in {BinCollectionEvent.STATUS_NOT_COLLECTED, BinCollectionEvent.STATUS_COLLECT_LATER}:
+            attrs["collected_weight_kg"] = None
 
         if trip_cp and trip_cp.trip_assignment_id != assignment:
             raise serializers.ValidationError(

@@ -44,16 +44,29 @@ def normalize_permission_key(value):
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
 
 
+def normalize_action_key(value):
+    normalized = re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+    if normalized in {"permadd", "create"}:
+        return "add"
+    if normalized in {"display", "visible", "list", "read", "show"}:
+        return "view"
+    if normalized in {"update", "change"}:
+        return "edit"
+    if normalized in {"remove"}:
+        return "delete"
+    return normalized
+
+
+def permission_action_name(action):
+    return normalize_action_key(action.variable_name or action.action_name or "")
+
+
 def build_action_permissions(queryset):
     permissions = {}
     for perm in queryset.order_by("order_no"):
         main_name = perm.mainscreen_id.mainscreen_name
         screen_name = perm.userscreen_id.userscreen_name
-        action_name = (
-            perm.userscreenaction_id.variable_name
-            or perm.userscreenaction_id.action_name
-            or ""
-        ).lower()
+        action_name = permission_action_name(perm.userscreenaction_id)
 
         screen_map = permissions.setdefault(main_name, {})
         actions = screen_map.setdefault(screen_name, [])
@@ -70,11 +83,7 @@ def build_permission_details(action_queryset, column_queryset=None):
     for perm in action_queryset.order_by("mainscreen_id__order_no", "userscreen_id__order_no", "order_no"):
         main_name = perm.mainscreen_id.mainscreen_name
         screen_name = perm.userscreen_id.userscreen_name
-        action_name = (
-            perm.userscreenaction_id.variable_name
-            or perm.userscreenaction_id.action_name
-            or ""
-        ).lower()
+        action_name = permission_action_name(perm.userscreenaction_id)
 
         screen_payload = details.setdefault(main_name, {}).setdefault(
             screen_name,
@@ -204,11 +213,7 @@ def build_module_access(action_queryset, column_queryset=None):
     ):
         mainscreen = perm.mainscreen_id
         userscreen = perm.userscreen_id
-        action_name = (
-            perm.userscreenaction_id.variable_name
-            or perm.userscreenaction_id.action_name
-            or ""
-        ).lower()
+        action_name = permission_action_name(perm.userscreenaction_id)
 
         module_entry = modules.setdefault(
             mainscreen.unique_id,
@@ -544,6 +549,28 @@ def permission_querysets(
             dashboard_queryset.filter(**filters),
         )
 
+    if permission_owner_kind or staff_id or state_unique_id or district_unique_id or area_type_unique_id:
+        filters = {
+            "local_body_type__isnull": True,
+            "local_body_id__isnull": True,
+        }
+        if state_unique_id:
+            filters["state_id_id"] = state_unique_id
+        if district_unique_id:
+            filters["district_id_id"] = district_unique_id
+        if area_type_unique_id:
+            filters["area_type_id_id"] = area_type_unique_id
+        if permission_owner_kind:
+            filters["permission_owner_kind"] = permission_owner_kind
+        if staff_id:
+            filters["staff_id"] = staff_id
+
+        return (
+            action_queryset.filter(**filters),
+            column_queryset.filter(**filters),
+            dashboard_queryset.filter(**filters),
+        )
+
     if not usertype_unique_id:
         return action_queryset.none(), column_queryset.none(), dashboard_queryset.none()
 
@@ -667,9 +694,7 @@ def resolve_intersected_permission_payload(
         screen_actions = final_permissions.get(perm.mainscreen_id.mainscreen_name, {}).get(
             perm.userscreen_id.userscreen_name
         )
-        action_name = (
-            perm.userscreenaction_id.variable_name or perm.userscreenaction_id.action_name or ""
-        ).lower()
+        action_name = permission_action_name(perm.userscreenaction_id)
         if screen_actions and action_name in screen_actions:
             granted_action_ids.add(perm.unique_id)
             granted_userscreen_ids.add(perm.userscreen_id_id)

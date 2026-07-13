@@ -26,6 +26,7 @@ from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.district import District
+from app.models.masters.corporation import Corporation
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
@@ -50,6 +51,16 @@ class SchedulerDemoSeeder(BaseSeeder):
         district = District.objects.filter(name="Erode", is_deleted=False).first()
         if not district:
             self.log("District 'Erode' not found — run the masters seeders first. Aborting.")
+            return
+
+        # Scope the demo plan to Erode Corporation so the scheduler demo also
+        # exercises the corporation path (previously panchayat-only). The
+        # panchayat below is still resolved only to locate real bin stops.
+        corporation = Corporation.objects.filter(
+            corporation_name="Erode Corporation", is_deleted=False
+        ).first()
+        if not corporation:
+            self.log("Corporation 'Erode Corporation' not found — run CorporationSeeder first. Aborting.")
             return
 
         panchayat = (
@@ -84,13 +95,14 @@ class SchedulerDemoSeeder(BaseSeeder):
         # Guaranteed-scheduled: ACTIVE + APPROVED + auto-assign + every weekday.
         plan, created = TripPlan.objects.update_or_create(
             district=district,
-            panchayat=panchayat,
+            corporation=corporation,
+            panchayat=None,
             collection_type=TripPlan.COLLECTION_TYPE_BIN,
             trip_trigger_weight_kg=DEMO_TRIGGER_KG,  # our sentinel
             is_deleted=False,
             defaults={
-                "state": district.state_id,
-                "area_type": panchayat.area_type_id,
+                "state": corporation.state_id,
+                "area_type": corporation.area_type_id,
                 "staff_template_id": template,
                 "vehicle_id": vehicle,
                 "waste_type_id": waste_type,
@@ -105,7 +117,7 @@ class SchedulerDemoSeeder(BaseSeeder):
         )
         plan.waste_types.set([waste_type])
         verb = "Created" if created else "Refreshed"
-        self.log(f"{verb} demo TripPlan {plan.display_code} ({plan.unique_id}) on {panchayat.panchayat_name}.")
+        self.log(f"{verb} demo TripPlan {plan.display_code} ({plan.unique_id}) on {corporation.corporation_name}.")
 
         # ---- 3. Give it real bin stops (so daily points are generated) -----
         cps = list(

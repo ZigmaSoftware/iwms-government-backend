@@ -181,6 +181,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "collected_at": stop.collected_at,
             "collected_weight_kg": stop.collected_weight_kg,
             "status": stop.status,
+            "status_reason": getattr(stop, "status_reason", None),
         } for stop in stops]
 
     def get_household_collection_points(self, obj):

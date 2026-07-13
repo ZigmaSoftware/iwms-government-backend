@@ -9,7 +9,6 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
-from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
@@ -111,25 +110,6 @@ class StaffDataScope(BaseMaster):
         to_field="unique_id",
         db_column="panchayat_id",
     )
-    depot = models.ForeignKey(
-        HierarchyNode,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="depot_staff",
-        to_field="unique_id",
-        db_column="depot_id",
-    )
-    vehicle = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_data_scopes",
-        to_field="unique_id",
-        db_column="vehicle_id",
-    )
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

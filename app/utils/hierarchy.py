@@ -1,4 +1,5 @@
 from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
+from django.db.models import Q
 from app.models.user_creations.staff_data_scope import StaffDataScope
 
 # NOTE: The Hierarchy Tree/Level/Assignment admin UI and management API have
@@ -81,6 +82,33 @@ def requester_scope_node(user):
     return getattr(govt_type, "location_node", None) if govt_type else None
 
 
+def _is_staff_user(user):
+    """True when `user` resolves to a staff record (has a staff_unique_id),
+    regardless of whether they have a StaffDataScope row."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "staff_unique_id", None):
+        return True
+    staff = getattr(user, "staff", None)
+    return bool(getattr(staff, "staff_unique_id", None))
+
+
+def _unscoped_result(queryset, user):
+    """Fallback applied when the requester has no resolvable StaffDataScope.
+
+    Super admins (``is_superuser``) see everything. Any other authenticated
+    staff user is denied by default with an empty queryset (G4) so that a
+    missing scope row can never silently grant global visibility. Anonymous /
+    non-staff / internal callers keep the queryset unchanged — these scoped
+    endpoints already sit behind the auth middleware.
+    """
+    if getattr(user, "is_superuser", False):
+        return queryset
+    if _is_staff_user(user):
+        return queryset.none()
+    return queryset
+
+
 def _staff_scope(user):
     if user is None or not getattr(user, "is_authenticated", False):
         return None
@@ -105,7 +133,6 @@ def _staff_scope(user):
             "town_panchayat",
             "panchayat_union",
             "panchayat",
-            "depot",
         )
         .first()
     )
@@ -374,8 +401,6 @@ def _node_ids_for_geo_scope(scope):
         return []
 
     direct_ids = list(scope.location_nodes.values_list("unique_id", flat=True))
-    if scope.depot_id:
-        direct_ids.append(scope.depot_id)
     if direct_ids:
         return direct_ids
 
@@ -398,7 +423,7 @@ def filter_queryset_by_requester_scope(queryset, user, field=LOCATION_FIELD):
 
     node = requester_scope_node(user)
     if not node:
-        return queryset
+        return _unscoped_result(queryset, user)
     ids = descendant_ids(node)
     if not ids:
         return queryset.none()
@@ -439,13 +464,36 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
 
     `field_map` lets a model whose columns don't match `STAFF_GEO_LEVEL_FIELDS`
     verbatim supply its own {scope_field: queryset_field} pairs, most specific
-    first. Users with no resolvable scope (e.g. super admins) see everything.
+    first. Super admins see everything; a non-super staff user with no scope
+    row is denied by default (empty queryset) — see `_unscoped_result` (G4).
     """
     scope = _staff_scope(user)
     if not scope:
-        return queryset
+        return _unscoped_result(queryset, user)
 
     fields = field_map or {f: f for f in STAFF_GEO_LEVEL_FIELDS}
+    direct_node_ids = list(scope.location_nodes.values_list("unique_id", flat=True))
+    if direct_node_ids:
+        combined_filter = Q()
+        for node_id in direct_node_ids:
+            node = HierarchyNode.objects.filter(unique_id=node_id, is_deleted=False).first()
+            node_fields = flat_geo_fields_for_node(node)
+            if not node_fields:
+                continue
+            node_filter = Q()
+            has_filter = False
+            for scope_field, queryset_field in fields.items():
+                flat_field = scope_field[:-3] if scope_field.endswith("_id") else scope_field
+                value = node_fields.get(flat_field)
+                if value:
+                    node_filter &= Q(**{queryset_field: value})
+                    has_filter = True
+            if has_filter:
+                combined_filter |= node_filter
+        if combined_filter:
+            return queryset.filter(combined_filter)
+        return queryset.none()
+
     for scope_field, queryset_field in fields.items():
         try:
             attname = scope._meta.get_field(scope_field).attname
@@ -523,7 +571,6 @@ def staff_scope_payload(user):
         "town_panchayat": _ref(scope.town_panchayat, "town_panchayat_name"),
         "panchayat_union": _ref(scope.panchayat_union, "panchayat_union_name"),
         "panchayat": _ref(scope.panchayat, "panchayat_name"),
-        "depot": _ref(scope.depot, "name"),
         "location_nodes": [
             {"unique_id": node.unique_id, "name": node.name}
             for node in scope.location_nodes.all()

@@ -2,6 +2,7 @@ from datetime import time
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.district import District
+from app.models.masters.corporation import Corporation
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.staff_template import StaffTemplate
@@ -124,4 +125,67 @@ class TripPlanSeeder(BaseSeeder):
                 else:
                     self.log(f"Updated TripPlan: {plan.display_code} - {collection_type}")
 
+        count += self._seed_corporation_plans(
+            district, templates, vehicles, supervisor, property_obj, sub_property
+        )
+
         self.log(f"---Trip plans seeded ({count} created)---")
+
+    def _seed_corporation_plans(self, district, templates, vehicles, supervisor,
+                                property_obj, sub_property):
+        """Seed corporation-scoped trip plans (corporation=Erode Corporation)
+        so corporation-level schedule data exists — the trigger for
+        daily_trip_assignment / generate_daily_trips to propagate the
+        corporation FK downward (S1/S3). Existing plans were panchayat-only."""
+        corporation = Corporation.objects.filter(
+            corporation_name="Erode Corporation", is_deleted=False
+        ).first()
+        if not corporation:
+            self.log("Corporation 'Erode Corporation' not found — skipping corporation trip plans.")
+            return 0
+
+        primary_waste_type = WasteType.objects.filter(
+            waste_type_name="Organic Waste", is_deleted=False
+        ).first()
+        if not primary_waste_type:
+            self.log("WasteType 'Organic Waste' not found — skipping corporation trip plans.")
+            return 0
+
+        created_count = 0
+        for idx, collection_type in enumerate([
+            TripPlan.COLLECTION_TYPE_BIN,
+            TripPlan.COLLECTION_TYPE_HOUSEHOLD,
+        ]):
+            plan, created = TripPlan.objects.update_or_create(
+                district=district,
+                corporation=corporation,
+                panchayat=None,
+                collection_type=collection_type,
+                is_deleted=False,
+                defaults={
+                    "waste_type_id": primary_waste_type,
+                    "state": corporation.state_id,
+                    "area_type": corporation.area_type_id,
+                    "staff_template_id": templates[idx % len(templates)],
+                    "vehicle_id": vehicles[idx % len(vehicles)],
+                    "supervisor_id": supervisor,
+                    "property_id": property_obj,
+                    "sub_property_id": sub_property,
+                    "scheduled_time": time(6, 30),
+                    "trip_trigger_weight_kg": 300,
+                    "max_vehicle_capacity_kg": 6000,
+                    "approval_status": TripPlan.ApprovalStatus.APPROVED,
+                    "status": TripPlan.Status.ACTIVE,
+                    "is_active": True,
+                    "is_auto_assign": True,
+                    "repeat_days": [0, 1, 2, 3, 4, 5, 6],
+                },
+            )
+            plan.waste_types.set([primary_waste_type])
+            if created:
+                created_count += 1
+                self.log(f"Created corporation TripPlan: Erode Corporation - {collection_type}")
+            else:
+                self.log(f"Updated corporation TripPlan: {plan.display_code} - {collection_type}")
+
+        return created_count
