@@ -106,6 +106,8 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                     collection_type=plan.collection_type,
                     customer_id=None,
                     defaults={
+                        # Geo hierarchy is auto-copied from trip_plan_id in
+                        # TripPlanCollectionPoint.save() (copy_flat_geo) — no need to set it here.
                         "sequence": sequence,
                         "is_active": True,
                         "is_deleted": False,

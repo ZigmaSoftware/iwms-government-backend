@@ -79,6 +79,7 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "approval_status",
             "display_code",
             "collection_date",
+            "event_type",
             "collected_weight_kg",
             "status",
             "status_reason",

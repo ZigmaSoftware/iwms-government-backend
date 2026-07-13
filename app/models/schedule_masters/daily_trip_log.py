@@ -28,10 +28,21 @@ from app.utils.hierarchy import copy_flat_geo
 def _generate_daily_trip_log_unique_id():
     today = timezone.localdate()
     prefix = f"DTL-{today.year}-{today.month:02d}"
-    count = DailyTripLog.objects.filter(
+    # Use the highest existing suffix + 1 (not a plain count, which collides once
+    # any log for the month has been deleted) and guarantee uniqueness.
+    existing = DailyTripLog.objects.filter(
         unique_id__startswith=f"{prefix}-",
-    ).count()
-    return f"{prefix}-{count + 1:03d}"
+    ).values_list("unique_id", flat=True)
+    max_n = 0
+    for uid in existing:
+        try:
+            max_n = max(max_n, int(uid.rsplit("-", 1)[1]))
+        except (ValueError, IndexError):
+            continue
+    candidate = max_n + 1
+    while DailyTripLog.objects.filter(unique_id=f"{prefix}-{candidate:03d}").exists():
+        candidate += 1
+    return f"{prefix}-{candidate:03d}"
 
 
 class DailyTripLog(BaseMaster):

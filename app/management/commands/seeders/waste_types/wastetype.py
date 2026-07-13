@@ -6,6 +6,9 @@ class WasteTypeSeeder(BaseSeeder):
     name = "WasteTypeSeeder"
 
     WASTE_TYPES = [
+        # Primary segregated household streams — shown first in the operator app.
+        "Wet Waste",
+        "Dry Waste",
         "Organic Waste",
         "Plastic Waste",
         "Paper Waste",
