@@ -10,8 +10,17 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils.hierarchy import copy_flat_geo
 
 
 def generate_bin_collection_event_id():
@@ -21,14 +30,14 @@ def generate_bin_collection_event_id():
 class BinCollectionEvent(BaseMaster):
     """One row per operator scan-and-submit. Permanent audit ledger."""
 
-    EVENT_COLLECTED = "Collected"
-    EVENT_COLLECT_LATER = "Collect Later"
-    EVENT_NOT_AVAILABLE = "Not Available"
+    STATUS_COLLECTED = "Collected"
+    STATUS_NOT_COLLECTED = "Not Collected"
+    STATUS_COLLECT_LATER = "Collect Later"
 
-    EVENT_TYPE_CHOICES = [
-        (EVENT_COLLECTED, "Collected"),
-        (EVENT_COLLECT_LATER, "Collect Later"),
-        (EVENT_NOT_AVAILABLE, "Not Available"),
+    STATUS_CHOICES = [
+        (STATUS_COLLECTED, "Collected"),
+        (STATUS_NOT_COLLECTED, "Not Collected"),
+        (STATUS_COLLECT_LATER, "Collect Later"),
     ]
 
     unique_id = models.CharField(
@@ -106,14 +115,90 @@ class BinCollectionEvent(BaseMaster):
 
 
 
-    event_type = models.CharField(
-        max_length=30,
-        choices=EVENT_TYPE_CHOICES,
-        default=EVENT_COLLECTED,
+    # Flat geo scope block — copied from the linked DailyTripAssignment on
+    # save so bin-collection rows can be corporation-scoped directly rather
+    # than only through the parent trip assignment (see B1).
+    state = models.ForeignKey(
+        State,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bin_collection_events",
+        to_field="unique_id",
+        db_column="panchayat_id",
+    )
+
+    collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_COLLECTED,
         db_index=True,
     )
     status_reason = models.TextField(null=True, blank=True)
-    collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2)
     collection_date = models.DateField(
         default=timezone.localdate,
         db_index=True,
@@ -135,6 +220,13 @@ class BinCollectionEvent(BaseMaster):
             # models.Index(fields=["operator_id", "created_at"]),
             # models.Index(fields=["panchayat_id", "created_at"]),
         ]
+
+    def save(self, *args, **kwargs):
+        # Inherit corporation / local-body scope from the parent trip
+        # assignment on first write. `only_empty` preserves explicit values.
+        if self.trip_assignment_id_id and not self.corporation_id:
+            copy_flat_geo(self, self.trip_assignment_id, only_empty=True)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.unique_id

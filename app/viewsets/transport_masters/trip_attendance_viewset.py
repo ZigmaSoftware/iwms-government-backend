@@ -15,12 +15,18 @@ from app.models.user_creations.attendance import Employee
 from app.serializers.user_creations.trip_attendance_serializer import (
     TripAttendanceSerializer
 )
+from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
 
 
-class TripAttendanceViewSet(ModelViewSet):
+class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
     """
     Mobile-triggered periodic attendance capture.
     Invoked every 45 minutes per staff during a trip.
+
+    Corporation scoping (params + requester StaffDataScope) is applied
+    automatically by FlatGeoScopedViewSetMixin via this model's own flat-geo
+    columns, which are populated from the parent trip assignment on save
+    (G1/G2/B2).
     """
 
     queryset = TripAttendance.objects.all()

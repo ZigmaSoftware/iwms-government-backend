@@ -38,6 +38,7 @@ from app.management.commands.seeders.user_creations.supervisor_user import Super
 from app.management.commands.seeders.customers.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.user_creations.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.user_creations.staff_personal import StaffPersonalSeeder
+from app.management.commands.seeders.user_creations.corporation_access import CorporationAccessSeeder
 
 # transport-masters (router: transport-masters/vehicle-type, vehicle-creation, trip-attendance, fuels)
 from app.management.commands.seeders.transport_masters.vehicleTypeCreation import VehicleTypeCreationSeeder
@@ -66,6 +67,9 @@ from app.management.commands.seeders.schedule_masters.waste_collection import Wa
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
+from app.management.commands.seeders.screen_managements.corporation_permissions import (
+    CorporationPermissionSeeder,
+)
 
 # collections (router: collections/panchayat-wise, ward-wise, zone-wise)
 from app.management.commands.seeders.collections import COLLECTION_SEEDERS
@@ -124,7 +128,7 @@ USER_CREATIONS_SEEDERS = [
     AuthUserSeeder,
     StaffOfficeSeeder,
     StaffPersonalSeeder,
-    
+    CorporationAccessSeeder,   # corporation admin + supervisor + StaffDataScope
 ]
 
 TRANSPORT_MASTERS_SEEDERS = [
@@ -159,6 +163,7 @@ SCHEDULE_MASTERS_SEEDERS = [
 
 SCREEN_MANAGEMENTS_SEEDERS = [
     *PERMISSION_SEEDERS,
+    CorporationPermissionSeeder,   # scoped permissions for Erode corp admin + supervisor
 ]
 
 COLLECTIONS_SEEDERS = [

@@ -21,6 +21,8 @@ from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_escalation
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.roles import is_admin_role, is_supervisor_role
 from app.services import notification_service
 
 from app.models.masters.district import District
@@ -177,18 +179,25 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         is_super = getattr(user, "is_superuser", False)
         is_staff_record = hasattr(user, "staff_unique_id")
         wants_all = params.get("all") in ("1", "true", "True")
-        if is_staff_record and not is_super and not wants_all:
-            scope = models.Q(assigned_staff=user) | models.Q(assigned_team__lead_staff=user)
-            department = getattr(user, "department_id", None)
-            if department:
-                scope = scope | models.Q(assigned_team__department=department)
-            else:
-                department_name = (getattr(user, "department", "") or "").strip()
-                if department_name:
-                    scope = scope | models.Q(
-                        assigned_team__department__department_name__iexact=department_name
-                    )
-            qs = qs.filter(scope)
+        if not is_super and not wants_all:
+            if is_admin_role(user) or is_supervisor_role(user):
+                # Corporation admins/supervisors see every ticket in their
+                # corporation subtree (capped by their StaffDataScope), not
+                # just the ones assigned to them (B2/G2).
+                qs = filter_flat_geo_queryset_by_requester_scope(qs, user)
+            elif is_staff_record:
+                # Regular staff still see only tickets that belong to them.
+                scope = models.Q(assigned_staff=user) | models.Q(assigned_team__lead_staff=user)
+                department = getattr(user, "department_id", None)
+                if department:
+                    scope = scope | models.Q(assigned_team__department=department)
+                else:
+                    department_name = (getattr(user, "department", "") or "").strip()
+                    if department_name:
+                        scope = scope | models.Q(
+                            assigned_team__department__department_name__iexact=department_name
+                        )
+                qs = qs.filter(scope)
         return qs
 
     # ----------------------------------------------------------

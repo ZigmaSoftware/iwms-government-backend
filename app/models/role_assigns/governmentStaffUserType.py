@@ -37,6 +37,7 @@ class GovernmentStaffUserType(BaseMaster):
         ("govt_municipality_driver",    "Municipality Driver"),
         ("govt_municipality_operator",  "Municipality Operator"),
         ("govt_corporation_admin",      "Corporation Admin"),
+        ("govt_corporation_supervisor", "Corporation Supervisor"),
         ("govt_corporation_officer",    "Corporation Officer"),
         ("govt_corporation_inspector",  "Corporation Inspector"),
         ("govt_corporation_driver",     "Corporation Driver"),

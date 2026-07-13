@@ -10,7 +10,12 @@ from app.models.superadmin_masters.auth_user import User
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.district_leader_login import DistrictLeaderLogin
 
-from app.utils.permission_response import finalize_permission_payload, resolve_permission_payload
+from app.utils.permission_response import (
+    finalize_permission_payload,
+    resolve_intersected_permission_payload,
+    resolve_permission_payload,
+)
+from app.utils.hierarchy import local_body_scope_for_staff
 from app.utils.password_encryption import decrypt_password
 
 PASSWORD_EXPIRY_DAYS = 90
@@ -177,26 +182,65 @@ class LoginSerializer(serializers.Serializer):
         government_usertype = getattr(staff_record, "governmentusertype_id", None) or getattr(login_user, "governmentusertype_id", None)
         role_usertype = staff_usertype or contractor_usertype or government_usertype
 
-        if not role_usertype:
+        local_body_scope = local_body_scope_for_staff(login_user)
+        has_local_body_scope = bool(
+            local_body_scope and local_body_scope.get("local_body_type") and local_body_scope.get("local_body_id")
+        )
+        has_geo_scope = bool(local_body_scope and local_body_scope.get("state_unique_id"))
+
+        if not role_usertype and not has_geo_scope:
             raise serializers.ValidationError("Staff role not assigned")
 
-        permission_payload = self._resolve_permission_payload(
-            usertype_unique_id=user_type.unique_id,
-            staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
-            contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
-            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
-            role_name=role_usertype.name,
-            user_type="government" if government_usertype else "contractor" if contractor_usertype else "staff",
-        )
+        role_name = role_usertype.name if role_usertype else None
+        resolved_user_type = "government" if government_usertype else "contractor" if contractor_usertype else "staff"
+
+        if has_local_body_scope:
+            # Final Permission = Super Admin Screen Permission (configured on
+            # the Local Body) ∩ Staff Screen Permission (configured for this
+            # specific staff member via Staff Access Configuration). Field
+            # Permission and Dashboard Widgets come from the Super Admin
+            # baseline (Dashboard Widgets are also intersected).
+            permission_payload = resolve_intersected_permission_payload(
+                state_unique_id=local_body_scope.get("state_unique_id"),
+                district_unique_id=local_body_scope.get("district_unique_id"),
+                area_type_unique_id=local_body_scope.get("area_type_unique_id"),
+                local_body_type=local_body_scope.get("local_body_type"),
+                local_body_id=local_body_scope.get("local_body_id"),
+                staff_id=getattr(login_user, "staff_unique_id", None),
+                role_name=role_name,
+                user_type=resolved_user_type,
+            )
+        elif has_geo_scope:
+            # State/District scoped staff access stores permissions directly
+            # against the staff row with local_body_type/local_body_id = null.
+            # There is no Local Body Super Admin ceiling to intersect here.
+            permission_payload = resolve_permission_payload(
+                state_unique_id=local_body_scope.get("state_unique_id"),
+                district_unique_id=local_body_scope.get("district_unique_id"),
+                area_type_unique_id=local_body_scope.get("area_type_unique_id"),
+                permission_owner_kind="staff",
+                staff_id=getattr(login_user, "staff_unique_id", None),
+                role_name=role_name,
+                user_type=resolved_user_type,
+            )
+        else:
+            permission_payload = self._resolve_permission_payload(
+                usertype_unique_id=user_type.unique_id,
+                staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
+                contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
+                governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
+                role_name=role_name,
+                user_type=resolved_user_type,
+            )
         permissions = permission_payload["permissions"]
 
         if not permissions:
-            permissions = self._apply_role_defaults(permissions, role_usertype.name)
+            permissions = self._apply_role_defaults(permissions, role_name)
             permission_payload = finalize_permission_payload(
                 permission_payload,
                 permissions=permissions,
-                role_name=role_usertype.name,
-                user_type="government" if government_usertype else "contractor" if contractor_usertype else "staff",
+                role_name=role_name,
+                user_type=resolved_user_type,
             )
 
         password_expired = _is_password_expired(getattr(staff_record, "password_crt_date", None))

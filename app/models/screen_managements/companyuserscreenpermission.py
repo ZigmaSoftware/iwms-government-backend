@@ -10,6 +10,9 @@ from django.db.models import Q, UniqueConstraint
 
 from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
 
 
 def generate_userscreenpermission_id():
@@ -18,6 +21,24 @@ def generate_userscreenpermission_id():
 
 def generate_companyuserscreenpermission_id():
     return generate_userscreenpermission_id()
+
+
+class LocalBodyType(models.TextChoices):
+    CORPORATION = "corporation", "Corporation"
+    MUNICIPALITY = "municipality", "Municipality"
+    PANCHAYAT = "panchayat", "Panchayat"
+    TOWN_PANCHAYAT = "town_panchayat", "Town Panchayat"
+    PANCHAYAT_UNION = "panchayat_union", "Panchayat Union"
+
+
+class PermissionType(models.TextChoices):
+    SCREEN = "screen", "Screen Permission"
+    FIELD = "field", "Field Permission"
+
+
+class PermissionOwnerKind(models.TextChoices):
+    SUPER_ADMIN = "super_admin", "Super Admin"
+    STAFF = "staff", "Staff"
 
 
 class UserScreenPermission(BaseMaster):
@@ -33,7 +54,8 @@ class UserScreenPermission(BaseMaster):
     usertype_id = models.ForeignKey(
         UserType, on_delete=models.PROTECT,
         to_field="unique_id", db_column="usertype_id",
-        related_name="userscreenpermissions"
+        related_name="userscreenpermissions",
+        null=True, blank=True
     )
 
     staffusertype_id = models.ForeignKey(
@@ -65,6 +87,46 @@ class UserScreenPermission(BaseMaster):
         null=True,
         blank=True
     )
+
+    state_id = models.ForeignKey(
+        State, on_delete=models.PROTECT,
+        to_field="unique_id", db_column="state_id",
+        related_name="userscreenpermissions",
+        null=True, blank=True
+    )
+
+    district_id = models.ForeignKey(
+        District, on_delete=models.PROTECT,
+        to_field="unique_id", db_column="district_id",
+        related_name="userscreenpermissions",
+        null=True, blank=True
+    )
+
+    area_type_id = models.ForeignKey(
+        AreaType, on_delete=models.PROTECT,
+        to_field="unique_id", db_column="area_type_id",
+        related_name="userscreenpermissions",
+        null=True, blank=True
+    )
+
+    local_body_type = models.CharField(
+        max_length=20, choices=LocalBodyType.choices,
+        null=True, blank=True
+    )
+
+    local_body_id = models.CharField(max_length=30, null=True, blank=True)
+
+    permission_type = models.CharField(
+        max_length=20, choices=PermissionType.choices,
+        default=PermissionType.SCREEN
+    )
+
+    permission_owner_kind = models.CharField(
+        max_length=20, choices=PermissionOwnerKind.choices,
+        default=PermissionOwnerKind.SUPER_ADMIN
+    )
+
+    staff_id = models.CharField(max_length=60, null=True, blank=True)
 
     mainscreen_id = models.ForeignKey(
         MainScreen, on_delete=models.PROTECT,
@@ -98,6 +160,8 @@ class UserScreenPermission(BaseMaster):
         indexes = [
             models.Index(fields=["staffusertype_id", "mainscreen_id"]),
             models.Index(fields=["contractorusertype_id", "mainscreen_id"]),
+            models.Index(fields=["local_body_type", "local_body_id", "mainscreen_id"]),
+            models.Index(fields=["local_body_type", "local_body_id", "permission_owner_kind", "staff_id"]),
         ]
         constraints = [
             UniqueConstraint(
@@ -112,7 +176,23 @@ class UserScreenPermission(BaseMaster):
                 ],
                 condition=Q(is_deleted=False),
                 name="uq_active_user_screen_permission",
-            )
+            ),
+            UniqueConstraint(
+                fields=[
+                    "state_id",
+                    "district_id",
+                    "area_type_id",
+                    "local_body_type",
+                    "local_body_id",
+                    "permission_owner_kind",
+                    "staff_id",
+                    "mainscreen_id",
+                    "userscreen_id",
+                    "userscreenaction_id",
+                ],
+                condition=Q(is_deleted=False, local_body_id__isnull=False),
+                name="uq_active_local_body_screen_permission",
+            ),
         ]
 
 

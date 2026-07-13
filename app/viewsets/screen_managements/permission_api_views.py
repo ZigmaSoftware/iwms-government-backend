@@ -124,7 +124,6 @@ class UserPermissionsAPIView(APIView):
             column_qs = column_qs.filter(usertype_id_id=usertype_id)
 
         action_map = defaultdict(lambda: {
-            "show": False,
             "view": False,
             "add": False,
             "edit": False,

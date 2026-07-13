@@ -16,6 +16,7 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
+from app.utils.roles import is_admin_role, is_super_admin
 
 
 class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -212,14 +213,12 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # ================= AUDIT =================
 
     def _resolve_performed_role(self, user):
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "") or ""
-        role = role.lower()
-
-        if role == "admin":
+        # Recognise admin/supervisor across all three role axes (company /
+        # contractor / government) rather than only ``staffusertype_id``, so a
+        # ``govt_corporation_admin`` is logged as ADMIN and a
+        # ``govt_corporation_supervisor`` as SUPERVISOR.
+        if is_super_admin(user) or is_admin_role(user):
             return StaffTemplateAuditLog.PerformedRole.ADMIN
-
-        if role == "supervisor":
-            return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 
         return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
 

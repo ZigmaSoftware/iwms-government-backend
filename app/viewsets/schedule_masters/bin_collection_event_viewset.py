@@ -177,24 +177,21 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not trip_cp:
             return
 
-        if event.event_type == BinCollectionEvent.EVENT_COLLECT_LATER:
-            trip_cp.collected_weight_kg = None
-            trip_cp.collected_at = None
-            trip_cp.is_collected = False
-            trip_cp.status = DailyTripCollectionPoint.STATUS_SKIPPED
-        elif event.event_type == BinCollectionEvent.EVENT_NOT_AVAILABLE:
+        if event.status == BinCollectionEvent.STATUS_NOT_COLLECTED:
             trip_cp.collected_weight_kg = None
             trip_cp.collected_at = None
             trip_cp.is_collected = False
             trip_cp.status = DailyTripCollectionPoint.STATUS_MISSED
+        elif event.status == BinCollectionEvent.STATUS_COLLECT_LATER:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_PENDING
         else:
             trip_cp.collected_weight_kg = event.collected_weight_kg or 0
             trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
             trip_cp.is_collected = True
             trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
-        trip_cp.status_reason = event.status_reason
-        trip_cp.status_latitude = event.driver_latitude
-        trip_cp.status_longitude = event.driver_longitude
         trip_cp.save(update_fields=[
             "collected_weight_kg",
             "collected_at",
