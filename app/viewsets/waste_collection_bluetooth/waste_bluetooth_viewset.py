@@ -192,7 +192,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if not image:
             return Response({"status": "error", "message": "No image uploaded"}, status=400)
 
-        image_path = upload_image(image)
+        image_path, image_warning = self._upload_image_or_blank(image)
         record = WasteCollectionSub.objects.create(
             unique_id=generate_unique_id("wcs-"),
             screen_unique_id=screen_id,
@@ -209,7 +209,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             "status": "success",
             "unique_id": record.unique_id,
             "screen_unique_id": screen_id,
-            "image": image_path
+            "image": image_path,
+            **({"image_warning": image_warning} if image_warning else {}),
         })
 
     # ----------------- GET SAVED WASTE TYPES -----------------
@@ -336,7 +337,11 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
         image_path = None
         if "image" in request.FILES:
-            image_path = upload_image(request.FILES["image"])
+            image_path, image_warning = self._upload_image_or_blank(
+                request.FILES["image"]
+            )
+        else:
+            image_warning = None
 
         row.weight = self._to_float(weight)
         row.latitude = latitude
@@ -438,6 +443,13 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             return float(value)
         except (TypeError, ValueError):
             return 0.0
+
+    @staticmethod
+    def _upload_image_or_blank(image):
+        try:
+            return upload_image(image), None
+        except OSError as exc:
+            return "", f"Image could not be saved: {exc}"
 
     def _get_range_bounds(self, period, base_date):
         if period == "daily":

@@ -10,11 +10,17 @@ class DepartmentSerializer(serializers.ModelSerializer):
         required=False,
     )
     status_label = serializers.SerializerMethodField(read_only=True)
+    corporation_name = serializers.CharField(
+        source="corporation_id.corporation_name",
+        read_only=True,
+    )
 
     class Meta:
         model = Department
         fields = [
             "unique_id",
+            "corporation_id",
+            "corporation_name",
             "department_name",
             "department_code",
             "description",

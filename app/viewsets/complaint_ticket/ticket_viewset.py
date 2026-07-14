@@ -119,7 +119,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = ComplaintTicket.objects.filter(is_deleted=False).select_related(
             "category", "subcategory", "priority", "status", "source",
             "customer", "assigned_team", "assigned_team__department",
-            "assigned_staff", "state", "district", "corporation",
+            "assigned_staff", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
         ).prefetch_related(
             "status_history", "status_history__to_status",
@@ -151,6 +151,9 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             district = params.get("district")
             if district:
                 qs = qs.filter(district_id=district)
+            area_type = params.get("area_type") or params.get("area_type_id")
+            if area_type:
+                qs = qs.filter(area_type_id=area_type)
             city = params.get("city")
             if city:
                 qs = qs.filter(_local_body_q(city))

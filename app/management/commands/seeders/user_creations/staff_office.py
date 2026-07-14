@@ -2,13 +2,14 @@ from django.contrib.auth.hashers import make_password
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.department import Department
-from app.models.masters.designation import Designation
 from app.models.masters.district import District
 from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
+from app.models.role_assigns.userType import UserType
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 
 _LOCAL_BODY_MODELS = [
@@ -36,35 +37,59 @@ def _local_body(name):
 class StaffOfficeSeeder(BaseSeeder):
     name = "StaffOfficeSeeder"
 
-    # (employee_name, username, dept_code, designation_name, district_name, local_body_name)
+    # (employee_name, username, dept_code, designation, district_name, local_body_name, govt_role)
+    # `designation` is free text (not an FK master) — government designations
+    # vary too widely across states/districts to enumerate.
+    # `govt_role` is a GovernmentStaffUserType name: this is a government-only
+    # project, so every seeded staff is a government user (no staff/contractor).
     # local_body_name is optional - most staff cover a whole district; a couple
     # are tagged to one specific town/panchayat inside it, so district- and
     # city-scoped assignment filtering both have real data to prove out.
     STAFF = [
-        ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",          "Erode",      None),
-        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",         "Erode",      "Anthiyur Panchayat"),
-        ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",        "Salem",      None),
-        ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",          "Salem",      None),
-        ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector",    "Coimbatore", None),
+        ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",       "Erode",      None,                 "govt_district_driver"),
+        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",      "Erode",      "Anthiyur Panchayat", "govt_district_operator"),
+        ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",     "Salem",      None,                 "govt_district_officer"),
+        ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",       "Salem",      None,                 "govt_district_driver"),
+        ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector", "Coimbatore", None,                 "govt_district_inspector"),
     ]
 
     def run(self):
+        government_type = UserType.objects.filter(name__iexact="government").first()
+        if not government_type:
+            self.log("UserType 'government' not found — run UserTypeSeeder first. Skipping.")
+            return
+
         count = 0
         updated = 0
-        for emp_name, username, dept_code, desig_name, district_name, local_body_name in self.STAFF:
+        for emp_name, username, dept_code, designation, district_name, local_body_name, govt_role in self.STAFF:
             dept = Department.objects.filter(department_code=dept_code).first()
-            desig = Designation.objects.filter(designation_name=desig_name).first()
             district = District.objects.filter(name=district_name).first()
             local_body_field, local_body = _local_body(local_body_name)
+            role = GovernmentStaffUserType.objects.filter(
+                name=govt_role, is_deleted=False
+            ).first()
+            if not role:
+                self.log(
+                    f"GovernmentStaffUserType '{govt_role}' not found — run "
+                    "GovernmentStaffUserTypeSeeder first. Skipping this staff."
+                )
+                continue
 
             defaults = {
                 "employee_name": emp_name,
                 "department_id": dept,
-                "designation_id": desig,
                 "state": district.state_id if district else None,
                 "district": district,
                 "department": dept.department_name if dept else "",
-                "designation": desig.designation_name if desig else "",
+                # Free-text designation (no FK). Explicitly clear the legacy
+                # designation_id FK so re-seeding normalizes older rows too.
+                "designation": designation,
+                "designation_id": None,
+                # Government-only project: every staff is a government user.
+                "user_type_id": government_type,
+                "governmentusertype_id": role,
+                "staffusertype_id": None,
+                "contractorusertype_id": None,
                 "active_status": True,
                 "login_enabled": True,
                 "is_active": True,
