@@ -28,4 +28,8 @@ class IsOperatorRole(BasePermission):
             name = (getattr(role_obj, "name", "") or "").lower()
             if name:
                 role_names.append(name)
-        return any(("driver" in n or "operator" in n) for n in role_names)
+        field_role_markers = ("driver", "operator", "field")
+        return any(
+            any(marker in role_name for marker in field_role_markers)
+            for role_name in role_names
+        )
