@@ -569,12 +569,238 @@ def staff_scope_payload(user):
         "corporation": _ref(scope.corporation, "corporation_name"),
         "municipality": _ref(scope.municipality, "municipality_name"),
         "town_panchayat": _ref(scope.town_panchayat, "town_panchayat_name"),
-        "panchayat_union": _ref(scope.panchayat_union, "panchayat_union_name"),
+        "panchayat_union": _ref(scope.panchayat_union, "union_name"),
         "panchayat": _ref(scope.panchayat, "panchayat_name"),
         "location_nodes": [
             {"unique_id": node.unique_id, "name": node.name}
             for node in scope.location_nodes.all()
         ],
+        # --- Scope expansion (login feature) -------------------------------
+        # The level at which the scope was granted (most-specific field set)
+        # plus the full geo subtree beneath it, so the frontend knows which
+        # ULBs/RLBs (and their staff) live under the granted boundary without
+        # extra round-trips. See `expanded_scope_payload`.
+        "granted_level": _granted_scope_level(scope),
+        "descendants": _expanded_descendants(scope),
+    }
+
+
+# ============================================================
+# Downstream scope expansion (login response)
+# ============================================================
+
+# Most-specific-first precedence, mirroring the derivation used across this
+# module and `staff_access_configuration_serializer._access_scope_payload`.
+GEO_SCOPE_LEVELS = (
+    ("panchayat", "panchayat_id"),
+    ("panchayat_union", "panchayat_union_id"),
+    ("town_panchayat", "town_panchayat_id"),
+    ("municipality", "municipality_id"),
+    ("corporation", "corporation_id"),
+    ("area_type", "area_type_id"),
+    ("district", "district_id"),
+    ("state", "state_id"),
+)
+
+# StaffDataScope raw-id attname per local-body level.
+SCOPE_LOCAL_BODY_FIELDS = {
+    "corporation": "corporation_id",
+    "municipality": "municipality_id",
+    "town_panchayat": "town_panchayat_id",
+    "panchayat_union": "panchayat_union_id",
+    "panchayat": "panchayat_id",
+}
+
+# Human-friendly grouping for the two AreaType names.
+AREA_TYPE_GROUP = {
+    "Urban Local Body": "urban",
+    "Rural Local Body": "rural",
+}
+
+
+def _granted_scope_level(scope):
+    """The level at which `scope` was granted: the most-specific populated
+    geo field. Returns None for an all-null scope row."""
+    if not scope:
+        return None
+    for level, attname in GEO_SCOPE_LEVELS:
+        if getattr(scope, attname, None):
+            return level
+    return None
+
+
+def _expanded_descendants(scope):
+    """Build the geo subtree beneath a StaffDataScope, grouped
+    ``district -> area_type -> local_body (+ staff)``. Anchored at whatever
+    level the scope was granted (state expands all districts; a single town
+    panchayat expands only itself). Batched — a bounded, constant number of
+    queries regardless of subtree size (no N+1). Returns ``{"districts": [...]}``.
+    """
+    if not scope:
+        return None
+
+    from app.models.masters.district import District
+    from app.models.masters.areatype import AreaType
+    from app.models.masters.corporation import Corporation
+    from app.models.masters.municipality import Municipality
+    from app.models.masters.town_panchayat import TownPanchayat
+    from app.models.masters.panchayat_union import PanchayatUnion
+    from app.models.masters.panchayat import Panchayat
+
+    lb_models = {
+        "corporation": (Corporation, "corporation_name"),
+        "municipality": (Municipality, "municipality_name"),
+        "town_panchayat": (TownPanchayat, "town_panchayat_name"),
+        "panchayat_union": (PanchayatUnion, "union_name"),
+        "panchayat": (Panchayat, "panchayat_name"),
+    }
+
+    state_id = scope.state_id
+    district_id = scope.district_id
+    area_type_id = scope.area_type_id
+
+    # If the scope is pinned to a single local body, that is the anchor.
+    specific_lb = None
+    for level, attname in SCOPE_LOCAL_BODY_FIELDS.items():
+        value = getattr(scope, attname, None)
+        if value:
+            specific_lb = (level, value)
+            break
+
+    # Backfill missing parents from the anchoring local body so the tree can
+    # still be rooted at a district even if only the local body was stored.
+    if specific_lb and not (state_id and district_id and area_type_id):
+        model, _ = lb_models[specific_lb[0]]
+        row = (
+            model.objects.filter(unique_id=specific_lb[1])
+            .values("state_id", "district_id", "area_type_id")
+            .first()
+        )
+        if row:
+            state_id = state_id or row["state_id"]
+            district_id = district_id or row["district_id"]
+            area_type_id = area_type_id or row["area_type_id"]
+
+    # Districts in scope.
+    if district_id:
+        district_ids = [district_id]
+    elif state_id:
+        district_ids = list(
+            District.objects.filter(state_id=state_id, is_deleted=False)
+            .values_list("unique_id", flat=True)
+        )
+    else:
+        district_ids = []
+
+    if not district_ids:
+        return {"districts": []}
+
+    # Area types in scope (all under the districts, or just the granted one).
+    area_type_qs = AreaType.objects.filter(
+        is_deleted=False, district_id__in=district_ids
+    )
+    if area_type_id:
+        area_type_qs = area_type_qs.filter(unique_id=area_type_id)
+    area_types = list(area_type_qs.values("unique_id", "name", "district_id"))
+
+    # Local bodies, grouped by (district, area_type). One query per model.
+    lb_rows_by_key = {}
+    lb_ids_by_level = {level: [] for level in lb_models}
+    for level, (model, name_attr) in lb_models.items():
+        if specific_lb and specific_lb[0] != level:
+            continue
+        qs = model.objects.filter(is_deleted=False, district_id__in=district_ids)
+        if area_type_id:
+            qs = qs.filter(area_type_id=area_type_id)
+        if specific_lb and specific_lb[0] == level:
+            qs = qs.filter(unique_id=specific_lb[1])
+        for row in qs.values("unique_id", name_attr, "district_id", "area_type_id"):
+            key = (row["district_id"], row["area_type_id"])
+            lb_rows_by_key.setdefault(key, []).append(
+                {
+                    "unique_id": row["unique_id"],
+                    "name": row[name_attr],
+                    "local_body_type": level,
+                }
+            )
+            lb_ids_by_level[level].append(row["unique_id"])
+
+    # Government staff (sub-admins / supervisors) scoped within each local
+    # body. One query per non-empty level; mapped back in Python.
+    staff_by_lb = {}
+    for level, ids in lb_ids_by_level.items():
+        if not ids:
+            continue
+        scope_field = SCOPE_LOCAL_BODY_FIELDS[level]
+        rows = (
+            StaffDataScope.objects.filter(
+                is_active=True,
+                is_deleted=False,
+                **{f"{scope_field}__in": ids},
+            ).values(
+                scope_field,
+                "staff_id",
+                "staff__employee_name",
+                "staff__staff_config_name",
+                "staff__governmentusertype_id__name",
+            )
+        )
+        for row in rows:
+            staff_by_lb.setdefault(row[scope_field], []).append(
+                {
+                    "staff_unique_id": row["staff_id"],
+                    "employee_name": row["staff__employee_name"],
+                    "role": row["staff__governmentusertype_id__name"],
+                    "staff_config_name": row["staff__staff_config_name"],
+                }
+            )
+
+    district_names = dict(
+        District.objects.filter(unique_id__in=district_ids).values_list(
+            "unique_id", "name"
+        )
+    )
+
+    area_types_by_district = {}
+    for area_type in area_types:
+        area_types_by_district.setdefault(area_type["district_id"], []).append(area_type)
+
+    districts_payload = []
+    for did in district_ids:
+        area_type_payload = []
+        for area_type in area_types_by_district.get(did, []):
+            local_bodies = lb_rows_by_key.get((did, area_type["unique_id"]), [])
+            for local_body in local_bodies:
+                local_body["staff"] = staff_by_lb.get(local_body["unique_id"], [])
+            area_type_payload.append(
+                {
+                    "unique_id": area_type["unique_id"],
+                    "name": area_type["name"],
+                    "group": AREA_TYPE_GROUP.get(area_type["name"]),
+                    "local_bodies": local_bodies,
+                }
+            )
+        districts_payload.append(
+            {
+                "unique_id": did,
+                "name": district_names.get(did),
+                "area_types": area_type_payload,
+            }
+        )
+
+    return {"districts": districts_payload}
+
+
+def expanded_scope_payload(user):
+    """Public wrapper: the requester's granted level plus the geo subtree
+    beneath it, or None when the user is unscoped (super admin / full access).
+    Login embeds the same data inside `staff_scope_payload`."""
+    scope = _staff_scope(user)
+    if not scope:
+        return None
+    return {
+        "granted_level": _granted_scope_level(scope),
+        "descendants": _expanded_descendants(scope),
     }
 
 
