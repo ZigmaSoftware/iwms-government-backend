@@ -22,4 +22,7 @@ class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         status_value = self.request.query_params.get("status")
         if status_value in {"active", "inactive"}:
             queryset = queryset.filter(is_active=status_value == "active")
+        corporation_id = self.request.query_params.get("corporation_id")
+        if corporation_id:
+            queryset = queryset.filter(corporation_id=corporation_id)
         return queryset

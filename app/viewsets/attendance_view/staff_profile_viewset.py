@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import AllowAny
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 from app.serializers.employee import (
@@ -10,6 +11,7 @@ from app.serializers.employee import (
 
 
 class StaffProfileViewSet(viewsets.ViewSet):
+    permission_classes = [AllowAny]
     parser_classes = (MultiPartParser, FormParser)
 
     # -----------------------------------

@@ -61,6 +61,17 @@ AUTH_ONLY_PREFIXES = tuple(
     for suffix in AUTH_ONLY_SUFFIXES
 )
 
+PUBLIC_MOBILE_SUFFIXES = (
+    "register/",
+    "staff-profile/",
+)
+
+PUBLIC_MOBILE_PREFIXES = tuple(
+    prefix + suffix
+    for prefix in API_AUTH_PREFIXES
+    for suffix in PUBLIC_MOBILE_SUFFIXES
+)
+
 PLATFORM_PREFIXES = (
     "/api/platform/",
 )
@@ -68,6 +79,7 @@ PLATFORM_PREFIXES = (
 PUBLIC_PREFIXES = (
     "/media/",
     "/api/v1/publicgrivence/",
+    *PUBLIC_MOBILE_PREFIXES,
 )
 
 COMMON_AUDIT_CREATE_PATHS = tuple(

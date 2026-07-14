@@ -1,9 +1,14 @@
+import hashlib
+
+from django.core.cache import cache
 from rest_framework import serializers
 
+from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
+from app.services.openroute_service import route_stops
 
 
 class _PanchayatBriefSerializer(serializers.Serializer):
@@ -86,6 +91,10 @@ class MyTripTodaySerializer(serializers.Serializer):
     waste_type = _WasteTypeBriefSerializer(source="waste_type_id")
     vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
     progress = serializers.SerializerMethodField()
+    distance_meters = serializers.SerializerMethodField()
+    duration_seconds = serializers.SerializerMethodField()
+    route_geojson = serializers.SerializerMethodField()
+    vehicle_start = serializers.SerializerMethodField()
     collection_points = serializers.SerializerMethodField()
 
     def get_progress(self, obj):
@@ -121,3 +130,80 @@ class MyTripTodaySerializer(serializers.Serializer):
         return TripCollectionPointSerializer(
             children, many=True, context=self.context
         ).data
+
+    def get_distance_meters(self, obj):
+        return self._route_for_assignment(obj)["distance"]
+
+    def get_duration_seconds(self, obj):
+        return self._route_for_assignment(obj)["duration"]
+
+    def get_route_geojson(self, obj):
+        return self._route_for_assignment(obj)["geometry"]
+
+    def get_vehicle_start(self, obj):
+        return self._route_for_assignment(obj)["vehicle_start"]
+
+    def _route_for_assignment(self, obj):
+        local_cache = getattr(self, "_route_cache", None)
+        if local_cache is None:
+            local_cache = {}
+            self._route_cache = local_cache
+        if obj.unique_id in local_cache:
+            return local_cache[obj.unique_id]
+
+        stops = list(
+            obj.trip_collection_points
+            .filter(is_deleted=False)
+            .select_related("collection_point_id")
+            .order_by("sequence")
+        )
+        route_input = []
+        for stop in stops:
+            cp = stop.collection_point_id
+            if not cp or cp.latitude is None or cp.longitude is None:
+                continue
+            route_input.append({
+                "id": stop.unique_id,
+                "location": [float(cp.longitude), float(cp.latitude)],
+            })
+
+        vehicle_start = self._latest_vehicle_start(obj)
+        route_signature = "|".join(
+            [
+                obj.unique_id,
+                str(vehicle_start),
+                *[
+                    f"{stop.unique_id}:{stop.sequence}:"
+                    f"{getattr(stop.collection_point_id, 'latitude', None)}:"
+                    f"{getattr(stop.collection_point_id, 'longitude', None)}"
+                    for stop in stops
+                ],
+            ]
+        )
+        cache_key = (
+            "operator-my-trip-route:"
+            f"{hashlib.sha1(route_signature.encode()).hexdigest()}"
+        )
+        route = cache.get(cache_key)
+        if route is None:
+            route = route_stops(route_input, vehicle_start)
+            cache.set(cache_key, route, timeout=300)
+
+        local_cache[obj.unique_id] = route
+        return route
+
+    def _latest_vehicle_start(self, assignment):
+        latest_event = (
+            BinCollectionEvent.objects
+            .filter(trip_assignment_id=assignment)
+            .exclude(driver_latitude=None)
+            .exclude(driver_longitude=None)
+            .order_by("-created_at")
+            .first()
+        )
+        if not latest_event:
+            return None
+        return [
+            float(latest_event.driver_longitude),
+            float(latest_event.driver_latitude),
+        ]

@@ -8,7 +8,7 @@ from app.models.role_assigns.userType import UserType
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.user_creations.staffcreation import Staffcreation
-from app.utils.hierarchy import copy_flat_geo
+from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
 
 
 class SupervisorUserSeeder(BaseSeeder):
@@ -87,6 +87,14 @@ class SupervisorUserSeeder(BaseSeeder):
 
         copy_flat_geo(supervisor, assignments[0])
         supervisor.save()
+
+        # Data-scope the supervisor to the trip's geography. The scoped viewsets
+        # (schedule-masters daily-trip-assignments / daily-trip-logs) deny any
+        # non-super staff user with NO StaffDataScope row by default (empty
+        # queryset), so without this the supervisor app's `mine=true` lists and
+        # the home waste-graph come back EMPTY even though the trips exist.
+        # Idempotent; scoped to the same flat geo the trip carries.
+        sync_staff_data_scope(supervisor, assignments[0])
 
         # Make this supervisor responsible for the trip plan(s) behind
         # driver_user's assignments today.

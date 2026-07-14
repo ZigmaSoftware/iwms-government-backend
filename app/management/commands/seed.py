@@ -127,9 +127,9 @@ ROLE_ASSIGNS_SEEDERS = [
 ]
 
 USER_CREATIONS_SEEDERS = [
-    AuthUserSeeder,
-    StaffOfficeSeeder,
+    StaffOfficeSeeder,         # staff records (+ government user type/role)
     StaffPersonalSeeder,
+    AuthUserSeeder,            # auth logins — needs staff (+ govt role) to exist first
     CorporationAccessSeeder,   # corporation admin + supervisor + StaffDataScope
 ]
 

@@ -39,14 +39,16 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
         "assignment_unique_id": assignment.unique_id,
         "trip_date": assignment.trip_date.isoformat(),
         "status": assignment.status,
+        # panchayat is a nullable FK — a household-only / higher-level trip may
+        # have none, so guard it instead of crashing the whole history list.
         "panchayat": {
             "unique_id": panchayat.unique_id,
             "name": panchayat.panchayat_name,
-        },
+        } if panchayat else None,
         "waste_type": {
             "unique_id": waste_type.unique_id,
             "name": waste_type.waste_type_name,
-        },
+        } if waste_type else None,
         "progress": {
             "collected": collected,
             "total": total,
@@ -72,7 +74,7 @@ def _serialize_event(event: BinCollectionEvent, request=None) -> dict:
     return {
         "unique_id": event.unique_id,
         "event_at": event.created_at.isoformat(),
-        "event_type": event.event_type,
+        "event_type": event.status,
         "collected_weight_kg": str(event.collected_weight_kg),
         "status_reason": event.status_reason,
         "scanned_qr": event.bin_id_id,
@@ -192,16 +194,18 @@ class TripHistoryViewSet(viewsets.ViewSet):
                 "collected_weight_kg": (
                     str(cp.collected_weight_kg) if cp.collected_weight_kg is not None else None
                 ),
+                # collection_point / bin are nullable (household stops carry
+                # neither) — guard so a single null-FK row can't 500 the detail.
                 "collection_point": {
                     "unique_id": cp.collection_point_id.unique_id,
                     "name": cp.collection_point_id.cp_name,
-                },
+                } if cp.collection_point_id else None,
                 "bin": {
                     "unique_id": cp.bin_id.unique_id,
                     "bin_name": cp.bin_id.bin_name,
                     "bin_qr": cp.bin_id.unique_id,
                     "bin_qr_image_url": _bin_qr_image_url(cp.bin_id, request=request),
-                },
+                } if cp.bin_id else None,
             }
             for cp in cps
         ]

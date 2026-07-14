@@ -3,7 +3,6 @@ from app.models.role_assigns.staffUserType import StaffUserType
 from app.models.role_assigns.contractorUserType import ContractorUserType
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.masters.department import Department
-from app.models.masters.designation import Designation
 from app.models.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -138,11 +137,6 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    designation_id = serializers.PrimaryKeyRelatedField(
-        queryset=Designation.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
     department_name = serializers.CharField(
         source="department_id.department_name",
         read_only=True,
@@ -151,14 +145,9 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         source="department_id.department_code",
         read_only=True,
     )
-    designation_name = serializers.CharField(
-        source="designation_id.designation_name",
-        read_only=True,
-    )
-    designation_group = serializers.CharField(
-        source="designation_id.designation_group",
-        read_only=True,
-    )
+    # Designation is captured as free text (`designation`), not an FK master —
+    # government designations vary too widely across states/districts to
+    # enumerate. The former FK (`designation_id`) is no longer exposed.
 
     # --------------------------------------------------
     #  Office-level: Driving licence
@@ -280,11 +269,8 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "department",
             "designation",
             "department_id",
-            "designation_id",
             "department_name",
             "department_code",
-            "designation_name",
-            "designation_group",
             "staff_head_id",
             "grade",
             "site_name",

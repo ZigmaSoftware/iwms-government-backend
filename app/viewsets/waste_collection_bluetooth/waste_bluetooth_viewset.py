@@ -192,22 +192,25 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if not image:
             return Response({"status": "error", "message": "No image uploaded"}, status=400)
 
-        image_path = upload_image(image)
+        image_path, image_warning = self._upload_image_or_blank(image)
         record = WasteCollectionSub.objects.create(
+            unique_id=generate_unique_id("wcs-"),
             screen_unique_id=screen_id,
             customer_id=customer_id,
-            waste_type_id=waste_type,
+            waste_type_id=str(waste_type),
             image=image_path,
-            weight=weight or 0,
+            weight=self._to_float(weight),
             latitude=latitude,
             longitude=longitude,
+            is_deleted=False,
         )
 
         return Response({
             "status": "success",
             "unique_id": record.unique_id,
             "screen_unique_id": screen_id,
-            "image": image_path
+            "image": image_path,
+            **({"image_warning": image_warning} if image_warning else {}),
         })
 
     # ----------------- GET SAVED WASTE TYPES -----------------
@@ -290,27 +293,161 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if float(total) <= 0:
             return Response({"status": "error", "message": "No waste records found"})
 
-        main_id = generate_unique_id("wcm")
+        main_id = generate_unique_id("wcm-")
         now = timezone.now()
 
+        # 1) Legacy aggregate (unchanged): keep writing WasteCollectionMain and
+        #    linking the captured sub-rows to it so anything still reading the
+        #    old bluetooth tables (desktop CRUD, citizen-summary) does not
+        #    regress.
         with transaction.atomic():
             WasteCollectionMain.objects.create(
                 unique_id=main_id,
                 screen_unique_id=screen_id,
                 collected_time=now,
                 created=now,
-                total_waste_collected=total,
+                total_waste_collected=float(total),
                 entry_type=entry_type,
                 customer_id=customer_id,
+                is_deleted=False,
             )
             collection_rows.update(form_unique_id=main_id)
 
-        return Response({
+        response = {
             "status": "success",
             "main_unique_id": main_id,
             "total_weight": float(total),
-            "collected_time": now
-        })
+            "collected_time": now,
+        }
+
+        # 2) New web backend: mirror the same collection into the canonical
+        #    WasteCollection table (wet/dry/mixed split). Saving it with a
+        #    trip_assignment fires sync_household_collection_on_waste_save, which
+        #    marks the household stop collected and syncs the trip log/dashboards.
+        #    Guarded in its own block so a failure here can never break the app's
+        #    finalize (the legacy record above is already committed).
+        try:
+            waste_collection = self._mirror_to_waste_collection(
+                customer_id=customer_id,
+                collection_rows=collection_rows,
+                request=request,
+            )
+            if waste_collection is not None:
+                response["waste_collection_unique_id"] = waste_collection.unique_id
+        except Exception as exc:  # noqa: BLE001 — never regress the app flow
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "finalize-waste: mirroring to WasteCollection failed"
+            )
+            response["waste_collection_error"] = str(exc)
+
+        return Response(response)
+
+    # ----- helpers for the WasteCollection mirror (new web backend) -----
+    def _split_waste_by_type(self, collection_rows):
+        """Bucket the session's captured sub-rows into wet / dry / mixed by
+        waste-type name — same rule the citizen-summary aggregate uses."""
+        type_names = {
+            wt.unique_id: (wt.waste_type_name or "").lower()
+            for wt in WasteType.objects.filter(is_deleted=False)
+        }
+        wet = dry = mixed = 0.0
+        for sub in collection_rows:
+            key = str(sub.waste_type_id)
+            name = type_names.get(key, "")
+            weight = float(sub.weight or 0)
+            if key == "1" or "wet" in name or "organic" in name:
+                wet += weight
+            elif key == "2" or "dry" in name:
+                dry += weight
+            else:
+                mixed += weight
+        return wet, dry, mixed
+
+    def _resolve_trip_assignment(self, customer, request):
+        """Best-effort trip for this collection: the trip where this household
+        is a stop today (preferred), else the requester's active operator trip.
+        Returns None when neither applies (ad-hoc collection) — the record is
+        still stored, just without trip linkage."""
+        from app.models.schedule_masters.daily_trip_assignment import (
+            DailyTripAssignment,
+        )
+        from app.models.schedule_masters.daily_trip_household_collection import (
+            DailyTripHouseholdCollection,
+        )
+
+        today = timezone.localdate()
+        dthc = (
+            DailyTripHouseholdCollection.objects
+            .filter(
+                customer_id=customer,
+                is_deleted=False,
+                trip_assignment_id__trip_date=today,
+                trip_assignment_id__is_deleted=False,
+            )
+            .exclude(trip_assignment_id__status=DailyTripAssignment.STATUS_CANCELLED)
+            .select_related("trip_assignment_id")
+            .order_by("is_collected", "trip_assignment_id")  # prefer a pending stop
+            .first()
+        )
+        if dthc:
+            return dthc.trip_assignment_id
+
+        try:
+            from app.viewsets.operator_mobile.helpers import (
+                find_active_assignment_for_operator,
+                resolve_operator_staff,
+            )
+
+            return find_active_assignment_for_operator(
+                resolve_operator_staff(request.user)
+            )
+        except Exception:  # noqa: BLE001 — not an operator / no active trip
+            return None
+
+    def _mirror_to_waste_collection(self, *, customer_id, collection_rows, request):
+        """Create or refresh the canonical WasteCollection row for this
+        household so the web backend (dashboards, trip log, household stops)
+        sees the app's collection."""
+        from app.models.customers.wastecollection import WasteCollection
+
+        customer = CustomerCreation.objects.filter(
+            unique_id=customer_id, is_deleted=False
+        ).first()
+        if customer is None:
+            # Nothing to link to; the legacy Main record already stored the data.
+            return None
+
+        wet, dry, mixed = self._split_waste_by_type(collection_rows)
+        trip_assignment = self._resolve_trip_assignment(customer, request)
+
+        # De-duplicate: refresh an existing collection for this household+trip
+        # (or same day, when there is no trip) rather than piling up rows that
+        # would double-count in the trip-log aggregate.
+        existing_qs = WasteCollection.objects.filter(
+            customer=customer, is_deleted=False
+        )
+        if trip_assignment is not None:
+            existing_qs = existing_qs.filter(trip_assignment_id=trip_assignment)
+        else:
+            existing_qs = existing_qs.filter(collection_date=timezone.localdate())
+        waste_collection = existing_qs.order_by(
+            "-collection_date", "-collection_time"
+        ).first()
+
+        if waste_collection is None:
+            waste_collection = WasteCollection(customer=customer)
+        waste_collection.trip_assignment_id = trip_assignment
+        waste_collection.wet_waste = wet
+        waste_collection.dry_waste = dry
+        waste_collection.mixed_waste = mixed
+        waste_collection.is_deleted = False
+        waste_collection.is_active = True
+        # save() auto-calculates total_quantity + inherits geo; the post_save
+        # signal handles household-stop completion and trip-log sync.
+        waste_collection.save()
+        return waste_collection
 
     # ----------------- UPDATE WASTE SUB -----------------
     @action(detail=False, methods=["post"], url_path="update-waste-sub")
@@ -333,9 +470,13 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
         image_path = None
         if "image" in request.FILES:
-            image_path = upload_image(request.FILES["image"])
+            image_path, image_warning = self._upload_image_or_blank(
+                request.FILES["image"]
+            )
+        else:
+            image_warning = None
 
-        row.weight = weight or 0
+        row.weight = self._to_float(weight)
         row.latitude = latitude
         row.longitude = longitude
         if image_path:
@@ -428,6 +569,20 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 },
             }
         )
+
+    @staticmethod
+    def _to_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _upload_image_or_blank(image):
+        try:
+            return upload_image(image), None
+        except OSError as exc:
+            return "", f"Image could not be saved: {exc}"
 
     def _get_range_bounds(self, period, base_date):
         if period == "daily":
