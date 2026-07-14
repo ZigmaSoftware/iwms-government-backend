@@ -519,7 +519,8 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "mobileNumber": staff_payload.get("contact_mobile") or "",
                 "officeEmail": staff_payload.get("contact_email") or "",
                 "departmentId": staff_payload.get("department_id") or "",
-                "designationId": staff_payload.get("designation_id") or "",
+                # Designation is free text now (not an FK master).
+                "designation": staff_payload.get("designation") or "",
                 "doj": staff_payload.get("doj") or "",
                 "activeStatus": staff_payload.get("active_status", True),
             },

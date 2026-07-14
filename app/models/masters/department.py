@@ -1,5 +1,6 @@
 from django.db import models
 
+from app.models.masters.corporation import Corporation
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -14,6 +15,17 @@ class Department(BaseMaster):
         primary_key=True,
         default=generate_department_id,
         editable=False,
+    )
+    # Departments belong to a Corporation (this is a corporation-level
+    # government product). Nullable so pre-existing rows and non-corporation
+    # flows keep working; staff forms filter department options by corporation.
+    corporation_id = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="departments",
+        db_column="corporation_id",
     )
     department_name = models.CharField(max_length=150)
     department_code = models.CharField(max_length=30)

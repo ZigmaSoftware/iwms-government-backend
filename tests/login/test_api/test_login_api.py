@@ -926,3 +926,72 @@ class TestFormatPermissionsUnit:
             )
         assert set(result["Assets"]["Bins"]) == {"view", "add"}
         assert result["Reports"]["Summary"] == ["export"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scope expansion for the login data_scope (Item A)
+#   - _granted_scope_level : most-specific-populated-field precedence
+#   - expanded_scope_payload / _expanded_descendants : unscoped short-circuit
+# These are DB-free: they operate on a plain scope stand-in or a None user.
+# ──────────────────────────────────────────────────────────────────────────────
+from types import SimpleNamespace
+
+from app.utils.hierarchy import (
+    _granted_scope_level,
+    _expanded_descendants,
+    expanded_scope_payload,
+)
+
+
+def _scope(**overrides):
+    base = dict(
+        state_id=None,
+        district_id=None,
+        area_type_id=None,
+        corporation_id=None,
+        municipality_id=None,
+        town_panchayat_id=None,
+        panchayat_union_id=None,
+        panchayat_id=None,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+class TestGrantedScopeLevel:
+    def test_none_scope_returns_none(self):
+        assert _granted_scope_level(None) is None
+
+    def test_all_null_returns_none(self):
+        assert _granted_scope_level(_scope()) is None
+
+    def test_state_only(self):
+        assert _granted_scope_level(_scope(state_id="STATE-1")) == "state"
+
+    def test_district_beats_state(self):
+        scope = _scope(state_id="STATE-1", district_id="DIST-1")
+        assert _granted_scope_level(scope) == "district"
+
+    def test_corporation_level(self):
+        scope = _scope(
+            state_id="S", district_id="D", area_type_id="A", corporation_id="C"
+        )
+        assert _granted_scope_level(scope) == "corporation"
+
+    def test_most_specific_local_body_wins(self):
+        scope = _scope(
+            state_id="S",
+            district_id="D",
+            area_type_id="A",
+            corporation_id="C",
+            panchayat_id="P",
+        )
+        assert _granted_scope_level(scope) == "panchayat"
+
+
+class TestExpandedScopeUnscoped:
+    def test_expanded_payload_none_user(self):
+        assert expanded_scope_payload(None) is None
+
+    def test_descendants_none_scope(self):
+        assert _expanded_descendants(None) is None
