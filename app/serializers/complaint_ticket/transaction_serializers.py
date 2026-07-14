@@ -34,6 +34,8 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     state_name = serializers.CharField(source="state.name", read_only=True)
     district_id = serializers.CharField(read_only=True)
     district_name = serializers.CharField(source="district.name", read_only=True)
+    area_type_id = serializers.CharField(read_only=True)
+    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
     city_id = serializers.SerializerMethodField()
     city_name = serializers.SerializerMethodField()
     city_type = serializers.SerializerMethodField()

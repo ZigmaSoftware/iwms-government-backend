@@ -6,6 +6,7 @@ from app.utils.comfun import generate_unique_id
 from app.models.customers.customercreation import CustomerCreation
 from app.models.common_masters.state import State
 from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
@@ -134,6 +135,14 @@ class ComplaintTicket(BaseMaster):
         blank=True,
         related_name="complaint_tickets",
         db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaint_tickets",
+        db_column="area_type_id",
     )
     # Only one of the local-body FKs below should be populated at a time -
     # it is the ticket's "city" (the level right below District).

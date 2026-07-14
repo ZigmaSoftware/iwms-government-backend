@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Max
 from app.models.complaint_ticket.source_master import ComplaintSource
 from app.models.complaint_ticket.language_master import ComplaintLanguage
 from app.models.complaint_ticket.priority_master import ComplaintPriority
@@ -8,6 +9,14 @@ from app.models.complaint_ticket.module_master import ComplaintModule
 from app.models.complaint_ticket.category_master import ComplaintCategory
 from app.models.complaint_ticket.subcategory_master import ComplaintSubcategory
 from app.models.complaint_ticket.sla_rule_master import ComplaintSlaRule
+
+
+class AutoSortOrderSerializerMixin:
+    def create(self, validated_data):
+        if "sort_order" not in validated_data:
+            max_order = self.Meta.model.objects.aggregate(max_order=Max("sort_order"))["max_order"] or 0
+            validated_data["sort_order"] = max_order + 1
+        return super().create(validated_data)
 
 
 class ComplaintSourceSerializer(serializers.ModelSerializer):
@@ -24,18 +33,18 @@ class ComplaintLanguageSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id"]
 
 
-class ComplaintPrioritySerializer(serializers.ModelSerializer):
+class ComplaintPrioritySerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = ComplaintPriority
         fields = "__all__"
-        read_only_fields = ["unique_id"]
+        read_only_fields = ["unique_id", "sort_order"]
 
 
-class ComplaintStatusSerializer(serializers.ModelSerializer):
+class ComplaintStatusSerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = ComplaintStatus
         fields = "__all__"
-        read_only_fields = ["unique_id"]
+        read_only_fields = ["unique_id", "sort_order"]
 
 
 class ComplaintTeamSerializer(serializers.ModelSerializer):
@@ -50,14 +59,14 @@ class ComplaintTeamSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id"]
 
 
-class ComplaintModuleSerializer(serializers.ModelSerializer):
+class ComplaintModuleSerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = ComplaintModule
         fields = "__all__"
-        read_only_fields = ["unique_id"]
+        read_only_fields = ["unique_id", "sort_order"]
 
 
-class ComplaintCategorySerializer(serializers.ModelSerializer):
+class ComplaintCategorySerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     default_priority_code = serializers.CharField(source="default_priority.priority_code", read_only=True)
     default_team_name = serializers.CharField(source="default_team.team_name", read_only=True)
     module_code = serializers.CharField(source="module.module_code", read_only=True)
@@ -66,17 +75,17 @@ class ComplaintCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = ComplaintCategory
         fields = "__all__"
-        read_only_fields = ["unique_id"]
+        read_only_fields = ["unique_id", "sort_order"]
 
 
-class ComplaintSubcategorySerializer(serializers.ModelSerializer):
+class ComplaintSubcategorySerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.category_name", read_only=True)
     category_code = serializers.CharField(source="category.category_code", read_only=True)
 
     class Meta:
         model = ComplaintSubcategory
         fields = "__all__"
-        read_only_fields = ["unique_id"]
+        read_only_fields = ["unique_id", "sort_order"]
 
 
 class ComplaintSlaRuleSerializer(serializers.ModelSerializer):

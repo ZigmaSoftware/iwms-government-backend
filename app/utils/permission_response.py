@@ -62,7 +62,7 @@ def normalize_action_key(value):
 
 
 def permission_action_name(action):
-    return normalize_action_key(action.variable_name or action.action_name or "")
+    return normalize_action_key(action.action_name or action.variable_name or "")
 
 
 def build_action_permissions(queryset):
@@ -101,8 +101,7 @@ def build_permission_details(action_queryset, column_queryset=None):
                 ),
                 "folderName": getattr(perm.userscreen_id, "folder_name", None),
                 "orderNo": getattr(perm.userscreen_id, "order_no", None),
-                "permissions": base_action_map(),
-                "columns": [],
+                "permissions": base_action_map()
             },
         )
         screen_meta[perm.userscreen_id_id] = (main_name, screen_name)
@@ -131,8 +130,7 @@ def build_permission_details(action_queryset, column_queryset=None):
                     ),
                     "folderName": getattr(column_permission.userscreen_id, "folder_name", None),
                     "orderNo": getattr(column_permission.userscreen_id, "order_no", None),
-                    "permissions": base_action_map(),
-                    "columns": [],
+                    "permissions": base_action_map()
                 },
             )
 
@@ -240,9 +238,8 @@ def build_module_access(action_queryset, column_queryset=None):
                 ),
                 "folderName": userscreen.folder_name,
                 "orderNo": userscreen.order_no,
-                "permissions": base_action_map(),
-                "columns": [],
-            },
+                "permissions": base_action_map()
+                },
         )
         screen_lookup[userscreen.unique_id] = screen_entry
 
@@ -280,7 +277,7 @@ def build_module_access(action_queryset, column_queryset=None):
                 "folderName": userscreen.folder_name,
                 "orderNo": userscreen.order_no,
                 "permissions": base_action_map(),
-                "columns": [],
+ 
             },
         )
         screen_lookup[userscreen.unique_id] = screen_entry
@@ -343,7 +340,6 @@ def build_fallback_module_access(permissions):
                     "folderName": None,
                     "orderNo": None,
                     "permissions": action_map,
-                    "columns": [],
                 }
             )
 
