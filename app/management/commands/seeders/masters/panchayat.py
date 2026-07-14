@@ -4,6 +4,7 @@ from app.models.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.panchayat_union import PanchayatUnion
 
 
 class PanchayatSeeder(BaseSeeder):
@@ -29,6 +30,14 @@ class PanchayatSeeder(BaseSeeder):
         if not tamil_nadu or not district or not area_type:
             self.log("Skipped: Tamil Nadu / Erode / Rural Local Body seed data not found.")
             return
+
+        PanchayatUnion.objects.update_or_create(
+            state_id=tamil_nadu,
+            district_id=district,
+            area_type_id=area_type,
+            union_name="Erode Panchayat Union",
+            defaults={"is_active": True, "is_deleted": False},
+        )
 
         count = 0
         for panchayat_name, geo_coordinates in self.PANCHAYATS:

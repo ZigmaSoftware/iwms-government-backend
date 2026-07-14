@@ -108,7 +108,12 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not children.exists():
             return
 
-        all_collected = not children.filter(is_collected=False).exists()
+        all_collected = not children.exclude(
+            status__in=[
+                DailyTripCollectionPoint.STATUS_COLLECTED,
+                DailyTripCollectionPoint.STATUS_MISSED,
+            ]
+        ).exists()
         total_weight = children.aggregate(total=Sum("collected_weight_kg"))["total"] or 0
         vehicle_capacity = getattr(getattr(assignment, "vehicle_id", None), "capacity", None)
         trip_capacity = getattr(getattr(assignment, "trip_plan_id", None), "max_vehicle_capacity_kg", None)
@@ -192,6 +197,9 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "collected_at",
             "is_collected",
             "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
             "updated_at",
         ])
         assignment = trip_cp.trip_assignment_id
