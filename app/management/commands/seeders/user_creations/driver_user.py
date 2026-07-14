@@ -21,7 +21,7 @@ from app.models.schedule_masters.daily_trip_household_collection import (
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.utils.hierarchy import copy_flat_geo
+from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
 
 
 class DriverUserSeeder(BaseSeeder):
@@ -100,6 +100,9 @@ class DriverUserSeeder(BaseSeeder):
         # Hierarchy: stamp the driver with the trip's geography.
         copy_flat_geo(driver, assignment)
         driver.save()
+        # Data-scope so the scoped viewsets (schedule-masters / waste) don't
+        # deny this driver by default — see sync_staff_data_scope.
+        sync_staff_data_scope(driver, assignment)
         self.log(f"{'Created' if created else 'Updated'} driver login: {self.USERNAME} / {self.PASSWORD}")
 
         # 2. Make driver_user the driver on the trip's staff template

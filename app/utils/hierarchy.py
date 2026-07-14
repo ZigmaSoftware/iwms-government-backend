@@ -364,6 +364,37 @@ def copy_flat_geo(target, source, only_empty=False):
         setattr(target, f"{field}_id", value)
 
 
+def sync_staff_data_scope(staff, source):
+    """Give a staff user a `StaffDataScope` row matching `source`'s flat geo.
+
+    The scoped viewsets (schedule-masters, waste, etc.) deny any non-super staff
+    user that has NO StaffDataScope row by default (empty queryset — see
+    `filter_flat_geo_queryset_by_requester_scope`). Seeded mobile logins
+    (driver/supervisor) were created without one, so they could authenticate but
+    saw ZERO trips / collection points / waste-graph data. Scoping them to the
+    same flat geo their trip carries restores visibility while keeping the
+    corporation/district boundary intact. Idempotent (update_or_create).
+
+    `source` is any model carrying the flat geo FK block (a DailyTripAssignment,
+    TripPlan, etc.). `staff` must expose `staff_unique_id`.
+    """
+    return StaffDataScope.objects.update_or_create(
+        staff_id=staff.staff_unique_id,
+        is_deleted=False,
+        defaults={
+            "state_id": getattr(source, "state_id", None),
+            "district_id": getattr(source, "district_id", None),
+            "area_type_id": getattr(source, "area_type_id", None),
+            "corporation_id": getattr(source, "corporation_id", None),
+            "municipality_id": getattr(source, "municipality_id", None),
+            "town_panchayat_id": getattr(source, "town_panchayat_id", None),
+            "panchayat_union_id": getattr(source, "panchayat_union_id", None),
+            "panchayat_id": getattr(source, "panchayat_id", None),
+            "is_active": True,
+        },
+    )
+
+
 def flat_geo_fields_for_node(node):
     """Reverse of `node_for_flat_geo`: given a HierarchyNode mirrored from a
     legacy geo master, walk its full ancestor chain (self included) and
