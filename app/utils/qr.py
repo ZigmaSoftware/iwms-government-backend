@@ -1,6 +1,17 @@
-import qrcode
 import os
+import re
+
+import qrcode
 from django.conf import settings
+
+
+def _safe_component(value, fallback="x"):
+    """Filesystem-safe slug for a filename component. Staff names can contain
+    spaces, dots or slashes that would break the QR file save (and 500 the
+    register endpoint), so strip them out and bound the length."""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value or "").strip())
+    return (slug[:40] or fallback)
+
 
 def generate_qr(emp_id, name, timestamp):
     """
@@ -8,8 +19,9 @@ def generate_qr(emp_id, name, timestamp):
     Returns the QR filename (not full path) so it can be stored in DB.
     """
 
+    # QR *content* keeps the real name; only the on-disk filename is sanitized.
     qr_data = f"ID: {emp_id}\nName: {name}"
-    filename = f"{name}{emp_id}{timestamp}.png"
+    filename = f"{_safe_component(name)}_{_safe_component(emp_id)}_{timestamp}.png"
 
     # Create qrcodes folder if not exists
     qr_folder = os.path.join(settings.MEDIA_ROOT, "qrcodes")

@@ -76,16 +76,16 @@ class ScanBinViewSet(viewsets.ViewSet):
                         weight_kg=weight,
                         collected_by=operator,
                     )
-                    event_type = BinCollectionEvent.EVENT_COLLECTED
+                    event_status = BinCollectionEvent.STATUS_COLLECTED
                     event_weight = weight
                     status_reason = None
                 else:
                     if action == ScanBinRequestSerializer.ACTION_COLLECT_LATER:
                         cp_status = DailyTripCollectionPoint.STATUS_SKIPPED
-                        event_type = BinCollectionEvent.EVENT_COLLECT_LATER
+                        event_status = BinCollectionEvent.STATUS_COLLECT_LATER
                     else:
                         cp_status = DailyTripCollectionPoint.STATUS_MISSED
-                        event_type = BinCollectionEvent.EVENT_NOT_AVAILABLE
+                        event_status = BinCollectionEvent.STATUS_NOT_COLLECTED
 
                     status_reason = payload["status_reason"]
                     ctx.trip_cp.mark_status(
@@ -99,7 +99,7 @@ class ScanBinViewSet(viewsets.ViewSet):
                 event = self._create_event(
                     ctx=ctx,
                     action=action,
-                    event_type=event_type,
+                    event_status=event_status,
                     weight=event_weight,
                     latitude=payload.get("latitude"),
                     longitude=payload.get("longitude"),
@@ -129,7 +129,7 @@ class ScanBinViewSet(viewsets.ViewSet):
                 "event": {
                     "unique_id": event.unique_id,
                     "event_at": event.created_at.isoformat(),
-                    "event_type": event.event_type,
+                    "event_type": event.status,
                     "collected_weight_kg": str(event.collected_weight_kg),
                     "status_reason": event.status_reason,
                 },
@@ -142,7 +142,7 @@ class ScanBinViewSet(viewsets.ViewSet):
         *,
         ctx,
         action,
-        event_type,
+        event_status,
         weight,
         latitude,
         longitude,
@@ -163,7 +163,7 @@ class ScanBinViewSet(viewsets.ViewSet):
             location_node=node_for_flat_geo(ctx.bin.collection_point_id),
             waste_type_id=ctx.assignment.waste_type_id,
             vehicle_id=ctx.assignment.vehicle_id,
-            event_type=event_type,
+            status=event_status,
             status_reason=status_reason,
             collected_weight_kg=weight,
             driver_latitude=latitude,

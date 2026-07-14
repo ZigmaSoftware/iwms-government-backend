@@ -74,7 +74,7 @@ def _serialize_event(event: BinCollectionEvent, request=None) -> dict:
     return {
         "unique_id": event.unique_id,
         "event_at": event.created_at.isoformat(),
-        "event_type": event.event_type,
+        "event_type": event.status,
         "collected_weight_kg": str(event.collected_weight_kg),
         "status_reason": event.status_reason,
         "scanned_qr": event.bin_id_id,
