@@ -104,6 +104,37 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             float(latest_event.driver_latitude),
         ]
 
+    def _route_for_assignment_stops(self, assignment, stops):
+        route_input = []
+        for stop in stops:
+            cp = stop.collection_point_id
+            if not cp or cp.latitude is None or cp.longitude is None:
+                continue
+            route_input.append({
+                "id": stop.unique_id,
+                "location": [float(cp.longitude), float(cp.latitude)],
+            })
+
+        vehicle_start = self._latest_vehicle_start(assignment)
+        route_signature = "|".join(
+            [
+                assignment.unique_id,
+                str(vehicle_start),
+                *[
+                    f"{stop.unique_id}:{stop.sequence}:"
+                    f"{getattr(stop.collection_point_id, 'latitude', None)}:"
+                    f"{getattr(stop.collection_point_id, 'longitude', None)}"
+                    for stop in stops
+                ],
+            ]
+        )
+        cache_key = f"daily-trip-route:{hashlib.sha1(route_signature.encode()).hexdigest()}"
+        route = cache.get(cache_key)
+        if route is None:
+            route = route_stops(route_input, vehicle_start)
+            cache.set(cache_key, route, timeout=300)
+        return route
+
     def _optimize_assignment(self, assignment_id, vehicle_start=None):
         assignment = self._ensure_assignment_stops(assignment_id)
         if not assignment:
@@ -374,6 +405,15 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 DailyTripCollectionPoint.STATUS_IN_PROGRESS,
             ]
         ).first()
+        route_rows = list(route_queryset[:500])
+        route = {
+            "distance": 0,
+            "duration": 0,
+            "geometry": None,
+            "vehicle_start": None,
+        }
+        if assignment and route_rows:
+            route = self._route_for_assignment_stops(assignment, route_rows)
 
         return Response({
             "count": total,
@@ -388,7 +428,11 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "completion_percentage": round((completed / route_total) * 100, 2) if route_total else 0,
             },
             "results": self.get_serializer(rows, many=True).data,
-            "route_results": self.get_serializer(route_queryset[:500], many=True).data,
+            "route_results": self.get_serializer(route_rows, many=True).data,
+            "distance_meters": route["distance"],
+            "duration_seconds": route["duration"],
+            "route_geojson": route["geometry"],
+            "vehicle_start": route["vehicle_start"],
             "vehicle_tracking": {
                 "vehicle_no": getattr(getattr(assignment, "vehicle_id", None), "vehicle_no", None),
                 "current_location": None if not latest_event else {
