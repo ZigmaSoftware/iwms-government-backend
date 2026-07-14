@@ -63,6 +63,8 @@ from app.management.commands.seeders.schedule_masters.bin_collection_event impor
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
 from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder
+from app.management.commands.seeders.schedule_masters.multi_district_demo import MultiDistrictTripDataSeeder
+from app.management.commands.seeders.masters.telangana_masters import TelanganaMastersSeeder
 from app.management.commands.seeders.schedule_masters.waste_collection import WasteCollectionSeeder
 
 # screen-managements (router: screen-managements/...)
@@ -247,6 +249,8 @@ SEED_GROUPS = {
     "waste-collections": [WasteCollectionSeeder],
     "trip-logs":          [DailyTripLogSeeder],
     "supervisor-graph":   [SupervisorMonthDataSeeder],  # month of trips+logs for supervisor_user
+    "multi-district-demo": [MultiDistrictTripDataSeeder],  # month of trips+logs for any district with none yet
+    "telangana-masters":  [TelanganaMastersSeeder],  # districts/area-types/corporations for Telangana
     "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
 }

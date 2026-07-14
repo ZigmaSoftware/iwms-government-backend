@@ -136,6 +136,10 @@ from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyD
 
 # Statebody
 from ..viewsets.statebody.statebody_dashboard_viewset import StateBodyDashboardViewSet
+from ..viewsets.statebody.statebody_waste_comparison_viewset import (
+    StateMonthlyWasteComparisonViewSet,
+    StateDailyWasteComparisonViewSet,
+)
 
 # Operator mobile
 from ..viewsets.operator_mobile.my_trip_today_viewset import MyTripTodayViewSet
@@ -340,6 +344,8 @@ router.register_group("districtbody", "dashboard", DistrictBodyDashboardViewSet,
 # GROUP: STATEBODY (state leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("statebody", "dashboard", StateBodyDashboardViewSet, basename="statebody-dashboard")
+router.register_group("statebody", "monthly-waste-comparison", StateMonthlyWasteComparisonViewSet, basename="statebody-monthly-waste-comparison")
+router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComparisonViewSet, basename="statebody-daily-waste-comparison")
 
 # ============================================================
 # GROUP: OPERATOR MOBILE

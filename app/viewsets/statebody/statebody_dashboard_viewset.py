@@ -4,14 +4,12 @@ Authenticated-only endpoint — no module permission check (see AUTH_ONLY_SUFFIX
 
 Data source: District masters belonging to the leader's State.
 
-Note: trip-level collection analytics (actual collected weight, variance, etc. —
-as done in LocalBodyDashboardViewSet for a single panchayat) are intentionally
-NOT computed here, for the same reason they are unavailable on the district
-leader dashboard: DailyTripLog has no district_id/state_id column — it is only
-scoped via `location_node` — so it cannot be filtered/aggregated by a static
-state_id. Until trip logs carry a resolvable state scope, this endpoint
-reports state/district configuration only and surfaces a placeholder for trip
-analytics.
+Trip-level collection analytics (actual weight, monthly/daily comparison,
+waste-type breakdown) are served separately by
+StateMonthlyWasteComparisonViewSet / StateDailyWasteComparisonViewSet
+(statebody_waste_comparison_viewset.py) — DailyTripLog carries a direct,
+auto-populated `state_id` column, so it can be filtered/aggregated by state
+directly.
 """
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -82,12 +80,4 @@ class StateBodyDashboardViewSet(ViewSet):
             "kpis": {
                 "total_districts": len(district_rows),
             },
-            # Trip-level collection analytics are not available at the state
-            # scope yet — see module docstring.
-            "trip_analytics": None,
-            "trip_analytics_note": (
-                "Trip collection analytics are not available for state-level "
-                "reporting yet: DailyTripLog records are scoped only by "
-                "location_node, not by panchayat_id/district_id/state_id."
-            ),
         })
