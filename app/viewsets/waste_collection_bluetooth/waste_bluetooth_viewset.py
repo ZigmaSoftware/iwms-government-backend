@@ -194,13 +194,15 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
         image_path = upload_image(image)
         record = WasteCollectionSub.objects.create(
+            unique_id=generate_unique_id("wcs-"),
             screen_unique_id=screen_id,
             customer_id=customer_id,
-            waste_type_id=waste_type,
+            waste_type_id=str(waste_type),
             image=image_path,
-            weight=weight or 0,
+            weight=self._to_float(weight),
             latitude=latitude,
             longitude=longitude,
+            is_deleted=False,
         )
 
         return Response({
@@ -290,7 +292,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if float(total) <= 0:
             return Response({"status": "error", "message": "No waste records found"})
 
-        main_id = generate_unique_id("wcm")
+        main_id = generate_unique_id("wcm-")
         now = timezone.now()
 
         with transaction.atomic():
@@ -299,9 +301,10 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 screen_unique_id=screen_id,
                 collected_time=now,
                 created=now,
-                total_waste_collected=total,
+                total_waste_collected=float(total),
                 entry_type=entry_type,
                 customer_id=customer_id,
+                is_deleted=False,
             )
             collection_rows.update(form_unique_id=main_id)
 
@@ -335,7 +338,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if "image" in request.FILES:
             image_path = upload_image(request.FILES["image"])
 
-        row.weight = weight or 0
+        row.weight = self._to_float(weight)
         row.latitude = latitude
         row.longitude = longitude
         if image_path:
@@ -428,6 +431,13 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 },
             }
         )
+
+    @staticmethod
+    def _to_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     def _get_range_bounds(self, period, base_date):
         if period == "daily":
