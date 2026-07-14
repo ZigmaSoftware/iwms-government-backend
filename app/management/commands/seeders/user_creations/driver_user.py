@@ -2,6 +2,7 @@ import math
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
+from django.db.models import Q
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
@@ -81,21 +82,64 @@ class DriverUserSeeder(BaseSeeder):
             driver.save()
 
         # Pick TODAY's trip (assignments are per-day, so this must target today).
-        # Prefer one already on driver_user's template — that's the exact trip
-        # `my-trip-today` will resolve — otherwise claim the first available.
+        # Resolve it EXACTLY as the operator scan flow does
+        # (find_active_assignment_for_operator: lowest unique_id where the staff is
+        # the template's operator OR driver) so the trip we rebuild below is the
+        # same one `my-trip-today` / `scan-bin` will act on. Otherwise the seeder
+        # could rebuild one assignment while the app validates against another.
         today = timezone.localdate()
         base = (
             DailyTripAssignment.objects
             .filter(trip_date=today, is_deleted=False)
             .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
+            .order_by("unique_id")
         )
         assignment = (
-            base.filter(staff_template_id__driver_id=driver).order_by("unique_id").first()
-            or base.order_by("unique_id").first()
+            base.filter(
+                Q(staff_template_id__operator_id=driver)
+                | Q(staff_template_id__driver_id=driver)
+            ).first()
+            or base.first()
         )
         if not assignment:
             self.log("No daily trip assignment for today — run schedule seeders first.")
             return
+
+        # The operator scan flow validates a bin by comparing its collection
+        # point's panchayat to the trip's panchayat (operator_mobile/helpers.py
+        # validate_bin_against_assignment). If the resolved assignment belongs to
+        # a non-panchayat trip plan (corporation/municipality), its panchayat is
+        # NULL — every Organic CP we rebuild below would copy that NULL and the
+        # scan would reject every bin with "outside your assigned panchayat".
+        # Stamp a real panchayat (consistent with the trip's district) so the
+        # demo driver can actually collect.
+        if assignment.panchayat_id is None:
+            from app.models.masters.panchayat import Panchayat
+
+            panchayat = (
+                Panchayat.objects.filter(
+                    district_id=assignment.district,
+                    is_deleted=False,
+                    is_active=True,
+                ).order_by("unique_id").first()
+                or Panchayat.objects.filter(
+                    is_deleted=False, is_active=True
+                ).order_by("unique_id").first()
+            )
+            if panchayat is not None:
+                assignment.panchayat = panchayat
+                assignment.state = panchayat.state_id
+                assignment.district = panchayat.district_id
+                if panchayat.area_type_id_id:
+                    assignment.area_type = panchayat.area_type_id
+                assignment.save(update_fields=[
+                    "panchayat", "state", "district", "area_type", "updated_at"
+                ])
+                assignment.refresh_from_db()
+                self.log(
+                    f"{assignment.unique_id} had no panchayat; stamped "
+                    f"{panchayat.unique_id} so scan validation passes."
+                )
 
         # Hierarchy: stamp the driver with the trip's geography.
         copy_flat_geo(driver, assignment)
