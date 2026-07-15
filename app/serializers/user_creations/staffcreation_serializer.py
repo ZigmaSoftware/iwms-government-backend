@@ -236,6 +236,12 @@ class StaffcreationSerializer(serializers.ModelSerializer):
     user_type_id = serializers.CharField(
     source="staffusertype_id.usertype_id.unique_id",read_only=True)
 
+    # Readable name of the staff's own user type (e.g. "government").
+    user_type_name = serializers.CharField(
+        source="user_type_id.name",
+        read_only=True,
+    )
+
     
 
     # --------------------------------------------------
@@ -272,10 +278,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "department_name",
             "department_code",
             "staff_head_id",
-            "grade",
-            "site_name",
             "staff_head",
-            "employee_known",
             "photo",
 
             #  Driving licence
@@ -284,7 +287,6 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "driving_licence_file",
 
             "active_status",
-            "salary_type",
 
             # Personal details (flattened)
             "marital_status",
@@ -297,6 +299,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "contact_mobile",
             "contact_email",
             "user_type_id",
+            "user_type_name",
             "staffusertype_id",
             "staffusertype_name",
             "contractorusertype_id",

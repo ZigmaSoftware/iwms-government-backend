@@ -14,7 +14,7 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
-from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.services.openroute_service import OpenRouteServiceError, optimize_stops, route_stops
 from app.serializers.schedule_masters.daily_trip_collection_point_serializer import (
     DailyTripCollectionPointSerializer,

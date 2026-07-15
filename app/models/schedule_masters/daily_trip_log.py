@@ -302,7 +302,7 @@ class DailyTripLog(BaseMaster):
     def sync_from_household_collections(self):
         """Aggregate household waste weight from WasteCollection records for this trip.
 
-        Mirrors sync_from_bin_collection_events() — only overrides when records exist
+        Mirrors sync_from_secondary_bin_collection_events() — only overrides when records exist
         so that manually-entered values are preserved when no WasteCollections are linked.
         """
         from app.models.customers.wastecollection import WasteCollection
@@ -320,7 +320,7 @@ class DailyTripLog(BaseMaster):
             household_collected_weight_kg=self.household_collected_weight_kg,
         )
 
-    def sync_from_bin_collection_events(self):
+    def sync_from_secondary_bin_collection_events(self):
         """Aggregate total collected weight from BinCollectionEvent records for this trip.
 
         Only overrides collected_weight_kg when bin-scan events actually exist.
@@ -328,7 +328,7 @@ class DailyTripLog(BaseMaster):
         operators who enter weight directly (without bin scanning) are not silently
         zeroed out.
         """
-        from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
+        from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 
         events = BinCollectionEvent.objects.filter(
             trip_assignment_id=self.trip_assignment_id_id,
@@ -383,7 +383,7 @@ class DailyTripLog(BaseMaster):
         self.full_clean()
         super().save(*args, **kwargs)
 
-        self.sync_from_bin_collection_events()
+        self.sync_from_secondary_bin_collection_events()
         self.sync_from_household_collections()
 
         if self.log_status in {self.LOG_STATUS_SUBMITTED, self.LOG_STATUS_VERIFIED}:

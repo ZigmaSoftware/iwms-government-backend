@@ -4,10 +4,10 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
-from app.serializers.schedule_masters.bin_collection_event_serializer import (
+from app.serializers.schedule_masters.secondary_bin_collection_event_serializer import (
     BinCollectionEventSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin

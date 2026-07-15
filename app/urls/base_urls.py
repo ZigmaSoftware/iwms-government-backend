@@ -117,7 +117,7 @@ from ..viewsets.schedule_masters.trip_plan_viewset import TripPlanViewSet
 from ..viewsets.schedule_masters.daily_trip_assignment_viewset import DailyTripAssignmentViewSet
 from ..viewsets.schedule_masters.daily_trip_collection_point_viewset import DailyTripCollectionPointViewSet
 from ..viewsets.schedule_masters.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
-from ..viewsets.schedule_masters.bin_collection_event_viewset import BinCollectionEventViewSet
+from ..viewsets.schedule_masters.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
 from ..viewsets.schedule_masters.vehicle_breakdown_viewset import VehicleBreakdownViewSet
 from ..viewsets.schedule_masters.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.schedule_masters.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet

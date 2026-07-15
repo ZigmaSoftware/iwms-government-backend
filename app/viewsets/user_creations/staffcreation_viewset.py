@@ -32,7 +32,6 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     search_fields = [
         "employee_name",
         "staff_unique_id",
-        "site_name",
         "department",
         "designation",
         "department_id__department_name",
@@ -51,10 +50,8 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             "contractorusertype_id",
         )
 
-        site_name = self.request.query_params.get("site_name", None)
         employee_name = self.request.query_params.get("employee_name", None)
         active_status = self.request.query_params.get("active_status", None)
-        salary_type = self.request.query_params.get("salary_type", None)
         department_id = self.request.query_params.get("department_id", None)
         staffusertype_id = self.request.query_params.get("staffusertype_id", None)
         contractorusertype_id = self.request.query_params.get("contractorusertype_id", None)
@@ -68,17 +65,11 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
         panchayat_union_id = self.request.query_params.get("panchayat_union_id", None)
         panchayat_id = self.request.query_params.get("panchayat_id", None)
 
-        if site_name:
-            queryset = queryset.filter(site_name__icontains=site_name)
-
         if employee_name:
             queryset = queryset.filter(employee_name__icontains=employee_name)
 
         if active_status in ["0", "1"]:
             queryset = queryset.filter(active_status=active_status == "1")
-
-        if salary_type:
-            queryset = queryset.filter(salary_type__icontains=salary_type)
 
         if department_id:
             queryset = queryset.filter(department_id__unique_id=department_id)
