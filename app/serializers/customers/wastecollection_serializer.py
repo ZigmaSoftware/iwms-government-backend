@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from app.models.customers.wastecollection import WasteCollection
+from app.utils.waste_images import capture_images_for_customer
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.common_masters.state import State
@@ -104,6 +105,11 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     location_name = serializers.SerializerMethodField(read_only=True)
     location_level = serializers.SerializerMethodField(read_only=True)
 
+    # Capture photos taken during collection. They live on the separate
+    # WasteCollectionSub model (mobile capture flow), linked here by the same
+    # household + collection date. Read-only convenience for the desktop screen.
+    capture_images = serializers.SerializerMethodField(read_only=True)
+
     trip_assignment_id = serializers.SlugRelatedField(
         slug_field="unique_id",
         queryset=DailyTripAssignment.objects.filter(is_deleted=False),
@@ -146,6 +152,7 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
             "panchayat_name",
             "location_name",
             "location_level",
+            "capture_images",
             "trip_assignment_id",
             "trip_assignment_display",
             "wet_waste",
@@ -171,3 +178,12 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
         if not level:
             _, level = flat_geo_display(obj.customer)
         return level
+
+    def get_capture_images(self, obj):
+        """Capture photos for this collection, pulled from WasteCollectionSub
+        (the mobile capture flow) for the same household + collection date."""
+        return capture_images_for_customer(
+            obj.customer_id,
+            obj.collection_date,
+            self.context.get("request"),
+        )
