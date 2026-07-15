@@ -6,6 +6,14 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.serializers.assets.bins_serializer import BinsSerializer
 from app.serializers.transport_masters.vehicleCreation_serializer import (
     VehicleCreationSerializer,
@@ -29,13 +37,57 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         slug_field="unique_id",
         queryset=DailyTripCollectionPoint.objects.filter(is_deleted=False),
     )
-    panchayat_id = serializers.SerializerMethodField()
     bin_id = UniqueIdOrPkField(
         slug_field="unique_id",
         queryset=Bins.objects.filter(is_deleted=False),
         required=False,
         allow_null=True,
     )
+
+    # Geo scope — writable. Explicit selections from the form are persisted;
+    # when left blank the model's save() inherits them from the trip assignment.
+    state_id = serializers.SlugRelatedField(
+        source="state", slug_field="unique_id",
+        queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    district_id = serializers.SlugRelatedField(
+        source="district", slug_field="unique_id",
+        queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    area_type_id = serializers.SlugRelatedField(
+        source="area_type", slug_field="unique_id",
+        queryset=AreaType.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    corporation_id = serializers.SlugRelatedField(
+        source="corporation", slug_field="unique_id",
+        queryset=Corporation.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    municipality_id = serializers.SlugRelatedField(
+        source="municipality", slug_field="unique_id",
+        queryset=Municipality.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    town_panchayat_id = serializers.SlugRelatedField(
+        source="town_panchayat", slug_field="unique_id",
+        queryset=TownPanchayat.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    panchayat_union_id = serializers.SlugRelatedField(
+        source="panchayat_union", slug_field="unique_id",
+        queryset=PanchayatUnion.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+    panchayat_id = serializers.SlugRelatedField(
+        source="panchayat", slug_field="unique_id",
+        queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True,
+    )
+
+    # Read-only display names so the edit form can label its geo selects
+    # immediately from the record, without waiting for the master lists.
+    state_name = serializers.CharField(source="state.name", read_only=True, allow_null=True)
+    district_name = serializers.CharField(source="district.name", read_only=True, allow_null=True)
+    area_type_name = serializers.CharField(source="area_type.name", read_only=True, allow_null=True)
+    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True, allow_null=True)
+    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True, allow_null=True)
+    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True, allow_null=True)
+    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True, allow_null=True)
 
     bin = serializers.SerializerMethodField()
     waste_type = serializers.SerializerMethodField()
@@ -63,7 +115,21 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "trip_collection_point_id",
             "collection_point_id",
             "bin_id",
+            "state_id",
+            "district_id",
+            "area_type_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
             "panchayat_id",
+            "state_name",
+            "district_name",
+            "area_type_name",
+            "corporation_name",
+            "municipality_name",
+            "town_panchayat_name",
+            "panchayat_union_name",
             "bin",
             "waste_type",
             "trip_plan",
@@ -99,7 +165,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "unique_id",
             "collection_point_id",
-            "panchayat_id",
             "vehicle_breakdown_id",
             "breakdown_info",
             "created_at",
@@ -279,16 +344,14 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         return getattr(alt_template, "display_code", None) if alt_template else None
 
     def get_panchayat_name(self, obj):
-        panchayat = getattr(getattr(obj, "collection_point_id", None), "panchayat_id", None)
-        if not panchayat:
-            panchayat = getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
+        # Prefer the event's own stored panchayat column (explicit selection),
+        # then fall back to the collection point / trip assignment.
+        panchayat = (
+            getattr(obj, "panchayat", None)
+            or getattr(getattr(obj, "collection_point_id", None), "panchayat_id", None)
+            or getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
+        )
         return getattr(panchayat, "panchayat_name", None)
-
-    def get_panchayat_id(self, obj):
-        panchayat = getattr(getattr(obj, "collection_point_id", None), "panchayat_id", None)
-        if not panchayat:
-            panchayat = getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
-        return getattr(panchayat, "unique_id", None)
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id
