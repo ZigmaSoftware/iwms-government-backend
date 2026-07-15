@@ -1,5 +1,5 @@
 from .alternative_staff_template import AlternativeStaffTemplateSeeder
-from .bin_collection_event import BinCollectionEventSeeder
+from .secondary_bin_collection_event import BinCollectionEventSeeder
 from .collection_point import CollectionPointSeeder
 from app.management.commands.seeders.assets.bins import BinSeeder
 from .daily_trip_assignment import DailyTripAssignmentSeeder

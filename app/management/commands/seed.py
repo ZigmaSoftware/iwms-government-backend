@@ -59,7 +59,7 @@ from app.management.commands.seeders.schedule_masters.daily_trip_assignment impo
 from app.management.commands.seeders.schedule_masters.daily_trip_collection_point import DailyTripCollectionPointSeeder
 from app.management.commands.seeders.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
 from app.management.commands.seeders.schedule_masters.daily_trip_log import DailyTripLogSeeder
-from app.management.commands.seeders.schedule_masters.bin_collection_event import BinCollectionEventSeeder
+from app.management.commands.seeders.schedule_masters.secondary_bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
 from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder

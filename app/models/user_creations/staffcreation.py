@@ -61,15 +61,11 @@ class StaffcreationOfficeDetails(BaseMaster):
         related_name="staff_members",
     )
 
-    grade = models.CharField(max_length=50, blank=True, null=True)
-    site_name = models.CharField(max_length=200, blank=True, null=True)
     staff_head = models.CharField(max_length=200, blank=True, null=True)
     staff_head_id = models.CharField(max_length=30, blank=True, null=True)
-    employee_known = models.CharField(max_length=20, blank=True, null=True)
     photo = models.ImageField(upload_to="staff_photos/", blank=True, null=True)
     qr_code = models.ImageField(upload_to="staff_qr/", blank=True, null=True)
     active_status = models.BooleanField(default=True)
-    salary_type = models.CharField(max_length=50, blank=True, null=True)
 
     # Driving Licence Fields
     driving_licence_no = models.CharField(

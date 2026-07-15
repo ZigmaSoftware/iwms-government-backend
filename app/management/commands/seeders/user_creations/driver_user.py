@@ -8,11 +8,13 @@ from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.assets.bins import Bins
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.collection_point import Collection_point
 from app.models.customers.customercreation import CustomerCreation
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.role_assigns.userType import UserType
 from app.models.masters.panchayat import Panchayat
-from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_collection_point import (
@@ -163,6 +165,16 @@ class DriverUserSeeder(BaseSeeder):
         sync_staff_data_scope(driver, bin_assignment)
         sync_staff_data_scope(operator, bin_assignment)
 
+        # 7. Guarantee the app resolves driver_user's OWN clean trip. The mobile
+        #    resolver picks the lowest-unique_id trip where the user is driver/
+        #    operator; any stale/contaminated trip (e.g. an older hijacked
+        #    assignment whose bins are a different waste type) could otherwise win
+        #    and show "this bin is X; your trip collects Organic". Heal it.
+        self._ensure_clean_resolution(
+            driver, operator,
+            {bin_assignment.unique_id, household_assignment.unique_id},
+        )
+
         bin_cp_count = DailyTripCollectionPoint.objects.filter(
             trip_assignment_id=bin_assignment, is_deleted=False
         ).count()
@@ -259,21 +271,29 @@ class DriverUserSeeder(BaseSeeder):
             template.save()
         return template
 
-    def _detach_from_foreign_templates(self, driver, operator, keep):
-        """A previous (hijacking) run may have set driver_user/operator_user as
-        the driver/operator on templates that aren't ours. Reassign those back
-        to fallback office staff so the app resolves only this seeder's trips."""
-        demo_ids = {driver.staff_unique_id, operator.staff_unique_id}
-        fallbacks = list(
+    def _fallback_staff(self, demo_ids):
+        """Two office-staff to stand in as driver/operator on templates we strip
+        the demo users out of. Returns (None, None) if none exist."""
+        fb = list(
             StaffcreationOfficeDetails.objects.filter(is_deleted=False)
             .exclude(staff_unique_id__in=demo_ids)
             .order_by("staff_unique_id")[:2]
         )
-        if not fallbacks:
-            return
-        fb_driver = fallbacks[0]
-        fb_operator = fallbacks[1] if len(fallbacks) > 1 else fallbacks[0]
+        if not fb:
+            return (None, None)
+        return (fb[0], fb[1] if len(fb) > 1 else fb[0])
 
+    def _detach_from_foreign_templates(self, driver, operator, keep):
+        """A previous (hijacking) run may have set driver_user/operator_user as
+        the driver, operator, or an extra operator on templates that aren't
+        ours. Reassign/strip those so the app resolves only this seeder's
+        trips."""
+        demo_ids = {driver.staff_unique_id, operator.staff_unique_id}
+        fb_driver, fb_operator = self._fallback_staff(demo_ids)
+        if fb_driver is None:
+            return
+
+        # Templates where a demo user is the driver or operator...
         foreign = (
             StaffTemplate.objects
             .exclude(pk=keep.pk)
@@ -281,18 +301,97 @@ class DriverUserSeeder(BaseSeeder):
         )
         fixed = 0
         for tmpl in foreign:
-            changed = False
-            if tmpl.driver_id_id in demo_ids:
-                tmpl.driver_id = fb_driver
-                changed = True
-            if tmpl.operator_id_id in demo_ids:
-                tmpl.operator_id = fb_operator
-                changed = True
-            if changed:
-                tmpl.save(update_fields=["driver_id", "operator_id", "updated_at"])
+            if self._strip_demo_users(tmpl, demo_ids, fb_driver, fb_operator):
                 fixed += 1
+
+        # ...and templates that merely list a demo user in extra_operator_id
+        # (JSON list — not covered by the FK filter above).
+        for tmpl in StaffTemplate.objects.exclude(pk=keep.pk):
+            extras = tmpl.extra_operator_id or []
+            if demo_ids & set(extras):
+                if self._strip_demo_users(tmpl, demo_ids, fb_driver, fb_operator):
+                    fixed += 1
         if fixed:
             self.log(f"Detached demo users from {fixed} foreign staff template(s).")
+
+    def _strip_demo_users(self, tmpl, demo_ids, fb_driver, fb_operator):
+        """Remove the demo users from a single template (driver/operator FKs and
+        the extra_operator_id list). Returns True if anything changed."""
+        changed = False
+        if tmpl.driver_id_id in demo_ids:
+            tmpl.driver_id = fb_driver
+            changed = True
+        if tmpl.operator_id_id in demo_ids:
+            tmpl.operator_id = fb_operator
+            changed = True
+        extras = tmpl.extra_operator_id or []
+        kept = [e for e in extras if e not in demo_ids]
+        if kept != extras:
+            tmpl.extra_operator_id = kept
+            changed = True
+        if changed:
+            tmpl.save(update_fields=[
+                "driver_id", "operator_id", "extra_operator_id", "updated_at"
+            ])
+        return changed
+
+    def _bins_match_waste_type(self, assignment):
+        """True if every collection point on the assignment carries a bin of the
+        assignment's own waste type (what the scan flow validates)."""
+        cps = DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id=assignment, is_deleted=False
+        ).select_related("bin_id")
+        for cp in cps:
+            if cp.bin_id_id and str(
+                getattr(cp.bin_id, "wastetype_id_id", None)
+            ) != str(assignment.waste_type_id_id):
+                return False
+        return True
+
+    def _ensure_clean_resolution(self, driver, operator, own_ids):
+        """Keep neutralizing whatever trip the app resolves for driver_user until
+        it lands on one of driver_user's OWN trips with matching bins. Guards the
+        driver's own trips so they are never neutralized."""
+        from app.viewsets.operator_mobile.helpers import (
+            OperatorFlowError,
+            find_active_assignment_for_operator,
+        )
+
+        demo_ids = {driver.staff_unique_id, operator.staff_unique_id}
+        fb_driver, fb_operator = self._fallback_staff(demo_ids)
+
+        for _ in range(30):
+            try:
+                resolved = find_active_assignment_for_operator(driver)
+            except OperatorFlowError:
+                return  # no trip resolves — nothing to heal
+            if resolved.unique_id in own_ids:
+                if not self._bins_match_waste_type(resolved):
+                    self.log(
+                        f"WARNING: driver_user's own trip {resolved.unique_id} has "
+                        f"bins that do not match its waste type — check _ensure_bins."
+                    )
+                return  # resolves the driver's own trip — done
+            # A foreign/contaminated trip is resolved ahead of the driver's own.
+            self._neutralize_foreign_assignment(
+                resolved, demo_ids, fb_driver, fb_operator
+            )
+            self.log(
+                f"Healed resolution: neutralized foreign trip {resolved.unique_id} "
+                f"so driver_user resolves its own trip."
+            )
+        self.log("WARNING: driver_user resolution did not converge after 30 heals.")
+
+    def _neutralize_foreign_assignment(self, assignment, demo_ids, fb_driver, fb_operator):
+        tmpl = assignment.staff_template_id
+        changed = False
+        if tmpl is not None and fb_driver is not None:
+            changed = self._strip_demo_users(tmpl, demo_ids, fb_driver, fb_operator)
+        if not changed:
+            # Its template no longer references a demo user (or no fallback
+            # exists), yet it still resolves — cancel it so the resolver skips it.
+            assignment.status = DailyTripAssignment.STATUS_CANCELLED
+            assignment.save(update_fields=["status", "updated_at"])
 
     def _ensure_bins(self, panchayat, wet_waste):
         """Create/refresh NUM_COLLECTION_POINTS Organic bins in the panchayat.

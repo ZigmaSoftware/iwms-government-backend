@@ -89,20 +89,23 @@ class TripPlanSeeder(BaseSeeder):
             vehicle = vehicles[idx % len(vehicles)]
 
             for collection_type in self.COLLECTION_TYPES:
-                # Natural key: (district, panchayat, collection_type). waste_type is
-                # an attribute that can be reassigned, so it belongs in defaults — if it
-                # were part of the lookup, changing a panchayat's waste type would create
-                # a new row instead of updating the existing one.
+                # Natural key: (district, panchayat, collection_type, staff_template).
+                # staff_template is part of the key because (district, panchayat,
+                # collection_type) is NOT unique — other crews (e.g. the dedicated
+                # driver_user template) legitimately have their own plan for the same
+                # area+type. Scoping the lookup to THIS template keeps the seeder
+                # matching only its own row instead of raising MultipleObjectsReturned.
+                # waste_type stays in defaults so reassigning it updates in place.
                 plan, created = TripPlan.objects.update_or_create(
                     district=district,
                     panchayat=panchayat,
                     collection_type=collection_type,
+                    staff_template_id=template,
                     is_deleted=False,
                     defaults={
                         "waste_type_id": primary_waste_type,
                         "state": district.state_id,
                         "area_type": panchayat.area_type_id,
-                        "staff_template_id": template,
                         "vehicle_id": vehicle,
                         "supervisor_id": supervisor,
                         "property_id": property_obj,
@@ -161,12 +164,12 @@ class TripPlanSeeder(BaseSeeder):
                 corporation=corporation,
                 panchayat=None,
                 collection_type=collection_type,
+                staff_template_id=templates[idx % len(templates)],
                 is_deleted=False,
                 defaults={
                     "waste_type_id": primary_waste_type,
                     "state": corporation.state_id,
                     "area_type": corporation.area_type_id,
-                    "staff_template_id": templates[idx % len(templates)],
                     "vehicle_id": vehicles[idx % len(vehicles)],
                     "supervisor_id": supervisor,
                     "property_id": property_obj,

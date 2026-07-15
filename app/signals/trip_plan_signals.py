@@ -195,3 +195,65 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
         DailyTripLog.objects.filter(pk=log.pk).update(
             log_status=DailyTripLog.LOG_STATUS_SUBMITTED,
         )
+
+
+@receiver(post_save, sender="app.BinCollectionEvent")
+def sync_trip_log_on_bin_event_save(sender, instance, **kwargs):
+    """Keep the trip's DailyTripLog in sync on EVERY bin scan, not only when the
+    whole trip is completed (mirrors sync_household_collection_on_waste_save):
+    1. Find or auto-create the DailyTripLog (Draft) for the trip.
+    2. Sync collected_weight_kg from the trip's BinCollectionEvent records.
+    3. Auto-submit once all bin collection points are resolved (Collected/Missed).
+
+    Without this, a partially-collected trip never gets a log row — the mobile
+    scan flow only wrote one when progress was 100% complete.
+    """
+    if not instance.trip_assignment_id_id or instance.is_deleted:
+        return
+
+    from app.models.schedule_masters.daily_trip_log import DailyTripLog
+
+    log = DailyTripLog.objects.filter(
+        trip_assignment_id=instance.trip_assignment_id_id,
+        is_deleted=False,
+    ).first()
+
+    if log is None:
+        try:
+            log = DailyTripLog(
+                trip_assignment_id=instance.trip_assignment_id,
+                log_status=DailyTripLog.LOG_STATUS_DRAFT,
+                remarks="Auto-generated from bin collection scans.",
+            )
+            # autofill_from_assignment() runs inside save(); save() also calls
+            # sync_from_bin_collection_events() so weight is populated on create.
+            log.save()
+        except Exception:
+            # Assignment missing required fields (staff template, vehicle, ...)
+            # — skip log creation gracefully, exactly like the household path.
+            return
+    else:
+        # Existing (Draft) log from an earlier scan — refresh its bin weight.
+        log.sync_from_secondary_bin_collection_events()
+
+    # Auto-submit when ALL bin collection points for this trip are resolved.
+    log.refresh_from_db(fields=["log_status", "collected_weight_kg"])
+    if log.log_status != DailyTripLog.LOG_STATUS_DRAFT:
+        return  # already submitted / verified — don't touch
+    if (log.collected_weight_kg or 0) <= 0:
+        return
+
+    cps = DailyTripCollectionPoint.objects.filter(
+        trip_assignment_id=instance.trip_assignment_id,
+        is_deleted=False,
+    )
+    unresolved = cps.exclude(
+        status__in=[
+            DailyTripCollectionPoint.STATUS_COLLECTED,
+            DailyTripCollectionPoint.STATUS_MISSED,
+        ]
+    )
+    if cps.exists() and not unresolved.exists():
+        DailyTripLog.objects.filter(pk=log.pk).update(
+            log_status=DailyTripLog.LOG_STATUS_SUBMITTED,
+        )

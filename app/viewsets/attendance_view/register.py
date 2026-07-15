@@ -1,4 +1,5 @@
 import os
+import requests
 
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
@@ -15,6 +16,10 @@ from dateutil import parser
 from app.models.user_creations.attendance import Employee
 from app.models.user_creations.staffcreation import Staffcreation
 from app.utils.qr import generate_qr
+
+
+FACE_VERIFY_URL = "http://125.17.238.158:8000/api/v1/verification/verify"
+FACE_VERIFY_HEADERS = {"x-api-key": "c4bb2855-e789-45e4-8dcd-903f03e03f2f"}
 
 
 def _clean_text(value, fallback=""):
@@ -39,6 +44,37 @@ def _save_employee_image(emp_id, source_image, timestamp):
             f.write(chunk)
 
     return f"emp_image/{image_filename}"
+
+
+def _validate_single_reference_face(image_path):
+    """Reject registrations that CompreFace cannot use as one reference face."""
+    try:
+        with open(image_path, "rb") as src, open(image_path, "rb") as tgt:
+            response = requests.post(
+                FACE_VERIFY_URL,
+                headers=FACE_VERIFY_HEADERS,
+                files={
+                    "source_image": ("source.jpg", src, "image/jpeg"),
+                    "target_image": ("target.jpg", tgt, "image/jpeg"),
+                },
+                timeout=30,
+            )
+        data = response.json()
+    except Exception as exc:
+        return False, f"Face validation failed. Please try again. ({exc})"
+
+    message = str(data.get("message") or "").lower() if isinstance(data, dict) else ""
+    code = data.get("code") if isinstance(data, dict) else None
+    if code == 31 or "more than one face" in message:
+        return False, "More than one face detected. Register again with only your face in the frame."
+
+    try:
+        data["result"][0]["source_image_face"]
+        data["result"][0]["face_matches"][0]
+    except Exception:
+        return False, "Face not detected clearly. Register again in good light, facing the camera."
+
+    return True, None
 
 
 class RegisterViewSet(ViewSet):
@@ -152,6 +188,14 @@ class RegisterViewSet(ViewSet):
                 source_image,
                 timestamp,
             )
+            absolute_image_path = os.path.join(settings.MEDIA_ROOT, relative_image_path)
+            valid_face, face_error = _validate_single_reference_face(absolute_image_path)
+            if not valid_face:
+                try:
+                    os.remove(absolute_image_path)
+                except OSError:
+                    pass
+                return Response({"error": face_error}, status=400)
 
             with transaction.atomic():
                 existing = (

@@ -7,6 +7,7 @@ from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
+from app.utils.waste_images import capture_images_for_customer
 
 
 class DailyTripLogSerializer(serializers.ModelSerializer):
@@ -55,6 +56,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     verified_by_name = serializers.SerializerMethodField(read_only=True)
     collection_status = serializers.SerializerMethodField(read_only=True)
     household_collections = serializers.SerializerMethodField(read_only=True)
+    capture_images = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DailyTripLog
@@ -95,6 +97,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "verified_at",
             "collection_status",
             "household_collections",
+            "capture_images",
             "created_by",
             "created_at",
             "updated_at",
@@ -239,6 +242,30 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "status": hh.status,
             })
         return result
+
+    def get_capture_images(self, obj):
+        """Capture photos taken during this trip — aggregated from every
+        WasteCollection recorded against the trip assignment (each links to its
+        household's WasteCollectionSub photos)."""
+        from app.models.customers.wastecollection import WasteCollection
+
+        assignment_id = obj.trip_assignment_id_id
+        if not assignment_id:
+            return []
+        request = self.context.get("request")
+        images = []
+        seen = set()
+        collections = WasteCollection.objects.filter(
+            trip_assignment_id=assignment_id, is_deleted=False
+        )
+        for collection in collections:
+            for img in capture_images_for_customer(
+                collection.customer_id, collection.collection_date, request
+            ):
+                if img["url"] not in seen:
+                    seen.add(img["url"])
+                    images.append(img)
+        return images
 
     def get_location_name(self, obj):
         name, _ = flat_geo_display(obj)

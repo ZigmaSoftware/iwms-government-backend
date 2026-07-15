@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from app.models.assets.bins import Bins
-from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
