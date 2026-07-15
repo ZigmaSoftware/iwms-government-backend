@@ -157,7 +157,7 @@ from .schedule_masters.daily_trip_assignment import DailyTripAssignment
 from .schedule_masters.daily_trip_log import DailyTripLog
 from .schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
 from .schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
-from .schedule_masters.bin_collection_event import BinCollectionEvent
+from .schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from .schedule_masters.scheduler_config import SchedulerConfig
 from .schedule_masters.vehicle_breakdown import VehicleBreakdown
 

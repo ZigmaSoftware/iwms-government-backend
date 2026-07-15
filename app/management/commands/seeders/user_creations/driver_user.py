@@ -8,11 +8,13 @@ from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.assets.bins import Bins
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.collection_point import Collection_point
 from app.models.customers.customercreation import CustomerCreation
 from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.models.role_assigns.userType import UserType
 from app.models.masters.panchayat import Panchayat
-from app.models.schedule_masters.bin_collection_event import BinCollectionEvent
+from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_collection_point import (

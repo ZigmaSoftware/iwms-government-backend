@@ -23,7 +23,7 @@ from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
 
 
-def generate_bin_collection_event_id():
+def generate_secondary_bin_collection_event_id():
     return f"BCE-{generate_unique_id(length=10)}"
 
 
@@ -43,7 +43,7 @@ class BinCollectionEvent(BaseMaster):
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
-        default=generate_bin_collection_event_id,
+        default=generate_secondary_bin_collection_event_id,
         editable=False,
     )
 
@@ -53,14 +53,14 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.PROTECT,
         db_column="trip_assignment_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
     )
     trip_collection_point_id = models.ForeignKey(
         DailyTripCollectionPoint,
         on_delete=models.PROTECT,
         db_column="trip_collection_point_id",
         to_field="unique_id",
-        related_name="bin_collection_event",
+        related_name="secondary_bin_collection_event",
     )
 
     collection_point_id = models.ForeignKey(
@@ -68,21 +68,21 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.PROTECT,
         db_column="collection_point_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
     )
     bin_id = models.ForeignKey(
         Bins,
         on_delete=models.PROTECT,
         db_column="bin_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
     )
     location_node = models.ForeignKey(
         "app.HierarchyNode",
         on_delete=models.PROTECT,
         db_column="location_node_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         null=True,
         blank=True,
     )
@@ -91,14 +91,14 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.PROTECT,
         db_column="waste_type_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
     )
     vehicle_id = models.ForeignKey(
         VehicleCreation,
         on_delete=models.PROTECT,
         db_column="vehicle_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         null=True,
         blank=True,
     )
@@ -107,7 +107,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         db_column="vehicle_breakdown_id",
         to_field="unique_id",
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         null=True,
         blank=True,
         help_text="Approved breakdown that re-routed this collection to a replacement vehicle.",
@@ -123,7 +123,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="state_id",
     )
@@ -132,7 +132,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="district_id",
     )
@@ -141,7 +141,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="area_type_id",
     )
@@ -150,7 +150,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="corporation_id",
     )
@@ -159,7 +159,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="municipality_id",
     )
@@ -168,7 +168,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="town_panchayat_id",
     )
@@ -177,7 +177,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="panchayat_union_id",
     )
@@ -186,7 +186,7 @@ class BinCollectionEvent(BaseMaster):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="bin_collection_events",
+        related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="panchayat_id",
     )
