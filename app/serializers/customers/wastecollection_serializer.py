@@ -1,6 +1,6 @@
-from django.conf import settings
 from rest_framework import serializers
 from app.models.customers.wastecollection import WasteCollection
+from app.utils.waste_images import capture_images_for_customer
 from app.models.customers.customercreation import CustomerCreation
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.common_masters.state import State
@@ -181,53 +181,9 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
 
     def get_capture_images(self, obj):
         """Capture photos for this collection, pulled from WasteCollectionSub
-        (the mobile capture flow) for the same household. Linked by customer and,
-        when available, the collection date. Returns absolute /media/ URLs."""
-        from app.models.user_creations.waste_collection_bluetooth import (
-            WasteCollectionSub,
+        (the mobile capture flow) for the same household + collection date."""
+        return capture_images_for_customer(
+            obj.customer_id,
+            obj.collection_date,
+            self.context.get("request"),
         )
-
-        subs = WasteCollectionSub.objects.filter(
-            customer_id=obj.customer_id, is_deleted=False
-        ).exclude(image__isnull=True).exclude(image="")
-        if obj.collection_date:
-            # Scope to the collection day via a datetime range (± 1 day to absorb
-            # timezone skew) instead of a `__date` lookup, which is unreliable on
-            # MySQL when the server timezone tables aren't loaded.
-            import datetime as _dt
-
-            from django.utils import timezone as _tz
-
-            start = _dt.datetime.combine(obj.collection_date, _dt.time.min) - _dt.timedelta(days=1)
-            end = _dt.datetime.combine(obj.collection_date, _dt.time.max) + _dt.timedelta(days=1)
-            if _tz.is_aware(_tz.now()):
-                start = _tz.make_aware(start)
-                end = _tz.make_aware(end)
-            subs = subs.filter(date_time__gte=start, date_time__lte=end)
-
-        request = self.context.get("request")
-        images = []
-        for sub in subs.order_by("date_time"):
-            url = self._build_media_url(sub.image, request)
-            if url:
-                images.append({
-                    "url": url,
-                    "waste_type_id": sub.waste_type_id,
-                    "weight": sub.weight,
-                })
-        return images
-
-    @staticmethod
-    def _build_media_url(image, request):
-        """Build a servable media URL from a stored image path. The mobile
-        uploader stores paths like 'uploads/waste_collection_images/<file>' even
-        though the file is served from MEDIA_URL + 'waste_collection_images/', so
-        rebuild the URL from the filename to avoid the stale 'uploads/' prefix."""
-        if not image:
-            return None
-        image = str(image)
-        if image.startswith("http"):
-            return image
-        filename = image.rstrip("/").split("/")[-1]
-        path = f"{settings.MEDIA_URL}waste_collection_images/{filename}"
-        return request.build_absolute_uri(path) if request is not None else path
