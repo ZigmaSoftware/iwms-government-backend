@@ -234,7 +234,7 @@ def sync_trip_log_on_bin_event_save(sender, instance, **kwargs):
             return
     else:
         # Existing (Draft) log from an earlier scan — refresh its bin weight.
-        log.sync_from_bin_collection_events()
+        log.sync_from_secondary_bin_collection_events()
 
     # Auto-submit when ALL bin collection points for this trip are resolved.
     log.refresh_from_db(fields=["log_status", "collected_weight_kg"])
