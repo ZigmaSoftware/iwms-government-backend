@@ -104,6 +104,21 @@ def _status_bucket_q(bucket):
     return models.Q()
 
 
+def _staff_ticket_scope(user):
+    """Tickets explicitly owned by a staff member or their team/department."""
+    scope = models.Q(assigned_staff=user) | models.Q(assigned_team__lead_staff=user)
+    department = getattr(user, "department_id", None)
+    if department:
+        return scope | models.Q(assigned_team__department=department)
+
+    department_name = (getattr(user, "department", "") or "").strip()
+    if department_name:
+        return scope | models.Q(
+            assigned_team__department__department_name__iexact=department_name
+        )
+    return scope
+
+
 class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ComplaintTicketSerializer
     lookup_field = "unique_id"
@@ -185,22 +200,17 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not is_super and not wants_all:
             if is_admin_role(user) or is_supervisor_role(user):
                 # Corporation admins/supervisors see every ticket in their
-                # corporation subtree (capped by their StaffDataScope), not
-                # just the ones assigned to them (B2/G2).
-                qs = filter_flat_geo_queryset_by_requester_scope(qs, user)
+                # corporation subtree (capped by their StaffDataScope). They
+                # must also see tickets explicitly routed to them or their
+                # team even when the citizen's geo is outside that scope.
+                geo_qs = filter_flat_geo_queryset_by_requester_scope(qs, user)
+                if is_staff_record:
+                    qs = (geo_qs | qs.filter(_staff_ticket_scope(user))).distinct()
+                else:
+                    qs = geo_qs
             elif is_staff_record:
                 # Regular staff still see only tickets that belong to them.
-                scope = models.Q(assigned_staff=user) | models.Q(assigned_team__lead_staff=user)
-                department = getattr(user, "department_id", None)
-                if department:
-                    scope = scope | models.Q(assigned_team__department=department)
-                else:
-                    department_name = (getattr(user, "department", "") or "").strip()
-                    if department_name:
-                        scope = scope | models.Q(
-                            assigned_team__department__department_name__iexact=department_name
-                        )
-                qs = qs.filter(scope)
+                qs = qs.filter(_staff_ticket_scope(user))
         return qs
 
     # ----------------------------------------------------------
