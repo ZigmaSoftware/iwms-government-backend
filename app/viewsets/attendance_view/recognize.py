@@ -20,6 +20,31 @@ def _safe_filename(value: str) -> str:
     return value[:80] if value else "capture"
 
 
+def _verification_error(data):
+    if not isinstance(data, dict):
+        return "Face API invalid response"
+
+    message = str(data.get("message") or "").strip()
+    lower = message.lower()
+    code = data.get("code")
+    if code == 31 or "more than one face in the source" in lower:
+        return "Registered face has more than one face. Please re-register with only your face in the frame."
+    if "more than one face in the target" in lower:
+        return "More than one face detected in the punch selfie. Please try again alone in the frame."
+    if "more than one face" in lower:
+        return "More than one face detected. Please try again with only your face in the frame."
+
+    result = data.get("result")
+    if isinstance(result, list) and result:
+        first = result[0] if isinstance(result[0], dict) else {}
+        if first.get("source_image_face") and not first.get("face_matches"):
+            return "Face Similarity Not Matched"
+        if first.get("face_matches") is None:
+            return "Face not detected clearly. Please face the camera and try again."
+
+    return message or "Face not detected"
+
+
 class RecognizeViewSet(ViewSet):
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
@@ -132,7 +157,7 @@ class RecognizeViewSet(ViewSet):
         try:
             score = float(res["result"][0]["face_matches"][0]["similarity"])
         except Exception:
-            return Response({"error": "Face not detected", "raw": res}, status=400)
+            return Response({"error": _verification_error(res), "raw": res}, status=400)
 
         if score < 0.95:
             return Response(
