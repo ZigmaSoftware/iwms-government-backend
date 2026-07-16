@@ -280,7 +280,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             ],
         })
 
-    # ---- GET /publicgrivence/states/ ----
+    # ---- GET /publicgrievance/states/ ----
     # Read-only, name-only passthroughs onto the flat geo masters so the
     # public form can offer a state/district/city picker without needing a
     # login (the real /common-masters/ and /masters/ APIs are behind auth).
@@ -289,7 +289,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         rows = State.objects.filter(is_deleted=False, is_active=True).order_by("name")
         return Response([{"unique_id": s.unique_id, "name": s.name} for s in rows])
 
-    # ---- GET /publicgrivence/districts/?state=<state id> ----
+    # ---- GET /publicgrievance/districts/?state=<state id> ----
     @action(detail=False, methods=["get"])
     def districts(self, request):
         rows = District.objects.filter(is_deleted=False, is_active=True)
@@ -302,7 +302,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             for d in rows
         ])
 
-    # ---- GET /publicgrivence/cities/?district=<district id> ----
+    # ---- GET /publicgrievance/cities/?district=<district id> ----
     @action(detail=False, methods=["get"])
     def cities(self, request):
         district_id = request.query_params.get("district")
@@ -431,7 +431,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         # The device key is still stored on the ticket for traceability, but the
         # 6-hour same-device cooldown is disabled so citizens can register
         # multiple complaints from one device.
-        idempotency_key = f"publicgrivence:{device_id}" if device_id else None
+        idempotency_key = f"publicgrievance:{device_id}" if device_id else None
         # cutoff = timezone.now() - PUBLIC_GRIEVANCE_DUPLICATE_WINDOW
         # duplicate = None
         # if idempotency_key:
@@ -530,7 +530,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             status=http_status.HTTP_201_CREATED,
         )
 
-    # ---- GET /publicgrivence/status/?ticket_no=... or ?mobile=... ----
+    # ---- GET /publicgrievance/status/?ticket_no=... or ?mobile=... ----
     @action(detail=False, methods=["get"])
     def status(self, request):
         ticket_no = str(request.query_params.get("ticket_no") or "").strip()

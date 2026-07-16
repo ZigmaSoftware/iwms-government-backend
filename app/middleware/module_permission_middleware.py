@@ -76,7 +76,7 @@ PLATFORM_PREFIXES = (
 
 PUBLIC_PREFIXES = (
     "/media/",
-    "/api/v1/publicgrivence/",
+    "/api/v1/publicgrievance/",
     *PUBLIC_MOBILE_PREFIXES,
 )
 
