@@ -68,12 +68,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         longitude = request.data.get("longitude")
 
         status_aliases = {
-            "missed": DailyTripHouseholdCollection.STATUS_MISSED,
+            # "Not available" from the app → canonical "Not Available".
             "not_available": DailyTripHouseholdCollection.STATUS_MISSED,
             "not available": DailyTripHouseholdCollection.STATUS_MISSED,
-            "skipped": DailyTripHouseholdCollection.STATUS_SKIPPED,
-            "collect_later": DailyTripHouseholdCollection.STATUS_SKIPPED,
-            "collect later": DailyTripHouseholdCollection.STATUS_SKIPPED,
+            "missed": DailyTripHouseholdCollection.STATUS_MISSED,
+            # "Collect later" → canonical "Collect Later" (matches the web).
+            "collect_later": DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
+            "collect later": DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
+            "skipped": DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
         }
         normalized_status = status_aliases.get(status_value)
 
