@@ -134,7 +134,10 @@ from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardV
 from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyDashboardViewSet
 
 # Operator mobile
-from ..viewsets.operator_mobile.my_trip_today_viewset import MyTripTodayViewSet
+from ..viewsets.operator_mobile.my_trip_today_viewset import (
+    MyTripTodayViewSet,
+    MyTripsTodayViewSet,
+)
 from ..viewsets.operator_mobile.validate_bin_qr_viewset import ValidateBinQrViewSet
 from ..viewsets.operator_mobile.scan_bin_viewset import ScanBinViewSet
 from ..viewsets.operator_mobile.trip_history_viewset import TripHistoryViewSet
@@ -269,9 +272,9 @@ router.register_group(
 )
 router.register_group(
     "public",
-    "publicgrivence",
+    "publicgrievance" ,
     PublicGrievanceViewSet,
-    basename="publicgrivence",
+    basename="publicgrievance",
     include_group_in_prefix=False,
 )
 
@@ -339,6 +342,12 @@ router.register_group(
     "my-trip-today",
     MyTripTodayViewSet,
     basename="operator-mobile-my-trip-today",
+)
+router.register_group(
+    "operator-mobile",
+    "my-trips-today",
+    MyTripsTodayViewSet,
+    basename="operator-mobile-my-trips-today",
 )
 router.register_group(
     "operator-mobile",
