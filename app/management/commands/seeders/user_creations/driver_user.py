@@ -147,6 +147,12 @@ class DriverUserSeeder(BaseSeeder):
         )
         self._sync_household_stop(household_plan)
 
+        # 4b. Retire any OTHER plans on this template (e.g. from a previous run
+        #     that picked a different panchayat). Otherwise every past panchayat
+        #     leaves a bin+household pair behind and driver_user accumulates
+        #     extra active assignments each day.
+        self._retire_stale_plans(template, keep={bin_plan.pk, household_plan.pk})
+
         # 5. Generate today's assignments — BIN FIRST (lower unique_id so the
         #    app resolves the bin trip for my-trip-today / scan-bin). Signals
         #    build the daily collection points + household collections.
@@ -230,7 +236,10 @@ class DriverUserSeeder(BaseSeeder):
             .exclude(panchayat_id__isnull=True)
             .values("panchayat_id")
             .annotate(n=Count("unique_id"))
-            .order_by("-n")
+            # Secondary sort by panchayat_id makes the choice DETERMINISTIC so
+            # re-runs don't hop between equally-populated panchayats (which would
+            # keep spawning new plan pairs).
+            .order_by("-n", "panchayat_id")
         )
         for row in with_customers:
             panchayat = Panchayat.objects.filter(
@@ -480,6 +489,40 @@ class DriverUserSeeder(BaseSeeder):
         )
         plan.waste_types.set([wet_waste])
         return plan
+
+    def _retire_stale_plans(self, template, keep):
+        """Deactivate + soft-delete every plan on `template` except the ones in
+        `keep`, and cancel today's assignments they generated. Keeps driver_user
+        to exactly its current bin + household pair (prevents old panchayats'
+        plans from piling up extra active assignments each day)."""
+        today = timezone.localdate()
+        stale = (
+            TripPlan.objects
+            .filter(staff_template_id=template, is_deleted=False)
+            .exclude(pk__in=keep)
+        )
+        retired = 0
+        for plan in stale:
+            DailyTripAssignment.objects.filter(
+                trip_plan_id=plan, trip_date=today, is_deleted=False
+            ).update(
+                status=DailyTripAssignment.STATUS_CANCELLED,
+                is_active=False,
+                is_deleted=True,
+            )
+            plan.is_auto_assign = False
+            plan.is_active = False
+            plan.status = TripPlan.Status.INACTIVE
+            plan.is_deleted = True
+            plan.save(update_fields=[
+                "is_auto_assign", "is_active", "status", "is_deleted", "updated_at"
+            ])
+            retired += 1
+        if retired:
+            self.log(
+                f"Retired {retired} stale plan(s) on {template.display_code} "
+                f"(kept only the current bin + household pair)."
+            )
 
     def _sync_bin_stops(self, plan, bins):
         for seq, (cp, bin_obj) in enumerate(bins, start=1):

@@ -82,6 +82,43 @@ def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssign
     return assignment
 
 
+def find_all_active_assignments_for_operator(staff: Staffcreation):
+    """Every non-cancelled trip assigned to the operator/driver today, ordered by
+    unique_id. A driver can hold more than one (e.g. a bin trip AND a household
+    trip) — the mobile header carousel lists them all. Never raises: returns an
+    empty list when there is no trip today."""
+    today = timezone.localdate()
+
+    base = (
+        DailyTripAssignment.objects
+        .filter(trip_date=today, is_deleted=False)
+        .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
+        .select_related(
+            "panchayat",
+            "waste_type_id",
+            "vehicle_id",
+            "trip_plan_id",
+            "staff_template_id",
+            "staff_template_id__driver_id",
+            "staff_template_id__operator_id",
+        )
+        .order_by("unique_id")
+    )
+
+    assignments = list(
+        base.filter(
+            Q(staff_template_id__operator_id=staff)
+            | Q(staff_template_id__driver_id=staff)
+        )
+    )
+    if not assignments:
+        for candidate in base:
+            extras = getattr(candidate.staff_template_id, "extra_operator_id", None) or []
+            if staff.staff_unique_id in extras:
+                assignments.append(candidate)
+    return assignments
+
+
 def _extract_bin_identifier(raw: str) -> str:
     """The printed bin QR encodes JSON like {"id": "BIN-..."} (see
     app/utils/bin_qr.py). Card taps in the app instead send the stored bin_qr
