@@ -34,17 +34,22 @@ class DailyTripHouseholdCollection(BaseMaster):
     STATUS_NOT_COLLECTED = "Not Collected"
     STATUS_COLLECT_LATER = "Collect Later"
     STATUS_SKIPPED = "Skipped"
-    STATUS_MISSED = "Missed"
+    # "Not Available" is the canonical label for a household that couldn't be
+    # collected (what the mobile app's "Not available" action produces). It was
+    # previously stored/shown as "Missed"; renamed so app, backend and web match.
+    STATUS_MISSED = "Not Available"
+
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
     COLLECTION_TYPE_BULK = "bulk_waste_collection"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_COLLECTED, "Collected"),
-        (STATUS_NOT_COLLECTED, "Not Collected"),
         (STATUS_COLLECT_LATER, "Collect Later"),
+        (STATUS_MISSED, "Not Available"),
+        # Legacy values kept so historical rows still validate.
+        (STATUS_NOT_COLLECTED, "Not Collected"),
         (STATUS_SKIPPED, "Skipped"),
-        (STATUS_MISSED, "Missed"),
     ]
     COLLECTION_TYPE_CHOICES = [
         (COLLECTION_TYPE_HOUSEHOLD, "Household Collection"),
