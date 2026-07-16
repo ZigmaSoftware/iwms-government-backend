@@ -89,38 +89,56 @@ def _create_daily_household_collections(assignment, stop):
     return created_count
 
 
-@receiver(post_save, sender=DailyTripAssignment)
-def copy_trip_plan_stops_to_daily_assignment(sender, instance, created, **kwargs):
-    if not created or not instance.trip_plan_id_id:
-        return
+def sync_daily_assignment_stops_from_plan(assignment):
+    """Clone the assignment's Trip Plan stops into its daily child tables.
+
+    Uses get_or_create throughout, so it is safe to call repeatedly: it only
+    ADDS stops that aren't cloned yet (e.g. household stops added to the plan
+    after the assignment was first created) and never deletes or overwrites an
+    existing daily stop or its collected data. Returns the number of new rows.
+    """
+    if not assignment.trip_plan_id_id:
+        return 0
 
     plan_stops = TripPlanCollectionPoint.objects.filter(
-        trip_plan_id=instance.trip_plan_id,
+        trip_plan_id=assignment.trip_plan_id,
         is_active=True,
         is_deleted=False,
     ).order_by("sequence")
 
+    added = 0
     for stop in plan_stops:
         if stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BIN:
             if not stop.collection_point_id_id:
                 continue
-            DailyTripCollectionPoint.objects.get_or_create(
-                trip_assignment_id=instance,
+            _, created = DailyTripCollectionPoint.objects.get_or_create(
+                trip_assignment_id=assignment,
                 collection_point_id=stop.collection_point_id,
                 defaults={
                     "bin_id": stop.bin_id,
                     "sequence": stop.sequence,
                     "is_collected": False,
                     "status": DailyTripCollectionPoint.STATUS_PENDING,
-                    "created_by": getattr(instance, "created_by", None),
+                    "created_by": getattr(assignment, "created_by", None),
                 },
             )
+            if created:
+                added += 1
 
         elif stop.collection_type in {
             TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
             TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
         }:
-            _create_daily_household_collections(instance, stop)
+            added += _create_daily_household_collections(assignment, stop)
+
+    return added
+
+
+@receiver(post_save, sender=DailyTripAssignment)
+def copy_trip_plan_stops_to_daily_assignment(sender, instance, created, **kwargs):
+    if not created:
+        return
+    sync_daily_assignment_stops_from_plan(instance)
 
 
 @receiver(post_save, sender="app.WasteCollection")
