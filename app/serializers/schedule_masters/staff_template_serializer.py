@@ -250,7 +250,7 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_approved_by(self, value):
-        if self.instance and self.instance.approved_by:
+        if self.instance and self.instance.approved_by and self.instance.approved_by != value:
             raise serializers.ValidationError("Approved by cannot be modified")
         return value
 

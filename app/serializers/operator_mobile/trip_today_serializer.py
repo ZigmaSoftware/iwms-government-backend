@@ -84,6 +84,9 @@ class MyTripTodaySerializer(serializers.Serializer):
     assignment_unique_id = serializers.CharField(source="unique_id")
     trip_date = serializers.DateField()
     status = serializers.CharField()
+    # bin_collection / household_collection / bulk_waste_collection — drives the
+    # collection-type pill on the mobile trip header.
+    collection_type = serializers.SerializerMethodField()
     scheduled_time = serializers.TimeField()
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
@@ -96,6 +99,10 @@ class MyTripTodaySerializer(serializers.Serializer):
     route_geojson = serializers.SerializerMethodField()
     vehicle_start = serializers.SerializerMethodField()
     collection_points = serializers.SerializerMethodField()
+
+    def get_collection_type(self, obj):
+        plan = getattr(obj, "trip_plan_id", None)
+        return getattr(plan, "collection_type", None)
 
     def get_progress(self, obj):
         children = list(
