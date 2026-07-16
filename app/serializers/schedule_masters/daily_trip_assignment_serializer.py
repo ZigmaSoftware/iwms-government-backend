@@ -254,6 +254,11 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         collection_points = validated_data.pop("collection_points_input", None)
         assignment = super().update(instance, validated_data)
+        # Pull in any stops added to the Trip Plan after this daily trip was
+        # created (e.g. new household stops). Additive only — existing stops and
+        # their collected data are left untouched.
+        from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
+        sync_daily_assignment_stops_from_plan(assignment)
         self._sync_collection_points(assignment, collection_points)
         return assignment
 

@@ -224,11 +224,18 @@ class TripPlanSerializer(serializers.ModelSerializer):
             ]
             if len(collection_point_ids) != len(set(collection_point_ids)):
                 raise serializers.ValidationError({"collection_points": "Collection points must be unique per trip plan."})
+            # A plan may mix stop types (household + secondary collection) in one
+            # route. Bulk-waste plans, however, are auto-generated and never carry
+            # a manual stop list, so a bulk plan must not receive manual stops.
+            if plan_collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK and stops:
+                raise serializers.ValidationError(
+                    {"collection_points": "Bulk waste plans are auto-generated and take no manual stops."}
+                )
             for stop in stops:
                 collection_type = stop.get("collection_type") or plan_collection_type
-                if collection_type != plan_collection_type:
+                if collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK:
                     raise serializers.ValidationError(
-                        {"collection_points": "All trip points must match the Trip Plan collection type."}
+                        {"collection_points": "Bulk waste stops cannot be added manually."}
                     )
                 if collection_type in {
                     TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
@@ -271,7 +278,13 @@ class TripPlanSerializer(serializers.ModelSerializer):
     def _sync_stops(self, trip_plan, stops):
         if stops is None:
             return
-        TripPlanCollectionPoint.objects.filter(trip_plan_id=trip_plan).update(is_deleted=True, is_active=False)
+        # Full replace: remove existing stops, then rebuild from the payload.
+        # Hard-delete (not soft) because the unique (trip_plan_id, sequence)
+        # constraint ignores is_deleted — soft-deleted rows would keep their
+        # sequence numbers and collide with the freshly created stops. Nothing
+        # FKs to TripPlanCollectionPoint (daily-trip children are cloned to their
+        # own tables at assignment time), so deleting the master rows is safe.
+        TripPlanCollectionPoint.objects.filter(trip_plan_id=trip_plan).delete()
         for stop in stops:
             collection_type = stop.get("collection_type") or trip_plan.collection_type
             if collection_type in {
