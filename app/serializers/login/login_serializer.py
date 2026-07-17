@@ -9,6 +9,7 @@ from app.models.role_assigns.userType import UserType
 from app.models.superadmin_masters.auth_user import User
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.district_leader_login import DistrictLeaderLogin
+from app.models.masters.state_leader_login import StateLeaderLogin
 
 from app.utils.permission_response import (
     finalize_permission_payload,
@@ -33,7 +34,7 @@ class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
     login_type = serializers.ChoiceField(
-        choices=["auto", "staff", "customer", "platform", "contractor", "panchayat_leader", "district_leader"],
+        choices=["auto", "staff", "customer", "platform", "contractor", "panchayat_leader", "district_leader", "state_leader"],
         default="auto",
         required=False
     )
@@ -64,6 +65,8 @@ class LoginSerializer(serializers.Serializer):
             return ["panchayat_leader"]
         if login_type == "district_leader":
             return ["district_leader"]
+        if login_type == "state_leader":
+            return ["state_leader"]
         return ["customer", "staff", "platform", "contractor"]
 
     def _format_permissions(self, queryset):
@@ -486,6 +489,42 @@ class LoginSerializer(serializers.Serializer):
             return None
 
         return self._build_district_leader_payload(leader)
+
+    def _build_state_leader_payload(self, leader):
+        state = leader.state_id
+
+        return {
+            "user": leader,
+            "permissions": {},
+            "permission_details": {},
+            "column_permissions": {},
+            "module_access": [],
+            "app_surfaces": [],
+            "landing": None,
+            "permission_version": None,
+            "generated_at": None,
+            "user_type": "state_leader",
+            "staffusertype_id": None,
+            "contractorusertype_id": None,
+            "profile_object": leader,
+        }
+
+    def _authenticate_state_leader(self, username, password):
+        leader = (
+            StateLeaderLogin.objects
+            .select_related("state_id")
+            .filter(is_active=True, is_deleted=False)
+            .filter(Q(username__iexact=username) | Q(email__iexact=username))
+            .first()
+        )
+
+        if not leader:
+            return None
+
+        if not self._password_matches(password, leader.password):
+            return None
+
+        return self._build_state_leader_payload(leader)
 
     def validate(self, attrs):
         username = attrs["username"].strip()
