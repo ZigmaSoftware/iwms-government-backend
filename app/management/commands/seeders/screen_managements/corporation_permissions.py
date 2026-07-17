@@ -37,7 +37,7 @@ SCHEDULE_WRITE_SCREENS = {
     "daily-trip-collection-points",
     "daily-trip-household-collections",
     "daily-trip-logs",
-    "bin-collection-events",
+    "secondary-bin-collection-events",
     "vehicle-breakdowns",
 }
 

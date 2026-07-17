@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 
-from app.models.user_creations.loginAudit import LoginAudit
+from app.models.audits.login_audit import LoginAudit
 from app.serializers.audits.login_audit_serializer import LoginAuditSerializer
 
 

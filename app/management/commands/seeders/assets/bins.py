@@ -2,7 +2,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.geo import coordinates
 from app.models.assets.bins import Bins, BinType
 from app.models.schedule_masters.collection_point import Collection_point
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 
 
 class BinSeeder(BaseSeeder):

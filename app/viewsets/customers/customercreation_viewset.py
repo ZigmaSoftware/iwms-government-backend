@@ -14,7 +14,7 @@ from app.models.waste_types.subproperty import SubProperty
 from app.models.common_masters.state import State
 from app.models.common_masters.country import Country
 from app.models.waste_types.property import Property
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 
 from app.serializers.customers.customercreation_serializer import CustomerCreationSerializer
 

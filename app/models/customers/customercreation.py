@@ -2,7 +2,7 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.models.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType

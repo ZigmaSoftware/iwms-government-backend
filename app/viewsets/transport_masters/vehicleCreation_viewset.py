@@ -12,8 +12,17 @@ from rest_framework.response import Response
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from app.models.transport_masters.fuel import Fuel
+from app.models.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 from app.serializers.transport_masters.vehicleCreation_serializer import VehicleCreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 
 class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = VehicleCreation.objects.filter(is_deleted=False)
@@ -33,6 +42,26 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         self.check_object_permissions(self.request, obj)
         return obj
+
+    # -------------------------------------------------------------
+    # Available vehicles — scoped to a government hierarchy (state/
+    # district/area_type/local body) and active only. Consumed by Trip
+    # Plan's vehicle dropdown so it only lists vehicles that belong to
+    # the trip's own location, e.g. `?district_id=...&panchayat_id=...`.
+    # -------------------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="available")
+    def available(self, request):
+        queryset = filter_flat_geo_queryset_by_params(
+            self.get_queryset().filter(is_active=True), request.query_params
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def _find_location(self, model, raw_value: str | None):
+        if not raw_value:
+            return None
+        value = str(raw_value).strip()
+        return model.objects.filter(is_deleted=False, unique_id__iexact=value).first()
 
     # -------------------------------------------------------------
     # Bulk vehicle creation helpers
@@ -106,10 +135,27 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 errors.append({"row": index, "error": f"vehicle_condition must be one of: {allowed}"})
                 continue
 
+            state = self._find_location(State, row.get("state_id"))
+            district = self._find_location(District, row.get("district_id"))
+            area_type = self._find_location(AreaType, row.get("area_type_id"))
+            corporation = self._find_location(Corporation, row.get("corporation_id"))
+            municipality = self._find_location(Municipality, row.get("municipality_id"))
+            town_panchayat = self._find_location(TownPanchayat, row.get("town_panchayat_id"))
+            panchayat_union = self._find_location(PanchayatUnion, row.get("panchayat_union_id"))
+            panchayat = self._find_location(Panchayat, row.get("panchayat_id"))
+
             payload = {
                 "vehicle_no": vehicle_no,
                 "vehicle_type_id": vehicle_type.unique_id if vehicle_type else None,
                 "fuel_type_id": fuel.unique_id if fuel else None,
+                "state_id": state.unique_id if state else None,
+                "district_id": district.unique_id if district else None,
+                "area_type_id": area_type.unique_id if area_type else None,
+                "corporation_id": corporation.unique_id if corporation else None,
+                "municipality_id": municipality.unique_id if municipality else None,
+                "town_panchayat_id": town_panchayat.unique_id if town_panchayat else None,
+                "panchayat_union_id": panchayat_union.unique_id if panchayat_union else None,
+                "panchayat_id": panchayat.unique_id if panchayat else None,
                 "capacity": row.get("capacity") or None,
                 "mileage_per_liter": row.get("mileage_per_liter") or None,
                 "service_record": row.get("service_record") or None,

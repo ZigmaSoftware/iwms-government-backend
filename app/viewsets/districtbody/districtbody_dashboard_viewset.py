@@ -20,7 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from app.models.masters.district_leader_login import DistrictLeaderLogin
+from app.models.leader_login.district_leader_login import DistrictLeaderLogin
 from app.models.masters.panchayat import Panchayat
 
 

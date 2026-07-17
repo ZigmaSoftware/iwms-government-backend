@@ -25,7 +25,7 @@ from app.management.commands.seeders.waste_types.properties import PropertySeede
 from app.management.commands.seeders.waste_types.subproperties import SubPropertySeeder
 
 # assets (router: assets/waste-types, assets/bins)
-from app.management.commands.seeders.waste_types.wastetype import WasteTypeSeeder
+from app.management.commands.seeders.assets.wastetype import WasteTypeSeeder
 from app.management.commands.seeders.assets.bins import BinSeeder
 
 # role-assigns (router: role-assigns/user-type, staffusertypes, contractorusertypes)

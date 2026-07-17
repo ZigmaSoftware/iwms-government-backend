@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 
 

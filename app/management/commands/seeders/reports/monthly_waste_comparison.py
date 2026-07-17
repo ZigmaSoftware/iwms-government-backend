@@ -6,7 +6,7 @@ from django.utils import timezone
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 
 
 class MonthlyWasteComparisonSeeder(BaseSeeder):
