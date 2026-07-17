@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.user_creations.loginAudit import LoginAudit
+from app.models.audits.login_audit import LoginAudit
 
 
 class LoginAuditSerializer(serializers.ModelSerializer):

@@ -15,9 +15,7 @@ from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
-from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.assets.wastetype import WasteType
 
 
 class MultiDistrictTripDataSeeder(BaseSeeder):
@@ -100,14 +98,6 @@ class MultiDistrictTripDataSeeder(BaseSeeder):
             return
 
         supervisor = StaffcreationOfficeDetails.objects.filter(is_deleted=False).first()
-        property_obj = Property.objects.filter(property_name="Residential", is_deleted=False).first()
-        sub_property = (
-            SubProperty.objects.filter(
-                property_id=property_obj, sub_property_name="Apartment", is_deleted=False
-            ).first()
-            if property_obj
-            else None
-        )
 
         already_seeded_district_ids = set(
             DailyTripLog.objects.filter(is_deleted=False, district_id__isnull=False)
@@ -176,8 +166,6 @@ class MultiDistrictTripDataSeeder(BaseSeeder):
                         "staff_template_id": template,
                         "vehicle_id": vehicle,
                         "supervisor_id": supervisor,
-                        "property_id": property_obj,
-                        "sub_property_id": sub_property,
                         "scheduled_time": sched_time,
                         "trip_trigger_weight_kg": 150,
                         "max_vehicle_capacity_kg": int(vehicle.capacity) if vehicle.capacity else 4000,

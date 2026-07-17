@@ -17,9 +17,9 @@ from .common_masters.state import State
 from .masters.district import District
 from .masters.department import Department
 from .masters.designation import Designation
-from .masters.panchayat_leader_login import PanchayatLeaderLogin
-from .masters.district_leader_login import DistrictLeaderLogin
-from .masters.state_leader_login import StateLeaderLogin
+from .leader_login.panchayat_leader_login import PanchayatLeaderLogin
+from .leader_login.district_leader_login import DistrictLeaderLogin
+from .leader_login.state_leader_login import StateLeaderLogin
 from .masters.areatype import AreaType
 from .masters.corporation import Corporation
 from .masters.municipality import Municipality
@@ -88,8 +88,8 @@ from .user_creations.staff_data_scope import StaffDataScope
 # ============================================================
 # GROUP: AUTH / LOGIN / AUDIT (USER)
 # ============================================================
-from .user_creations.loginAudit import LoginAudit
-from .user_creations.auditlog import AuditLog
+from .audits.login_audit import LoginAudit
+from .audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
 from .audits.permission_audit import PermissionAuditLog
 
@@ -135,9 +135,9 @@ from .complaint_ticket.notification import ComplaintNotification
 # ============================================================
 from .user_creations.waste_collection_bluetooth import (
     WasteCollectionSub,
-    WasteType,
     WasteCollectionMain,
 )
+from .assets.wastetype import WasteType
 
 
 # ============================================================

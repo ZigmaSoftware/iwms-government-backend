@@ -9,9 +9,7 @@ from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
-from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.assets.wastetype import WasteType
 
 
 class TripPlanSeeder(BaseSeeder):
@@ -54,11 +52,6 @@ class TripPlanSeeder(BaseSeeder):
         ).first()
         if not supervisor:
             supervisor = StaffcreationOfficeDetails.objects.filter(is_deleted=False).first()
-
-        property_obj = Property.objects.filter(property_name="Residential", is_deleted=False).first()
-        sub_property = SubProperty.objects.filter(
-            property_id=property_obj, sub_property_name="Apartment", is_deleted=False
-        ).first() if property_obj else None
 
         count = 0
         for idx, (panchayat_name, primary_waste_type_name, extra_waste_type_names, sched_time, trigger_kg, max_kg) in enumerate(
@@ -108,8 +101,6 @@ class TripPlanSeeder(BaseSeeder):
                         "area_type": panchayat.area_type_id,
                         "vehicle_id": vehicle,
                         "supervisor_id": supervisor,
-                        "property_id": property_obj,
-                        "sub_property_id": sub_property,
                         "scheduled_time": sched_time,
                         "trip_trigger_weight_kg": trigger_kg,
                         "max_vehicle_capacity_kg": max_kg,
@@ -128,14 +119,11 @@ class TripPlanSeeder(BaseSeeder):
                 else:
                     self.log(f"Updated TripPlan: {plan.display_code} - {collection_type}")
 
-        count += self._seed_corporation_plans(
-            district, templates, vehicles, supervisor, property_obj, sub_property
-        )
+        count += self._seed_corporation_plans(district, templates, vehicles, supervisor)
 
         self.log(f"---Trip plans seeded ({count} created)---")
 
-    def _seed_corporation_plans(self, district, templates, vehicles, supervisor,
-                                property_obj, sub_property):
+    def _seed_corporation_plans(self, district, templates, vehicles, supervisor):
         """Seed corporation-scoped trip plans (corporation=Erode Corporation)
         so corporation-level schedule data exists — the trigger for
         daily_trip_assignment / generate_daily_trips to propagate the
@@ -172,8 +160,6 @@ class TripPlanSeeder(BaseSeeder):
                     "area_type": corporation.area_type_id,
                     "vehicle_id": vehicles[idx % len(vehicles)],
                     "supervisor_id": supervisor,
-                    "property_id": property_obj,
-                    "sub_property_id": sub_property,
                     "scheduled_time": time(6, 30),
                     "trip_trigger_weight_kg": 300,
                     "max_vehicle_capacity_kg": 6000,

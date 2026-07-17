@@ -37,7 +37,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.serializers.complaint_ticket.transaction_serializers import (
     ComplaintTicketSerializer,
     ComplaintTicketDetailSerializer,

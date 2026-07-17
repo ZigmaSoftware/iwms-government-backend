@@ -1,18 +1,18 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 
-from app.models.masters.state_leader_login import StateLeaderLogin
-from app.models.common_masters.state import State
+from app.models.leader_login.district_leader_login import DistrictLeaderLogin
+from app.models.masters.district import District
 
 
-class StateLeaderLoginSerializer(serializers.ModelSerializer):
+class DistrictLeaderLoginSerializer(serializers.ModelSerializer):
 
-    state_id = serializers.PrimaryKeyRelatedField(
-        queryset=State.objects.filter(is_deleted=False),
+    district_id = serializers.PrimaryKeyRelatedField(
+        queryset=District.objects.filter(is_deleted=False),
         required=True,
     )
-    state_name = serializers.CharField(
-        source="state_id.name",
+    district_name = serializers.CharField(
+        source="district_id.name",
         read_only=True,
     )
 
@@ -23,11 +23,11 @@ class StateLeaderLoginSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        model = StateLeaderLogin
+        model = DistrictLeaderLogin
         fields = [
             "unique_id",
-            "state_id",
-            "state_name",
+            "district_id",
+            "district_name",
             "username",
             "password",
             "email",
@@ -39,31 +39,31 @@ class StateLeaderLoginSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["unique_id", "created_at", "updated_at"]
 
-    def validate_state_id(self, value):
-        """One state can have at most one (non-deleted) leader."""
+    def validate_district_id(self, value):
+        """One district can have at most one (non-deleted) leader."""
         if not value:
             return value
-        qs = StateLeaderLogin.objects.filter(
-            state_id=value,
+        qs = DistrictLeaderLogin.objects.filter(
+            district_id=value,
             is_deleted=False,
         )
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError(
-                "This state already has a leader assigned. "
-                "Each state can have only one leader."
+                "This district already has a leader assigned. "
+                "Each district can have only one leader."
             )
         return value
 
     def validate_username(self, value):
         if not value:
             return value
-        qs = StateLeaderLogin.objects.filter(username=value, is_deleted=False)
+        qs = DistrictLeaderLogin.objects.filter(username=value, is_deleted=False)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("A state leader with this username already exists.")
+            raise serializers.ValidationError("A district leader with this username already exists.")
         return value
 
     def create(self, validated_data):
@@ -73,7 +73,7 @@ class StateLeaderLoginSerializer(serializers.ModelSerializer):
         else:
             raise serializers.ValidationError({"password": "Password is required."})
 
-        return StateLeaderLogin.objects.create(**validated_data)
+        return DistrictLeaderLogin.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
         raw_password = validated_data.pop("password", None)

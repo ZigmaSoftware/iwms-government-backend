@@ -6,7 +6,7 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.models.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType

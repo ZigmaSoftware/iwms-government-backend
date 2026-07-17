@@ -9,9 +9,7 @@ from app.models.schedule_masters.collection_point import Collection_point
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.schedule_masters.staff_template import StaffTemplate
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.models.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -161,24 +159,6 @@ class TripPlan(BaseMaster):
     )
 
     # ---- WHAT ------------------------------------------------------
-    property_id = models.ForeignKey(
-        Property,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        db_column="property_id",
-        null=True,
-        blank=True,
-    )
-    sub_property_id = models.ForeignKey(
-        SubProperty,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        db_column="sub_property_id",
-        null=True,
-        blank=True,
-    )
     waste_type_id = models.ForeignKey(
         WasteType,
         on_delete=models.PROTECT,
