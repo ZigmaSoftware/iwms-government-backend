@@ -16,6 +16,7 @@ from ..viewsets.masters.district_viewset import DistrictViewSet
 from ..viewsets.masters.panchayat_viweset import PanhayatViewSet
 from ..viewsets.masters.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
 from ..viewsets.masters.district_leader_viewset import DistrictLeaderLoginViewSet
+from ..viewsets.masters.state_leader_viewset import StateLeaderLoginViewSet
 from ..viewsets.masters.areatype_viewset import AreaTypeViewSet
 from ..viewsets.masters.hierarchy_viewset import AdministrativeHierarchyViewSet
 from ..viewsets.masters.department_viewset import DepartmentViewSet
@@ -133,6 +134,13 @@ from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardV
 # Districtbody
 from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyDashboardViewSet
 
+# Statebody
+from ..viewsets.statebody.statebody_dashboard_viewset import StateBodyDashboardViewSet
+from ..viewsets.statebody.statebody_waste_comparison_viewset import (
+    StateMonthlyWasteComparisonViewSet,
+    StateDailyWasteComparisonViewSet,
+)
+
 # Operator mobile
 from ..viewsets.operator_mobile.my_trip_today_viewset import (
     MyTripTodayViewSet,
@@ -172,6 +180,7 @@ router.register_group("masters", "districts",     DistrictViewSet)
 router.register_group("masters", "panchayat",         PanhayatViewSet)
 router.register_group("masters", "panchayat-leaders", PanchayatLeaderLoginViewSet)
 router.register_group("masters", "district-leaders", DistrictLeaderLoginViewSet)
+router.register_group("masters", "state-leaders",    StateLeaderLoginViewSet)
 router.register_group("masters", "areatypes",         AreaTypeViewSet)
 router.register_group("masters", "hierarchy",         AdministrativeHierarchyViewSet)
 router.register_group("masters", "departments",       DepartmentViewSet)
@@ -333,6 +342,13 @@ router.register_group("localbody", "dashboard", LocalBodyDashboardViewSet, basen
 # GROUP: DISTRICTBODY (district leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("districtbody", "dashboard", DistrictBodyDashboardViewSet, basename="districtbody-dashboard")
+
+# ============================================================
+# GROUP: STATEBODY (state leader portal — auth-only, no module permission check)
+# ============================================================
+router.register_group("statebody", "dashboard", StateBodyDashboardViewSet, basename="statebody-dashboard")
+router.register_group("statebody", "monthly-waste-comparison", StateMonthlyWasteComparisonViewSet, basename="statebody-monthly-waste-comparison")
+router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComparisonViewSet, basename="statebody-daily-waste-comparison")
 
 # ============================================================
 # GROUP: OPERATOR MOBILE

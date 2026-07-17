@@ -7,6 +7,7 @@ from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
 from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.district_leader_login import DistrictLeaderLogin
+from app.models.masters.state_leader_login import StateLeaderLogin
 
 
 class JWTUserAuthentication(BaseAuthentication):
@@ -75,6 +76,14 @@ class JWTUserAuthentication(BaseAuthentication):
         if district_leader:
             request.jwt_payload = payload
             return (district_leader, None)
+
+        # Try to find user in StateLeaderLogin (uses unique_id with prefix SLDR-)
+        state_leader = StateLeaderLogin.objects.select_related(
+            "state_id"
+        ).filter(unique_id=unique_id).first()
+        if state_leader:
+            request.jwt_payload = payload
+            return (state_leader, None)
 
         # Fall back to Django User (platform super admin)
         UserModel = get_user_model()

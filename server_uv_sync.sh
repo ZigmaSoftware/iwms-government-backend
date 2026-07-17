@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_DIR="/home/admin/localserver/iwmsGovernment/iwms-government-backend"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
 
 mkdir -p "$CACHE_DIR"

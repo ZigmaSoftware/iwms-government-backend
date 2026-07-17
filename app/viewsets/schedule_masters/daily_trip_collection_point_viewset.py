@@ -1,8 +1,11 @@
+import logging
+import logging
 from decimal import Decimal
 import hashlib
 
 from django.core.cache import cache
 from django.db import transaction
+from django.http import Http404
 from django.db.models import Q, Sum
 from rest_framework import status
 from rest_framework.decorators import action
@@ -138,7 +141,93 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def _optimize_assignment(self, assignment_id, vehicle_start=None):
         assignment = self._ensure_assignment_stops(assignment_id)
         if not assignment:
-            raise OpenRouteServiceError("Daily Trip Assignment was not found.")
+            raise Http404("Daily Trip Assignment was not found.")
+
+        stops = list(
+            self.get_queryset()
+            .filter(trip_assignment_id__unique_id=assignment_id)
+            .order_by("sequence")
+        )
+        completed_stops = [
+            stop for stop in stops
+            if stop.status == DailyTripCollectionPoint.STATUS_COLLECTED
+        ]
+        remaining_stops = [
+            stop for stop in stops
+            if stop.status != DailyTripCollectionPoint.STATUS_COLLECTED
+        ]
+        valid_remaining_stops = []
+        invalid_remaining_stop_ids = []
+        for stop in remaining_stops:
+            cp = stop.collection_point_id
+            if not cp or cp.latitude is None or cp.longitude is None:
+                invalid_remaining_stop_ids.append(stop.unique_id)
+                continue
+            valid_remaining_stops.append(stop)
+
+        routable = [
+            {
+                "id": stop.unique_id,
+                "location": [
+                    float(stop.collection_point_id.longitude),
+                    float(stop.collection_point_id.latitude),
+                ],
+            }
+            for stop in valid_remaining_stops
+        ]
+        latest_vehicle_start = self._latest_vehicle_start(assignment)
+        resolved_vehicle_start = vehicle_start or latest_vehicle_start
+        try:
+            optimized = optimize_stops(routable, resolved_vehicle_start)
+        except OpenRouteServiceError:
+            logging.exception(
+                "ORS optimization failed for assignment %s, falling back to direct route",
+                assignment_id,
+            )
+            route = route_stops(routable, resolved_vehicle_start)
+            optimized = {
+                "ordered_ids": [stop.unique_id for stop in valid_remaining_stops],
+                "distance": route["distance"],
+                "duration": route["duration"],
+                "geometry": route["geometry"],
+                "route_legs": [],
+                "vehicle_start": route["vehicle_start"],
+            }
+        if invalid_remaining_stop_ids:
+            optimized["ordered_ids"].extend(invalid_remaining_stop_ids)
+
+        by_id = {stop.unique_id: stop for stop in stops}
+        with transaction.atomic():
+            for index, stop in enumerate(completed_stops, start=1):
+                stop.sequence = index
+            for index, stop_id in enumerate(
+                optimized["ordered_ids"],
+                start=len(completed_stops) + 1,
+            ):
+                stop = by_id[stop_id]
+                stop.sequence = index
+            if stops:
+                DailyTripCollectionPoint.objects.bulk_update(stops, ["sequence"])
+        optimized["all_ordered_ids"] = [
+            *[stop.unique_id for stop in completed_stops],
+            *optimized["ordered_ids"],
+        ]
+        optimized["optimized_stop_count"] = len(remaining_stops)
+        optimized["completed_stop_count"] = len(completed_stops)
+        optimized["vehicle_no"] = getattr(assignment.vehicle_id, "vehicle_no", None)
+        optimized["vehicle_start_source"] = (
+            "request"
+            if vehicle_start
+            else "latest_gps"
+            if latest_vehicle_start
+            else "first_collection_point"
+        )
+        return optimized
+
+    def _route_assignment_without_optimization(self, assignment_id, vehicle_start=None):
+        assignment = self._ensure_assignment_stops(assignment_id)
+        if not assignment:
+            raise Http404("Daily Trip Assignment was not found.")
 
         stops = list(
             self.get_queryset()
@@ -165,38 +254,34 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ]
         latest_vehicle_start = self._latest_vehicle_start(assignment)
         resolved_vehicle_start = vehicle_start or latest_vehicle_start
-        optimized = optimize_stops(routable, resolved_vehicle_start)
-        by_id = {stop.unique_id: stop for stop in stops}
-        with transaction.atomic():
-            for index, stop in enumerate(completed_stops, start=1):
-                stop.sequence = index
-            for index, stop_id in enumerate(
-                optimized["ordered_ids"],
-                start=len(completed_stops) + 1,
-            ):
-                stop = by_id[stop_id]
-                stop.sequence = index
-            DailyTripCollectionPoint.objects.bulk_update(stops, ["sequence"])
-        optimized["all_ordered_ids"] = [
-            *[stop.unique_id for stop in completed_stops],
-            *optimized["ordered_ids"],
-        ]
-        optimized["optimized_stop_count"] = len(remaining_stops)
-        optimized["completed_stop_count"] = len(completed_stops)
-        optimized["vehicle_no"] = getattr(assignment.vehicle_id, "vehicle_no", None)
-        optimized["vehicle_start_source"] = (
-            "request"
-            if vehicle_start
-            else "latest_gps"
-            if latest_vehicle_start
-            else "first_collection_point"
-        )
-        return optimized
+        route = route_stops(routable, resolved_vehicle_start)
+        return {
+            "all_ordered_ids": [
+                *[stop.unique_id for stop in completed_stops],
+                *[stop.unique_id for stop in remaining_stops],
+            ],
+            "ordered_ids": [stop.unique_id for stop in remaining_stops],
+            "optimized_stop_count": len(remaining_stops),
+            "completed_stop_count": len(completed_stops),
+            "vehicle_no": getattr(assignment.vehicle_id, "vehicle_no", None),
+            "vehicle_start": route["vehicle_start"],
+            "vehicle_start_source": (
+                "request"
+                if vehicle_start
+                else "latest_gps"
+                if latest_vehicle_start
+                else "first_collection_point"
+            ),
+            "distance": route["distance"],
+            "duration": route["duration"],
+            "geometry": route["geometry"],
+            "route_legs": [],
+        }
 
     def _optimize_assignment_silently(self, assignment_id):
         try:
             self._optimize_assignment(assignment_id)
-        except OpenRouteServiceError:
+        except (OpenRouteServiceError, Http404):
             # CRUD remains available if ORS is unavailable; manual optimization reports errors.
             pass
 
@@ -581,7 +666,14 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     )
             optimized = self._optimize_assignment(assignment_id, vehicle_start)
         except OpenRouteServiceError as exc:
+            logging.exception("OpenRouteService optimization failed for assignment %s", assignment_id)
             return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception as exc:
+            logging.exception("Unexpected error optimizing assignment %s", assignment_id)
+            return Response(
+                {"detail": "Unexpected optimization failure."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response({
             "trip_assignment_id": assignment_id,
