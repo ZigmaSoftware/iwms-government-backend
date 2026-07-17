@@ -84,6 +84,9 @@ class MyTripTodaySerializer(serializers.Serializer):
     assignment_unique_id = serializers.CharField(source="unique_id")
     trip_date = serializers.DateField()
     status = serializers.CharField()
+    # bin_collection / household_collection / bulk_waste_collection — drives the
+    # collection-type pill on the mobile trip header.
+    collection_type = serializers.SerializerMethodField()
     scheduled_time = serializers.TimeField()
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
@@ -96,8 +99,53 @@ class MyTripTodaySerializer(serializers.Serializer):
     route_geojson = serializers.SerializerMethodField()
     vehicle_start = serializers.SerializerMethodField()
     collection_points = serializers.SerializerMethodField()
+    # Household stops (customers) for household/bulk trips — the driver collects
+    # each household directly rather than scanning a bin.
+    household_collections = serializers.SerializerMethodField()
+
+    _HOUSEHOLD_TYPES = ("household_collection", "bulk_waste_collection")
+
+    def get_collection_type(self, obj):
+        plan = getattr(obj, "trip_plan_id", None)
+        return getattr(plan, "collection_type", None)
+
+    def _household_rows(self, obj):
+        from app.models.schedule_masters.daily_trip_household_collection import (
+            DailyTripHouseholdCollection,
+        )
+
+        return list(
+            DailyTripHouseholdCollection.objects
+            .filter(trip_assignment_id=obj, is_deleted=False)
+            .select_related("customer_id")
+            .order_by("sequence")
+        )
 
     def get_progress(self, obj):
+        # Household/bulk trips have no bin CPs — measure progress by households.
+        if self.get_collection_type(obj) in self._HOUSEHOLD_TYPES:
+            from app.models.schedule_masters.daily_trip_household_collection import (
+                DailyTripHouseholdCollection,
+            )
+
+            rows = self._household_rows(obj)
+            total = len(rows)
+            collected = sum(1 for h in rows if h.is_collected)
+            resolved = sum(
+                1 for h in rows
+                if h.is_collected
+                or h.status in {
+                    DailyTripHouseholdCollection.STATUS_MISSED,
+                    DailyTripHouseholdCollection.STATUS_NOT_COLLECTED,
+                }
+            )
+            return {
+                "collected": collected,
+                "total": total,
+                "resolved": resolved,
+                "completed": total > 0 and resolved == total,
+            }
+
         children = list(
             obj.trip_collection_points.filter(is_deleted=False)
         )
@@ -118,6 +166,53 @@ class MyTripTodaySerializer(serializers.Serializer):
             "total": total,
             "resolved": resolved,
             "completed": total > 0 and resolved == total,
+        }
+
+    def get_household_collections(self, obj):
+        rows = self._household_rows(obj)
+        result = []
+        for hh in rows:
+            customer = hh.customer_id
+            result.append({
+                "unique_id": hh.unique_id,
+                "sequence": hh.sequence,
+                "status": hh.status,
+                "status_reason": hh.status_reason,
+                "is_collected": hh.is_collected,
+                "collected_at": hh.collected_at.isoformat() if hh.collected_at else None,
+                "collected_weight_kg": (
+                    str(hh.collected_weight_kg)
+                    if hh.collected_weight_kg is not None else None
+                ),
+                "customer": self._customer_brief(customer),
+            })
+        return result
+
+    @staticmethod
+    def _customer_brief(customer):
+        if customer is None:
+            return None
+
+        def _num(value):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        address = ", ".join(
+            part for part in [
+                getattr(customer, "building_no", None),
+                getattr(customer, "street", None),
+                getattr(customer, "area", None),
+            ] if part
+        )
+        return {
+            "unique_id": customer.unique_id,
+            "name": customer.customer_name,
+            "contact_no": getattr(customer, "contact_no", None),
+            "address": address or None,
+            "latitude": _num(getattr(customer, "latitude", None)),
+            "longitude": _num(getattr(customer, "longitude", None)),
         }
 
     def get_collection_points(self, obj):

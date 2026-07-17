@@ -68,12 +68,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         longitude = request.data.get("longitude")
 
         status_aliases = {
-            "missed": DailyTripHouseholdCollection.STATUS_MISSED,
+            # "Not available" from the app → canonical "Not Available".
             "not_available": DailyTripHouseholdCollection.STATUS_MISSED,
             "not available": DailyTripHouseholdCollection.STATUS_MISSED,
-            "skipped": DailyTripHouseholdCollection.STATUS_SKIPPED,
-            "collect_later": DailyTripHouseholdCollection.STATUS_SKIPPED,
-            "collect later": DailyTripHouseholdCollection.STATUS_SKIPPED,
+            "missed": DailyTripHouseholdCollection.STATUS_MISSED,
+            # "Collect later" → canonical "Collect Later" (matches the web).
+            "collect_later": DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
+            "collect later": DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
+            "skipped": DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
         }
         normalized_status = status_aliases.get(status_value)
 
@@ -94,9 +96,24 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 {"status": "error", "message": "reason is required"}, status=400
             )
 
+        from app.models.schedule_masters.daily_trip_assignment import (
+            DailyTripAssignment,
+        )
+
         try:
             staff = resolve_operator_staff(request.user)
-            assignment = find_active_assignment_for_operator(staff)
+            # The app sends the specific trip the household belongs to (a driver
+            # can have both a bin AND a household trip today). Use it so the
+            # status lands on the correct household assignment; otherwise fall
+            # back to the operator's active trip.
+            assignment_id = str(request.data.get("assignment_id") or "").strip()
+            assignment = None
+            if assignment_id:
+                assignment = DailyTripAssignment.objects.filter(
+                    unique_id=assignment_id, is_deleted=False
+                ).first()
+            if assignment is None:
+                assignment = find_active_assignment_for_operator(staff)
         except OperatorFlowError as exc:
             return Response(
                 {"status": "error", "code": exc.code, "message": exc.message},
@@ -331,6 +348,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 customer_id=customer_id,
                 collection_rows=collection_rows,
                 request=request,
+                assignment_id=str(request.data.get("assignment_id") or "").strip(),
             )
             if waste_collection is not None:
                 response["waste_collection_unique_id"] = waste_collection.unique_id
@@ -365,17 +383,24 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 mixed += weight
         return wet, dry, mixed
 
-    def _resolve_trip_assignment(self, customer, request):
-        """Best-effort trip for this collection: the trip where this household
-        is a stop today (preferred), else the requester's active operator trip.
-        Returns None when neither applies (ad-hoc collection) — the record is
-        still stored, just without trip linkage."""
+    def _resolve_trip_assignment(self, customer, request, assignment_id=None):
+        """Best-effort trip for this collection: the exact assignment the app
+        sent (preferred — a driver can hold both a bin and a household trip),
+        else the trip where this household is a stop today, else the requester's
+        active operator trip. None when nothing applies."""
         from app.models.schedule_masters.daily_trip_assignment import (
             DailyTripAssignment,
         )
         from app.models.schedule_masters.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
+
+        if assignment_id:
+            explicit = DailyTripAssignment.objects.filter(
+                unique_id=assignment_id, is_deleted=False
+            ).first()
+            if explicit is not None:
+                return explicit
 
         today = timezone.localdate()
         dthc = (
@@ -406,7 +431,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         except Exception:  # noqa: BLE001 — not an operator / no active trip
             return None
 
-    def _mirror_to_waste_collection(self, *, customer_id, collection_rows, request):
+    def _mirror_to_waste_collection(self, *, customer_id, collection_rows, request,
+                                    assignment_id=None):
         """Create or refresh the canonical WasteCollection row for this
         household so the web backend (dashboards, trip log, household stops)
         sees the app's collection."""
@@ -420,7 +446,9 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             return None
 
         wet, dry, mixed = self._split_waste_by_type(collection_rows)
-        trip_assignment = self._resolve_trip_assignment(customer, request)
+        trip_assignment = self._resolve_trip_assignment(
+            customer, request, assignment_id=assignment_id
+        )
 
         # De-duplicate: refresh an existing collection for this household+trip
         # (or same day, when there is no trip) rather than piling up rows that
