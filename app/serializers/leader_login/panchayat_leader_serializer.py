@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 
-from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.panchayat import Panchayat
 
 

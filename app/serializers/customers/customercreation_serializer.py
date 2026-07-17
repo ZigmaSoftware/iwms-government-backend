@@ -11,7 +11,7 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 
 from app.utils.password_encryption import encrypt_password, decrypt_password

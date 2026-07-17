@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 
 
 class WasteTypeSerializer(serializers.ModelSerializer):

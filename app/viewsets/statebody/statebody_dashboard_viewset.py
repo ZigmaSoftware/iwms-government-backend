@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from app.models.masters.state_leader_login import StateLeaderLogin
+from app.models.leader_login.state_leader_login import StateLeaderLogin
 from app.models.masters.district import District
 
 

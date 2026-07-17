@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken
 from django.utils import timezone
 
-from app.models.user_creations.loginAudit import LoginAudit
+from app.models.audits.login_audit import LoginAudit
 from app.models.user_creations.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
 from app.utils.hierarchy import staff_scope_payload

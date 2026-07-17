@@ -3,8 +3,8 @@ from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
 from rest_framework import viewsets
-from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
-from app.serializers.masters.panchayat_leader_serializer import PanchayatLeaderLoginSerializer
+from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
+from app.serializers.leader_login.panchayat_leader_serializer import PanchayatLeaderLoginSerializer
 
 
 class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):

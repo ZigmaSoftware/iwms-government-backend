@@ -2,7 +2,7 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.schedule_masters.collection_point import Collection_point
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.utils.bin_qr import generate_bin_qr_content
 from app.models.common_masters.state import State
 from app.models.masters.district import District

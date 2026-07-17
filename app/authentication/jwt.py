@@ -5,9 +5,9 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.customers.customercreation import CustomerCreation
-from app.models.masters.panchayat_leader_login import PanchayatLeaderLogin
-from app.models.masters.district_leader_login import DistrictLeaderLogin
-from app.models.masters.state_leader_login import StateLeaderLogin
+from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.leader_login.district_leader_login import DistrictLeaderLogin
+from app.models.leader_login.state_leader_login import StateLeaderLogin
 
 
 class JWTUserAuthentication(BaseAuthentication):

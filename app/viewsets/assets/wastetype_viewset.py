@@ -1,5 +1,5 @@
-from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.serializers.waste_collection_bluetooth.waste_type_serializer import (
+from app.models.assets.wastetype import WasteType
+from app.serializers.assets.wastetype_serializer import (
     WasteTypeSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin

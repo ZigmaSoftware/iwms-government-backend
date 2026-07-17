@@ -3,34 +3,34 @@ from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
 from rest_framework import viewsets
-from app.models.masters.district_leader_login import DistrictLeaderLogin
-from app.serializers.masters.district_leader_serializer import DistrictLeaderLoginSerializer
+from app.models.leader_login.state_leader_login import StateLeaderLogin
+from app.serializers.leader_login.state_leader_serializer import StateLeaderLoginSerializer
 
 
-class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
-    queryset = DistrictLeaderLogin.objects.select_related(
-        "district_id",
+class StateLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    queryset = StateLeaderLogin.objects.select_related(
+        "state_id",
     ).filter(is_deleted=False)
 
-    serializer_class = DistrictLeaderLoginSerializer
+    serializer_class = StateLeaderLoginSerializer
     lookup_field = "unique_id"
-    permission_resource = "DistrictLeaderLogin"
+    permission_resource = "StateLeaderLogin"
 
     AUDIT_MODULE = "masters"
-    AUDIT_ENDPOINT = "district-leaders"
+    AUDIT_ENDPOINT = "state-leaders"
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["username", "leader_name", "email", "district_id__name"]
+    search_fields = ["username", "leader_name", "email", "state_id__name"]
     ordering_fields = ["username", "created_at"]
 
     def get_queryset(self):
-        qs = DistrictLeaderLogin.objects.select_related(
-            "district_id"
+        qs = StateLeaderLogin.objects.select_related(
+            "state_id"
         ).filter(is_deleted=False)
 
-        district_id = self.request.query_params.get("district_id")
-        if district_id:
-            qs = qs.filter(district_id__unique_id=district_id)
+        state_id = self.request.query_params.get("state_id")
+        if state_id:
+            qs = qs.filter(state_id__unique_id=state_id)
 
         return qs.order_by("-created_at")
 
@@ -41,7 +41,7 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data = self._serialize_instance(instance)
             self.log_audit(request, instance=instance, previous_data=None, new_data=new_data)
             return Response(
-                {"status": True, "message": "District Leader created successfully."},
+                {"status": True, "message": "State Leader created successfully."},
                 status=status.HTTP_201_CREATED,
             )
         return Response(
@@ -60,7 +60,7 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data = self._serialize_instance(updated)
             self.log_audit(request, instance=updated, previous_data=previous_data, new_data=new_data)
             return Response(
-                {"status": True, "message": "District Leader updated successfully."},
+                {"status": True, "message": "State Leader updated successfully."},
                 status=status.HTTP_200_OK,
             )
         return Response(
@@ -74,6 +74,6 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         self.log_audit(request, instance=instance, previous_data=previous_data, new_data=None)
         instance.delete()
         return Response(
-            {"status": True, "message": "District Leader deleted successfully."},
+            {"status": True, "message": "State Leader deleted successfully."},
             status=status.HTTP_200_OK,
         )

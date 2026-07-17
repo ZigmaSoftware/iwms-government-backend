@@ -9,10 +9,10 @@ from datetime import datetime, timedelta
 from app.models.user_creations.waste_collection_bluetooth import (
     WasteCollectionMain,
     WasteCollectionSub,
-    WasteType,
     generate_unique_id,
     upload_image,
 )
+from app.models.assets.wastetype import WasteType
 from app.models.customers.customercreation import CustomerCreation
 
 

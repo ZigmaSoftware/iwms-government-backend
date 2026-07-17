@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 
-from app.models.user_creations.auditlog import AuditLog
+from app.models.audits.audit_log import AuditLog
 from app.serializers.audits.audit_log_serializer import AuditLogSerializer
 
 
