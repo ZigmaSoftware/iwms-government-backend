@@ -14,9 +14,9 @@ from ..viewsets.common_masters.state_viewset import StateViewSet
 # Masters
 from ..viewsets.masters.district_viewset import DistrictViewSet
 from ..viewsets.masters.panchayat_viweset import PanhayatViewSet
-from ..viewsets.masters.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
-from ..viewsets.masters.district_leader_viewset import DistrictLeaderLoginViewSet
-from ..viewsets.masters.state_leader_viewset import StateLeaderLoginViewSet
+from ..viewsets.leader_login.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
+from ..viewsets.leader_login.district_leader_viewset import DistrictLeaderLoginViewSet
+from ..viewsets.leader_login.state_leader_viewset import StateLeaderLoginViewSet
 from ..viewsets.masters.areatype_viewset import AreaTypeViewSet
 from ..viewsets.masters.hierarchy_viewset import AdministrativeHierarchyViewSet
 from ..viewsets.masters.department_viewset import DepartmentViewSet
@@ -31,7 +31,7 @@ from ..viewsets.waste_types.property_viewset import PropertyViewSet
 from ..viewsets.waste_types.subproperty_viewset import SubPropertyViewSet
 
 # Assets
-from ..viewsets.waste_collection_bluetooth.waste_type_viewset import WasteTypeViewSet
+from ..viewsets.assets.wastetype_viewset import WasteTypeViewSet
 from ..viewsets.assets.bins_viewset import BinsViewSet
 
 # Screen management

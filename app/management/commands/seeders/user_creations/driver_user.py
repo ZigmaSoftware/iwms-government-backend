@@ -34,7 +34,7 @@ from app.models.user_creations.staffcreation import (
     Staffcreation,
     StaffcreationOfficeDetails,
 )
-from app.models.user_creations.waste_collection_bluetooth import WasteType
+from app.models.assets.wastetype import WasteType
 from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
 
 

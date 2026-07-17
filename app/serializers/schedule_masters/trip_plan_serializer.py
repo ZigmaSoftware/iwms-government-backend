@@ -16,9 +16,7 @@ from app.models.schedule_masters.trip_plan_collection_point import TripPlanColle
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.assets.wastetype import WasteType
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 
 
@@ -46,8 +44,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
     staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True)
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True)
     supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    property_id = UniqueIdOrPkField(slug_field="unique_id", queryset=Property.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    sub_property_id = UniqueIdOrPkField(slug_field="unique_id", queryset=SubProperty.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     waste_type_id = UniqueIdOrPkField(slug_field="unique_id", queryset=WasteType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     # Multiple waste types support
     waste_type_ids = serializers.SlugRelatedField(
@@ -73,8 +69,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
     staff_template = serializers.SerializerMethodField()
     vehicle = serializers.SerializerMethodField()
     supervisor = serializers.SerializerMethodField()
-    property = serializers.SerializerMethodField()
-    sub_property = serializers.SerializerMethodField()
     waste_type = serializers.SerializerMethodField()
     waste_types_detail = serializers.SerializerMethodField()
     plan_collection_points = serializers.SerializerMethodField()
@@ -84,10 +78,10 @@ class TripPlanSerializer(serializers.ModelSerializer):
         fields = [
             "unique_id", "display_code", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
-            "staff_template_id", "vehicle_id", "supervisor_id", "property_id",
-            "sub_property_id", "waste_type_id", "waste_type_ids", "state", "district", "area_type", "corporation",
+            "staff_template_id", "vehicle_id", "supervisor_id",
+            "waste_type_id", "waste_type_ids", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
-            "staff_template", "vehicle", "supervisor", "property", "sub_property",
+            "staff_template", "vehicle", "supervisor",
             "waste_type", "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
             "max_vehicle_capacity_kg", "scheduled_time", "is_auto_assign", "repeat_days",
             "approval_status", "status", "collection_points", "plan_collection_points",
@@ -148,12 +142,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
             return None
         return {"unique_id": supervisor.staff_unique_id, "employee_name": supervisor.employee_name}
 
-    def get_property(self, obj):
-        return self._ref(obj, "property_id", "property_name")
-
-    def get_sub_property(self, obj):
-        return self._ref(obj, "sub_property_id", "sub_property_name")
-
     def get_waste_type(self, obj):
         return self._ref(obj, "waste_type_id", "waste_type_name")
 
@@ -202,11 +190,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
         capacity = attrs.get("max_vehicle_capacity_kg", getattr(instance, "max_vehicle_capacity_kg", None))
         if trigger is not None and capacity is not None and trigger >= capacity:
             raise serializers.ValidationError("Trigger weight must be less than vehicle capacity.")
-
-        property_obj = attrs.get("property_id", getattr(instance, "property_id", None))
-        sub_property_obj = attrs.get("sub_property_id", getattr(instance, "sub_property_id", None))
-        if property_obj and sub_property_obj and sub_property_obj.property_id != property_obj:
-            raise serializers.ValidationError("Sub-property does not belong to the selected property.")
 
         stops = attrs.get("collection_points")
         plan_collection_type = attrs.get(

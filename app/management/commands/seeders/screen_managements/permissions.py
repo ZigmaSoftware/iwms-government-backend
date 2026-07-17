@@ -50,16 +50,17 @@ USER_SCREEN_MODELS = {
     "daily-trip-assignments": ("app", "DailyTripAssignment"),
     "daily-trip-collection-points": ("app", "DailyTripCollectionPoint"),
     "daily-trip-household-collections": ("app", "DailyTripHouseholdCollection"),
-    "bin-collection-events": ("app", "BinCollectionEvent"),
+    "secondary-bin-collection-events": ("app", "BinCollectionEvent"),
     "vehicle-breakdowns": ("app", "VehicleBreakdown"),
     "daily-trip-logs": ("app", "DailyTripLog"),
-    "wastecollections": ("app", "WasteCollection"),
+    "householdcollection-events": ("app", "WasteCollection"),
     "daily-waste-comparisons": ("app", "DailyWasteComparison"),
     "MonthlyWasteComparison": ("app", "MonthlyWeightReport"),
     "common-audit": ("app", "StaffTemplateAuditLog"),
     "login-audit": ("app", "LoginAudit"),
     "plb-leader-creation": ("app", "PanchayatLeaderLogin"),
     "district-leader-creation": ("app", "DistrictLeaderLogin"),
+    "state-leader-creation": ("app", "StateLeaderLogin"),
 }
 
 
@@ -343,10 +344,10 @@ class PermissionSeeder(BaseSeeder):
                     ("daily-trip-assignments", "daily-trip-assignments", "daily-trip-assignments", 5, "Daily trip assignments"),
                     ("daily-trip-collection-points", "daily-trip-collection-points", "daily-trip-collection-points", 6, "Daily trip collection points"),
                     ("daily-trip-household-collections", "daily-trip-household-collections", "daily-trip-household-collections", 7, "Daily trip household collections"),
-                    ("bin-collection-events", "bin-collection-events", "bin-collection-events", 8, "Bin collection events"),
+                    ("secondary-bin-collection-events", "secondary-bin-collection-events", "secondary-bin-collection-events", 8, "Secondary bin collection events"),
                     ("vehicle-breakdowns", "vehicle-breakdowns", "vehicle-breakdowns", 9, "Vehicle breakdowns"),
                     ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 10, "Daily trip logs"),
-                    ("wastecollections", "wastecollections", "wastecollections", 11, "Waste collected data"),
+                    ("householdcollection-events", "householdcollection-events", "householdcollection-events", 11, "Household collection events"),
                     ("daily-waste-comparisons", "daily-waste-comparisons", "daily-waste-comparisons", 12, "Daily waste comparisons"),
                     ("MonthlyWasteComparison", "MonthlyWasteComparison", "MonthlyWasteComparison", 13, "Monthly waste comparison"),
                 ],
@@ -399,6 +400,7 @@ class PermissionSeeder(BaseSeeder):
                 "subitems": [
                     ("plb-leader-creation", "plb-leader-creation", "plb-leader-creation", 1, "PLB leader creation"),
                     ("district-leader-creation", "district-leader-creation", "district-leader-creation", 2, "District leader creation"),
+                    ("state-leader-creation", "state-leader-creation", "state-leader-creation", 3, "State leader creation"),
                 ],
             },
         ]

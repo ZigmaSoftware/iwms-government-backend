@@ -23,7 +23,7 @@ from app.serializers.schedule_masters.alternative_staff_template_serializer impo
 )
 from app.serializers.schedule_masters.staff_template_serializer import StaffTemplateSerializer
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.serializers.waste_collection_bluetooth.waste_type_serializer import (
+from app.serializers.assets.wastetype_serializer import (
     WasteTypeSerializer,
 )
 
