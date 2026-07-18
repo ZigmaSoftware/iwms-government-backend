@@ -63,6 +63,7 @@ from ..viewsets.user_creations.unassigned_staff_pool_viewset import UnassignedSt
 # Authentication
 from ..viewsets.login.login_viewset import LoginViewSet as DesktopLoginViewSet
 from ..viewsets.login.permission_viewset import PermissionViewSet
+from ..viewsets.login.refresh_token_viewset import RefreshTokenViewSet
 from ..viewsets.auth.forgot_password_viewset import (
     ForgotPasswordView,
     VerifyOTPView,
@@ -233,6 +234,7 @@ router.register_group("user-creations", "staff-access-configuration", StaffAcces
 # ============================================================
 router.register_group("login", "login-user",      DesktopLoginViewSet)
 router.register_group("login", "my-permissions",     PermissionViewSet, basename="user-permissions")
+router.register_group("login", "refresh-token",     RefreshTokenViewSet, basename="refresh-token")
 
 # ============================================================
 # GROUP: CUSTOMER MODULES
