@@ -1,4 +1,3 @@
-import hashlib
 from django.db import models
 from app.utils.base_models import Account, BaseMaster
 from app.utils.comfun import generate_unique_id
@@ -33,7 +32,7 @@ class StaffcreationOfficeDetails(BaseMaster):
         default=generate_staff_unique_id,
     )
     emp_id = models.CharField(
-        max_length=8,
+        max_length=10,
         unique=True,
         blank=True,
         null=True,
@@ -64,6 +63,12 @@ class StaffcreationOfficeDetails(BaseMaster):
     staff_head = models.CharField(max_length=200, blank=True, null=True)
     staff_head_id = models.CharField(max_length=30, blank=True, null=True)
     photo = models.ImageField(upload_to="staff_photos/", blank=True, null=True)
+    attendance_reg_image = models.ImageField(
+        upload_to="attendance/registration/",
+        blank=True,
+        null=True,
+        help_text="Reference face image used for attendance recognition.",
+    )
     qr_code = models.ImageField(upload_to="staff_qr/", blank=True, null=True)
     active_status = models.BooleanField(default=True)
 
@@ -250,28 +255,20 @@ class StaffcreationOfficeDetails(BaseMaster):
     def __str__(self):
         return f"{self.employee_name} ({self.staff_unique_id})"
 
-    @staticmethod
-    def _derive_emp_id(staff_unique_id, salt=0):
-        digest = hashlib.sha1(f"{staff_unique_id}:{salt}".encode("utf-8")).hexdigest()
-        numeric = int(digest[:12], 16) % 10**8
-        return f"{numeric:08d}"
-
     def _ensure_emp_id(self):
-        if self.emp_id or not self.staff_unique_id:
+        if self.emp_id:
             return
 
-        for salt in range(100):
-            candidate = self._derive_emp_id(self.staff_unique_id, salt)
-            exists = (
-                StaffcreationOfficeDetails.objects.filter(emp_id=candidate)
-                .exclude(pk=self.pk)
-                .exists()
-            )
-            if not exists:
-                self.emp_id = candidate
-                return
+        highest = 0
+        existing_ids = StaffcreationOfficeDetails.objects.filter(
+            emp_id__startswith="EMP-"
+        ).values_list("emp_id", flat=True)
+        for existing_id in existing_ids:
+            suffix = str(existing_id).removeprefix("EMP-")
+            if suffix.isdigit():
+                highest = max(highest, int(suffix))
 
-        self.emp_id = self._derive_emp_id(self.staff_unique_id, 999999)
+        self.emp_id = f"EMP-{highest + 1:06d}"
 
     def _regenerate_qr_code(self):
         file_content = generate_customer_qr_content({"id": self.staff_unique_id})

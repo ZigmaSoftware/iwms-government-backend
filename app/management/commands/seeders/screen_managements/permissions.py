@@ -61,6 +61,7 @@ USER_SCREEN_MODELS = {
     "plb-leader-creation": ("app", "PanchayatLeaderLogin"),
     "district-leader-creation": ("app", "DistrictLeaderLogin"),
     "state-leader-creation": ("app", "StateLeaderLogin"),
+    "attendance": ("app", "DailyAttendanceReg"),
 }
 
 
@@ -401,6 +402,15 @@ class PermissionSeeder(BaseSeeder):
                     ("plb-leader-creation", "plb-leader-creation", "plb-leader-creation", 1, "PLB leader creation"),
                     ("district-leader-creation", "district-leader-creation", "district-leader-creation", 2, "District leader creation"),
                     ("state-leader-creation", "state-leader-creation", "state-leader-creation", 3, "State leader creation"),
+                ],
+            },
+            {
+                "module": "attendance",
+                "icon": "calendar_check",
+                "order": 18,
+                "description": "Staff face-recognition attendance",
+                "subitems": [
+                    ("attendance", "attendance", "attendance", 1, "Attendance records"),
                 ],
             },
         ]

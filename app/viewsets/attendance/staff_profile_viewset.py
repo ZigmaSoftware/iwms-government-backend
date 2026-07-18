@@ -4,7 +4,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
-from app.serializers.employee import (
+from app.serializers.attendance import (
     StaffOfficeSerializer,
     StaffUpdateSerializer,
 )

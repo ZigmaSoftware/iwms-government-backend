@@ -280,6 +280,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "staff_head_id",
             "staff_head",
             "photo",
+            "attendance_reg_image",
 
             #  Driving licence
             "driving_licence_no",

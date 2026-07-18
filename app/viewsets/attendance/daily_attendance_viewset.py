@@ -4,11 +4,12 @@ from rest_framework import status
 from rest_framework.decorators import action
 from django.conf import settings
 from django.utils import timezone
+from django.db import models
 
-from app.models.user_creations.attendance import Recognized
+from app.models.attendance import DailyAttendanceReg
 
 
-class AttendanceListViewSet(ViewSet):
+class DailyAttendanceRegViewSet(ViewSet):
 
     def _to_media_url(self, path):
         if not path:
@@ -36,8 +37,8 @@ class AttendanceListViewSet(ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        records = Recognized.objects.filter(
-            staff__staff_unique_id=emp_id,
+        records = DailyAttendanceReg.objects.filter(
+            models.Q(staff__staff_unique_id=emp_id) | models.Q(staff__emp_id=emp_id),
             recognition_date__month=int(month),
             recognition_date__year=int(year),
         ).order_by("recognition_date", "recognition_time")
@@ -109,8 +110,11 @@ class AttendanceListViewSet(ViewSet):
 
         today = timezone.localdate()
         records = (
-            Recognized.objects
-            .filter(staff__staff_unique_id=emp_id, recognition_date=today)
+            DailyAttendanceReg.objects
+            .filter(
+                models.Q(staff__staff_unique_id=emp_id) | models.Q(staff__emp_id=emp_id),
+                recognition_date=today,
+            )
             .order_by("records")
         )
 
@@ -152,8 +156,8 @@ class AttendanceListViewSet(ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        records = Recognized.objects.filter(
-            staff__staff_unique_id=emp_id,
+        records = DailyAttendanceReg.objects.filter(
+            models.Q(staff__staff_unique_id=emp_id) | models.Q(staff__emp_id=emp_id),
             recognition_date__month=int(month),
             recognition_date__year=int(year),
         )

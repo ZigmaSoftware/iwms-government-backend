@@ -155,15 +155,6 @@ from ..viewsets.waste_collection_bluetooth.waste_bluetooth_viewset import WasteC
 from ..viewsets.waste_collection_bluetooth.waste_collection_sub_viewset import WasteCollectionSubViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_main_viewset import WasteCollectionMainViewSet
 
-# Mobile
-from ..viewsets.attendance_view.register import RegisterViewSet
-from ..viewsets.attendance_view.recognize import RecognizeViewSet
-from ..viewsets.attendance_view.employee_viewset import EmployeeViewSet
-from ..viewsets.attendance_view.staff_profile_viewset import StaffProfileViewSet
-from ..viewsets.attendance_view.attendance_list import AttendanceListViewSet
-from ..viewsets.attendance_view.external_attendance import ExternalAttendanceViewSet
-
-
 router = GroupedRouter()
 
 # ============================================================
@@ -324,16 +315,6 @@ router.register_group("audits", "login-audit", LoginAuditViewSet)
 router.register_group("audits", "common-audit", CommonAuditViewSet)
 
 # ============================================================
-# GROUP: EXTERNAL ATTENDANCE
-# ============================================================
-router.register_group(
-    "attendance",
-    "external-records",
-    ExternalAttendanceViewSet,
-    basename="external-attendance",
-)
-
-# ============================================================
 # GROUP: LOCALBODY (panchayat leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("localbody", "dashboard", LocalBodyDashboardViewSet, basename="localbody-dashboard")
@@ -404,47 +385,11 @@ router.register_group(
 )
 router.register_group(
     "mobile",
-    "register",
-    RegisterViewSet,
-    basename="mobile-register",
-    include_group_in_prefix=False,
-)
-router.register_group(
-    "mobile",
-    "recognize",
-    RecognizeViewSet,
-    basename="mobile-recognize",
-    include_group_in_prefix=False,
-)
-router.register_group(
-    "mobile",
-    "employee",
-    EmployeeViewSet,
-    basename="mobile-employee",
-    include_group_in_prefix=False,
-)
-router.register_group(
-    "mobile",
-    "staff-profile",
-    StaffProfileViewSet,
-    basename="mobile-staff-profile",
-    include_group_in_prefix=False,
-)
-router.register_group(
-    "mobile",
     "waste",
     WasteCollectionBluetoothViewSet,
     basename="mobile-waste-collection",
     include_group_in_prefix=False,
 )
-router.register_group(
-    "mobile",
-    "attendance-list",
-    AttendanceListViewSet,
-    basename="mobile-attendance-list",
-    include_group_in_prefix=False,
-)
-
 # ============================================================
 # URLS
 # ============================================================
