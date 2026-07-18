@@ -143,7 +143,7 @@ from .assets.wastetype import WasteType
 # ============================================================
 # GROUP: ATTENDANCE (MOBILE)
 # ============================================================
-from .user_creations.attendance import Employee, Recognized
+from .attendance import DailyAttendanceReg
 
 
 # ============================================================
@@ -264,8 +264,7 @@ __all__ = [
     "WasteCollectionMain",
 
     # Attendance
-    "Employee",
-    "Recognized",
+    "DailyAttendanceReg",
 
     # Transport
     "VehicleTypeCreation",

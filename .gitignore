@@ -11,6 +11,7 @@ __pycache__/
 !app/migrations/
 app/migrations/*
 app/migrations/__init__.py
+!app/migrations/0003_staff_attendance_module.py
 
 # Specifically ignore your API app migrations
 api/migrations/

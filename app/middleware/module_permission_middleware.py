@@ -60,6 +60,10 @@ AUTH_ONLY_PREFIXES = tuple(
     for prefix in API_AUTH_PREFIXES
     for suffix in AUTH_ONLY_SUFFIXES
 )
+AUTH_ONLY_PREFIXES += (
+    "/api/v1/attendance/recognize/",
+    "/api/v1/attendance/daily-attendance/",
+)
 
 PUBLIC_MOBILE_SUFFIXES = (
     "register/",
@@ -79,6 +83,8 @@ PLATFORM_PREFIXES = (
 PUBLIC_PREFIXES = (
     "/media/",
     "/api/v1/publicgrievance/",
+    "/api/v1/attendance/register/",
+    "/api/v1/attendance/staff-profile/",
     *PUBLIC_MOBILE_PREFIXES,
 )
 
@@ -195,6 +201,9 @@ MODULE_RESOURCE_ALLOWLIST = {
         "LoginAudit",
         "CommonAudit",
     },
+    "attendance": {
+        "DailyAttendanceReg",
+    },
 }
 
 PROTECTED_MODULES = tuple(MODULE_RESOURCE_ALLOWLIST.keys())
@@ -257,6 +266,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "MonthlyWasteComparisonReport": ("MonthlyWasteComparison", "monthly-waste-comparison"),
     "CommonAudit": ("common-audit",),
     "LoginAudit": ("login-audit",),
+    "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
     "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
     "companywisescreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
     "column-permissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
