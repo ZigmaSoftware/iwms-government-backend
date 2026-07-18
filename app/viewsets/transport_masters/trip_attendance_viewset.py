@@ -4,14 +4,11 @@ import requests
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.exceptions import NotAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
-from django.conf import settings
 
 from app.models.transport_masters.trip_attendance import TripAttendance
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.user_creations.attendance import Employee
 from app.serializers.user_creations.trip_attendance_serializer import (
     TripAttendanceSerializer
 )
@@ -53,12 +50,10 @@ class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
         if not photo:
             return False, "photo is required"
 
-        employee = Employee.objects.filter(staff=staff).first()
-        if not employee or not employee.image_path:
-            return False, "Employee face is not registered"
+        if not staff.photo:
+            return False, "Staff photo is not registered"
 
-        source_rel = str(employee.image_path or "")
-        source_path = os.path.join(settings.MEDIA_ROOT, source_rel)
+        source_path = staff.photo.path
         if not os.path.exists(source_path):
             return False, "Registered face image not found"
 

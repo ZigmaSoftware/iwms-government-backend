@@ -48,7 +48,7 @@ class UserScreen(BaseMaster):
         max_length=100,
         null=True,
         blank=True,
-        help_text="Django model name. Example: Employee"
+        help_text="Django model name. Example: StaffcreationOfficeDetails"
     )
 
     # =====================================================

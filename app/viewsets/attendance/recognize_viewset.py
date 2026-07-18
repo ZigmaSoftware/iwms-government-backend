@@ -11,7 +11,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from app.models.user_creations.attendance import Employee, Recognized
+from app.models.attendance import DailyAttendanceReg
+from app.models.user_creations.staffcreation import Staffcreation
 
 
 def _safe_filename(value: str) -> str:
@@ -105,17 +106,13 @@ class RecognizeViewSet(ViewSet):
                 status=400
             )
 
-        # Find registered employee (Employee.staff stores the Staffcreation relation)
-        employee = Employee.objects.filter(staff__staff_unique_id=staff_unique_id).first()
-        if not employee:
-            return Response({"error": "Employee not registered"}, status=404)
+        staff = Staffcreation.objects.filter(staff_unique_id=staff_unique_id).first()
+        if not staff:
+            staff = Staffcreation.objects.filter(emp_id=staff_unique_id).first()
+        if not staff or not staff.attendance_reg_image:
+            return Response({"error": "Staff attendance image is not registered"}, status=404)
 
-        # Resolve source image path (Employee.image_path is a STRING like "emp_image/xxx.jpg")
-        source_rel = str(employee.image_path or "")
-        if not source_rel:
-            return Response({"error": "Source image not found for employee"}, status=400)
-
-        source_path = os.path.join(settings.MEDIA_ROOT, source_rel)
+        source_path = staff.attendance_reg_image.path
         if not os.path.exists(source_path):
             return Response(
                 {"error": f"Source image not found: {source_path}"},
@@ -169,18 +166,18 @@ class RecognizeViewSet(ViewSet):
         now = timezone.localtime()
         today = timezone.localdate()
         last = (
-            Recognized.objects
-            .filter(staff=employee.staff, recognition_date=today)
+            DailyAttendanceReg.objects
+            .filter(staff=staff, recognition_date=today)
             .order_by("-records")
             .first()
         )
         punch_type = "OUT" if last and last.punch_type == "IN" else "IN"
 
-        Recognized.objects.create(
-            staff=employee.staff,
-            emp_id=employee.emp_id,
+        DailyAttendanceReg.objects.create(
+            staff=staff,
+            emp_id=staff.emp_id,
             emp_id_raw=staff_unique_id,          # keep raw string too
-            name=employee.name,
+            name=staff.employee_name,
             records=now,                         # your model has records DateTimeField
             captured_image_path=captured_rel,    # CharField -> store relative path STRING (CORRECT)
             similarity_score=score,
@@ -195,7 +192,7 @@ class RecognizeViewSet(ViewSet):
             {
                 "message": "Recognition successful",
                 "emp_id": staff_unique_id,
-                "name": employee.name,
+                "name": staff.employee_name,
                 "score": score,
                 "captured_image": f"{settings.MEDIA_URL}{captured_rel}",
                 "punch_type": punch_type,

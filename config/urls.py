@@ -40,6 +40,7 @@ urlpatterns = [
 
     # APIs
     path("api/v1/", include("app.urls.base_urls")),
+    path("api/v1/attendance/", include("app.urls.attendance.urls")),
 
     # Swagger UI
     path(
