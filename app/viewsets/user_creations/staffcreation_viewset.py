@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from rest_framework import viewsets, filters, status
@@ -6,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.user_creations.staffcreation import Staffcreation
+from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
 from app.serializers.user_creations.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
@@ -109,6 +111,17 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
 
         return queryset.order_by("-created_at")
 
+    # A new staff member's head must be one level up in the same government
+    # role hierarchy, at the same local body: driver/operator -> supervisor,
+    # supervisor -> admin. Admin has no staff-record head — the platform
+    # superadmin (a separate super_admin user, not a Staffcreation row) is
+    # returned as a synthetic option instead (see staff_head_options below).
+    GOVT_HEAD_ROLE_SUFFIX = {
+        "driver": "supervisor",
+        "operator": "supervisor",
+        "supervisor": "admin",
+    }
+
     @action(detail=False, methods=["get"], url_path="staff-head-options")
     def staff_head_options(self, request):
         queryset = self.filter_queryset(self.get_queryset()).filter(active_status=True)
@@ -116,6 +129,27 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
         current_id = request.query_params.get("exclude")
         if current_id:
             queryset = queryset.exclude(staff_unique_id=current_id)
+
+        governmentusertype_id = request.query_params.get("governmentusertype_id")
+        selected_role_name = None
+        if governmentusertype_id:
+            selected_role_name = (
+                GovernmentStaffUserType.objects.filter(unique_id=governmentusertype_id)
+                .values_list("name", flat=True)
+                .first()
+            )
+
+        include_superadmin = False
+        if selected_role_name and selected_role_name.startswith("govt_"):
+            level, _, role_suffix = selected_role_name[len("govt_"):].rpartition("_")
+            head_suffix = self.GOVT_HEAD_ROLE_SUFFIX.get(role_suffix)
+            if head_suffix:
+                queryset = queryset.filter(
+                    governmentusertype_id__name=f"govt_{level}_{head_suffix}"
+                )
+            elif role_suffix == "admin":
+                queryset = queryset.none()
+                include_superadmin = True
 
         data = [
             {
@@ -128,6 +162,23 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             }
             for staff in queryset[:200]
         ]
+
+        if include_superadmin:
+            superadmin = (
+                get_user_model()
+                .objects.filter(is_superuser=True, is_active=True)
+                .first()
+            )
+            if superadmin:
+                data.insert(0, {
+                    "unique_id": superadmin.username,
+                    "employee_name": "Super Admin",
+                    "department_id": None,
+                    "department_name": None,
+                    "staffusertype_id": None,
+                    "contractorusertype_id": None,
+                })
+
         return Response(data, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
