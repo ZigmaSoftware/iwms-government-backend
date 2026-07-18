@@ -4,7 +4,7 @@ from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from django.utils import timezone
 
 from app.models.audits.login_audit import LoginAudit
@@ -270,6 +270,24 @@ class LoginViewSet(ViewSet):
 
         token = str(access)
 
+        # -------------------------
+        # REFRESH TOKEN
+        # -------------------------
+        # Carries the same identity claims as the access token so
+        # refresh_token_viewset.py can mint a fresh access token from it
+        # alone, without re-hitting the DB or re-resolving which model
+        # (Staffcreation/CustomerCreation/leader/platform) the user came from.
+        refresh = RefreshToken.for_user(user)
+        refresh["unique_id"] = user_unique_id
+        refresh["user_type"] = user_type
+        refresh["name"] = name
+        refresh["role"] = role
+        refresh["email"] = email
+        refresh["staff_config_name"] = staff_config_name
+        refresh["emp_id"] = emp_id
+        refresh["employee_id"] = employee_id
+        refresh_token = str(refresh)
+
         if user_type in ["staff", "contractor"]:
             staff_for_login = profile_object or user
             if isinstance(staff_for_login, Staffcreation):
@@ -314,6 +332,7 @@ class LoginViewSet(ViewSet):
                 "permission_version": permission_version,
                 "generated_at": generated_at,
                 "access_token": token,
+                "refresh_token": refresh_token,
                 "token_type": "Bearer",
                 "expires_in": exp - iat,
                 "email": email,
