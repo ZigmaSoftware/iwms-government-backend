@@ -255,4 +255,12 @@ def perform_escalation(ticket, target_team=None, reason=None, actor_user=None, b
             ),
             staff=from_staff,
         )
+
+    from app.services.push_notification_service import send_push_to_customer
+    send_push_to_customer(
+        ticket.customer,
+        "Grievance update",
+        f"Your ticket {ticket.ticket_no} has been escalated for closer attention.",
+        data={"event": "ticket_escalated", "ticket_id": str(ticket.unique_id)},
+    )
     return escalation
