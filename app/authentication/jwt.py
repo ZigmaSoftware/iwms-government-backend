@@ -16,6 +16,14 @@ class JWTUserAuthentication(BaseAuthentication):
     Supports both Staff (Staffcreation) and Customer (CustomerCreation) authentication.
     """
 
+    def authenticate_header(self, request):
+        # Without this, DRF has no WWW-Authenticate header to fall back on and
+        # coerces AuthenticationFailed/NotAuthenticated into HTTP 403 instead of
+        # 401. That made expired/invalid tokens indistinguishable from genuine
+        # permission-denied responses, which the frontend needs to tell apart
+        # (401 -> try a silent token refresh, 403 -> leave the session alone).
+        return "Bearer"
+
     def authenticate(self, request):
         raw_request = getattr(request, "_request", None)
         existing_user = getattr(raw_request, "user", None)

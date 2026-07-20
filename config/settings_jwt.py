@@ -2,11 +2,13 @@ import os
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    # ONLY Access Token (5 hours)
+    # Access token used on every request (5 hours)
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=5),
 
-    # Disable refresh tokens
-    "REFRESH_TOKEN_LIFETIME": timedelta(seconds=1),  # expires immediately
+    # Refresh token lets the frontend silently mint a new access token
+    # without forcing a re-login. Longer-lived than the access token by
+    # design — see app/viewsets/login/refresh_token_viewset.py.
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,
 
