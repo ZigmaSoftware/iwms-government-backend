@@ -177,6 +177,22 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             "updated_at",
         ])
 
+        # Notify the customer instantly. Safe no-op if push isn't configured
+        # or they have no registered device.
+        from app.services.push_notification_service import send_push_to_customer
+        if normalized_status == DailyTripHouseholdCollection.STATUS_MISSED:  # "Not Available"
+            title, body = "Collection update", "Our driver could not access your location today."
+        else:  # Collect Later
+            title, body = "Collection update", "Your waste will be collected later today."
+        if reason:
+            body += f' ("{reason}")'
+        send_push_to_customer(
+            dthc.customer_id,
+            title,
+            body,
+            data={"event": "household_status", "status": dthc.status, "trip_assignment_id": str(dthc.trip_assignment_id_id)},
+        )
+
         return Response({
             "status": "success",
             "data": {
