@@ -141,6 +141,26 @@ def copy_trip_plan_stops_to_daily_assignment(sender, instance, created, **kwargs
     sync_daily_assignment_stops_from_plan(instance)
 
 
+def _describe_waste_collection(instance):
+    """Compact, customer-facing summary naming waste type(s) and weight."""
+    breakdown = [
+        (label, value)
+        for label, value in (
+            ("wet", instance.wet_waste),
+            ("dry", instance.dry_waste),
+            ("mixed", instance.mixed_waste),
+        )
+        if value
+    ]
+    if not breakdown:
+        return "Your waste was just collected. Thank you!"
+    if len(breakdown) == 1:
+        label, value = breakdown[0]
+        return f"{value:g} kg of {label} waste collected. Thank you!"
+    parts = ", ".join(f"{value:g} kg {label}" for label, value in breakdown)
+    return f"{instance.total_quantity:g} kg collected ({parts}). Thank you!"
+
+
 @receiver(post_save, sender="app.WasteCollection")
 def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     """When a WasteCollection is saved with a trip_assignment_id:
@@ -178,8 +198,15 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     send_push_to_customer(
         instance.customer,
         "Waste collected",
-        "Your waste was just collected. Thank you!",
-        data={"event": "household_collected", "trip_assignment_id": str(instance.trip_assignment_id_id)},
+        _describe_waste_collection(instance),
+        data={
+            "event": "household_collected",
+            "trip_assignment_id": str(instance.trip_assignment_id_id),
+            "wet_waste": instance.wet_waste,
+            "dry_waste": instance.dry_waste,
+            "mixed_waste": instance.mixed_waste,
+            "total_quantity": instance.total_quantity,
+        },
     )
 
     # 2. Find or auto-create the trip log
