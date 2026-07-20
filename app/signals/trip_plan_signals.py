@@ -172,6 +172,16 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     )
     dthc.mark_collected(instance)
 
+    # Notify the customer instantly that their waste was collected. Safe
+    # no-op if push isn't configured or they have no registered device.
+    from app.services.push_notification_service import send_push_to_customer
+    send_push_to_customer(
+        instance.customer,
+        "Waste collected",
+        "Your waste was just collected. Thank you!",
+        data={"event": "household_collected", "trip_assignment_id": str(instance.trip_assignment_id_id)},
+    )
+
     # 2. Find or auto-create the trip log
     log = DailyTripLog.objects.filter(
         trip_assignment_id=instance.trip_assignment_id_id,

@@ -266,6 +266,15 @@ class CustomerCreation(BaseMaster):
         help_text="Previous hashed password for reuse prevention"
     )
 
+    fcm_token = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Firebase Cloud Messaging device token for the citizen mobile "
+                   "app, registered on login. Used to push instant notifications "
+                   "(e.g. waste collection status updates) to this customer.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
