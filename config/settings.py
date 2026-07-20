@@ -267,6 +267,14 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@iwms.local')
 
+# -------------------------------------------------------
+# Firebase Cloud Messaging (push notifications)
+# -------------------------------------------------------
+# Path to the Firebase service-account JSON (NOT committed to the repo). Push
+# notifications are disabled (safe no-op) until this is set to a real file —
+# see app/services/push_notification_service.py.
+FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
+
 # OTP settings
 OTP_EXPIRY_MINUTES = int(os.getenv('OTP_EXPIRY_MINUTES', 5))
 OTP_MAX_ATTEMPTS = int(os.getenv('OTP_MAX_ATTEMPTS', 3))
