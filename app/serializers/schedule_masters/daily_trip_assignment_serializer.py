@@ -15,6 +15,7 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.assets.wastetype import WasteType
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.waste_images import capture_images_for_customer
 
 
 class DailyTripAssignmentSerializer(serializers.ModelSerializer):
@@ -182,26 +183,45 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "collected_weight_kg": stop.collected_weight_kg,
             "status": stop.status,
             "status_reason": getattr(stop, "status_reason", None),
+            # Bin collection doesn't capture a proof photo yet (planned).
+            "image": None,
         } for stop in stops]
 
     def get_household_collection_points(self, obj):
         stops = obj.trip_household_collections.filter(is_deleted=False).select_related("customer_id").order_by("sequence")
-        return [{
-            "unique_id": stop.unique_id,
-            "customer_id": stop.customer_id_id,
-            "customer": {
-                "unique_id": getattr(stop.customer_id, "unique_id", None),
-                "customer_name": getattr(stop.customer_id, "customer_name", None),
-                "building_no": getattr(stop.customer_id, "building_no", None),
-                "street": getattr(stop.customer_id, "street", None),
-            } if stop.customer_id else None,
-            "collection_type": stop.collection_type,
-            "sequence": stop.sequence,
-            "is_collected": stop.is_collected,
-            "collected_at": stop.collected_at,
-            "collected_weight_kg": stop.collected_weight_kg,
-            "status": stop.status,
-        } for stop in stops]
+        request = self.context.get("request")
+        result = []
+        for stop in stops:
+            image = None
+            if stop.customer_id_id:
+                images = capture_images_for_customer(
+                    stop.customer_id_id,
+                    stop.collected_at.date() if stop.collected_at else None,
+                    request,
+                )
+                if images:
+                    image = images[0]["url"]
+            result.append({
+                "unique_id": stop.unique_id,
+                "customer_id": stop.customer_id_id,
+                "customer": {
+                    "unique_id": getattr(stop.customer_id, "unique_id", None),
+                    "customer_name": getattr(stop.customer_id, "customer_name", None),
+                    "building_no": getattr(stop.customer_id, "building_no", None),
+                    "street": getattr(stop.customer_id, "street", None),
+                } if stop.customer_id else None,
+                "collection_type": stop.collection_type,
+                "sequence": stop.sequence,
+                "is_collected": stop.is_collected,
+                "collected_at": stop.collected_at,
+                "collected_weight_kg": stop.collected_weight_kg,
+                "status": stop.status,
+                "status_reason": getattr(stop, "status_reason", None),
+                # Best-effort: the household's weighment photo, matched by
+                # customer + collection day. None if no photo was captured.
+                "image": image,
+            })
+        return result
 
     def get_breakdown_info(self, obj):
         try:

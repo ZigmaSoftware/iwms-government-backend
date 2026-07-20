@@ -112,6 +112,10 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = CustomerCreationSerializer
     lookup_field = "unique_id"
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    # `register_fcm_token` is a self-service action any authenticated citizen
+    # calls for their OWN account (it never touches another customer's row),
+    # so it's exempt from the admin module-permission check.
+    permission_exempt_actions = ["register_fcm_token"]
 
     AUDIT_MODULE = "customer-masters"
     AUDIT_ENDPOINT = "customercreations"
@@ -216,6 +220,29 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 return row, normalized
 
         return None, normalized
+
+    # -----------------------------------------------------
+    # FCM device token registration (push notifications)
+    # -----------------------------------------------------
+
+    @action(detail=False, methods=["post"], url_path="register-fcm-token")
+    def register_fcm_token(self, request):
+        """Citizen app calls this after login (and on token refresh) to
+        register its Firebase device token, so the backend can push instant
+        notifications (e.g. waste collection status updates) to this
+        customer. Always acts on the authenticated caller's own record."""
+        customer = request.user
+        if not isinstance(customer, CustomerCreation):
+            return Response(
+                {"error": "Only a citizen account can register a device token."},
+                status=403,
+            )
+        token = (request.data.get("fcm_token") or "").strip()
+        if not token:
+            return Response({"error": "fcm_token is required"}, status=400)
+        customer.fcm_token = token
+        customer.save(update_fields=["fcm_token"])
+        return Response({"status": "ok"})
 
     # -----------------------------------------------------
     # Apartment Count
