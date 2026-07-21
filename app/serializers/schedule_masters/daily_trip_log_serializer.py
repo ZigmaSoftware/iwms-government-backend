@@ -23,8 +23,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "alt_staff_template_id__driver_id",
             "alt_staff_template_id__operator_id",
             "district",
-            "waste_type_id",
-        ).filter(is_deleted=False),
+        ).prefetch_related("waste_types").filter(is_deleted=False),
         write_only=True,
     )
     bin_ids = serializers.SlugRelatedField(
@@ -47,7 +46,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     location = serializers.SerializerMethodField(read_only=True)
     collection_point = serializers.SerializerMethodField(read_only=True)
     collection_points = serializers.SerializerMethodField(read_only=True)
-    waste_type = serializers.SerializerMethodField(read_only=True)
+    waste_types_detail = serializers.SerializerMethodField(read_only=True)
+    waste_type_breakdown = serializers.SerializerMethodField(read_only=True)
     driver = serializers.SerializerMethodField(read_only=True)
     operator = serializers.SerializerMethodField(read_only=True)
     extra_operators = serializers.SerializerMethodField(read_only=True)
@@ -73,8 +73,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "collection_point_id",
             "collection_point",
             "collection_points",
-            "waste_type_id",
-            "waste_type",
+            "waste_types_detail",
+            "waste_type_breakdown",
             "trip_date",
             "actual_start_time",
             "actual_end_time",
@@ -107,7 +107,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "staff_template_id",
             "alt_staff_template_id",
             "collection_point_id",
-            "waste_type_id",
             "trip_date",
             "driver_id",
             "operator_id",
@@ -168,7 +167,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         cps = (
             assignment.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id")
+            .select_related("collection_point_id", "bin_id", "bin_id__wastetype_id")
             .order_by("sequence")
         )
         return [
@@ -182,6 +181,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                     if tcp.collected_weight_kg is not None
                     else None
                 ),
+                "waste_type_name": getattr(getattr(tcp.bin_id, "wastetype_id", None), "waste_type_name", None),
             }
             for tcp in cps
             if tcp.collection_point_id
@@ -223,12 +223,13 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         hh_list = (
             DailyTripHouseholdCollection.objects
             .filter(trip_assignment_id=assignment, is_deleted=False)
-            .select_related("customer_id")
+            .select_related("customer_id", "waste_collection_id")
             .order_by("sequence")
         )
         result = []
         for hh in hh_list:
             customer = hh.customer_id
+            wc = hh.waste_collection_id
             result.append({
                 "unique_id": hh.unique_id,
                 "sequence": hh.sequence,
@@ -238,6 +239,9 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "collected_weight_kg": (
                     str(hh.collected_weight_kg) if hh.collected_weight_kg is not None else None
                 ),
+                "wet_waste": getattr(wc, "wet_waste", None),
+                "dry_waste": getattr(wc, "dry_waste", None),
+                "mixed_waste": getattr(wc, "mixed_waste", None),
                 "collected_at": hh.collected_at.isoformat() if hh.collected_at else None,
                 "status": hh.status,
             })
@@ -298,9 +302,15 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         cp = obj.collection_point_id
         return None if not cp else {"unique_id": cp.unique_id, "cp_name": cp.cp_name}
 
-    def get_waste_type(self, obj):
-        wt = obj.waste_type_id
-        return None if not wt else {"unique_id": wt.unique_id, "waste_type_name": wt.waste_type_name}
+    def get_waste_types_detail(self, obj):
+        return [{"unique_id": wt.unique_id, "waste_type_name": wt.waste_type_name} for wt in obj.waste_types.all()]
+
+    def get_waste_type_breakdown(self, obj):
+        from app.utils.waste_type_breakdown import waste_type_breakdown_for_assignment
+        assignment = obj.trip_assignment_id
+        if not assignment:
+            return []
+        return waste_type_breakdown_for_assignment(assignment)
 
     def _staff_dict(self, staff):
         if not staff:

@@ -102,6 +102,7 @@ def sync_daily_assignment_stops_from_plan(assignment):
 
     plan_stops = TripPlanCollectionPoint.objects.filter(
         trip_plan_id=assignment.trip_plan_id,
+        collection_type=assignment.trip_plan_id.collection_type,
         is_active=True,
         is_deleted=False,
     ).order_by("sequence")

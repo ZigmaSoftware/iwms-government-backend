@@ -45,7 +45,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "trip_plan_id__town_panchayat",
         "trip_plan_id__panchayat_union",
         "trip_plan_id__vehicle_id",
-        "trip_plan_id__waste_type_id",
         "staff_template_id",
         "staff_template_id__driver_id",
         "staff_template_id__operator_id",
@@ -60,9 +59,8 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "town_panchayat",
         "panchayat_union",
         "panchayat",
-        "waste_type_id",
         "vehicle_id",
-    ).filter(is_deleted=False)
+    ).prefetch_related("trip_plan_id__waste_types", "waste_types").filter(is_deleted=False)
 
     serializer_class = DailyTripAssignmentSerializer
     lookup_field = "unique_id"
@@ -106,7 +104,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         today_flag = params.get("today")
         trip_plan = params.get("trip_plan_id")
         trip_status = params.get("status")
-        waste_type = params.get("waste_type_id")
+        waste_type = params.get("waste_type_id") or params.get("waste_type_ids")
 
         if trip_date:
             qs = qs.filter(trip_date=trip_date)
@@ -121,7 +119,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(status=trip_status)
 
         if waste_type:
-            qs = qs.filter(waste_type_id=waste_type)
+            qs = qs.filter(waste_types__unique_id=waste_type).distinct()
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)

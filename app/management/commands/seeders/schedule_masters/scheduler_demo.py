@@ -105,7 +105,6 @@ class SchedulerDemoSeeder(BaseSeeder):
                 "area_type": corporation.area_type_id,
                 "staff_template_id": template,
                 "vehicle_id": vehicle,
-                "waste_type_id": waste_type,
                 "scheduled_time": time(7, 0),
                 "max_vehicle_capacity_kg": 5000,
                 "approval_status": TripPlan.ApprovalStatus.APPROVED,

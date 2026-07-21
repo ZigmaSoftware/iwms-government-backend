@@ -34,6 +34,7 @@ from rest_framework.viewsets import ViewSet
 
 from app.models.leader_login.state_leader_login import StateLeaderLogin
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
@@ -82,8 +83,8 @@ class _StateWasteComparisonBase(ViewSet):
 
     def _base_queryset(self, state_uid):
         return DailyTripLog.objects.select_related(
-            "district", "waste_type_id"
-        ).filter(
+            "district"
+        ).prefetch_related("waste_types").filter(
             is_deleted=False,
             state_id=state_uid,
             log_status__in=[
@@ -91,6 +92,21 @@ class _StateWasteComparisonBase(ViewSet):
                 DailyTripLog.LOG_STATUS_VERIFIED,
             ],
         )
+
+    def _waste_type_rows_by_group(self, qs, source, extra_group_by):
+        """Per-(group_key..., waste_type) weight rows, computed from actual
+        collection records (a trip can legitimately span multiple waste
+        types) — grouped by trip_assignment_id__daily_trip_log__<field> for
+        each field in extra_group_by, joined back onto qs's own rows."""
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        wt_rows = bulk_waste_type_rows_for_trip_assignments(
+            trip_assignment_ids, source=source, extra_group_by=extra_group_by,
+        )
+        info_fields = ["trip_assignment_id_id", *extra_group_by]
+        info_by_assignment = {}
+        for r in qs.values(*info_fields):
+            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+        return wt_rows, info_by_assignment
 
     def _district_comparison(self, rows, weight_key):
         districts = {}
@@ -155,11 +171,11 @@ class _StateWasteComparisonBase(ViewSet):
             })
         return sorted(result, key=lambda r: r["total_actual_weight"], reverse=True)
 
-    def _totals(self, rows, weight_key):
+    def _totals(self, district_rows, weight_key, waste_type_rows):
         total_actual = ZERO
         total_trips = 0
         total_points = 0
-        for r in rows:
+        for r in district_rows:
             total_actual += decimal_value(r[weight_key])
             total_trips += r["total_trips"]
             total_points += r["collection_points_covered"]
@@ -171,8 +187,8 @@ class _StateWasteComparisonBase(ViewSet):
             ),
             "total_trips": total_trips,
             "collection_points_covered": total_points,
-            "waste_type_count": len({r["waste_type_id"] for r in rows}),
-            "district_count": len({r["district_id"] for r in rows}),
+            "waste_type_count": len({r["waste_type_id"] for r in waste_type_rows}),
+            "district_count": len({r["district_id"] for r in district_rows}),
         }
 
 
@@ -195,38 +211,70 @@ class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
 
         source = request.query_params.get("source", "bin").lower()
 
-        grouped_qs = qs.values(
-            "trip_date__year",
-            "trip_date__month",
-            "district_id",
-            "district__name",
-            "waste_type_id",
-            "waste_type_id__waste_type_name",
+        # ── trip-log-level rows (month, district) — a trip is counted once
+        # here even if it spans multiple waste types ─────────────────────
+        district_grouped = qs.values(
+            "trip_date__year", "trip_date__month", "district_id", "district__name",
         ).annotate(
             total_actual_weight=weight_annotation(source),
-            total_trips=Count("unique_id"),
+            total_trips=Count("unique_id", distinct=True),
             collection_points_covered=Count("collection_point_id", distinct=True),
         )
-
-        rows = []
-        for row in grouped_qs:
+        district_rows = []
+        for row in district_grouped:
             if not row["district_id"]:
                 continue
-            year_val = row["trip_date__year"]
-            month_val = row["trip_date__month"]
-            actual = decimal_value(row["total_actual_weight"])
-            total_trips = int(row["total_trips"] or 0)
-            points = int(row["collection_points_covered"] or 0)
-            rows.append({
-                "unique_id": f"SMWC-{year_val}-{month_val:02d}-{row['district_id']}-{row['waste_type_id']}",
+            year_val, month_val = row["trip_date__year"], row["trip_date__month"]
+            district_rows.append({
                 "month": f"{year_val}-{month_val:02d}",
                 "district_id": row["district_id"],
                 "district_name": row["district__name"] or row["district_id"],
-                "waste_type_id": row["waste_type_id"],
-                "waste_type": row["waste_type_id__waste_type_name"] or row["waste_type_id"],
+                "total_actual_weight": float(rounded(decimal_value(row["total_actual_weight"]))),
+                "total_trips": int(row["total_trips"] or 0),
+                "collection_points_covered": int(row["collection_points_covered"] or 0),
+            })
+
+        # ── per-waste-type weight, from actual collection records ────────
+        wt_rows, info_by_assignment = self._waste_type_rows_by_group(
+            qs, source, extra_group_by=("trip_date", "district_id", "district__name"),
+        )
+
+        bucket_totals = {}  # (month, district_id, waste_type_id) -> accumulator
+        for wt_row in wt_rows:
+            infos = info_by_assignment.get(wt_row["trip_assignment_id"], [])
+            for info in infos:
+                if str(info["trip_date"]) != str(wt_row["trip_date"]) or not info["district_id"]:
+                    continue
+                year_val, month_val = info["trip_date"].year, info["trip_date"].month
+                key = (year_val, month_val, info["district_id"], wt_row["waste_type_id"])
+                bucket = bucket_totals.setdefault(key, {
+                    "year": year_val, "month": month_val,
+                    "district_id": info["district_id"],
+                    "district_name": info["district__name"] or info["district_id"],
+                    "waste_type_id": wt_row["waste_type_id"],
+                    "waste_type_name": wt_row["waste_type_name"],
+                    "weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                })
+                bucket["weight_kg"] += wt_row["weight_kg"]
+                bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
+
+        rows = []
+        for (year_val, month_val, district_id, waste_type_id), bucket in bucket_totals.items():
+            actual = bucket["weight_kg"]
+            total_trips = len(bucket["trip_assignment_ids"])
+            rows.append({
+                "unique_id": f"SMWC-{year_val}-{month_val:02d}-{district_id}-{waste_type_id}",
+                "month": f"{year_val}-{month_val:02d}",
+                "district_id": district_id,
+                "district_name": bucket["district_name"],
+                "waste_type_id": waste_type_id,
+                "waste_type": bucket["waste_type_name"] or waste_type_id,
                 "total_actual_weight": float(rounded(actual)),
                 "total_trips": total_trips,
-                "collection_points_covered": points,
+                # not meaningfully splittable per waste type — see
+                # district_comparison for the trip-log-level total.
+                "collection_points_covered": 0,
                 "average_weight_per_trip": float(
                     rounded(actual / Decimal(total_trips)) if total_trips else ZERO
                 ),
@@ -239,7 +287,7 @@ class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
             rows.sort(key=lambda r: r["total_actual_weight"], reverse=True)
 
         monthly_trends = {}
-        for row in rows:
+        for row in district_rows:
             m = row["month"]
             monthly_trends.setdefault(m, {
                 "month": m, "total_actual_weight": 0.0, "total_trips": 0, "collection_points_covered": 0,
@@ -265,9 +313,9 @@ class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
             "source": source,
             "results": rows,
             "monthly_trends": trends_list,
-            "district_comparison": self._district_comparison(rows, "total_actual_weight"),
+            "district_comparison": self._district_comparison(district_rows, "total_actual_weight"),
             "waste_type_breakdown": self._waste_type_breakdown(rows, "total_actual_weight"),
-            "kpis": self._totals(rows, "total_actual_weight"),
+            "kpis": self._totals(district_rows, "total_actual_weight", rows),
         })
 
 
@@ -296,35 +344,64 @@ class StateDailyWasteComparisonViewSet(_StateWasteComparisonBase):
 
         source = request.query_params.get("source", "bin").lower()
 
-        grouped_qs = qs.values(
-            "trip_date",
-            "district_id",
-            "district__name",
-            "waste_type_id",
-            "waste_type_id__waste_type_name",
-        ).annotate(
+        # ── trip-log-level rows (date, district) — a trip is counted once
+        # here even if it spans multiple waste types ─────────────────────
+        district_grouped = qs.values("trip_date", "district_id", "district__name").annotate(
             total_actual_weight=weight_annotation(source),
-            total_trips=Count("unique_id"),
+            total_trips=Count("unique_id", distinct=True),
             collection_points_covered=Count("collection_point_id", distinct=True),
         )
-
-        rows = []
-        for row in grouped_qs:
+        district_rows = []
+        for row in district_grouped:
             if not row["district_id"]:
                 continue
-            actual = decimal_value(row["total_actual_weight"])
-            total_trips = int(row["total_trips"] or 0)
-            points = int(row["collection_points_covered"] or 0)
-            rows.append({
-                "unique_id": f"SDWC-{row['trip_date']}-{row['district_id']}-{row['waste_type_id']}",
+            district_rows.append({
                 "collection_date": str(row["trip_date"]),
                 "district_id": row["district_id"],
                 "district_name": row["district__name"] or row["district_id"],
-                "waste_type_id": row["waste_type_id"],
-                "waste_type": row["waste_type_id__waste_type_name"] or row["waste_type_id"],
+                "actual_weight_kg": float(rounded(decimal_value(row["total_actual_weight"]))),
+                "total_trips": int(row["total_trips"] or 0),
+                "collection_points_covered": int(row["collection_points_covered"] or 0),
+            })
+
+        # ── per-waste-type weight, from actual collection records ────────
+        wt_rows, info_by_assignment = self._waste_type_rows_by_group(
+            qs, source, extra_group_by=("trip_date", "district_id", "district__name"),
+        )
+
+        bucket_totals = {}  # (trip_date, district_id, waste_type_id) -> accumulator
+        for wt_row in wt_rows:
+            infos = info_by_assignment.get(wt_row["trip_assignment_id"], [])
+            for info in infos:
+                if str(info["trip_date"]) != str(wt_row["trip_date"]) or not info["district_id"]:
+                    continue
+                key = (info["trip_date"], info["district_id"], wt_row["waste_type_id"])
+                bucket = bucket_totals.setdefault(key, {
+                    "trip_date": info["trip_date"],
+                    "district_id": info["district_id"],
+                    "district_name": info["district__name"] or info["district_id"],
+                    "waste_type_id": wt_row["waste_type_id"],
+                    "waste_type_name": wt_row["waste_type_name"],
+                    "weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                })
+                bucket["weight_kg"] += wt_row["weight_kg"]
+                bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
+
+        rows = []
+        for (trip_date, district_id, waste_type_id), bucket in bucket_totals.items():
+            actual = bucket["weight_kg"]
+            total_trips = len(bucket["trip_assignment_ids"])
+            rows.append({
+                "unique_id": f"SDWC-{trip_date}-{district_id}-{waste_type_id}",
+                "collection_date": str(trip_date),
+                "district_id": district_id,
+                "district_name": bucket["district_name"],
+                "waste_type_id": waste_type_id,
+                "waste_type": bucket["waste_type_name"] or waste_type_id,
                 "actual_weight_kg": float(rounded(actual)),
                 "total_trips": total_trips,
-                "collection_points_covered": points,
+                "collection_points_covered": 0,
                 "average_weight_per_trip": float(
                     rounded(actual / Decimal(total_trips)) if total_trips else ZERO
                 ),
@@ -337,7 +414,7 @@ class StateDailyWasteComparisonViewSet(_StateWasteComparisonBase):
             rows.sort(key=lambda r: r["actual_weight_kg"], reverse=True)
 
         date_trends = {}
-        for row in rows:
+        for row in district_rows:
             d = row["collection_date"]
             date_trends.setdefault(d, {
                 "collection_date": d, "actual_weight_kg": 0.0, "total_trips": 0, "collection_points_covered": 0,
@@ -363,7 +440,7 @@ class StateDailyWasteComparisonViewSet(_StateWasteComparisonBase):
             "source": source,
             "results": rows[:300],
             "date_trends": trends_list,
-            "district_comparison": self._district_comparison(rows, "actual_weight_kg"),
+            "district_comparison": self._district_comparison(district_rows, "actual_weight_kg"),
             "waste_type_breakdown": self._waste_type_breakdown(rows, "actual_weight_kg"),
-            "kpis": self._totals(rows, "actual_weight_kg"),
+            "kpis": self._totals(district_rows, "actual_weight_kg", rows),
         })

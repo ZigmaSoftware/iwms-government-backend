@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.models.schedule_masters.monthly_weight_report import MonthlyWeightReport
 from app.serializers.schedule_masters.monthly_weight_report_serializer import MonthlyWeightReportSerializer
+from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 
 ZERO = Decimal("0")
@@ -86,8 +87,8 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         base_qs = DailyTripLog.objects.select_related(
-            "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id",
-        ).filter(
+            "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat",
+        ).prefetch_related("waste_types").filter(
             is_deleted=False,
             log_status__in=[
                 DailyTripLog.LOG_STATUS_SUBMITTED,
@@ -117,7 +118,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
                 base_qs = base_qs.filter(**{f"{field}_id": value})
 
         if waste_type_param:
-            base_qs = base_qs.filter(waste_type_id=waste_type_param)
+            base_qs = base_qs.filter(waste_types=waste_type_param)
 
         # ── choose weight source ─────────────────────────────────────────
         source = request.query_params.get("source", "bin").lower()
@@ -131,9 +132,10 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
         name_fields = list(LOCAL_BODY_NAME_FIELDS.values())
 
-        # ── Aggregate by (year, month, local body, waste_type) ───────────
+        # ── Aggregate by (year, month, local body) — trip-log level, so a
+        # trip is never double counted here even if it spans waste types ──
         annotation_kwargs = {
-            "total_trips": Count("unique_id"),
+            "total_trips": Count("unique_id", distinct=True),
             "collection_points_covered": Count("collection_point_id", distinct=True),
         }
         if weight_field:
@@ -147,31 +149,66 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
                 )
             )
 
-        grouped_qs = base_qs.values(
-            "trip_date__year",
-            "trip_date__month",
-            *group_fields,
-            *name_fields,
-            "waste_type_id",
-            "waste_type_id__waste_type_name",
+        location_qs = base_qs.values(
+            "trip_date__year", "trip_date__month", *group_fields, *name_fields,
         ).annotate(**annotation_kwargs)
 
-        rows = []
-        for row in grouped_qs:
-            local_body_field, local_body_id = self._local_body_from_row(row)
-            if not local_body_id:
-                continue
-            local_body_name = row.get(LOCAL_BODY_NAME_FIELDS[local_body_field]) or local_body_id
+        # ── per-waste-type weight, computed separately (a trip can now
+        # legitimately appear under more than one waste type) ─────────────
+        trip_assignment_ids = list(
+            base_qs.values_list("trip_assignment_id_id", flat=True).distinct()
+        )
+        wt_rows = bulk_waste_type_rows_for_trip_assignments(
+            trip_assignment_ids, source=source, extra_group_by=("trip_date",),
+        )
+        if waste_type_param:
+            wt_rows = [r for r in wt_rows if r["waste_type_id"] == waste_type_param]
 
-            year_val  = row["trip_date__year"]
-            month_val = row["trip_date__month"]
+        trip_log_info = base_qs.values(
+            "trip_assignment_id_id", "trip_date", *group_fields,
+        )
+        info_by_assignment = {}
+        for r in trip_log_info:
+            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+
+        bucket_totals = {}  # (year, month, local_body_field, local_body_id, waste_type_id) -> accumulator
+        for wt_row in wt_rows:
+            infos = info_by_assignment.get(wt_row["trip_assignment_id"], [])
+            for info in infos:
+                if str(info["trip_date"]) != str(wt_row["trip_date"]):
+                    continue
+                local_body_field, local_body_id = self._local_body_from_row(info)
+                if not local_body_id:
+                    continue
+                year_val, month_val = info["trip_date"].year, info["trip_date"].month
+                key = (year_val, month_val, local_body_field, local_body_id, wt_row["waste_type_id"])
+                bucket = bucket_totals.setdefault(key, {
+                    "year": year_val,
+                    "month": month_val,
+                    "local_body_field": local_body_field,
+                    "local_body_id": local_body_id,
+                    "waste_type_id": wt_row["waste_type_id"],
+                    "waste_type_name": wt_row["waste_type_name"],
+                    "weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                })
+                bucket["weight_kg"] += wt_row["weight_kg"]
+                bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
+
+        local_body_names = {}
+        for r in location_qs:
+            lb_field, lb_id = self._local_body_from_row(r)
+            if lb_id:
+                local_body_names[(lb_field, lb_id)] = r.get(LOCAL_BODY_NAME_FIELDS[lb_field]) or lb_id
+
+        rows = []
+        for (year_val, month_val, local_body_field, local_body_id, waste_type_id), bucket in bucket_totals.items():
+            actual = bucket["weight_kg"]
+            total_trips = len(bucket["trip_assignment_ids"])
+            local_body_name = local_body_names.get((local_body_field, local_body_id), local_body_id)
             month_str = f"{year_val}-{month_val:02d}"
 
-            actual      = decimal_value(row["total_actual_weight"])
-            total_trips = int(row["total_trips"] or 0)
-            points      = int(row["collection_points_covered"] or 0)
-
-            unique_id = f"MWR-{month_str}-{local_body_id}-{row['waste_type_id']}"
+            unique_id = f"MWR-{month_str}-{local_body_id}-{waste_type_id}"
 
             rows.append({
                 "unique_id": unique_id,
@@ -180,13 +217,14 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
                 "local_body_type": LOCAL_BODY_LABELS.get(local_body_field, local_body_field),
                 "local_body_id": local_body_id,
                 "local_body_name": local_body_name,
-                "waste_type_id": row["waste_type_id"],
-                "waste_type": (
-                    row["waste_type_id__waste_type_name"] or row["waste_type_id"]
-                ),
+                "waste_type_id": waste_type_id,
+                "waste_type": bucket["waste_type_name"],
                 "total_actual_weight": float(rounded(actual)),
                 "total_trips": total_trips,
-                "collection_points_covered": points,
+                # not meaningfully splittable per waste type from the
+                # underlying collection records — reported at the
+                # local-body/month bucket level instead (see location_rows).
+                "collection_points_covered": 0,
                 "average_weight_per_trip": float(
                     rounded(actual / Decimal(total_trips)) if total_trips else ZERO
                 ),
@@ -198,14 +236,46 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         else:
             rows.sort(key=lambda r: r["total_actual_weight"], reverse=True)
 
+        location_rows = self._build_location_rows(location_qs)
+
         return Response({
             "source": source,
             "results": rows,
-            "monthly_trends": self._build_monthly_trends(rows),
-            "location_comparison": self._build_location_comparison(rows),
+            "monthly_trends": self._build_monthly_trends(location_rows),
+            "location_comparison": self._build_location_comparison(location_rows),
             "waste_type_breakdown": self._build_waste_type_breakdown(rows),
-            "kpis": self._build_totals(rows),
+            "kpis": self._build_totals(location_rows, rows),
         })
+
+    def _build_location_rows(self, location_qs):
+        """Trip-log-level rows (month, local body) — one row per group,
+        independent of waste type, used for totals/trends/location comparison
+        so a multi-waste-type trip is never double counted there."""
+        rows = []
+        for row in location_qs:
+            local_body_field, local_body_id = self._local_body_from_row(row)
+            if not local_body_id:
+                continue
+            local_body_name = row.get(LOCAL_BODY_NAME_FIELDS[local_body_field]) or local_body_id
+            year_val = row["trip_date__year"]
+            month_val = row["trip_date__month"]
+            actual = decimal_value(row["total_actual_weight"])
+            total_trips = int(row["total_trips"] or 0)
+            points = int(row["collection_points_covered"] or 0)
+            rows.append({
+                "month": f"{year_val}-{month_val:02d}",
+                "local_body_field": local_body_field,
+                "local_body_type": LOCAL_BODY_LABELS.get(local_body_field, local_body_field),
+                "local_body_id": local_body_id,
+                "local_body_name": local_body_name,
+                "total_actual_weight": float(rounded(actual)),
+                "total_trips": total_trips,
+                "collection_points_covered": points,
+                "average_weight_per_trip": float(
+                    rounded(actual / Decimal(total_trips)) if total_trips else ZERO
+                ),
+            })
+        return rows
 
     # ── local body resolution ────────────────────────────────────────────
 
@@ -315,13 +385,13 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             })
         return sorted(result, key=lambda r: r["total_actual_weight"], reverse=True)
 
-    def _build_totals(self, rows):
+    def _build_totals(self, location_rows, waste_type_rows):
         """Overall KPI totals."""
         total_actual = ZERO
         total_trips  = 0
         total_points = 0
 
-        for r in rows:
+        for r in location_rows:
             total_actual += decimal_value(r["total_actual_weight"])
             total_trips  += r["total_trips"]
             total_points += r["collection_points_covered"]
@@ -333,6 +403,6 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             ),
             "total_trips":               total_trips,
             "collection_points_covered": total_points,
-            "waste_type_count":          len({r["waste_type_id"] for r in rows}),
-            "local_body_count":          len({r["local_body_id"] for r in rows}),
+            "waste_type_count":          len({r["waste_type_id"] for r in waste_type_rows}),
+            "local_body_count":          len({r["local_body_id"] for r in location_rows}),
         }

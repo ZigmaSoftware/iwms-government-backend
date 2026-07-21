@@ -96,7 +96,6 @@ class TripPlanSeeder(BaseSeeder):
                     staff_template_id=template,
                     is_deleted=False,
                     defaults={
-                        "waste_type_id": primary_waste_type,
                         "state": district.state_id,
                         "area_type": panchayat.area_type_id,
                         "vehicle_id": vehicle,
@@ -155,7 +154,6 @@ class TripPlanSeeder(BaseSeeder):
                 staff_template_id=templates[idx % len(templates)],
                 is_deleted=False,
                 defaults={
-                    "waste_type_id": primary_waste_type,
                     "state": corporation.state_id,
                     "area_type": corporation.area_type_id,
                     "vehicle_id": vehicles[idx % len(vehicles)],

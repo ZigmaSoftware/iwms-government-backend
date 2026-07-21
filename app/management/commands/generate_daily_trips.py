@@ -73,7 +73,6 @@ def run_for_date(target_date=None, logger=None, force=False):
         defaults = {
             "staff_template_id": plan.staff_template_id,
             "vehicle_id": plan.vehicle_id,
-            "waste_type_id": plan.waste_type_id,
             "scheduled_time": plan.scheduled_time,
         }
         for field in FLAT_GEO_FIELDS:
@@ -91,6 +90,9 @@ def run_for_date(target_date=None, logger=None, force=False):
                 log(f"Assignment already exists for plan {plan.unique_id} on {today}")
                 continue
 
+            if not assignment.waste_types.exists():
+                assignment.waste_types.set(plan.waste_types.all())
+
             created_count += 1
             # Build the operational child records from the master stop list.
             #
@@ -103,7 +105,12 @@ def run_for_date(target_date=None, logger=None, force=False):
             # inserted), so the summary is accurate regardless of which path won.
             stops = (
                 TripPlanCollectionPoint.objects
-                .filter(trip_plan_id=plan, is_active=True, is_deleted=False)
+                .filter(
+                    trip_plan_id=plan,
+                    collection_type=plan.collection_type,
+                    is_active=True,
+                    is_deleted=False,
+                )
                 .order_by("sequence")
             )
             for stop in stops:

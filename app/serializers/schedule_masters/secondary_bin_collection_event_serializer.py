@@ -26,6 +26,7 @@ from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 from app.serializers.assets.wastetype_serializer import (
     WasteTypeSerializer,
 )
+from app.utils.hierarchy import flat_geo_display
 
 
 class BinCollectionEventSerializer(serializers.ModelSerializer):
@@ -104,6 +105,9 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
     approval_status = serializers.SerializerMethodField()
     display_code = serializers.SerializerMethodField()
     panchayat_name = serializers.SerializerMethodField()
+    # Most-specific local body (corporation/municipality/.../panchayat) + its level
+    location_name = serializers.SerializerMethodField(read_only=True)
+    location_level = serializers.SerializerMethodField(read_only=True)
     collection_point = serializers.SerializerMethodField()
     breakdown_info = serializers.SerializerMethodField(read_only=True)
 
@@ -152,6 +156,8 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "driver_longitude",
             "notes",
             "panchayat_name",
+            "location_name",
+            "location_level",
             "collection_point",
             "vehicle_breakdown_id",
             "breakdown_info",
@@ -352,6 +358,23 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             or getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
         )
         return getattr(panchayat, "panchayat_name", None)
+
+    def get_location_name(self, obj):
+        # Prefer the event's own geo; fall back to the collection point, then the trip assignment.
+        name, _ = flat_geo_display(obj)
+        if not name:
+            name, _ = flat_geo_display(obj.collection_point_id)
+        if not name:
+            name, _ = flat_geo_display(obj.trip_assignment_id)
+        return name
+
+    def get_location_level(self, obj):
+        _, level = flat_geo_display(obj)
+        if not level:
+            _, level = flat_geo_display(obj.collection_point_id)
+        if not level:
+            _, level = flat_geo_display(obj.trip_assignment_id)
+        return level
 
     def get_collection_point(self, obj):
         cp = obj.collection_point_id

@@ -18,7 +18,8 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
             DailyTripAssignment.objects
             .filter(trip_date=today, is_deleted=False)
             .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
-            .select_related("district", "waste_type_id")
+            .select_related("district")
+            .prefetch_related("waste_types")
         )
 
         if not assignments.exists():
@@ -26,7 +27,8 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
                 DailyTripAssignment.objects
                 .filter(is_deleted=False)
                 .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
-                .select_related("district", "waste_type_id")
+                .select_related("district")
+                .prefetch_related("waste_types")
                 .order_by("-trip_date", "-scheduled_time")[:3]
             )
 
@@ -52,7 +54,7 @@ class DailyTripCollectionPointSeeder(BaseSeeder):
             for cp in cps:
                 bin_obj = Bins.objects.filter(
                     collection_point_id=cp,
-                    wastetype_id=assignment.waste_type_id,
+                    wastetype_id__in=assignment.waste_types.all(),
                     is_deleted=False,
                 ).first()
                 if not bin_obj:
