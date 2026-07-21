@@ -26,8 +26,8 @@ class DailyTripLogSeeder(BaseSeeder):
                 "alt_staff_template_id__driver_id",
                 "alt_staff_template_id__operator_id",
                 "district",
-                "waste_type_id",
             )
+            .prefetch_related("waste_types")
             .filter(is_deleted=False)
             .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
             .order_by("-trip_date", "-scheduled_time")[:6]

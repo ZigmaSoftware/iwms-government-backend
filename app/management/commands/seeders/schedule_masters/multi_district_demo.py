@@ -160,7 +160,6 @@ class MultiDistrictTripDataSeeder(BaseSeeder):
                     collection_type=collection_type,
                     is_deleted=False,
                     defaults={
-                        "waste_type_id": waste_type,
                         "state": district.state_id,
                         "area_type": corporation.area_type_id,
                         "staff_template_id": template,
@@ -199,7 +198,6 @@ class MultiDistrictTripDataSeeder(BaseSeeder):
                         is_deleted=False,
                         defaults={
                             "staff_template_id": template,
-                            "waste_type_id": plan.waste_type_id,
                             "vehicle_id": plan.vehicle_id,
                             "state": plan.state,
                             "district": plan.district,

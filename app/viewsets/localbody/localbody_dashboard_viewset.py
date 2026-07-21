@@ -16,6 +16,7 @@ from rest_framework.viewsets import ViewSet
 
 from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 
 ZERO = Decimal("0")
@@ -86,7 +87,7 @@ class LocalBodyDashboardViewSet(ViewSet):
         base_qs = DailyTripLog.objects.filter(
             panchayat_id=panchayat_uid,
             is_deleted=False,
-        ).select_related("waste_type_id", "collection_point_id")
+        ).select_related("collection_point_id").prefetch_related("waste_types")
 
         monthly_data = self._monthly_report(base_qs, panchayat, month, sort)
         daily_data   = self._daily_data(base_qs, panchayat, month)
@@ -122,51 +123,69 @@ class LocalBodyDashboardViewSet(ViewSet):
             except ValueError:
                 pass
 
-        grouped = qs.values(
-            "trip_date__year",
-            "trip_date__month",
-            "waste_type_id",
-            "waste_type_id__waste_type_name",
-        ).annotate(
-            total_actual_weight=Sum("collected_weight_kg"),
-            total_trips=Count("unique_id"),
-            collection_points=Count("collection_point_id", distinct=True),
-            distinct_trip_days=Count("trip_date", distinct=True),
-        )
-
         agreed_per_day = Decimal(str(getattr(panchayat, "agreed_weight_kg", 0) or 0))
         panchayat_uid  = panchayat.unique_id
         panchayat_name = getattr(panchayat, "panchayat_name", "") or ""
 
-        rows = []
-        for row in grouped:
-            year_val  = row["trip_date__year"]
-            month_val = row["trip_date__month"]
-            month_str = f"{year_val}-{month_val:02d}"
+        # Per-waste-type weight, computed from the actual collection records
+        # (a trip can legitimately span more than one waste type).
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        wt_rows = bulk_waste_type_rows_for_trip_assignments(
+            trip_assignment_ids, source="all", extra_group_by=("trip_date",),
+        )
+        trip_log_info = qs.values("trip_assignment_id_id", "trip_date")
+        info_by_assignment = {}
+        for r in trip_log_info:
+            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
 
-            trip_days   = int(row["distinct_trip_days"] or 0)
-            agreed      = agreed_per_day * Decimal(str(trip_days))
-            actual      = Decimal(str(row["total_actual_weight"] or 0))
-            var         = actual - agreed
-            trips       = int(row["total_trips"] or 0)
-            points      = int(row["collection_points"] or 0)
+        bucket_totals = {}  # (year, month, waste_type_id) -> accumulator
+        for wt_row in wt_rows:
+            infos = info_by_assignment.get(wt_row["trip_assignment_id"], [])
+            for info in infos:
+                if str(info["trip_date"]) != str(wt_row["trip_date"]):
+                    continue
+                year_val, month_val = info["trip_date"].year, info["trip_date"].month
+                key = (year_val, month_val, wt_row["waste_type_id"])
+                bucket = bucket_totals.setdefault(key, {
+                    "year": year_val, "month": month_val,
+                    "waste_type_id": wt_row["waste_type_id"],
+                    "waste_type_name": wt_row["waste_type_name"],
+                    "weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                })
+                bucket["weight_kg"] += wt_row["weight_kg"]
+                bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
+
+        rows = []
+        for (year_val, month_val, waste_type_id), bucket in bucket_totals.items():
+            month_str  = f"{year_val}-{month_val:02d}"
+            trip_days  = len({
+                info["trip_date"] for aid in bucket["trip_assignment_ids"]
+                for info in info_by_assignment.get(aid, [])
+            })
+            agreed = agreed_per_day * Decimal(str(trip_days))
+            actual = bucket["weight_kg"]
+            var    = actual - agreed
+            trips  = len(bucket["trip_assignment_ids"])
 
             rows.append({
-                "unique_id":                    f"MWR-{month_str}-{panchayat_uid}-{row['waste_type_id']}",
+                "unique_id":                    f"MWR-{month_str}-{panchayat_uid}-{waste_type_id}",
                 "month":                        month_str,
                 "panchayat_id":                 panchayat_uid,
                 "panchayat_name":               panchayat_name,
-                "waste_type_id":                row["waste_type_id"],
-                "waste_type":                   row["waste_type_id__waste_type_name"] or "—",
+                "waste_type_id":                waste_type_id,
+                "waste_type":                   bucket["waste_type_name"] or "—",
                 "total_agreed_weight":          float(_r(agreed)),
                 "total_actual_weight":          float(_r(actual)),
                 "variance_kg":                  float(_r(var)),
                 "variance_percent":             float(_var_pct(actual, agreed)),
                 "report_status":                _status(actual, agreed),
                 "total_trips":                  trips,
-                "collection_points_covered":    points,
+                # not meaningfully splittable per waste type — reported at
+                # the month level instead (see monthly_totals below).
+                "collection_points_covered":    0,
                 "collection_efficiency_percent": float(_pct(actual, agreed)),
-                "coverage_efficiency_percent":  float(_pct(points, trips)),
+                "coverage_efficiency_percent":  0.0,
                 "average_weight_per_trip":      float(_r(actual / Decimal(trips)) if trips else ZERO),
             })
 
@@ -177,11 +196,38 @@ class LocalBodyDashboardViewSet(ViewSet):
         else:
             rows.sort(key=lambda r: abs(r["variance_kg"]), reverse=True)
 
+        # Month-level totals (trip-log level, waste-type-independent) so a
+        # multi-waste-type trip is never double counted in trends/KPIs.
+        monthly_grouped = qs.values("trip_date__year", "trip_date__month").annotate(
+            total_actual_weight=Sum("collected_weight_kg"),
+            total_trips=Count("unique_id", distinct=True),
+            collection_points=Count("collection_point_id", distinct=True),
+            distinct_trip_days=Count("trip_date", distinct=True),
+        )
+        monthly_totals = []
+        for row in monthly_grouped:
+            month_str  = f"{row['trip_date__year']}-{row['trip_date__month']:02d}"
+            trip_days  = int(row["distinct_trip_days"] or 0)
+            agreed     = agreed_per_day * Decimal(str(trip_days))
+            actual     = Decimal(str(row["total_actual_weight"] or 0))
+            trips      = int(row["total_trips"] or 0)
+            points     = int(row["collection_points"] or 0)
+            monthly_totals.append({
+                "month": month_str,
+                "total_agreed_weight": float(_r(agreed)),
+                "total_actual_weight": float(_r(actual)),
+                "variance_kg": float(_r(actual - agreed)),
+                "total_trips": trips,
+                "collection_points_covered": points,
+                "collection_efficiency_percent": float(_pct(actual, agreed)),
+                "coverage_efficiency_percent": float(_pct(points, trips)),
+            })
+
         return {
             "results":              rows,
-            "monthly_trends":       self._monthly_trends(rows),
+            "monthly_trends":       self._monthly_trends(monthly_totals),
             "waste_type_breakdown": self._waste_breakdown(rows),
-            "kpis":                 self._totals(rows),
+            "kpis":                 self._totals(monthly_totals),
         }
 
     def _monthly_trends(self, rows):
@@ -245,37 +291,65 @@ class LocalBodyDashboardViewSet(ViewSet):
             except ValueError:
                 pass
 
-        # Per-date × per-waste-type breakdown
-        breakdown_raw = (
-            qs.values("trip_date", "waste_type_id__waste_type_name")
-            .annotate(
-                actual_weight_kg=Sum("collected_weight_kg"),
-                trip_count=Count("unique_id"),
-                points_covered=Count("collection_point_id", distinct=True),
-            )
-            .order_by("trip_date", "waste_type_id__waste_type_name")
+        # Per-date × per-waste-type breakdown, from actual collection records
+        # (a trip can legitimately span more than one waste type).
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        wt_rows = bulk_waste_type_rows_for_trip_assignments(
+            trip_assignment_ids, source="all", extra_group_by=("trip_date",),
+        )
+        trip_log_info = qs.values("trip_assignment_id_id", "trip_date", "collection_point_id")
+        info_by_assignment = {}
+        for r in trip_log_info:
+            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+
+        breakdown_totals = {}  # (date, waste_type_name) -> accumulator
+        for wt_row in wt_rows:
+            infos = info_by_assignment.get(wt_row["trip_assignment_id"], [])
+            for info in infos:
+                if str(info["trip_date"]) != str(wt_row["trip_date"]):
+                    continue
+                key = (info["trip_date"], wt_row["waste_type_name"])
+                bucket = breakdown_totals.setdefault(key, {
+                    "date": info["trip_date"],
+                    "waste_type": wt_row["waste_type_name"] or "Unknown",
+                    "actual_weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                    "collection_point_ids": set(),
+                })
+                bucket["actual_weight_kg"] += wt_row["weight_kg"]
+                bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
+                if info["collection_point_id"]:
+                    bucket["collection_point_ids"].add(info["collection_point_id"])
+
+        day_wise_breakdown = sorted(
+            (
+                {
+                    "date":              str(bucket["date"]),
+                    "waste_type":        bucket["waste_type"],
+                    "actual_weight_kg":  float(_r(bucket["actual_weight_kg"])),
+                    "agreed_weight_kg":  float(_r(agreed_per_day)),
+                    "trip_count":        len(bucket["trip_assignment_ids"]),
+                    "points_covered":    len(bucket["collection_point_ids"]),
+                }
+                for bucket in breakdown_totals.values()
+            ),
+            key=lambda r: (r["date"], r["waste_type"]),
         )
 
-        day_wise_breakdown = [
-            {
-                "date":              str(r["trip_date"]),
-                "waste_type":        r["waste_type_id__waste_type_name"] or "Unknown",
-                "actual_weight_kg":  float(_r(r["actual_weight_kg"])),
-                "agreed_weight_kg":  float(_r(agreed_per_day)),
-                "trip_count":        int(r["trip_count"] or 0),
-                "points_covered":    int(r["points_covered"] or 0),
+        # Day-wise totals (summary / line chart) — trip-log level, so a
+        # multi-waste-type trip is counted once, not once per waste type.
+        day_level = qs.values("trip_date").annotate(
+            collected_weight_kg=Sum("collected_weight_kg"),
+            trip_count=Count("unique_id", distinct=True),
+        )
+        day_totals: dict = {
+            str(r["trip_date"]): {
+                "date": str(r["trip_date"]),
+                "collected_weight_kg": float(_r(r["collected_weight_kg"])),
+                "trip_count": int(r["trip_count"] or 0),
             }
-            for r in breakdown_raw
-        ]
-
-        # Day-wise totals (summary / line chart)
-        day_totals: dict = {}
-        for r in day_wise_breakdown:
-            d = r["date"]
-            if d not in day_totals:
-                day_totals[d] = {"date": d, "collected_weight_kg": 0.0, "trip_count": 0}
-            day_totals[d]["collected_weight_kg"] += r["actual_weight_kg"]
-            day_totals[d]["trip_count"]          += r["trip_count"]
+            for r in day_level
+        }
         day_wise = sorted(day_totals.values(), key=lambda x: x["date"])
 
         # Waste-type overall totals (pie chart)
@@ -290,32 +364,26 @@ class LocalBodyDashboardViewSet(ViewSet):
 
         # Individual daily rows for the table — one row per trip log
         rows_raw = (
-            qs.values(
-                "unique_id",
-                "trip_date",
-                "waste_type_id__waste_type_name",
-                "collected_weight_kg",
-                "log_status",
-                "collection_point_id",
-            )
+            qs.prefetch_related("waste_types")
             .order_by("-trip_date")[:300]
         )
 
         daily_rows = []
-        for r in rows_raw:
-            actual_kg = Decimal(str(r["collected_weight_kg"] or 0))
+        for log in rows_raw:
+            actual_kg = Decimal(str(log.collected_weight_kg or 0))
             variance  = actual_kg - agreed_per_day
+            waste_type_names = [wt.waste_type_name for wt in log.waste_types.all()]
             daily_rows.append({
-                "unique_id":                   r["unique_id"],
-                "date":                        str(r["trip_date"]),
-                "waste_type":                  r["waste_type_id__waste_type_name"] or "—",
+                "unique_id":                   log.unique_id,
+                "date":                        str(log.trip_date),
+                "waste_type":                  ", ".join(waste_type_names) or "—",
                 "agreed_weight_kg":            float(_r(agreed_per_day)),
                 "actual_weight_kg":            float(_r(actual_kg)),
                 "variance_kg":                 float(_r(variance)),
                 "variance_percent":            float(_var_pct(actual_kg, agreed_per_day)),
                 "report_status":               _status(actual_kg, agreed_per_day),
                 "total_trips":                 1,
-                "collection_points_covered":   1 if r["collection_point_id"] else 0,
+                "collection_points_covered":   1 if log.collection_point_id_id else 0,
             })
 
         # Daily KPIs — use agreed_per_day × distinct trip dates (not sum of per-row agreed)

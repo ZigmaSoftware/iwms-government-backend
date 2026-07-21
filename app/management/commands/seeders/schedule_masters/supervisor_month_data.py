@@ -118,7 +118,6 @@ class SupervisorMonthDataSeeder(BaseSeeder):
                         # Required FKs must be set explicitly — the model's save()
                         # reads them (raising on unset non-null FKs) to autofill.
                         "staff_template_id": template,
-                        "waste_type_id": plan.waste_type_id,
                         "vehicle_id": plan.vehicle_id,
                         "state": plan.state,
                         "district": plan.district,

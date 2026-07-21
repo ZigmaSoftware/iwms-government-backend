@@ -171,12 +171,11 @@ class DailyTripLog(BaseMaster):
         null=True,
         blank=True,
     )
-    waste_type_id = models.ForeignKey(
+    # Waste types collected on this trip (inherited from the Daily Trip Assignment).
+    waste_types = models.ManyToManyField(
         WasteType,
-        on_delete=models.PROTECT,
-        db_column="waste_type_id",
-        to_field="unique_id",
-        related_name="daily_trip_logs",
+        related_name="daily_trip_logs_multi",
+        blank=True,
     )
 
     trip_date = models.DateField()
@@ -281,7 +280,6 @@ class DailyTripLog(BaseMaster):
             )
             if first_child:
                 self.collection_point_id = first_child.collection_point_id
-        self.waste_type_id = assignment.waste_type_id
         self.trip_date = assignment.trip_date
         self.actual_start_time = self.actual_start_time or assignment.actual_start_time
         self.actual_end_time = self.actual_end_time or assignment.actual_end_time
@@ -382,6 +380,9 @@ class DailyTripLog(BaseMaster):
 
         self.full_clean()
         super().save(*args, **kwargs)
+
+        if self.trip_assignment_id:
+            self.waste_types.set(self.trip_assignment_id.waste_types.all())
 
         self.sync_from_secondary_bin_collection_events()
         self.sync_from_household_collections()

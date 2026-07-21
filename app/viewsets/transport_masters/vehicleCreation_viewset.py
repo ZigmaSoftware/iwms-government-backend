@@ -32,6 +32,32 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "vehicles"
 
+    # -------------------------------------------------------------
+    # Scope the default list/retrieve queryset by geo query params
+    # (state_id/district_id/area_type_id/corporation_id/etc.), same
+    # convention as CollectionPointViewSet/BinsViewSet/CustomerCreationViewSet.
+    # Lets callers like Trip Plan's vehicle dropdown fetch only the vehicles
+    # for a given local body instead of downloading every vehicle.
+    # -------------------------------------------------------------
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        for field in (
+            "state_id",
+            "district_id",
+            "area_type_id",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
+            "panchayat_id",
+        ):
+            value = self.request.query_params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
+
+        return queryset
+
     def get_object(self):
         lookup_field = self.lookup_field
         lookup_url_kwarg = self.lookup_url_kwarg or lookup_field

@@ -91,7 +91,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
     panchayat = _PanchayatBriefSerializer()
-    waste_type = _WasteTypeBriefSerializer(source="waste_type_id")
+    waste_types = _WasteTypeBriefSerializer(source="waste_types", many=True)
     vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
     progress = serializers.SerializerMethodField()
     distance_meters = serializers.SerializerMethodField()

@@ -23,10 +23,9 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 approval_status=TripPlan.ApprovalStatus.APPROVED,
             ).select_related(
                 "staff_template_id",
-                "waste_type_id",
                 "vehicle_id",
                 "district",
-            )
+            ).prefetch_related("waste_types")
         )
 
         if not plans:
@@ -56,10 +55,9 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 if already_exists:
                     continue
 
-                DailyTripAssignment.objects.create(
+                assignment = DailyTripAssignment.objects.create(
                     trip_plan_id=plan,
                     staff_template_id=plan.staff_template_id,
-                    waste_type_id=plan.waste_type_id,
                     vehicle_id=plan.vehicle_id,
                     # Copy the plan's full geographic scope from the masters
                     state=plan.state,
@@ -75,6 +73,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                     status=DailyTripAssignment.STATUS_SCHEDULED,
                     approval_status=DailyTripAssignment.APPROVAL_APPROVED,
                 )
+                assignment.waste_types.set(plan.waste_types.all())
                 created_count += 1
 
             day_offset += 1

@@ -72,7 +72,7 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                 for cp in cps:
                     bin_obj = Bins.objects.filter(
                         collection_point_id=cp,
-                        wastetype_id=plan.waste_type_id,
+                        wastetype_id__in=plan.waste_types.all(),
                         is_deleted=False,
                         is_active=True,
                     ).first()

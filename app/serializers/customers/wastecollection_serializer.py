@@ -12,6 +12,9 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.utils.hierarchy import flat_geo_display
+from app.serializers.transport_masters.vehicleCreation_serializer import (
+    VehicleCreationSerializer,
+)
 
 
 class CustomerField(serializers.SlugRelatedField):
@@ -105,6 +108,10 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     location_name = serializers.SerializerMethodField(read_only=True)
     location_level = serializers.SerializerMethodField(read_only=True)
 
+    # Vehicle that performed the collection, resolved via the linked trip
+    # assignment (falling back to its trip plan's vehicle).
+    vehicle = serializers.SerializerMethodField(read_only=True)
+
     # Capture photos taken during collection. They live on the separate
     # WasteCollectionSub model (mobile capture flow), linked here by the same
     # household + collection date. Read-only convenience for the desktop screen.
@@ -152,6 +159,7 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
             "panchayat_name",
             "location_name",
             "location_level",
+            "vehicle",
             "capture_images",
             "trip_assignment_id",
             "trip_assignment_display",
@@ -178,6 +186,17 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
         if not level:
             _, level = flat_geo_display(obj.customer)
         return level
+
+    def get_vehicle(self, obj):
+        assignment = obj.trip_assignment_id
+        if not assignment:
+            return None
+        vehicle = getattr(assignment, "vehicle_id", None) or getattr(
+            getattr(assignment, "trip_plan_id", None), "vehicle_id", None
+        )
+        if not vehicle:
+            return None
+        return VehicleCreationSerializer(vehicle, context=self.context).data
 
     def get_capture_images(self, obj):
         """Capture photos for this collection, pulled from WasteCollectionSub

@@ -161,7 +161,7 @@ class ScanBinViewSet(viewsets.ViewSet):
             # Hierarchy visibility: stamp the audit row with the
             # collection point's location node so scope filtering works.
             location_node=node_for_flat_geo(ctx.bin.collection_point_id),
-            waste_type_id=ctx.assignment.waste_type_id,
+            waste_type_id=ctx.bin.wastetype_id,
             vehicle_id=ctx.assignment.vehicle_id,
             status=event_status,
             status_reason=status_reason,
