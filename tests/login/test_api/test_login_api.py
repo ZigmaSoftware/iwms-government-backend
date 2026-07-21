@@ -204,7 +204,7 @@ class TestLoginStaffBranch:
         project,
         user_type,
     ):
-        from app.models.role_assigns.staffUserType import StaffUserType
+        from app.models.superadmin.role_management.staffUserType import StaffUserType
         from app.models.user_creations.staffcreation import Staffcreation
         from app.utils.password_encryption import encrypt_password
 
@@ -241,7 +241,7 @@ class TestLoginStaffBranch:
         project,
         user_type,
     ):
-        from app.models.role_assigns.staffUserType import StaffUserType
+        from app.models.superadmin.role_management.staffUserType import StaffUserType
         from app.models.user_creations.staffcreation import Staffcreation
         from app.utils.password_encryption import encrypt_password
 

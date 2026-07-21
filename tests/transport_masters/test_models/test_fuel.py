@@ -1,6 +1,6 @@
 """Unit tests for Fuel model — CRUD + constraints."""
 import pytest
-from app.models.transport_masters.fuel import Fuel
+from app.models.masters.transport_masters.fuel import Fuel
 
 
 @pytest.mark.django_db

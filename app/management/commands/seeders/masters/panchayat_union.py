@@ -1,6 +1,6 @@
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.geo import coordinates
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.district import District
 from app.models.masters.panchayat_union import PanchayatUnion

@@ -1,13 +1,13 @@
 from django.db import models
 from app.utils.base_models import Account, BaseMaster
 from app.utils.comfun import generate_unique_id
-from ..role_assigns.userType import UserType
-from ..role_assigns.staffUserType import StaffUserType
-from ..role_assigns.contractorUserType import ContractorUserType
-from ..role_assigns.governmentStaffUserType import GovernmentStaffUserType
+from ..superadmin.role_management.userType import UserType
+from ..superadmin.role_management.staffUserType import StaffUserType
+from ..superadmin.role_management.contractorUserType import ContractorUserType
+from ..superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
@@ -16,6 +16,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.utils.customer_qr import generate_customer_qr_content
+from app.utils.file_validators import validate_pdf_upload
 
 
 def generate_staff_unique_id():
@@ -85,7 +86,14 @@ class StaffcreationOfficeDetails(BaseMaster):
     driving_licence_file = models.FileField(
         upload_to="staff_licences/",
         blank=True,
-        null=True
+        null=True,
+        validators=[validate_pdf_upload],
+        help_text="Driving licence document (PDF, max 3 MB).",
+    )
+    driving_experience_years = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Driving experience in years.",
     )
 
     # =============================================

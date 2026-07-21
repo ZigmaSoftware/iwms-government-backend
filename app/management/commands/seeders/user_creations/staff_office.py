@@ -8,8 +8,8 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
-from app.models.role_assigns.userType import UserType
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.userType import UserType
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 
 _LOCAL_BODY_MODELS = [

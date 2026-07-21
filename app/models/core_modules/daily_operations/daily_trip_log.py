@@ -1,0 +1,399 @@
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import Sum
+from django.utils import timezone
+
+from app.models.assets.bins import Bins
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.user_creations.staffcreation import Staffcreation
+from app.models.assets.wastetype import WasteType
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.utils.base_models import Account, BaseMaster
+from app.utils.hierarchy import copy_flat_geo
+
+
+def _generate_daily_trip_log_unique_id():
+    today = timezone.localdate()
+    prefix = f"DTL-{today.year}-{today.month:02d}"
+    # Use the highest existing suffix + 1 (not a plain count, which collides once
+    # any log for the month has been deleted) and guarantee uniqueness.
+    existing = DailyTripLog.objects.filter(
+        unique_id__startswith=f"{prefix}-",
+    ).values_list("unique_id", flat=True)
+    max_n = 0
+    for uid in existing:
+        try:
+            max_n = max(max_n, int(uid.rsplit("-", 1)[1]))
+        except (ValueError, IndexError):
+            continue
+    candidate = max_n + 1
+    while DailyTripLog.objects.filter(unique_id=f"{prefix}-{candidate:03d}").exists():
+        candidate += 1
+    return f"{prefix}-{candidate:03d}"
+
+
+class DailyTripLog(BaseMaster):
+    LOG_STATUS_DRAFT = "Draft"
+    LOG_STATUS_SUBMITTED = "Submitted"
+    LOG_STATUS_VERIFIED = "Verified"
+
+    LOG_STATUS_CHOICES = [
+        (LOG_STATUS_DRAFT, "Draft"),
+        (LOG_STATUS_SUBMITTED, "Submitted"),
+        (LOG_STATUS_VERIFIED, "Verified"),
+    ]
+
+    unique_id = models.CharField(
+        max_length=50,
+        unique=True,
+        editable=False,
+        db_index=True,
+    )
+
+    trip_assignment_id = models.OneToOneField(
+        DailyTripAssignment,
+        on_delete=models.PROTECT,
+        db_column="trip_assignment_id",
+        to_field="unique_id",
+        related_name="daily_trip_log",
+    )
+
+    staff_template_id = models.ForeignKey(
+        StaffTemplate,
+        on_delete=models.PROTECT,
+        db_column="staff_template_id",
+        to_field="unique_id",
+        related_name="daily_trip_logs",
+        null=True,
+        blank=True,
+    )
+    alt_staff_template_id = models.ForeignKey(
+        AlternativeStaffTemplate,
+        on_delete=models.PROTECT,
+        db_column="alt_staff_template_id",
+        to_field="unique_id",
+        related_name="daily_trip_logs",
+        null=True,
+        blank=True,
+    )
+
+    state = models.ForeignKey(
+        State,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="state_id",
+    )
+    district = models.ForeignKey(
+        District,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="district_id",
+    )
+    area_type = models.ForeignKey(
+        AreaType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="area_type_id",
+    )
+    corporation = models.ForeignKey(
+        Corporation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="corporation_id",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="municipality_id",
+    )
+    town_panchayat = models.ForeignKey(
+        TownPanchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="town_panchayat_id",
+    )
+    panchayat_union = models.ForeignKey(
+        PanchayatUnion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="panchayat_union_id",
+    )
+    panchayat = models.ForeignKey(
+        Panchayat,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="daily_trip_logs",
+        to_field="unique_id",
+        db_column="panchayat_id",
+    )
+    collection_point_id = models.ForeignKey(
+        Collection_point,
+        on_delete=models.PROTECT,
+        db_column="collection_point_id",
+        to_field="unique_id",
+        related_name="daily_trip_logs",
+        null=True,
+        blank=True,
+    )
+    # Waste types collected on this trip (inherited from the Daily Trip Assignment).
+    waste_types = models.ManyToManyField(
+        WasteType,
+        related_name="daily_trip_logs_multi",
+        blank=True,
+    )
+
+    trip_date = models.DateField()
+    actual_start_time = models.TimeField(null=True, blank=True)
+    actual_end_time = models.TimeField(null=True, blank=True)
+
+    driver_id = models.ForeignKey(
+        Staffcreation,
+        on_delete=models.PROTECT,
+        db_column="driver_id",
+        to_field="staff_unique_id",
+        related_name="daily_trip_logs_as_driver",
+    )
+    operator_id = models.ForeignKey(
+        Staffcreation,
+        on_delete=models.PROTECT,
+        db_column="operator_id",
+        to_field="staff_unique_id",
+        related_name="daily_trip_logs_as_operator",
+    )
+    extra_operator_ids = models.ManyToManyField(
+        Staffcreation,
+        blank=True,
+        related_name="daily_trip_logs_as_extra_operator",
+    )
+
+    collected_weight_kg = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Auto-computed as the sum of all BinCollectionEvent weights for this trip.",
+    )
+    household_collected_weight_kg = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Auto-computed as the sum of all WasteCollection totals linked to this trip.",
+    )
+
+    vehicle_id = models.ForeignKey(
+        VehicleCreation,
+        on_delete=models.PROTECT,
+        db_column="vehicle_id",
+        to_field="unique_id",
+        related_name="daily_trip_logs",
+    )
+    bin_ids = models.ManyToManyField(
+        Bins,
+        blank=True,
+        related_name="daily_trip_logs",
+    )
+
+    remarks = models.TextField(null=True, blank=True)
+    log_status = models.CharField(
+        max_length=20,
+        choices=LOG_STATUS_CHOICES,
+        default=LOG_STATUS_DRAFT,
+        db_index=True,
+    )
+
+    verified_by = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="verified_by",
+        related_name="verified_daily_trip_logs",
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-trip_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["trip_date", "log_status"]),
+            models.Index(fields=["collection_point_id", "trip_date"]),
+        ]
+
+    def __str__(self):
+        return self.unique_id
+
+    def _resolve_effective_staff_template(self):
+        assignment = self.trip_assignment_id
+        return assignment.alt_staff_template_id or assignment.staff_template_id
+
+    def autofill_from_assignment(self):
+        assignment = self.trip_assignment_id
+        if not assignment:
+            return
+
+        copy_flat_geo(self, assignment)
+        if not self.collection_point_id:
+            first_child = (
+                assignment.trip_collection_points
+                .filter(is_deleted=False)
+                .order_by("sequence")
+                .first()
+            )
+            if first_child:
+                self.collection_point_id = first_child.collection_point_id
+        self.trip_date = assignment.trip_date
+        self.actual_start_time = self.actual_start_time or assignment.actual_start_time
+        self.actual_end_time = self.actual_end_time or assignment.actual_end_time
+
+        self.staff_template_id = assignment.staff_template_id
+        self.alt_staff_template_id = assignment.alt_staff_template_id
+
+        effective_template = self._resolve_effective_staff_template()
+        if effective_template:
+            self.driver_id = effective_template.driver_id
+            self.operator_id = effective_template.operator_id
+
+        if getattr(assignment, "vehicle_id", None):
+            self.vehicle_id = assignment.vehicle_id
+        elif getattr(assignment, "trip_plan_id", None):
+            self.vehicle_id = assignment.trip_plan_id.vehicle_id
+
+    def sync_from_household_collections(self):
+        """Aggregate household waste weight from WasteCollection records for this trip.
+
+        Mirrors sync_from_secondary_bin_collection_events() — only overrides when records exist
+        so that manually-entered values are preserved when no WasteCollections are linked.
+        """
+        from app.models.masters.customer_masters.wastecollection import WasteCollection
+
+        records = WasteCollection.objects.filter(
+            trip_assignment_id=self.trip_assignment_id_id,
+            is_deleted=False,
+        )
+        if not records.exists():
+            return
+
+        total = records.aggregate(total=Sum("total_quantity"))["total"]
+        self.household_collected_weight_kg = Decimal(str(total or 0))
+        DailyTripLog.objects.filter(pk=self.pk).update(
+            household_collected_weight_kg=self.household_collected_weight_kg,
+        )
+
+    def sync_from_secondary_bin_collection_events(self):
+        """Aggregate total collected weight from BinCollectionEvent records for this trip.
+
+        Only overrides collected_weight_kg when bin-scan events actually exist.
+        When no events are present the manually-entered value is preserved so that
+        operators who enter weight directly (without bin scanning) are not silently
+        zeroed out.
+        """
+        from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+
+        events = BinCollectionEvent.objects.filter(
+            trip_assignment_id=self.trip_assignment_id_id,
+            is_deleted=False,
+        )
+        if not events.exists():
+            # No bin-scan events — keep whatever was manually entered.
+            return
+
+        total = events.aggregate(total=Sum("collected_weight_kg"))["total"]
+        self.collected_weight_kg = total or Decimal("0")
+        DailyTripLog.objects.filter(pk=self.pk).update(
+            collected_weight_kg=self.collected_weight_kg,
+        )
+
+    def clean(self):
+        super().clean()
+
+        if not self.trip_assignment_id:
+            return
+
+        assignment = self.trip_assignment_id
+        if assignment.status == DailyTripAssignment.STATUS_CANCELLED:
+            raise ValidationError("Cannot create a log for a cancelled trip.")
+
+        if self.pk:
+            previous = DailyTripLog.objects.filter(pk=self.pk).first()
+            if previous and previous.log_status == self.LOG_STATUS_VERIFIED:
+                raise ValidationError("Verified trip logs are read-only.")
+
+        if self.log_status != self.LOG_STATUS_DRAFT:
+            bin_weight = self.collected_weight_kg or Decimal("0")
+            household_weight = self.household_collected_weight_kg or Decimal("0")
+            if bin_weight <= 0 and household_weight <= 0:
+                raise ValidationError(
+                    "Either collected_weight_kg or household_collected_weight_kg must be "
+                    "greater than 0 before submitting."
+                )
+
+        vehicle_capacity = getattr(self.vehicle_id, "capacity", None)
+        trip_capacity = getattr(assignment.trip_plan_id, "max_vehicle_capacity_kg", None)
+        capacity = vehicle_capacity or trip_capacity
+        if capacity and self.collected_weight_kg:
+            if Decimal(self.collected_weight_kg) > Decimal(capacity):
+                raise ValidationError("collected_weight_kg cannot exceed vehicle capacity.")
+
+    def save(self, *args, **kwargs):
+        self.autofill_from_assignment()
+        if not self.unique_id:
+            self.unique_id = _generate_daily_trip_log_unique_id()
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+        if self.trip_assignment_id:
+            self.waste_types.set(self.trip_assignment_id.waste_types.all())
+
+        self.sync_from_secondary_bin_collection_events()
+        self.sync_from_household_collections()
+
+        if self.log_status in {self.LOG_STATUS_SUBMITTED, self.LOG_STATUS_VERIFIED}:
+            assignment = self.trip_assignment_id
+            if assignment.status != DailyTripAssignment.STATUS_COMPLETED:
+                now_time = timezone.localtime().time()
+                update_fields = ["status", "updated_at"]
+                assignment.status = DailyTripAssignment.STATUS_COMPLETED
+                if not assignment.actual_end_time:
+                    assignment.actual_end_time = self.actual_end_time or now_time
+                    update_fields.append("actual_end_time")
+                assignment.save(update_fields=update_fields)

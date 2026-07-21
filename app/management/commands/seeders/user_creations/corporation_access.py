@@ -20,8 +20,8 @@ from django.contrib.auth.hashers import make_password
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.corporation import Corporation
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
-from app.models.role_assigns.userType import UserType
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.userType import UserType
 from app.models.user_creations.staff_data_scope import StaffDataScope
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 

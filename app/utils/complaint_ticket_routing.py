@@ -80,7 +80,7 @@ def _routing_specificity(rule):
 
 
 def _best_routing_rule(ticket):
-    from app.models.complaint_ticket.routing_rule import ComplaintRoutingRule
+    from app.models.core_modules.complaint_management.routing_rule import ComplaintRoutingRule
 
     candidates = ComplaintRoutingRule.objects.filter(
         is_deleted=False,
@@ -114,7 +114,7 @@ def _sla_specificity(rule):
 
 
 def _best_sla_rule(ticket):
-    from app.models.complaint_ticket.sla_rule_master import ComplaintSlaRule
+    from app.models.core_modules.complaint_management.sla_rule_master import ComplaintSlaRule
 
     candidates = ComplaintSlaRule.objects.filter(
         is_deleted=False,
@@ -175,10 +175,10 @@ def perform_escalation(ticket, target_team=None, reason=None, actor_user=None, b
     detection job so both paths write identical history rows. Raises
     ValueError if there is no team to escalate to.
     """
-    from app.models.complaint_ticket.status_master import ComplaintStatus
-    from app.models.complaint_ticket.status_history import ComplaintStatusHistory
-    from app.models.complaint_ticket.assignment_history import ComplaintAssignmentHistory
-    from app.models.complaint_ticket.escalation_history import ComplaintEscalationHistory
+    from app.models.core_modules.complaint_management.status_master import ComplaintStatus
+    from app.models.core_modules.complaint_management.status_history import ComplaintStatusHistory
+    from app.models.core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
+    from app.models.core_modules.complaint_management.escalation_history import ComplaintEscalationHistory
     from app.services import notification_service
 
     current_team = ticket.assigned_team

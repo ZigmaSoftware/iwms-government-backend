@@ -1,7 +1,7 @@
 """API tests for ContractorUserType endpoint — CRUD operations."""
 import pytest
-from app.models.role_assigns.userType import UserType
-from app.models.role_assigns.contractorUserType import ContractorUserType
+from app.models.superadmin.role_management.userType import UserType
+from app.models.superadmin.role_management.contractorUserType import ContractorUserType
 
 BASE = "/api/v1/role-assigns/contractorusertypes/"
 

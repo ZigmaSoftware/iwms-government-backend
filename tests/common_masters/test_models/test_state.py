@@ -1,6 +1,6 @@
 """Unit tests for State (common_masters) model — CRUD + constraints."""
 import pytest
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 
 
 @pytest.mark.django_db

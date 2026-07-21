@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from app.models.assets.weighbridge import WeighbridgeCheck
-from app.models.schedule_masters.trip_plan import TripPlan
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 
 
 class WeighbridgeCheckSerializer(serializers.ModelSerializer):

@@ -29,13 +29,13 @@ def project(db, company):
 
 @pytest.fixture
 def continent(db):
-    from app.models.common_masters.continent import Continent
+    from app.models.superadmin.common_masters.continent import Continent
     return Continent.objects.create(name="Asia")
 
 
 @pytest.fixture
 def country(db, continent):
-    from app.models.common_masters.country import Country
+    from app.models.superadmin.common_masters.country import Country
     return Country.objects.create(
         name="India",
         continent_id=continent,
@@ -46,7 +46,7 @@ def country(db, continent):
 
 @pytest.fixture
 def state(db, continent, country):
-    from app.models.common_masters.state import State
+    from app.models.superadmin.common_masters.state import State
     return State.objects.create(
         name="Tamil Nadu",
         label="TN",
@@ -118,7 +118,7 @@ def ward(db, state, district, city, zone):
 
 @pytest.fixture
 def user_type(db):
-    from app.models.role_assigns.userType import UserType
+    from app.models.superadmin.role_management.userType import UserType
     return UserType.objects.create(name="Staff")
 
 
