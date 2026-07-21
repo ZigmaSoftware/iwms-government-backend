@@ -24,6 +24,7 @@ from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_es
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.roles import is_admin_role, is_supervisor_role
 from app.services import notification_service
+from app.services.push_notification_service import send_push_to_customer
 
 from app.models.masters.district import District
 from app.models.masters.corporation import Corporation
@@ -267,6 +268,14 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             changed_by_user=_actor_user(request),
             remarks=request.data.get("remarks"),
         )
+        if old_status.pk != new_status.pk:
+            status_label = new_status.status_name or new_status.status_code
+            send_push_to_customer(
+                ticket.customer,
+                "Grievance update",
+                f"Your ticket {ticket.ticket_no} status is now: {status_label}.",
+                data={"event": "ticket_status_changed", "ticket_id": str(ticket.unique_id), "status": new_status.status_code},
+            )
         return Response(self.get_serializer(ticket).data)
 
     # ----------------------------------------------------------
@@ -453,6 +462,12 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 f"Ticket {ticket.ticket_no} has been marked resolved." + (f" Note: {note}" if note else ""),
                 staff=ticket.assigned_staff,
             )
+        send_push_to_customer(
+            ticket.customer,
+            "Grievance update",
+            f"Good news — your ticket {ticket.ticket_no} has been resolved." + (f" {note}" if note else ""),
+            data={"event": "ticket_resolved", "ticket_id": str(ticket.unique_id)},
+        )
         return Response(self.get_serializer(ticket).data)
 
     # ----------------------------------------------------------
@@ -562,6 +577,12 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 ),
                 staff=ticket.assigned_staff,
             )
+        send_push_to_customer(
+            ticket.customer,
+            "Grievance update",
+            f"Your ticket {ticket.ticket_no} has been reopened and is being looked at again.",
+            data={"event": "ticket_reopened", "ticket_id": str(ticket.unique_id)},
+        )
         return Response(self.get_serializer(ticket).data)
 
     # ----------------------------------------------------------

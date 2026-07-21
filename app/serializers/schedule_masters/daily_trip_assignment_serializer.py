@@ -15,6 +15,7 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.transport_masters.vehicleCreation import VehicleCreation
 from app.models.assets.wastetype import WasteType
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.waste_images import capture_images_for_customer
 
 
 class DailyTripAssignmentSerializer(serializers.ModelSerializer):
@@ -193,6 +194,8 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "collected_weight_kg": stop.collected_weight_kg,
             "status": stop.status,
             "status_reason": getattr(stop, "status_reason", None),
+            # Bin collection doesn't capture a proof photo yet (planned).
+            "image": None,
         } for stop in stops]
 
     def get_household_collection_points(self, obj):
