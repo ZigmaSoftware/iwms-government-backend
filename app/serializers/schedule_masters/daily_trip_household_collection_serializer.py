@@ -43,6 +43,8 @@ class DailyTripHouseholdCollectionSerializer(
             "collected_weight_kg",
             "status",
             "status_reason",
+            "status_latitude",
+            "status_longitude",
             "created_at",
             "updated_at",
         ]
@@ -75,8 +77,11 @@ class DailyTripHouseholdCollectionSerializer(
         return {
             "unique_id": customer.unique_id,
             "customer_name": getattr(customer, "customer_name", None),
+            "contact_no": getattr(customer, "contact_no", None),
             "building_no": getattr(customer, "building_no", None),
             "street": getattr(customer, "street", None),
+            "latitude": getattr(customer, "latitude", None),
+            "longitude": getattr(customer, "longitude", None),
             "location_name": name,
             "location_level": level,
         }

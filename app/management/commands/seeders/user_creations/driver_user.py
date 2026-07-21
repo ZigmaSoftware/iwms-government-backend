@@ -525,18 +525,36 @@ class DriverUserSeeder(BaseSeeder):
             )
 
     def _sync_bin_stops(self, plan, bins):
+        # The model's real uniqueness is (trip_plan_id, sequence) — see
+        # TripPlanCollectionPoint.Meta.constraints ("uniq_sequence_per_trip_plan").
+        # The lookup here must match those fields, otherwise update_or_create can
+        # try to write a `sequence` that collides with a DIFFERENT existing row
+        # (e.g. if a collection point's assigned seq shifts between runs), raising
+        # IntegrityError instead of updating in place.
+        kept_ids = []
         for seq, (cp, bin_obj) in enumerate(bins, start=1):
-            TripPlanCollectionPoint.objects.update_or_create(
+            stop, _ = TripPlanCollectionPoint.objects.update_or_create(
                 trip_plan_id=plan,
-                collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
-                collection_point_id=cp,
+                sequence=seq,
                 defaults={
+                    "collection_type": TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+                    "collection_point_id": cp,
                     "bin_id": bin_obj,
-                    "sequence": seq,
                     "is_active": True,
                     "is_deleted": False,
                 },
             )
+            kept_ids.append(stop.pk)
+
+        # Drop any bin stop left over from a previous run with more bins (or from
+        # the earlier version of this method, whose mismatched lookup could leave
+        # a stale row alongside the corrected one instead of updating it) — a
+        # PROTECT-referenced Collection_point/Bin is never deleted by this, only
+        # the plan's stop row.
+        TripPlanCollectionPoint.objects.filter(
+            trip_plan_id=plan,
+            collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+        ).exclude(pk__in=kept_ids).delete()
 
     def _sync_household_stop(self, plan):
         # Area-scoped household stop (customer_id=None) — the assignment signal

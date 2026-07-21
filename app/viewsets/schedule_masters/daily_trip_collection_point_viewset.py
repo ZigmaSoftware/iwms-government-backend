@@ -16,15 +16,31 @@ from app.models.schedule_masters.daily_trip_collection_point import (
 )
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.models.schedule_masters.daily_trip_household_collection import (
+    DailyTripHouseholdCollection,
+)
 from app.models.schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
 from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.services.openroute_service import OpenRouteServiceError, optimize_stops, route_stops
 from app.serializers.schedule_masters.daily_trip_collection_point_serializer import (
     DailyTripCollectionPointSerializer,
 )
+from app.serializers.schedule_masters.daily_trip_household_collection_serializer import (
+    DailyTripHouseholdCollectionSerializer,
+)
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
 from rest_framework import viewsets
+
+
+def _valid_coordinate(latitude, longitude):
+    """True when a lat/lng pair (customer coords are plain, possibly-blank
+    CharFields) is present and not the (0, 0) null-island placeholder."""
+    try:
+        lat, lng = float(latitude), float(longitude)
+    except (TypeError, ValueError):
+        return False
+    return not (lat == 0 and lng == 0)
 
 
 class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -92,14 +108,17 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             next_stop.status = DailyTripCollectionPoint.STATUS_IN_PROGRESS
             next_stop.save(update_fields=["status", "updated_at"])
 
-    def _latest_vehicle_start(self, assignment):
-        latest_event = (
+    def _latest_gps_event(self, assignment):
+        return (
             BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
             .exclude(driver_latitude=None)
             .exclude(driver_longitude=None)
             .order_by("-created_at")
             .first()
         )
+
+    def _latest_vehicle_start(self, assignment):
+        latest_event = self._latest_gps_event(assignment)
         if not latest_event:
             return None
         return [
@@ -382,6 +401,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         trip_date = params.get("date") or params.get("trip_date")
         staff_template = params.get("staff_template_id")
         alt_staff_template = params.get("alt_staff_template_id")
+        trip_plan = params.get("trip_plan_id")
+        waste_type = params.get("waste_type_id")
+        vehicle = params.get("vehicle_id")
         search = params.get("search")
 
         if assignment:
@@ -406,6 +428,12 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(
                 trip_assignment_id__alt_staff_template_id__unique_id=alt_staff_template
             )
+        if trip_plan:
+            queryset = queryset.filter(trip_assignment_id__trip_plan_id__unique_id=trip_plan)
+        if waste_type:
+            queryset = queryset.filter(trip_assignment_id__waste_type_id__unique_id=waste_type)
+        if vehicle:
+            queryset = queryset.filter(trip_assignment_id__vehicle_id__unique_id=vehicle)
         if search:
             queryset = queryset.filter(
                 Q(collection_point_id__cp_name__icontains=search)
@@ -538,13 +566,32 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="tracking-overview")
     def tracking_overview(self, request):
+        params = request.query_params
         assignments = DailyTripAssignment.objects.select_related(
             "vehicle_id",
             "trip_plan_id",
         ).filter(is_deleted=False)
-        trip_date = request.query_params.get("date") or request.query_params.get("trip_date")
+        trip_date = params.get("date") or params.get("trip_date")
         if trip_date:
             assignments = assignments.filter(trip_date=trip_date)
+
+        staff_template = params.get("staff_template_id")
+        alt_staff_template = params.get("alt_staff_template_id")
+        trip_plan = params.get("trip_plan_id")
+        waste_type = params.get("waste_type_id")
+        vehicle = params.get("vehicle_id")
+        if staff_template:
+            assignments = assignments.filter(staff_template_id__unique_id=staff_template)
+        if alt_staff_template:
+            assignments = assignments.filter(alt_staff_template_id__unique_id=alt_staff_template)
+        if trip_plan:
+            assignments = assignments.filter(trip_plan_id__unique_id=trip_plan)
+        if waste_type:
+            assignments = assignments.filter(waste_type_id__unique_id=waste_type)
+        if vehicle:
+            assignments = assignments.filter(vehicle_id__unique_id=vehicle)
+
+        assignments = filter_flat_geo_queryset_by_params(assignments, params)
         assignments = assignments.order_by("-trip_date", "-scheduled_time")[:30]
 
         trips = []
@@ -572,7 +619,20 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 .filter(trip_assignment_id=assignment, is_deleted=False)
                 .order_by("sequence")
             )
-            if not stops:
+            # Household/bulk stops live in a separate table (no `collection_point`
+            # row is created for them — see `_ensure_assignment_stops`). Trips
+            # whose Trip Plan is household/bulk-only would otherwise have zero
+            # `stops` and be skipped entirely from the overview map below.
+            household_stops = list(
+                DailyTripHouseholdCollection.objects.select_related(
+                    "customer_id",
+                    "trip_assignment_id",
+                    "trip_assignment_id__trip_plan_id",
+                )
+                .filter(trip_assignment_id=assignment, is_deleted=False)
+                .order_by("sequence")
+            )
+            if not stops and not household_stops:
                 continue
 
             completed = sum(stop.status == DailyTripCollectionPoint.STATUS_COLLECTED for stop in stops)
@@ -585,7 +645,24 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 ]
                 for stop in stops
             )
-            aggregate["total"] += len(stops)
+            household_completed = sum(
+                stop.status == DailyTripHouseholdCollection.STATUS_COLLECTED for stop in household_stops
+            )
+            household_missed = sum(
+                stop.status in [
+                    DailyTripHouseholdCollection.STATUS_MISSED,
+                    DailyTripHouseholdCollection.STATUS_NOT_COLLECTED,
+                ]
+                for stop in household_stops
+            )
+            household_pending = len(household_stops) - household_completed - household_missed
+
+            completed += household_completed
+            pending += household_pending
+            missed += household_missed
+            total_stops = len(stops) + len(household_stops)
+
+            aggregate["total"] += total_stops
             aggregate["completed"] += completed
             aggregate["in_progress"] += in_progress
             aggregate["pending"] += pending
@@ -600,8 +677,16 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     ],
                 }
                 for stop in stops
+            ] + [
+                {
+                    "id": stop.unique_id,
+                    "location": [float(stop.customer_id.longitude), float(stop.customer_id.latitude)],
+                }
+                for stop in household_stops
+                if stop.customer_id and _valid_coordinate(stop.customer_id.latitude, stop.customer_id.longitude)
             ]
             vehicle_start = self._latest_vehicle_start(assignment)
+            latest_gps_event = self._latest_gps_event(assignment)
             route_signature = "|".join(
                 [
                     assignment.unique_id,
@@ -609,6 +694,10 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     *[
                         f"{stop.unique_id}:{stop.sequence}:{stop.collection_point_id.latitude}:{stop.collection_point_id.longitude}"
                         for stop in stops
+                    ],
+                    *[
+                        f"{stop.unique_id}:{stop.sequence}:{getattr(stop.customer_id, 'latitude', '')}:{getattr(stop.customer_id, 'longitude', '')}"
+                        for stop in household_stops
                     ],
                 ]
             )
@@ -622,19 +711,23 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "trip_date": assignment.trip_date,
                 "status": assignment.status,
                 "vehicle_no": getattr(assignment.vehicle_id, "vehicle_no", None),
+                "gps_recorded_at": latest_gps_event.created_at if latest_gps_event else None,
                 "summary": {
-                    "total": len(stops),
+                    "total": total_stops,
                     "completed": completed,
                     "in_progress": in_progress,
                     "pending": pending,
                     "missed": missed,
-                    "completion_percentage": round((completed / len(stops)) * 100, 2),
+                    "completion_percentage": round((completed / total_stops) * 100, 2) if total_stops else 0,
                 },
                 "distance_meters": route["distance"],
                 "duration_seconds": route["duration"],
                 "route_geojson": route["geometry"],
                 "vehicle_start": route["vehicle_start"],
                 "collection_points": self.get_serializer(stops, many=True).data,
+                "household_collection_points": DailyTripHouseholdCollectionSerializer(
+                    household_stops, many=True,
+                ).data,
             })
 
         aggregate["completion_percentage"] = (
