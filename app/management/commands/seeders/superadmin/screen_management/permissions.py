@@ -238,20 +238,12 @@ class PermissionSeeder(BaseSeeder):
                 "module": "waste-types",
                 "icon": "recycling",
                 "order": 4,
-                "description": "Waste type configuration",
+                "description": "Waste type and asset configuration",
                 "subitems": [
-                    ("properties", "properties", "properties", 1, "Property definitions"),
-                    ("subproperties", "subproperties", "subproperties", 2, "Sub-property definitions"),
-                ],
-            },
-            {
-                "module": "assets",
-                "icon": "inventory_2",
-                "order": 5,
-                "description": "Asset and waste handling screens",
-                "subitems": [
-                    ("bins", "bins", "bins", 1, "Bin creation"),
-                    ("wastetypes", "wastetypes", "wastetypes", 2, "Waste type maintenance"),
+                    ("wastetypes", "wastetypes", "wastetypes", 1, "Waste type maintenance"),
+                    ("properties", "properties", "properties", 2, "Property definitions"),
+                    ("subproperties", "subproperties", "subproperties", 3, "Sub-property definitions"),
+                    ("bins", "bins", "bins", 4, "Bin creation"),
                 ],
             },
             {
