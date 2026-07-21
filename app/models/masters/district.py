@@ -1,8 +1,8 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
-from ..common_masters.country import Country
-from ..common_masters.state import State
-from ..common_masters.continent import Continent
+from ..superadmin.common_masters.country import Country
+from ..superadmin.common_masters.state import State
+from ..superadmin.common_masters.continent import Continent
 from app.utils.comfun import generate_unique_id
 
 

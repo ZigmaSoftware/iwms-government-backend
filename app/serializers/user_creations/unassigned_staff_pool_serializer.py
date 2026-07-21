@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.user_creations.unassigned_staff_pool import UnassignedStaffPool
 

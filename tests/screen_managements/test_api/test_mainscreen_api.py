@@ -1,7 +1,7 @@
 """API tests for MainScreen and MainScreenType endpoints — CRUD operations."""
 import pytest
-from app.models.screen_managements.mainscreentype import MainScreenType
-from app.models.screen_managements.mainscreen import MainScreen
+from app.models.superadmin.screen_management.mainscreentype import MainScreenType
+from app.models.superadmin.screen_management.mainscreen import MainScreen
 
 SCREEN_TYPE_BASE = "/api/v1/screen-managements/mainscreentype/"
 MAIN_SCREEN_BASE = "/api/v1/screen-managements/mainscreens/"

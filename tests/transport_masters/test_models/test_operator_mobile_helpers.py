@@ -9,15 +9,15 @@ from app.models.assets.collection_point import Collection_point
 from app.models.masters.hierarchy import AdministrativeHierarchy
 from app.models.masters.areatype import AreaType
 from app.models.masters.panchayat import Panchayat, GeoFencingType
-from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.transport_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.transport_masters.daily_trip_collection_point import (
+from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.models.masters.transport_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.transport_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.transport_masters.trip_definition import TripDefinition
-from app.models.transport_masters.vehicleCreation import VehicleCreation
-from app.models.transport_masters.vehicleTypeCreation import VehicleTypeCreation
-from app.models.transport_masters.fuel import Fuel
+from app.models.masters.transport_masters.trip_definition import TripDefinition
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
+from app.models.masters.transport_masters.fuel import Fuel
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.user_creations.stafftemplate import StaffTemplate
 from app.models.user_creations.waste_collection_bluetooth import WasteType

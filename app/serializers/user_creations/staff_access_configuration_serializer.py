@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
 from app.models.masters.district import District
@@ -10,14 +10,14 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
-from app.models.screen_managements.companyuserscreencolumnpermission import (
+from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
-from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
-from app.models.screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
+from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 from app.models.user_creations.staff_data_scope import StaffDataScope
 from app.models.user_creations.staffcreation import Staffcreation
-from app.serializers.screen_managements.companyuserscreenpermission_serializer import (
+from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
 from app.serializers.user_creations.staffcreation_serializer import StaffcreationSerializer

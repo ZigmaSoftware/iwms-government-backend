@@ -36,7 +36,7 @@ class TestUserScreenActionAPIRetrieve:
 @pytest.mark.django_db
 class TestUserScreenActionAPIUpdate:
     def test_patch_returns_success(self, auth_client):
-        from app.models.screen_managements.userscreenaction import UserScreenAction
+        from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
         action = UserScreenAction.objects.create(action_name="Edit", variable_name="can_edit")
         resp = auth_client.patch(
             f"{BASE}{action.unique_id}/", {"action_name": "Modify"}, format="json"
@@ -47,7 +47,7 @@ class TestUserScreenActionAPIUpdate:
 @pytest.mark.django_db
 class TestUserScreenActionAPIDelete:
     def test_delete_returns_success(self, auth_client):
-        from app.models.screen_managements.userscreenaction import UserScreenAction
+        from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
         action = UserScreenAction.objects.create(action_name="Delete", variable_name="can_delete")
         resp = auth_client.delete(f"{BASE}{action.unique_id}/")
         assert resp.status_code in (200, 204)

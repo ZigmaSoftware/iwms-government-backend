@@ -1,11 +1,11 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.schedule_masters.trip_plan_collection_point import (
+from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 # Most specific level first: a stop/trip plan scoped to a single Panchayat
@@ -39,7 +39,7 @@ def _geo_filter_for(obj):
 
 
 def _customers_for_household_stop(stop):
-    from app.models.customers.customercreation import CustomerCreation
+    from app.models.masters.customer_masters.customercreation import CustomerCreation
 
     is_bulk_stop = stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
     if stop.customer_id_id:
@@ -63,7 +63,7 @@ def _customers_for_household_stop(stop):
 
 
 def _create_daily_household_collections(assignment, stop):
-    from app.models.schedule_masters.daily_trip_household_collection import (
+    from app.models.core_modules.daily_operations.daily_trip_household_collection import (
         DailyTripHouseholdCollection,
     )
 
@@ -174,10 +174,10 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     if not instance.trip_assignment_id_id or instance.is_deleted:
         return
 
-    from app.models.schedule_masters.daily_trip_household_collection import (
+    from app.models.core_modules.daily_operations.daily_trip_household_collection import (
         DailyTripHouseholdCollection,
     )
-    from app.models.schedule_masters.daily_trip_log import DailyTripLog
+    from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
     collection_type = (
         DailyTripHouseholdCollection.COLLECTION_TYPE_BULK
@@ -267,7 +267,7 @@ def sync_trip_log_on_bin_event_save(sender, instance, **kwargs):
     if not instance.trip_assignment_id_id or instance.is_deleted:
         return
 
-    from app.models.schedule_masters.daily_trip_log import DailyTripLog
+    from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
     log = DailyTripLog.objects.filter(
         trip_assignment_id=instance.trip_assignment_id_id,

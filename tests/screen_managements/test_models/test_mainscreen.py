@@ -1,7 +1,7 @@
 """Unit tests for MainScreen model — CRUD + constraints."""
 import pytest
-from app.models.screen_managements.mainscreentype import MainScreenType
-from app.models.screen_managements.mainscreen import MainScreen
+from app.models.superadmin.screen_management.mainscreentype import MainScreenType
+from app.models.superadmin.screen_management.mainscreen import MainScreen
 
 
 @pytest.fixture

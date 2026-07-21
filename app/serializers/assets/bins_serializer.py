@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from app.models.assets.bins import Bins
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation

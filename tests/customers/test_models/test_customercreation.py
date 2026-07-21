@@ -1,6 +1,6 @@
 """Unit tests for CustomerCreation model — CRUD + constraints."""
 import pytest
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.masters.panchayat import Panchayat
 from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
