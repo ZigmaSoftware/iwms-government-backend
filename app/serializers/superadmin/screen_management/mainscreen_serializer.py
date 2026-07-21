@@ -1,6 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 from app.models.superadmin.screen_management.mainscreen import MainScreen
+from app.validators.superadmin.screen_management.order_no_validators import validate_unique_order_no
 
 class MainScreenSerializer(serializers.ModelSerializer):
     mainscreentype_name = serializers.CharField(
@@ -51,24 +52,13 @@ class MainScreenSerializer(serializers.ModelSerializer):
         mainscreentype = data.get("mainscreentype_id") or getattr(self.instance, "mainscreentype_id", None)
         order_no = data.get("order_no")
 
-        if order_no is None:
-            return data
-        if mainscreentype is None:
-            return data
-
-        queryset = MainScreen.objects.filter(
-            mainscreentype_id=mainscreentype,
-            order_no=order_no,
-            is_deleted=False
+        validate_unique_order_no(
+            MainScreen,
+            "mainscreentype_id",
+            mainscreentype,
+            order_no,
+            self.instance,
+            "This order number already exists for this Main Screen Type.",
         )
-
-        # Exclude current instance during update
-        if self.instance:
-            queryset = queryset.exclude(unique_id=self.instance.unique_id)
-
-        if queryset.exists():
-            raise serializers.ValidationError({
-                "order_no": "This order number already exists for this Main Screen Type."
-            })
 
         return data

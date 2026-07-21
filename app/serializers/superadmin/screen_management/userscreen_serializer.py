@@ -1,5 +1,5 @@
 # =========================================================
-# serializers/screen_managements/userscreen_serializer.py
+# serializers/superadmin/screen_management/userscreen_serializer.py
 # =========================================================
 
 from django.db import transaction
@@ -16,6 +16,7 @@ from app.utils.userscreen_column_sync import (
     sync_screen_columns
 )
 from app.utils.model_mapper import resolve_userscreen_model
+from app.validators.superadmin.screen_management.order_no_validators import validate_unique_order_no
 
 
 class UserScreenSerializer(
@@ -135,26 +136,14 @@ class UserScreenSerializer(
         # UNIQUE ORDER VALIDATION
         # =================================================
 
-        if order_no is not None and mainscreen:
-
-            queryset = UserScreen.objects.filter(
-                mainscreen_id=mainscreen,
-                order_no=order_no,
-                is_deleted=False
-            )
-
-            if self.instance:
-
-                queryset = queryset.exclude(
-                    unique_id=self.instance.unique_id
-                )
-
-            if queryset.exists():
-
-                raise serializers.ValidationError({
-                    "order_no":
-                        "This order number already exists for this Main Screen."
-                })
+        validate_unique_order_no(
+            UserScreen,
+            "mainscreen_id",
+            mainscreen,
+            order_no,
+            self.instance,
+            "This order number already exists for this Main Screen.",
+        )
 
         # =================================================
         # MODEL VALIDATION
