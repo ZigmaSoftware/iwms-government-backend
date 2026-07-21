@@ -44,7 +44,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
     staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True)
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True)
     supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    waste_type_id = UniqueIdOrPkField(slug_field="unique_id", queryset=WasteType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     # Multiple waste types support
     waste_type_ids = serializers.SlugRelatedField(
         slug_field="unique_id",
@@ -69,7 +68,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
     staff_template = serializers.SerializerMethodField()
     vehicle = serializers.SerializerMethodField()
     supervisor = serializers.SerializerMethodField()
-    waste_type = serializers.SerializerMethodField()
     waste_types_detail = serializers.SerializerMethodField()
     plan_collection_points = serializers.SerializerMethodField()
 
@@ -79,10 +77,10 @@ class TripPlanSerializer(serializers.ModelSerializer):
             "unique_id", "display_code", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "staff_template_id", "vehicle_id", "supervisor_id",
-            "waste_type_id", "waste_type_ids", "state", "district", "area_type", "corporation",
+            "waste_type_ids", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
             "staff_template", "vehicle", "supervisor",
-            "waste_type", "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
+            "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
             "max_vehicle_capacity_kg", "scheduled_time", "is_auto_assign", "repeat_days",
             "approval_status", "status", "collection_points", "plan_collection_points",
             "created_at", "updated_at",
@@ -141,9 +139,6 @@ class TripPlanSerializer(serializers.ModelSerializer):
         if not supervisor:
             return None
         return {"unique_id": supervisor.staff_unique_id, "employee_name": supervisor.employee_name}
-
-    def get_waste_type(self, obj):
-        return self._ref(obj, "waste_type_id", "waste_type_name")
 
     def get_waste_types_detail(self, obj):
         return [
@@ -207,9 +202,11 @@ class TripPlanSerializer(serializers.ModelSerializer):
             ]
             if len(collection_point_ids) != len(set(collection_point_ids)):
                 raise serializers.ValidationError({"collection_points": "Collection points must be unique per trip plan."})
-            # A plan may mix stop types (household + secondary collection) in one
-            # route. Bulk-waste plans, however, are auto-generated and never carry
-            # a manual stop list, so a bulk plan must not receive manual stops.
+            # A plan generates exactly one category of daily work (see
+            # TripPlan.collection_type), so every stop's type must match the
+            # plan's own type. Bulk-waste plans are auto-generated and never
+            # carry a manual stop list, so a bulk plan must not receive manual
+            # stops, and no plan may receive a bulk stop manually.
             if plan_collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK and stops:
                 raise serializers.ValidationError(
                     {"collection_points": "Bulk waste plans are auto-generated and take no manual stops."}
@@ -219,6 +216,10 @@ class TripPlanSerializer(serializers.ModelSerializer):
                 if collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK:
                     raise serializers.ValidationError(
                         {"collection_points": "Bulk waste stops cannot be added manually."}
+                    )
+                if collection_type != plan_collection_type:
+                    raise serializers.ValidationError(
+                        {"collection_points": "Stop type must match the trip plan's collection type."}
                     )
                 if collection_type in {
                     TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,

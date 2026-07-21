@@ -345,15 +345,17 @@ class DriverUserSeeder(BaseSeeder):
         return changed
 
     def _bins_match_waste_type(self, assignment):
-        """True if every collection point on the assignment carries a bin of the
-        assignment's own waste type (what the scan flow validates)."""
+        """True if every collection point on the assignment carries a bin whose
+        waste type is among the assignment's own waste types (what the scan
+        flow validates)."""
+        trip_waste_type_ids = {str(wt.unique_id) for wt in assignment.waste_types.all()}
         cps = DailyTripCollectionPoint.objects.filter(
             trip_assignment_id=assignment, is_deleted=False
         ).select_related("bin_id")
         for cp in cps:
             if cp.bin_id_id and str(
                 getattr(cp.bin_id, "wastetype_id_id", None)
-            ) != str(assignment.waste_type_id_id):
+            ) not in trip_waste_type_ids:
                 return False
         return True
 
@@ -471,7 +473,6 @@ class DriverUserSeeder(BaseSeeder):
             panchayat=panchayat,
             is_deleted=False,
             defaults={
-                "waste_type_id": wet_waste,
                 "state": panchayat.state_id,
                 "district": panchayat.district_id,
                 "area_type": panchayat.area_type_id,
@@ -559,7 +560,6 @@ class DriverUserSeeder(BaseSeeder):
             is_deleted=False,
             defaults={
                 "staff_template_id": plan.staff_template_id,
-                "waste_type_id": plan.waste_type_id,
                 "vehicle_id": plan.vehicle_id,
                 "state": plan.state,
                 "district": plan.district,
@@ -574,6 +574,8 @@ class DriverUserSeeder(BaseSeeder):
                 "approval_status": DailyTripAssignment.APPROVAL_APPROVED,
             },
         )
+        if not assignment.waste_types.exists():
+            assignment.waste_types.set(plan.waste_types.all())
         return assignment
 
     def _reset_bin_assignment(self, assignment):

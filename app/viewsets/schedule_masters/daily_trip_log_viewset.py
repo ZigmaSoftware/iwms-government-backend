@@ -39,7 +39,6 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "panchayat_union",
             "panchayat",
             "collection_point_id",
-            "waste_type_id",
             "driver_id",
             "operator_id",
             "vehicle_id",
@@ -56,6 +55,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         .prefetch_related(
             "bin_ids",
             "extra_operator_ids",
+            "waste_types",
             "trip_assignment_id__trip_collection_points",
             "trip_assignment_id__trip_collection_points__collection_point_id",
         )
@@ -112,7 +112,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if collection_point:
             qs = qs.filter(collection_point_id=collection_point)
         if waste_type:
-            qs = qs.filter(waste_type_id=waste_type)
+            qs = qs.filter(waste_types__unique_id=waste_type)
         if driver:
             qs = qs.filter(driver_id=driver)
         if operator:
@@ -122,11 +122,14 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 Q(unique_id__icontains=search)
                 | Q(trip_assignment_id__unique_id__icontains=search)
                 | Q(collection_point_id__cp_name__icontains=search)
-                | Q(waste_type_id__waste_type_name__icontains=search)
+                | Q(waste_types__waste_type_name__icontains=search)
                 | Q(driver_id__employee_name__icontains=search)
                 | Q(operator_id__employee_name__icontains=search)
                 | Q(vehicle_id__vehicle_no__icontains=search)
             )
+
+        if waste_type or search:
+            qs = qs.distinct()
 
         ordering = params.get("ordering")
         allowed_ordering = {

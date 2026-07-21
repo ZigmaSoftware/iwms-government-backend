@@ -159,15 +159,6 @@ class TripPlan(BaseMaster):
     )
 
     # ---- WHAT ------------------------------------------------------
-    waste_type_id = models.ForeignKey(
-        WasteType,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        db_column="waste_type_id",
-        null=True,
-        blank=True,
-    )
     # Supports multiple waste types per trip plan (e.g. household + bulk)
     waste_types = models.ManyToManyField(
         WasteType,

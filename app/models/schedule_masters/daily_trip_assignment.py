@@ -183,12 +183,12 @@ class DailyTripAssignment(BaseMaster):
     # WASTE TYPE
     # ------------------------------------------------------------------
 
-    waste_type_id = models.ForeignKey(
+    # Waste types collected on this daily trip (inherited from the Trip Plan;
+    # can be narrowed per-trip).
+    waste_types = models.ManyToManyField(
         WasteType,
-        on_delete=models.PROTECT,
-        db_column="waste_type_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
+        related_name="daily_trip_assignments_multi",
+        blank=True,
     )
 
     # Multiple waste types for household collection stops on this trip
@@ -268,12 +268,14 @@ class DailyTripAssignment(BaseMaster):
         if self.trip_plan_id:
             self.staff_template_id = self.staff_template_id or self.trip_plan_id.staff_template_id
             self.vehicle_id = self.vehicle_id or self.trip_plan_id.vehicle_id
-            self.waste_type_id = self.waste_type_id or self.trip_plan_id.waste_type_id
             copy_flat_geo(self, self.trip_plan_id, only_empty=True)
             self.scheduled_time = self.scheduled_time or self.trip_plan_id.scheduled_time
         if not self.unique_id:
             self.unique_id = _generate_trip_assignment_unique_id()
+        is_new = self._state.adding
         super().save(*args, **kwargs)
+        if is_new and self.trip_plan_id and not self.waste_types.exists():
+            self.waste_types.set(self.trip_plan_id.waste_types.all())
 
     def __str__(self):
         return self.unique_id

@@ -28,7 +28,6 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "staff_template_id__operator_id",
         "vehicle_id",
         "supervisor_id",
-        "waste_type_id",
     ).prefetch_related("plan_collection_points", "waste_types").filter(is_deleted=False)
 
     serializer_class = TripPlanSerializer

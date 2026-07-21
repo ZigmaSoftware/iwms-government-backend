@@ -22,6 +22,7 @@ Query params:
   Any of: corporation_id | municipality_id | town_panchayat_id |
           panchayat_union_id | panchayat_id — optional local body filter
 """
+import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Count, Sum, F, ExpressionWrapper, DecimalField, Value
@@ -32,6 +33,7 @@ from rest_framework.response import Response
 from app.models.schedule_masters.daily_trip_log import DailyTripLog
 from app.serializers.schedule_masters.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
+from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
@@ -90,8 +92,8 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
         queryset = DailyTripLog.objects.select_related(
-            "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id",
-        ).filter(
+            "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat",
+        ).prefetch_related("waste_types").filter(
             is_deleted=False,
             log_status__in=[
                 DailyTripLog.LOG_STATUS_SUBMITTED,
@@ -124,7 +126,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(**{f"{field}_id": value})
 
         if waste_type_param:
-            queryset = queryset.filter(waste_type_id=waste_type_param)
+            queryset = queryset.filter(waste_types=waste_type_param)
 
         # ── choose weight source ─────────────────────────────────────────
         source = request.query_params.get("source", "bin").lower()
@@ -135,9 +137,10 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         else:
             weight_field = "collected_weight_kg"
 
-        # ── aggregate by (trip_date, local body, waste_type) ──────────────
+        # ── aggregate by (trip_date, local body) — trip-log level, so a
+        # trip is never double counted here even if it spans waste types ──
         annotation_kwargs = {
-            "total_trips": Count("unique_id"),
+            "total_trips": Count("unique_id", distinct=True),
             "collection_points_covered": Count("collection_point_id", distinct=True),
         }
         if weight_field:
@@ -154,46 +157,105 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
 
         group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
         name_fields = list(LOCAL_BODY_NAME_FIELDS.values())
-        grouped_qs = queryset.values(
-            "trip_date",
-            *group_fields,
-            *name_fields,
-            "waste_type_id",
-            "waste_type_id__waste_type_name",
+        location_qs = queryset.values(
+            "trip_date", *group_fields, *name_fields,
         ).annotate(**annotation_kwargs)
 
-        rows = []
-        for row in grouped_qs:
-            local_body_field, local_body_id = self._local_body_from_row(row)
-            if not local_body_id:
-                continue
-            local_body_name = row.get(LOCAL_BODY_NAME_FIELDS[local_body_field]) or local_body_id
-            actual = decimal_value(row["total_actual_weight"])
-            total_trips = int(row["total_trips"] or 0)
-            points = int(row["collection_points_covered"] or 0)
+        # ── per-waste-type weight, computed separately (a trip can now
+        # legitimately appear under more than one waste type) ─────────────
+        trip_assignment_ids = list(
+            queryset.values_list("trip_assignment_id_id", flat=True).distinct()
+        )
+        wt_rows = bulk_waste_type_rows_for_trip_assignments(
+            trip_assignment_ids, source=source, extra_group_by=("trip_date",),
+        )
+        # Map (trip_date, local_body_field, local_body_id) -> waste type weight,
+        # by joining wt_rows back onto the per-trip-log local-body/date info.
+        trip_log_info = queryset.values(
+            "trip_assignment_id_id", "trip_date", *group_fields,
+        )
+        info_by_assignment = {}
+        for r in trip_log_info:
+            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
 
-            unique_id = (
-                f"DWC-{row['trip_date']}-{local_body_id}-{row['waste_type_id']}"
-            )
+        # If waste_type_id filter is supplied, keep only matching wt_rows.
+        if waste_type_param:
+            wt_rows = [r for r in wt_rows if r["waste_type_id"] == waste_type_param]
+
+        bucket_totals = {}  # (trip_date, local_body_field, local_body_id, waste_type_id) -> accumulator
+        for wt_row in wt_rows:
+            infos = info_by_assignment.get(wt_row["trip_assignment_id"], [])
+            for info in infos:
+                if str(info["trip_date"]) != str(wt_row["trip_date"]):
+                    continue
+                local_body_field, local_body_id = self._local_body_from_row(info)
+                if not local_body_id:
+                    continue
+                key = (info["trip_date"], local_body_field, local_body_id, wt_row["waste_type_id"])
+                bucket = bucket_totals.setdefault(key, {
+                    "trip_date": info["trip_date"],
+                    "local_body_field": local_body_field,
+                    "local_body_id": local_body_id,
+                    "waste_type_id": wt_row["waste_type_id"],
+                    "waste_type_name": wt_row["waste_type_name"],
+                    "weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                })
+                bucket["weight_kg"] += wt_row["weight_kg"]
+                bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
+
+        # Local body name lookup, keyed by (local_body_field, local_body_id).
+        local_body_names = {}
+        for r in location_qs:
+            lb_field, lb_id = self._local_body_from_row(r)
+            if lb_id:
+                local_body_names[(lb_field, lb_id)] = r.get(LOCAL_BODY_NAME_FIELDS[lb_field]) or lb_id
+
+        rows = []
+        for (trip_date, local_body_field, local_body_id, waste_type_id), bucket in bucket_totals.items():
+            actual = bucket["weight_kg"]
+            total_trips = len(bucket["trip_assignment_ids"])
+            local_body_name = local_body_names.get((local_body_field, local_body_id), local_body_id)
+
+            unique_id = f"DWC-{trip_date}-{local_body_id}-{waste_type_id}"
 
             rows.append({
                 "unique_id": unique_id,
-                "collection_date": str(row["trip_date"]),
+                "collection_date": str(trip_date),
                 "local_body_field": local_body_field,
                 "local_body_type": LOCAL_BODY_LABELS.get(local_body_field, local_body_field),
                 "local_body_id": local_body_id,
                 "local_body_name": local_body_name,
-                "waste_type_id": row["waste_type_id"],
-                "waste_type": (
-                    row["waste_type_id__waste_type_name"] or row["waste_type_id"]
-                ),
+                "waste_type_id": waste_type_id,
+                "waste_type": bucket["waste_type_name"],
                 "actual_weight_kg": float(rounded(actual)),
                 "total_trips": total_trips,
-                "collection_points_covered": points,
+                # collection_points_covered isn't meaningfully splittable per
+                # waste type from BinCollectionEvent/WasteCollection alone
+                # (a collection point can serve multiple waste types on the
+                # same trip); report it against the local-body/date bucket
+                # instead, matching the trip-log-level total below.
+                "collection_points_covered": 0,
                 "average_weight_per_trip": float(
                     rounded(actual / Decimal(total_trips)) if total_trips else ZERO
                 ),
             })
+
+        # Backfill collection_points_covered from the trip-log-level location_qs
+        # (same trip_date + local_body bucket) so the field is populated
+        # consistently instead of always 0.
+        points_by_bucket = {}
+        for r in location_qs:
+            lb_field, lb_id = self._local_body_from_row(r)
+            if lb_id:
+                points_by_bucket[(r["trip_date"], lb_field, lb_id)] = int(r["collection_points_covered"] or 0)
+        for row in rows:
+            key = (
+                datetime.date.fromisoformat(row["collection_date"])
+                if isinstance(row["collection_date"], str) else row["collection_date"],
+                row["local_body_field"], row["local_body_id"],
+            )
+            row["collection_points_covered"] = points_by_bucket.get(key, 0)
 
         sort_mode = request.query_params.get("sort", "weight").lower()
         if sort_mode == "trips":
@@ -201,14 +263,44 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         else:
             rows.sort(key=lambda r: r["actual_weight_kg"], reverse=True)
 
+        location_rows = self._build_location_rows(location_qs, weight_field)
+
         return Response({
             "source": source,
             "results": rows,
-            "date_trends": self._build_date_trends(rows),
-            "location_comparison": self._build_location_comparison(rows),
+            "date_trends": self._build_date_trends(location_rows),
+            "location_comparison": self._build_location_comparison(location_rows),
             "waste_type_breakdown": self._build_waste_type_breakdown(rows),
-            "kpis": self._build_totals(rows),
+            "kpis": self._build_totals(location_rows, rows),
         })
+
+    def _build_location_rows(self, location_qs, weight_field):
+        """Trip-log-level rows (date, local body) — one row per group,
+        independent of waste type, used for totals/trends/location comparison
+        so a multi-waste-type trip is never double counted there."""
+        rows = []
+        for row in location_qs:
+            local_body_field, local_body_id = self._local_body_from_row(row)
+            if not local_body_id:
+                continue
+            local_body_name = row.get(LOCAL_BODY_NAME_FIELDS[local_body_field]) or local_body_id
+            actual = decimal_value(row["total_actual_weight"])
+            total_trips = int(row["total_trips"] or 0)
+            points = int(row["collection_points_covered"] or 0)
+            rows.append({
+                "collection_date": str(row["trip_date"]),
+                "local_body_field": local_body_field,
+                "local_body_type": LOCAL_BODY_LABELS.get(local_body_field, local_body_field),
+                "local_body_id": local_body_id,
+                "local_body_name": local_body_name,
+                "actual_weight_kg": float(rounded(actual)),
+                "total_trips": total_trips,
+                "collection_points_covered": points,
+                "average_weight_per_trip": float(
+                    rounded(actual / Decimal(total_trips)) if total_trips else ZERO
+                ),
+            })
+        return rows
 
     # ── local body resolution ────────────────────────────────────────────
 
@@ -317,12 +409,12 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             })
         return sorted(result, key=lambda r: r["actual_weight_kg"], reverse=True)
 
-    def _build_totals(self, rows):
+    def _build_totals(self, location_rows, waste_type_rows):
         total_actual = ZERO
         total_trips  = 0
         total_points = 0
 
-        for r in rows:
+        for r in location_rows:
             total_actual += decimal_value(r["actual_weight_kg"])
             total_trips  += r["total_trips"]
             total_points += r["collection_points_covered"]
@@ -334,6 +426,6 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             ),
             "total_trips":               total_trips,
             "collection_points_covered": total_points,
-            "waste_type_count":          len({r["waste_type_id"] for r in rows}),
-            "local_body_count":          len({r["local_body_id"] for r in rows}),
+            "waste_type_count":          len({r["waste_type_id"] for r in waste_type_rows}),
+            "local_body_count":          len({r["local_body_id"] for r in location_rows}),
         }

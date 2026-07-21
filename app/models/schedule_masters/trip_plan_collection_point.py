@@ -184,10 +184,17 @@ class TripPlanCollectionPoint(BaseMaster):
         ]
 
     def clean(self):
-        # A plan may mix household and secondary-collection stops, so a stop's
-        # type is no longer required to equal the plan's type. (Whether a bulk
-        # stop may be added manually is enforced at the API/serializer layer;
-        # the auto-generated bulk placeholder row is still valid here.)
+        # A stop's type must match its plan's declared collection_type - a
+        # plan generates exactly one category of daily work (see
+        # TripPlan.collection_type), so a household_collection plan can only
+        # carry household-type stops, and a bin_collection plan only bin
+        # stops. (Whether a bulk stop may be added manually is enforced at
+        # the API/serializer layer; the auto-generated bulk placeholder row
+        # is still valid here.)
+        if self.trip_plan_id_id and self.collection_type != self.trip_plan_id.collection_type:
+            raise ValidationError(
+                {"collection_type": "Stop type must match the trip plan's collection type."}
+            )
         if self.collection_type == self.COLLECTION_TYPE_BIN:
             if not self.collection_point_id_id:
                 raise ValidationError({"collection_point_id": "Collection point is required for bin collection."})
