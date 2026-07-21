@@ -1,10 +1,10 @@
 from django.db import models
 from django.utils import timezone
 
-from app.models.customers.customercreation import CustomerCreation
-from app.models.customers.wastecollection import WasteCollection
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.customer_masters.wastecollection import WasteCollection
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation

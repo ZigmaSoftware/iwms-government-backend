@@ -6,7 +6,7 @@ from django.utils import timezone
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.vehicle_breakdown import VehicleBreakdown
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation, StaffcreationOfficeDetails
 
 

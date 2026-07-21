@@ -251,7 +251,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         """Capture photos taken during this trip — aggregated from every
         WasteCollection recorded against the trip assignment (each links to its
         household's WasteCollectionSub photos)."""
-        from app.models.customers.wastecollection import WasteCollection
+        from app.models.masters.customer_masters.wastecollection import WasteCollection
 
         assignment_id = obj.trip_assignment_id_id
         if not assignment_id:

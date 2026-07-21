@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from app.models.schedule_masters.vehicle_breakdown import VehicleBreakdown
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.serializers.schedule_masters.vehicle_breakdown_serializer import (
     VehicleBreakdownSerializer,
     VehicleBreakdownVerifySerializer,

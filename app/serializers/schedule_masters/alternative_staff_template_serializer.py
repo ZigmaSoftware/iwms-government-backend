@@ -3,7 +3,7 @@ from rest_framework import serializers
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation

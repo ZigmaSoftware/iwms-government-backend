@@ -13,7 +13,7 @@ from app.models.user_creations.waste_collection_bluetooth import (
     upload_image,
 )
 from app.models.assets.wastetype import WasteType
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 
 
@@ -452,7 +452,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         """Create or refresh the canonical WasteCollection row for this
         household so the web backend (dashboards, trip log, household stops)
         sees the app's collection."""
-        from app.models.customers.wastecollection import WasteCollection
+        from app.models.masters.customer_masters.wastecollection import WasteCollection
 
         customer = CustomerCreation.objects.filter(
             unique_id=customer_id, is_deleted=False

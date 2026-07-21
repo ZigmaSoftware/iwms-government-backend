@@ -7,7 +7,7 @@ from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.trip_plan import TripPlan
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 from app.models.assets.wastetype import WasteType
 

@@ -1,7 +1,7 @@
 from django.db.models import Q
 from rest_framework import serializers
 
-from app.models.role_assigns.userType import UserType
+from app.models.superadmin.role_management.userType import UserType
 
 
 class LoginSerializer(serializers.Serializer):

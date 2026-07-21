@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from app.models.schedule_masters.vehicle_breakdown import VehicleBreakdown
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.utils.hierarchy import flat_geo_display
 

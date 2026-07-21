@@ -10,9 +10,9 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.models.assets.bins import Bins
 from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.collection_point import Collection_point
-from app.models.customers.customercreation import CustomerCreation
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
-from app.models.role_assigns.userType import UserType
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.userType import UserType
 from app.models.masters.panchayat import Panchayat
 from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 from app.models.schedule_masters.collection_point import Collection_point
@@ -29,7 +29,7 @@ from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.schedule_masters.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import (
     Staffcreation,
     StaffcreationOfficeDetails,

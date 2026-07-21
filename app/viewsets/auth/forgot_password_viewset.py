@@ -8,8 +8,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.models.customers.customercreation import CustomerCreation
-from app.models.customers.password_reset_otp import PasswordResetOTP
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.customer_masters.password_reset_otp import PasswordResetOTP
 from app.utils.email_utils import send_otp_email
 
 

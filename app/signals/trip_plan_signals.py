@@ -39,7 +39,7 @@ def _geo_filter_for(obj):
 
 
 def _customers_for_household_stop(stop):
-    from app.models.customers.customercreation import CustomerCreation
+    from app.models.masters.customer_masters.customercreation import CustomerCreation
 
     is_bulk_stop = stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
     if stop.customer_id_id:

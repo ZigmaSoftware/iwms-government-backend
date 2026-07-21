@@ -5,7 +5,7 @@ from rest_framework.exceptions import NotAuthenticated
 
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.schedule_masters.staff_template import StaffTemplate
-from app.models.audits.staff_template_audit_log import StaffTemplateAuditLog
+from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
 from app.utils.base_models import Account 
 
 from app.serializers.schedule_masters.staff_template_serializer import (

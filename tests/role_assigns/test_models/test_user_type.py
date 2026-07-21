@@ -1,7 +1,7 @@
 """Unit tests for UserType model — CRUD + constraints."""
 import pytest
 from django.db import IntegrityError
-from app.models.role_assigns.userType import UserType
+from app.models.superadmin.role_management.userType import UserType
 
 
 @pytest.mark.django_db

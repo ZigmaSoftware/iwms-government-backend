@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.panchayat import Panchayat
@@ -12,7 +12,7 @@ from app.models.schedule_masters.alternative_staff_template import AlternativeSt
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.trip_plan import TripPlan
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.assets.wastetype import WasteType
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
 from app.utils.waste_images import capture_images_for_customer

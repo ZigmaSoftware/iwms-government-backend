@@ -8,8 +8,8 @@ from app.models.waste_types.property import Property
 from app.models.waste_types.subproperty import SubProperty
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.district import District
-from app.models.common_masters.state import State
-from app.models.common_masters.country import Country
+from app.models.superadmin.common_masters.state import State
+from app.models.superadmin.common_masters.country import Country
 
 
 @api_view(['GET'])

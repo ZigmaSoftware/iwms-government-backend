@@ -7,10 +7,10 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.assets.wastetype import WasteType
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation

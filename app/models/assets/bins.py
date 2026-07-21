@@ -4,7 +4,7 @@ from app.utils.comfun import generate_unique_id
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.assets.wastetype import WasteType
 from app.utils.bin_qr import generate_bin_qr_content
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation

@@ -1,6 +1,6 @@
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.customers.customercreation import CustomerCreation
-from app.models.customers.wastecollection import WasteCollection
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.customer_masters.wastecollection import WasteCollection
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 
 TARGET = 15

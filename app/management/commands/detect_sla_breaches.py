@@ -14,8 +14,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from app.models.complaint_ticket.ticket import ComplaintTicket
-from app.models.complaint_ticket.comment import ComplaintComment
+from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+from app.models.core_modules.complaint_management.comment import ComplaintComment
 from app.utils.complaint_ticket_routing import perform_escalation, _best_sla_rule
 
 OPEN_STATUS_EXCLUDE = ["RESOLVED", "CLOSED", "REJECTED", "CANCELLED"]

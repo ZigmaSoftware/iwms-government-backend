@@ -2,10 +2,10 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from app.models.assets.bins import Bins
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.trip_plan import TripPlan
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation

@@ -9,9 +9,9 @@ from django.contrib.auth.models import (
 from app.utils.base_models import BaseMaster
 
 from app.utils.comfun import generate_unique_id
-from app.models.role_assigns.userType import UserType
-from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.customers.customercreation import CustomerCreation
+from app.models.superadmin.role_management.userType import UserType
+from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.masters.district import District
 from app.models.user_creations.staffcreation import Staffcreation
 

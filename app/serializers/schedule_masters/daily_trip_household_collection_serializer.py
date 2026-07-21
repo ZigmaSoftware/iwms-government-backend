@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.daily_trip_household_collection import (
     DailyTripHouseholdCollection,

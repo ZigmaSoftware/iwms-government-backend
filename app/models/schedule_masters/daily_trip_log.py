@@ -10,10 +10,10 @@ from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.schedule_masters.staff_template import StaffTemplate
 from app.models.schedule_masters.alternative_staff_template import AlternativeStaffTemplate
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.assets.wastetype import WasteType
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
@@ -303,7 +303,7 @@ class DailyTripLog(BaseMaster):
         Mirrors sync_from_secondary_bin_collection_events() — only overrides when records exist
         so that manually-entered values are preserved when no WasteCollections are linked.
         """
-        from app.models.customers.wastecollection import WasteCollection
+        from app.models.masters.customer_masters.wastecollection import WasteCollection
 
         records = WasteCollection.objects.filter(
             trip_assignment_id=self.trip_assignment_id_id,

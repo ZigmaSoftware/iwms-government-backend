@@ -6,7 +6,7 @@ from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignmen
 from app.models.schedule_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
@@ -15,7 +15,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.serializers.assets.bins_serializer import BinsSerializer
-from app.serializers.transport_masters.vehicleCreation_serializer import (
+from app.serializers.masters.transport_masters.vehicleCreation_serializer import (
     VehicleCreationSerializer,
 )
 from app.serializers.schedule_masters.alternative_staff_template_serializer import (

@@ -1,10 +1,10 @@
 from rest_framework import serializers
 from django.utils import timezone
 from django.conf import settings
-from app.models.transport_masters.trip_attendance import TripAttendance
+from app.models.masters.transport_masters.trip_attendance import TripAttendance
 from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 
 
 class TripAttendanceSerializer(serializers.ModelSerializer):

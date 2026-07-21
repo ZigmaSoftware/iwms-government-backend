@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
 from app.models.assets.bins import Bins
-from app.models.customers.customercreation import CustomerCreation
-from app.models.common_masters.state import State
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.panchayat import Panchayat
@@ -14,7 +14,7 @@ from app.models.schedule_masters.collection_point import Collection_point
 from app.models.schedule_masters.trip_plan import TripPlan
 from app.models.schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
 from app.models.schedule_masters.staff_template import StaffTemplate
-from app.models.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import Staffcreation
 from app.models.assets.wastetype import WasteType
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField

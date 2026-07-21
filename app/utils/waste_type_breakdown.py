@@ -20,7 +20,7 @@ def waste_type_breakdown_for_assignment(assignment):
     type + weight) and household collections (wet/dry/mixed columns, mapped
     to WasteType master names)."""
     from app.models.assets.wastetype import WasteType
-    from app.models.customers.wastecollection import WasteCollection
+    from app.models.masters.customer_masters.wastecollection import WasteCollection
     from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 
     totals = {}
@@ -116,7 +116,7 @@ def bulk_waste_type_rows_for_trip_assignments(
     trips" just because it spans multiple waste types).
     """
     from app.models.assets.wastetype import WasteType
-    from app.models.customers.wastecollection import WasteCollection
+    from app.models.masters.customer_masters.wastecollection import WasteCollection
     from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
 
     trip_assignment_ids = list(trip_assignment_ids)

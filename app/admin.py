@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 
 @admin.register(Staffcreation)
