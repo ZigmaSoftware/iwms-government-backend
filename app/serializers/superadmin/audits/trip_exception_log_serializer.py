@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from app.models.superadmin.audits.trip_exception_log import TripExceptionLog
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 
 
 class TripExceptionLogSerializer(serializers.ModelSerializer):

@@ -8,25 +8,25 @@ from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.assets.bins import Bins
-from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
-from app.models.schedule_masters.collection_point import Collection_point
+from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.masters.panchayat import Panchayat
-from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
-from app.models.schedule_masters.collection_point import Collection_point
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.schedule_masters.daily_trip_household_collection import (
+from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
-from app.models.schedule_masters.staff_template import StaffTemplate
-from app.models.schedule_masters.trip_plan import TripPlan
-from app.models.schedule_masters.trip_plan_collection_point import (
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation

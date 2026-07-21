@@ -50,18 +50,18 @@ from app.management.commands.seeders.masters.transport_masters.trip_attendance i
 
 
 # schedule-masters (router: schedule-masters/ — all 9 submodules)
-from app.management.commands.seeders.schedule_masters.collection_point import CollectionPointSeeder
-from app.management.commands.seeders.schedule_masters.staff_template import StaffTemplateSeeder
-from app.management.commands.seeders.schedule_masters.alternative_staff_template import AlternativeStaffTemplateSeeder
-from app.management.commands.seeders.schedule_masters.trip_plan import TripPlanSeeder
-from app.management.commands.seeders.schedule_masters.trip_plan_collection_point import TripPlanCollectionPointSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_assignment import DailyTripAssignmentSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_collection_point import DailyTripCollectionPointSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_log import DailyTripLogSeeder
-from app.management.commands.seeders.schedule_masters.secondary_bin_collection_event import BinCollectionEventSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.collection_point import CollectionPointSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.staff_template import StaffTemplateSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplateSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.trip_plan import TripPlanSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPointSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignmentSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPointSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_log import DailyTripLogSeeder
+from app.management.commands.seeders.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
-from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
+from app.management.commands.seeders.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdownSeeder
 from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder
 from app.management.commands.seeders.schedule_masters.multi_district_demo import MultiDistrictTripDataSeeder
 from app.management.commands.seeders.masters.telangana_masters import TelanganaMastersSeeder

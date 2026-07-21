@@ -2,7 +2,7 @@ from rest_framework import serializers
 from app.models.masters.customer_masters.wastecollection import WasteCollection
 from app.utils.waste_images import capture_images_for_customer
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType

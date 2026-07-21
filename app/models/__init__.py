@@ -79,8 +79,8 @@ from .user_creations.staffcreation import (
     StaffcreationOfficeDetails,
     StaffPersonalDetails,
 )
-from .schedule_masters.staff_template import StaffTemplate
-from .schedule_masters.alternative_staff_template import AlternativeStaffTemplate
+from .core_modules.schedule_setup.staff_template import StaffTemplate
+from .core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from .user_creations.unassigned_staff_pool import UnassignedStaffPool
 from .user_creations.staff_data_scope import StaffDataScope
 
@@ -151,16 +151,16 @@ from .core_modules.attendance import DailyAttendanceReg
 # ============================================================
 from .masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from .masters.transport_masters.vehicleCreation import VehicleCreation
-from .schedule_masters.trip_plan import TripPlan
-from .schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
+from .core_modules.schedule_setup.trip_plan import TripPlan
+from .core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
 from .masters.transport_masters.trip_attendance import TripAttendance
-from .schedule_masters.daily_trip_assignment import DailyTripAssignment
-from .schedule_masters.daily_trip_log import DailyTripLog
-from .schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
-from .schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
-from .schedule_masters.secondary_bin_collection_event import BinCollectionEvent
+from .core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from .core_modules.daily_operations.daily_trip_log import DailyTripLog
+from .core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
+from .core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollection
+from .core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from .schedule_masters.scheduler_config import SchedulerConfig
-from .schedule_masters.vehicle_breakdown import VehicleBreakdown
+from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 
 
 # ============================================================

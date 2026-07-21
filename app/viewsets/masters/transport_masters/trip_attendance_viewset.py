@@ -8,7 +8,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 
 from app.models.masters.transport_masters.trip_attendance import TripAttendance
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.serializers.user_creations.trip_attendance_serializer import (
     TripAttendanceSerializer
 )

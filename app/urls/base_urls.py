@@ -112,16 +112,16 @@ from ..viewsets.masters.transport_masters.trip_attendance_viewset import TripAtt
 from ..viewsets.masters.transport_masters.fuel_viewset import FuelViewSet
 
 # Schedule masters
-from ..viewsets.schedule_masters.staff_template_viewset import StaffTemplateViewSet
-from ..viewsets.schedule_masters.alternative_staff_template_viewset import AlternativeStaffTemplateViewSet
-from ..viewsets.schedule_masters.collection_point_viewset import CollectionPointViewSet
-from ..viewsets.schedule_masters.trip_plan_viewset import TripPlanViewSet
-from ..viewsets.schedule_masters.daily_trip_assignment_viewset import DailyTripAssignmentViewSet
-from ..viewsets.schedule_masters.daily_trip_collection_point_viewset import DailyTripCollectionPointViewSet
-from ..viewsets.schedule_masters.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
-from ..viewsets.schedule_masters.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
-from ..viewsets.schedule_masters.vehicle_breakdown_viewset import VehicleBreakdownViewSet
-from ..viewsets.schedule_masters.daily_trip_log_viewset import DailyTripLogViewSet
+from ..viewsets.core_modules.schedule_setup.staff_template_viewset import StaffTemplateViewSet
+from ..viewsets.core_modules.schedule_setup.alternative_staff_template_viewset import AlternativeStaffTemplateViewSet
+from ..viewsets.core_modules.schedule_setup.collection_point_viewset import CollectionPointViewSet
+from ..viewsets.core_modules.schedule_setup.trip_plan_viewset import TripPlanViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_assignment_viewset import DailyTripAssignmentViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_collection_point_viewset import DailyTripCollectionPointViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
+from ..viewsets.core_modules.daily_operations.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
+from ..viewsets.core_modules.daily_operations.vehicle_breakdown_viewset import VehicleBreakdownViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.schedule_masters.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet
 from ..viewsets.schedule_masters.daily_waste_comparison_viewset import DailyWasteComparisonViewSet
 

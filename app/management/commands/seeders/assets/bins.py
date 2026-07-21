@@ -1,7 +1,7 @@
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.geo import coordinates
 from app.models.assets.bins import Bins, BinType
-from app.models.schedule_masters.collection_point import Collection_point
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.assets.wastetype import WasteType
 
 

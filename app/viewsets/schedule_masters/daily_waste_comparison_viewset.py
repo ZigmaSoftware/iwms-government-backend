@@ -30,7 +30,7 @@ from django.db.models.functions import Coalesce
 from rest_framework import viewsets
 from rest_framework.response import Response
 
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.schedule_masters.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.schedule_masters.daily_waste_comparison import DailyWasteComparison
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments

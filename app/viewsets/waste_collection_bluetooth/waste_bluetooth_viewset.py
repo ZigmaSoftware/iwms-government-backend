@@ -50,7 +50,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         Writes to the DailyTripHouseholdCollection row for the requester's active
         trip today, so the update stays scoped to the trip (and its hierarchy).
         """
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
         from app.viewsets.operator_mobile.helpers import (
@@ -96,7 +96,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 {"status": "error", "message": "reason is required"}, status=400
             )
 
-        from app.models.schedule_masters.daily_trip_assignment import (
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
 
@@ -404,10 +404,10 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         sent (preferred — a driver can hold both a bin and a household trip),
         else the trip where this household is a stop today, else the requester's
         active operator trip. None when nothing applies."""
-        from app.models.schedule_masters.daily_trip_assignment import (
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
 

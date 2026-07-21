@@ -8,11 +8,11 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.geo import coordinates
 from app.models.masters.corporation import Corporation
 from app.models.masters.district import District
-from app.models.schedule_masters.collection_point import Collection_point
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
-from app.models.schedule_masters.staff_template import StaffTemplate
-from app.models.schedule_masters.trip_plan import TripPlan
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 from app.models.assets.wastetype import WasteType

@@ -2,7 +2,7 @@
 import pytest
 
 from app.models.assets.bins import Bins
-from app.serializers.schedule_masters.collection_point_serializer import CollectionPointSerializer
+from app.serializers.core_modules.schedule_setup.collection_point_serializer import CollectionPointSerializer
 
 
 @pytest.fixture

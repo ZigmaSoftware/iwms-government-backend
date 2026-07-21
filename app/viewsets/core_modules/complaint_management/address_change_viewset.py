@@ -10,7 +10,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.models.core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
 from app.models.core_modules.complaint_management.status_master import ComplaintStatus
 from app.models.core_modules.complaint_management.status_history import ComplaintStatusHistory
-from app.models.schedule_masters.trip_plan import TripPlan
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 
 from app.serializers.core_modules.complaint_management.transaction_serializers import (
     ComplaintAddressChangeRequestSerializer,

@@ -3,9 +3,9 @@ import hashlib
 from django.core.cache import cache
 from rest_framework import serializers
 
-from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
 from app.services.openroute_service import route_stops
@@ -110,7 +110,7 @@ class MyTripTodaySerializer(serializers.Serializer):
         return getattr(plan, "collection_type", None)
 
     def _household_rows(self, obj):
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
 
@@ -124,7 +124,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     def get_progress(self, obj):
         # Household/bulk trips have no bin CPs — measure progress by households.
         if self.get_collection_type(obj) in self._HOUSEHOLD_TYPES:
-            from app.models.schedule_masters.daily_trip_household_collection import (
+            from app.models.core_modules.daily_operations.daily_trip_household_collection import (
                 DailyTripHouseholdCollection,
             )
 

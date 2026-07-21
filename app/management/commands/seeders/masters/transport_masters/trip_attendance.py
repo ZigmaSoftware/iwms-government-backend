@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.transport_masters.trip_attendance import TripAttendance
 
 
