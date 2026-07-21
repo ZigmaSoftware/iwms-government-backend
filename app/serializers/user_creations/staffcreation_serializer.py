@@ -15,6 +15,7 @@ from app.models.masters.panchayat import Panchayat
 from app.models.user_creations.staffcreation import Staffcreation, StaffPersonalDetails
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
+from app.utils.file_validators import validate_pdf_upload
 
 
 class StaffcreationSerializer(serializers.ModelSerializer):
@@ -160,6 +161,12 @@ class StaffcreationSerializer(serializers.ModelSerializer):
     driving_licence_file = serializers.FileField(
         required=False,
         allow_null=True,
+        validators=[validate_pdf_upload],
+    )
+    driving_experience_years = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
     )
 
     # --------------------------------------------------
@@ -286,6 +293,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "driving_licence_no",
             "driving_licence_expiry_date",
             "driving_licence_file",
+            "driving_experience_years",
 
             "active_status",
 

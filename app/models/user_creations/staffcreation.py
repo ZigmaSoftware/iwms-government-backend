@@ -16,6 +16,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.utils.customer_qr import generate_customer_qr_content
+from app.utils.file_validators import validate_pdf_upload
 
 
 def generate_staff_unique_id():
@@ -85,7 +86,14 @@ class StaffcreationOfficeDetails(BaseMaster):
     driving_licence_file = models.FileField(
         upload_to="staff_licences/",
         blank=True,
-        null=True
+        null=True,
+        validators=[validate_pdf_upload],
+        help_text="Driving licence document (PDF, max 3 MB).",
+    )
+    driving_experience_years = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Driving experience in years.",
     )
 
     # =============================================
