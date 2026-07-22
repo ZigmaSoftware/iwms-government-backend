@@ -1,11 +1,11 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
-from app.models.user_creations.staffcreation import Staffcreation
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
 from app.utils.waste_images import capture_images_for_customer
 
@@ -251,7 +251,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         """Capture photos taken during this trip — aggregated from every
         WasteCollection recorded against the trip assignment (each links to its
         household's WasteCollectionSub photos)."""
-        from app.models.masters.customer_masters.wastecollection import WasteCollection
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 
         assignment_id = obj.trip_assignment_id_id
         if not assignment_id:

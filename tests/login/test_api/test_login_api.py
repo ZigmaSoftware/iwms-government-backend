@@ -79,7 +79,7 @@ class TestLoginFailure:
         assert resp.status_code in (400, 401)
 
     def test_failure_creates_login_audit(self, api_client):
-        from app.models.user_creations.loginAudit import LoginAudit
+        from app.models.superadmin.audits.login_audit import LoginAudit
         before = LoginAudit.objects.filter(success=False).count()
         api_client.post(LOGIN_BASE, {"username": "audit_user", "password": "bad"}, format="json")
         after = LoginAudit.objects.filter(success=False).count()
@@ -139,7 +139,7 @@ class TestLoginPlatformSuccess:
         assert profile["is_superuser"] is True
 
     def test_platform_login_success_audit_created(self, api_client, db):
-        from app.models.user_creations.loginAudit import LoginAudit
+        from app.models.superadmin.audits.login_audit import LoginAudit
         _make_platform_user(db)
         before = LoginAudit.objects.filter(success=True).count()
         api_client.post(
@@ -205,7 +205,7 @@ class TestLoginStaffBranch:
         user_type,
     ):
         from app.models.superadmin.role_management.staffUserType import StaffUserType
-        from app.models.user_creations.staffcreation import Staffcreation
+        from app.models.superadmin.user_management.staffcreation import Staffcreation
         from app.utils.password_encryption import encrypt_password
 
         staff_user_type = StaffUserType.objects.create(
@@ -242,7 +242,7 @@ class TestLoginStaffBranch:
         user_type,
     ):
         from app.models.superadmin.role_management.staffUserType import StaffUserType
-        from app.models.user_creations.staffcreation import Staffcreation
+        from app.models.superadmin.user_management.staffcreation import Staffcreation
         from app.utils.password_encryption import encrypt_password
 
         staff_user_type = StaffUserType.objects.create(
@@ -636,7 +636,7 @@ class TestResolveStaffUserUnit:
 
     def test_staffcreation_instance_returned_directly(self):
         """Line 279-280: user IS a Staffcreation → returned as-is."""
-        from app.models.user_creations.staffcreation import Staffcreation
+        from app.models.superadmin.user_management.staffcreation import Staffcreation
         vset = self._viewset()
         mock_staff = MagicMock(spec=Staffcreation)
         result = vset._resolve_staff_user(mock_staff)
@@ -688,7 +688,7 @@ class TestResolveStaffUserUnit:
 
     def test_db_exception_in_lookup_returns_none(self):
         """Lines 300-301: exception during DB lookup → None."""
-        from app.models.user_creations.staffcreation import Staffcreation
+        from app.models.superadmin.user_management.staffcreation import Staffcreation
         vset = self._viewset()
 
         class FakeUser:

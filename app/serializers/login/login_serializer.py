@@ -3,7 +3,7 @@ from django.contrib.auth.hashers import check_password, identify_hasher
 from django.db.models import F, Q
 from django.utils import timezone
 
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin_masters.auth_user import User

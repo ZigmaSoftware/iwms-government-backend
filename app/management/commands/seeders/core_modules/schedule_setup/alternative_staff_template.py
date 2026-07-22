@@ -5,7 +5,7 @@ from django.utils import timezone
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
-from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 
 
 class AlternativeStaffTemplateSeeder(BaseSeeder):

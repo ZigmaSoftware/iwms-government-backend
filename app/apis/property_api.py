@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.district import District
 from app.models.superadmin.common_masters.state import State

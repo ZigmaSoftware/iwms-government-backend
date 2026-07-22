@@ -1,6 +1,6 @@
 from django.db import models
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District

@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from app.models.masters.transport_masters.trip_attendance import TripAttendance
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.serializers.user_creations.trip_attendance_serializer import (
+from app.serializers.masters.transport_masters.trip_attendance_serializer import (
     TripAttendanceSerializer
 )
 from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin

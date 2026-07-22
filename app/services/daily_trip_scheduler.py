@@ -105,7 +105,7 @@ def notify_scheduler_config_changed():
 
 def _get_scheduler_config():
     try:
-        from app.models.schedule_masters.scheduler_config import SchedulerConfig
+        from app.models.core_modules.daily_operations.scheduler_config import SchedulerConfig
         config = SchedulerConfig.get_singleton()
         return config.run_time, config.is_enabled
     except Exception:

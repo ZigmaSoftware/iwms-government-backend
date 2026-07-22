@@ -12,7 +12,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 from app.models.core_modules.complaint_management.source_master import ComplaintSource
 from app.models.core_modules.complaint_management.language_master import ComplaintLanguage
 from app.models.core_modules.complaint_management.category_master import ComplaintCategory

@@ -4,7 +4,7 @@ from rest_framework.exceptions import NotAuthenticated
 
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.serializers.core_modules.schedule_setup.alternative_staff_template_serializer import (
     AlternativeStaffTemplateSerializer
 )
@@ -90,7 +90,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # --------------------------------------------------
 
     def _resolve_request_user(self):
-        from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+        from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 
         # 1. Try JWT payload (BEST METHOD)
         payload = getattr(self.request, "jwt_payload", None)

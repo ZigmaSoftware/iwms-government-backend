@@ -1,6 +1,10 @@
 from django.db import models
 
-from app.models.user_creations.loginAudit import generate_login_id
+from app.utils.comfun import generate_unique_id
+
+
+def generate_login_id():
+    return f"LOGINAUDIT-{generate_unique_id()}"
 
 
 class LoginAudit(models.Model):

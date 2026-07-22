@@ -18,8 +18,8 @@ class TestUserChargeRuleAPIList:
 @pytest.mark.django_db
 class TestUserChargeRuleAPICreate:
     def test_create_returns_success(self, auth_client, company, project):
-        from app.models.waste_types.property import Property
-        from app.models.waste_types.subproperty import SubProperty
+        from app.models.masters.waste_masters.property import Property
+        from app.models.masters.waste_masters.subproperty import SubProperty
         prop = Property.objects.create(property_name="Residential")
         sub = SubProperty.objects.create(property_id=prop, sub_property_name="Flat")
         resp = auth_client.post(

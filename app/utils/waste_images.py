@@ -34,7 +34,7 @@ def capture_images_for_customer(customer_id, collection_date=None, request=None)
     """Capture photos (``WasteCollectionSub``) for a household, linked by customer
     and — when supplied — the collection day (± 1 day to absorb timezone skew;
     a ``__date`` lookup is unreliable on MySQL without the tz tables loaded)."""
-    from app.models.user_creations.waste_collection_bluetooth import (
+    from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
         WasteCollectionSub,
     )
 

@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 

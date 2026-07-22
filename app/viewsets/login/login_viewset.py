@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from django.utils import timezone
 
 from app.models.superadmin.audits.login_audit import LoginAudit
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
 from app.utils.hierarchy import staff_scope_payload
 

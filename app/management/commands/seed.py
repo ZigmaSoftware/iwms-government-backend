@@ -21,24 +21,24 @@ from app.management.commands.seeders.masters.department import DepartmentSeeder
 from app.management.commands.seeders.masters.designation import DesignationSeeder
 
 # waste-types (router: waste-types/properties, subproperties)
-from app.management.commands.seeders.waste_types.properties import PropertySeeder
-from app.management.commands.seeders.waste_types.subproperties import SubPropertySeeder
+from app.management.commands.seeders.masters.waste_masters.properties import PropertySeeder
+from app.management.commands.seeders.masters.waste_masters.subproperties import SubPropertySeeder
 
-# assets (router: assets/waste-types, assets/bins)
-from app.management.commands.seeders.assets.wastetype import WasteTypeSeeder
-from app.management.commands.seeders.assets.bins import BinSeeder
+# waste-types (router: waste-types/wastetypes, waste-types/bins — merged from legacy `assets` group)
+from app.management.commands.seeders.masters.waste_masters.wastetype import WasteTypeSeeder
+from app.management.commands.seeders.masters.waste_masters.bins import BinSeeder
 
 # role-assigns (router: role-assigns/user-type, staffusertypes, contractorusertypes)
 from app.management.commands.seeders.superadmin.role_management import ROLE_ASSIGN_SEEDERS
 
 # user-creations (router: user-creations/staffcreation, ...)
-from app.management.commands.seeders.user_creations.auth_user_seeder import AuthUserSeeder
-from app.management.commands.seeders.user_creations.driver_user import DriverUserSeeder
-from app.management.commands.seeders.user_creations.supervisor_user import SupervisorUserSeeder
+from app.management.commands.seeders.superadmin.user_management.auth_user_seeder import AuthUserSeeder
+from app.management.commands.seeders.superadmin.user_management.driver_user import DriverUserSeeder
+from app.management.commands.seeders.superadmin.user_management.supervisor_user import SupervisorUserSeeder
 from app.management.commands.seeders.masters.customer_masters.customer_user import CustomerUserSeeder
-from app.management.commands.seeders.user_creations.staff_office import StaffOfficeSeeder
-from app.management.commands.seeders.user_creations.staff_personal import StaffPersonalSeeder
-from app.management.commands.seeders.user_creations.corporation_access import CorporationAccessSeeder
+from app.management.commands.seeders.superadmin.user_management.staff_office import StaffOfficeSeeder
+from app.management.commands.seeders.superadmin.user_management.staff_personal import StaffPersonalSeeder
+from app.management.commands.seeders.superadmin.user_management.corporation_access import CorporationAccessSeeder
 
 # transport-masters (router: transport-masters/vehicle-type, vehicle-creation, trip-attendance, fuels)
 from app.management.commands.seeders.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreationSeeder
@@ -49,7 +49,8 @@ from app.management.commands.seeders.masters.transport_masters.trip_attendance i
 # process-items
 
 
-# schedule-masters (router: schedule-masters/ — all 9 submodules)
+# schedule-setup / schedule-operations (router: schedule-setup/..., schedule-operations/... —
+# split from the legacy schedule-masters group)
 from app.management.commands.seeders.core_modules.schedule_setup.collection_point import CollectionPointSeeder
 from app.management.commands.seeders.core_modules.schedule_setup.staff_template import StaffTemplateSeeder
 from app.management.commands.seeders.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplateSeeder
@@ -60,12 +61,12 @@ from app.management.commands.seeders.core_modules.daily_operations.daily_trip_co
 from app.management.commands.seeders.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
 from app.management.commands.seeders.core_modules.daily_operations.daily_trip_log import DailyTripLogSeeder
 from app.management.commands.seeders.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEventSeeder
-from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
+from app.management.commands.seeders.core_modules.daily_operations.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdownSeeder
-from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder
-from app.management.commands.seeders.schedule_masters.multi_district_demo import MultiDistrictTripDataSeeder
+from app.management.commands.seeders.core_modules.daily_operations.supervisor_month_data import SupervisorMonthDataSeeder
+from app.management.commands.seeders.core_modules.daily_operations.multi_district_demo import MultiDistrictTripDataSeeder
 from app.management.commands.seeders.masters.telangana_masters import TelanganaMastersSeeder
-from app.management.commands.seeders.schedule_masters.waste_collection import WasteCollectionSeeder
+from app.management.commands.seeders.core_modules.daily_operations.waste_collection import WasteCollectionSeeder
 
 # screen-managements (router: screen-managements/...)
 from app.management.commands.seeders.superadmin.screen_management import PERMISSION_SEEDERS
@@ -111,16 +112,18 @@ MASTERS_SEEDERS = [
 WASTE_TYPES_SEEDERS = [
     PropertySeeder,
     SubPropertySeeder,
+    WasteTypeSeeder,    # merged from legacy `assets` group — waste-types/wastetypes → WasteTypeViewSet
 ]
 
-# Note: WasteTypeSeeder (bluetooth waste types) lives in `assets` per the URL group.
-# BinSeeder depends on CollectionPoint (schedule-masters), so in `all` mode
-# BinSeeder is invoked from within schedule-masters (after CollectionPointSeeder).
-# Running `--group assets` alone seeds WasteType only; bins require schedule-masters CPs.
-ASSETS_SEEDERS = [
-    WasteTypeSeeder,    # assets/waste-types → WasteTypeViewSet
-    # BinSeeder runs inside schedule-masters after CollectionPointSeeder
-]
+# Legacy alias — `assets` used to be its own URL/seed group before it was merged
+# into `waste-types` (see base_urls.py). Kept pointing at the same list so old
+# scripts/muscle-memory using `--group assets` keep working.
+ASSETS_SEEDERS = WASTE_TYPES_SEEDERS
+
+# Note: BinSeeder (waste-types/bins) depends on CollectionPoint (schedule-setup), so
+# in `all` mode BinSeeder is invoked from within schedule-setup (after CollectionPointSeeder)
+# rather than from this list. Running `--group waste-types` alone seeds WasteType only;
+# bins require schedule-setup's CollectionPoints to exist first.
 
 ROLE_ASSIGNS_SEEDERS = [
     *ROLE_ASSIGN_SEEDERS,
@@ -143,17 +146,27 @@ PROCESS_ITEMS_SEEDERS = [
 ]
 
 # ============================================================
-# SCHEDULE MASTERS — 9 submodules in dependency order
+# SCHEDULE SETUP (router: schedule-setup/staff-templates,
+# alternative-staff-templates, collection-points, trip-plans)
 # BinSeeder is included here (after CollectionPointSeeder) because
-# bins depend on collection_points which are seeded in this group.
+# bins depend on collection_points which are seeded in this group,
+# even though Bins themselves live under the waste-types URL group.
 # ============================================================
-SCHEDULE_MASTERS_SEEDERS = [
+SCHEDULE_SETUP_SEEDERS = [
     CollectionPointSeeder,          # 1. collection-points
-    BinSeeder,                      # bins (assets dependency — must follow CollectionPoint)
+    BinSeeder,                      # waste-types/bins — must follow CollectionPoint
     StaffTemplateSeeder,            # 2. staff-templates
     AlternativeStaffTemplateSeeder, # 3. alternative-staff-templates
     TripPlanSeeder,                 # 4. trip-plans
     TripPlanCollectionPointSeeder,  # 5. trip-plan-collection-points
+]
+
+# ============================================================
+# SCHEDULE OPERATIONS (router: schedule-operations/daily-trip-assignments,
+# daily-trip-collection-points, householdcollection-events,
+# vehicle-breakdowns, daily-trip-logs, ...)
+# ============================================================
+SCHEDULE_OPERATIONS_SEEDERS = [
     DailyTripAssignmentSeeder,      # 6. daily-trip-assignments
     DailyTripCollectionPointSeeder, # 7. daily-trip-collection-points
     DailyTripHouseholdCollectionSeeder,
@@ -161,6 +174,15 @@ SCHEDULE_MASTERS_SEEDERS = [
     TripAttendanceSeeder,
     BinCollectionEventSeeder,       # 9. bin-collection-events
     VehicleBreakdownSeeder,         # 10. vehicle-breakdowns
+]
+
+# Legacy alias — `schedule-masters` used to cover both of the above before it was
+# split into `schedule-setup` / `schedule-operations` (see base_urls.py). Kept as
+# the concatenated list so old scripts/muscle-memory using `--group schedule-masters`
+# keep working. NOT included in ORDERED_GROUPS/"all" to avoid double-seeding.
+SCHEDULE_MASTERS_SEEDERS = [
+    *SCHEDULE_SETUP_SEEDERS,
+    *SCHEDULE_OPERATIONS_SEEDERS,
 ]
 
 SCREEN_MANAGEMENTS_SEEDERS = [
@@ -203,12 +225,12 @@ ORDERED_GROUPS = [
     "superadmin",           # company, project, super_admin user
     "common-masters",       # continents, countries, states
     "masters",              # districts, cities, zones, wards, panchayat, ...
-    "waste-types",          # properties, subproperties
-    "assets",               # WasteType (bins seeded inside schedule-masters)
+    "waste-types",          # properties, subproperties, wastetypes (merged from legacy `assets`)
     "role-assigns",         # user-type, staffusertypes, contractorusertypes
     "user-creations",       # staff office, personal, auth-user
     "transport-masters",    # vehicle-type, vehicle-creation, fuel
-    "schedule-masters",     # all 9 submodules (incl. CollectionPoint + Bins internally)
+    "schedule-setup",       # collection-points, bins, staff-templates, alternative-staff-templates, trip-plans
+    "schedule-operations",  # daily-trip-assignments, daily-trip-collection-points, household-collections, trip-logs, bin-collection-events, vehicle-breakdowns
     "screen-managements",   # screen permissions
     "collections",          # panchayat-wise, ward-wise, zone-wise
     "customer-masters",     # customer creations, feedback, charge rules
@@ -224,13 +246,15 @@ SEED_GROUPS = {
     "common-masters":     COMMON_MASTER_SEEDERS,
     "masters":            MASTERS_SEEDERS,
     "waste-types":        WASTE_TYPES_SEEDERS,
-    "assets":             ASSETS_SEEDERS,
+    "assets":             ASSETS_SEEDERS,           # legacy alias for waste-types
     "role-assigns":       ROLE_ASSIGNS_SEEDERS,
     "user-creations":     USER_CREATIONS_SEEDERS,
     "user-creation":      USER_CREATIONS_SEEDERS,   # alias
     "transport-masters":  TRANSPORT_MASTERS_SEEDERS,
     "process-items":      PROCESS_ITEMS_SEEDERS,
-    "schedule-masters":   SCHEDULE_MASTERS_SEEDERS,
+    "schedule-setup":     SCHEDULE_SETUP_SEEDERS,
+    "schedule-operations": SCHEDULE_OPERATIONS_SEEDERS,
+    "schedule-masters":   SCHEDULE_MASTERS_SEEDERS,  # legacy alias for schedule-setup + schedule-operations
     "screen-managements": SCREEN_MANAGEMENTS_SEEDERS,
     "collections":        COLLECTIONS_SEEDERS,
     "customer-masters":   CUSTOMER_MASTERS_SEEDERS,
@@ -274,9 +298,10 @@ class Command(BaseCommand):
             type=str,
             help=(
                 "Seeder group (mirrors URL router groups): "
-                "superadmin | common-masters | masters | waste-types | assets | "
+                "superadmin | common-masters | masters | waste-types | assets (legacy alias) | "
                 "role-assigns | user-creations | transport-masters | process-items | "
-                "schedule-masters | screen-managements | collections | customer-masters | "
+                "schedule-setup | schedule-operations | schedule-masters (legacy alias) | "
+                "screen-managements | collections | customer-masters | "
                 "complaint-ticket | audits | reports | all"
             ),
         )

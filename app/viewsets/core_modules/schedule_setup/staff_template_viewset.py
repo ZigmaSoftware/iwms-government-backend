@@ -3,7 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
 from app.utils.base_models import Account 
