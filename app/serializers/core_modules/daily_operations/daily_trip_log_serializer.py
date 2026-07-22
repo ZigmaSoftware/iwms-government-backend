@@ -162,7 +162,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
 
     def get_collection_points(self, obj):
         from django.db.models import Sum
-        from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
+        from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 
         assignment = obj.trip_assignment_id
         if not assignment:
