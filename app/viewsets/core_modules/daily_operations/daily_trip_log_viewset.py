@@ -98,7 +98,14 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         status_value = params.get("status") or params.get("log_status")
         assignment = params.get("trip_assignment_id")
         collection_point = params.get("collection_point_id")
-        waste_type = params.get("waste_type_id")
+        # Accepts either repeated params (?waste_type_id=A&waste_type_id=B) or a
+        # single comma-separated value (?waste_type_id=A,B) for multi-select filtering.
+        waste_types = [
+            v
+            for raw in params.getlist("waste_type_id")
+            for v in raw.split(",")
+            if v
+        ]
         driver = params.get("driver_id")
         operator = params.get("operator_id")
         search = params.get("search") or params.get("q")
@@ -111,8 +118,8 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(trip_assignment_id=assignment)
         if collection_point:
             qs = qs.filter(collection_point_id=collection_point)
-        if waste_type:
-            qs = qs.filter(waste_types__unique_id=waste_type)
+        if waste_types:
+            qs = qs.filter(waste_types__unique_id__in=waste_types)
         if driver:
             qs = qs.filter(driver_id=driver)
         if operator:
@@ -128,7 +135,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 | Q(vehicle_id__vehicle_no__icontains=search)
             )
 
-        if waste_type or search:
+        if waste_types or search:
             qs = qs.distinct()
 
         ordering = params.get("ordering")

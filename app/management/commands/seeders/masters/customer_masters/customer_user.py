@@ -13,8 +13,9 @@ class CustomerUserSeeder(BaseSeeder):
 
     Customer login (`login/` with the customer provider) needs a "customer"
     UserType and a CustomerCreation row that carries a username + password. The
-    stock customer seeder leaves username/password blank, so no citizen can log
-    in. This seeder wires one up in a panchayat that is actively serviced
+    stock customer seeder uses contact-number logins; this named demo login is
+    easier to use during mobile testing. It is an individual house in a
+    panchayat that is actively serviced
     (Modakkurichi — the same trip driver_user runs).
     """
 
@@ -37,7 +38,7 @@ class CustomerUserSeeder(BaseSeeder):
         sub_property = (
             SubProperty.objects.filter(
                 property_id=property_obj,
-                sub_property_name="Apartment",
+                sub_property_name="Individual House",
                 is_deleted=False,
             ).first()
             if property_obj
@@ -89,6 +90,14 @@ class CustomerUserSeeder(BaseSeeder):
             customer.panchayat = panchayat
             customer.property_ref = property_obj
             customer.sub_property = sub_property
+            customer.is_bulkwaste_generator = False
+            customer.apartment_name = None
+            customer.block_no = None
+            customer.flat_no = None
+            customer.apartment_unique_id = None
+            customer.villa_no = None
+            customer.industry_name = None
+            customer.industry_type = None
             customer.is_active = True
             customer.is_deleted = False
             customer.save()

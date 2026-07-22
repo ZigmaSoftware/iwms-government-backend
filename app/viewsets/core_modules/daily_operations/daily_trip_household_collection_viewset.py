@@ -7,13 +7,17 @@ from app.models.core_modules.daily_operations.daily_trip_household_collection im
 from app.serializers.core_modules.daily_operations.daily_trip_household_collection_serializer import (
     DailyTripHouseholdCollectionSerializer,
 )
+from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
 
 
-class DailyTripHouseholdCollectionViewSet(viewsets.ModelViewSet):
+class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DailyTripHouseholdCollectionSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripHouseholdCollection"
+
+    AUDIT_MODULE = "transport-masters"
+    AUDIT_ENDPOINT = "daily-trip-household-collection"
 
     def get_queryset(self):
         queryset = (

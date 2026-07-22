@@ -6,6 +6,7 @@ HOUSEHOLD_WASTE_TYPE_NAMES = {
     "wet_waste": "Wet Waste",
     "dry_waste": "Dry Waste",
     "mixed_waste": "Mixed Waste",
+    "sanitary_waste": "Sanitary Waste",
 }
 
 # Sentinel waste_type_id used for household-sourced rows that don't have a
@@ -42,6 +43,7 @@ def waste_type_breakdown_for_assignment(assignment):
         wet_waste=Sum("wet_waste"),
         dry_waste=Sum("dry_waste"),
         mixed_waste=Sum("mixed_waste"),
+        sanitary_waste=Sum("sanitary_waste"),
     )
     waste_type_names = set(
         WasteType.objects.filter(is_deleted=False).values_list("waste_type_name", flat=True)

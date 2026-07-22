@@ -1,7 +1,10 @@
+from django.utils import timezone
+
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 
 TARGET = 15
 
@@ -16,6 +19,16 @@ WASTE_PRESETS = [
     (6.0, 1.0, 0.0),
     (2.8, 2.8, 1.4),
 ]
+
+GEO_FIELDS = (
+    "panchayat",
+    "panchayat_union",
+    "town_panchayat",
+    "municipality",
+    "corporation",
+    "district",
+    "state",
+)
 
 
 class WasteCollectionSeeder(BaseSeeder):
@@ -35,9 +48,13 @@ class WasteCollectionSeeder(BaseSeeder):
             self.log("No CustomerCreation (household) records found — aborting.")
             return
 
-        # Optional: spread a few available trip assignments across the records
+        # Waste collections belong only to household trips. Bulk/bin assignments
+        # must not receive an individual-house collection event.
         trip_assignments = list(
-            DailyTripAssignment.objects.filter(is_deleted=False).order_by("unique_id")
+            DailyTripAssignment.objects.filter(
+                is_deleted=False,
+                trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
+            ).order_by("-trip_date", "scheduled_time", "unique_id")
         )
 
         created_count = 0
@@ -51,15 +68,16 @@ class WasteCollectionSeeder(BaseSeeder):
                 continue
 
             wet, dry, mixed = WASTE_PRESETS[created_count % len(WASTE_PRESETS)]
-            trip_assignment = (
-                trip_assignments[created_count % len(trip_assignments)]
-                if trip_assignments
-                else None
-            )
+            trip_assignment = self._matching_assignment(customer, trip_assignments)
 
             WasteCollection.objects.create(
                 customer=customer,
                 trip_assignment_id=trip_assignment,
+                collection_date=(
+                    trip_assignment.trip_date
+                    if trip_assignment
+                    else timezone.localdate()
+                ),
                 wet_waste=wet,
                 dry_waste=dry,
                 mixed_waste=mixed,
@@ -68,3 +86,24 @@ class WasteCollectionSeeder(BaseSeeder):
             created_count += 1
 
         self.log(f"---WasteCollection seeded | created={created_count}---")
+
+    @staticmethod
+    def _matching_assignment(customer, assignments):
+        """Return a household assignment scoped to the customer's local body.
+
+        Match the most-specific populated geography so a collection never gets
+        attached to an unrelated scheduled route. The assignment list is newest
+        first, making the selected trip deterministic.
+        """
+        for field in GEO_FIELDS:
+            customer_geo_id = getattr(customer, f"{field}_id", None)
+            if customer_geo_id:
+                return next(
+                    (
+                        assignment
+                        for assignment in assignments
+                        if getattr(assignment, f"{field}_id", None) == customer_geo_id
+                    ),
+                    None,
+                )
+        return None

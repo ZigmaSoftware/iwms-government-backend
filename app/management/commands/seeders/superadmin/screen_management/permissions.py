@@ -57,6 +57,7 @@ USER_SCREEN_MODELS = {
     "daily-waste-comparisons": ("app", "DailyWasteComparison"),
     "MonthlyWasteComparison": ("app", "MonthlyWeightReport"),
     "common-audit": ("app", "StaffTemplateAuditLog"),
+    "staff-audit": ("app", "StaffAudit"),
     "login-audit": ("app", "LoginAudit"),
     "plb-leader-creation": ("app", "PanchayatLeaderLogin"),
     "district-leader-creation": ("app", "DistrictLeaderLogin"),
@@ -367,7 +368,8 @@ class PermissionSeeder(BaseSeeder):
                 "description": "Audit and activity logs",
                 "subitems": [
                     ("common-audit", "common-audit", "common-audit", 1, "Common audit"),
-                    ("login-audit", "login-audit", "login-audit", 2, "Login audit"),
+                    ("staff-audit", "staff-audit", "staff-audit", 2, "Collection audit"),
+                    ("login-audit", "login-audit", "login-audit", 3, "Login audit"),
                 ],
             },
             {

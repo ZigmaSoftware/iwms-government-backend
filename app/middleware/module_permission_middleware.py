@@ -200,6 +200,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "StaffTemplateAuditLog",
         "LoginAudit",
         "CommonAudit",
+        "StaffAudit",
     },
     "attendance": {
         "DailyAttendanceReg",
@@ -265,6 +266,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "DailyWasteComparison": ("daily-waste-comparisons",),
     "MonthlyWasteComparisonReport": ("MonthlyWasteComparison", "monthly-waste-comparison"),
     "CommonAudit": ("common-audit",),
+    "StaffAudit": ("staff-audit",),
     "LoginAudit": ("login-audit",),
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
     "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),

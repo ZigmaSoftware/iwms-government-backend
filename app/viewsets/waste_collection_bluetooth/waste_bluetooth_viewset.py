@@ -163,6 +163,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 status=409,
             )
 
+        previous_data = serialize_instance_for_audit(dthc)
+
         dthc.status = normalized_status
         dthc.status_reason = reason
         dthc.status_latitude = latitude or None
@@ -176,6 +178,15 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             "is_collected",
             "updated_at",
         ])
+
+        log_common_audit(
+            request,
+            module_name="transport-masters",
+            endpoint_name="daily-trip-household-collection",
+            instance=dthc,
+            previous_data=previous_data,
+            new_data=serialize_instance_for_audit(dthc),
+        )
 
         # Notify the customer instantly. Safe no-op if push isn't configured
         # or they have no registered device.
@@ -380,13 +391,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
     # ----- helpers for the WasteCollection mirror (new web backend) -----
     def _split_waste_by_type(self, collection_rows):
-        """Bucket the session's captured sub-rows into wet / dry / mixed by
-        waste-type name — same rule the citizen-summary aggregate uses."""
+        """Bucket the session's captured sub-rows into wet / dry / sanitary /
+        mixed by waste-type name — same rule the citizen-summary aggregate
+        uses."""
         type_names = {
             wt.unique_id: (wt.waste_type_name or "").lower()
             for wt in WasteType.objects.filter(is_deleted=False)
         }
-        wet = dry = mixed = 0.0
+        wet = dry = mixed = sanitary = 0.0
         for sub in collection_rows:
             key = str(sub.waste_type_id)
             name = type_names.get(key, "")
@@ -395,9 +407,11 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 wet += weight
             elif key == "2" or "dry" in name:
                 dry += weight
+            elif "sanitary" in name:
+                sanitary += weight
             else:
                 mixed += weight
-        return wet, dry, mixed
+        return wet, dry, mixed, sanitary
 
     def _resolve_trip_assignment(self, customer, request, assignment_id=None):
         """Best-effort trip for this collection: the exact assignment the app
@@ -461,7 +475,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             # Nothing to link to; the legacy Main record already stored the data.
             return None
 
-        wet, dry, mixed = self._split_waste_by_type(collection_rows)
+        wet, dry, mixed, sanitary = self._split_waste_by_type(collection_rows)
         trip_assignment = self._resolve_trip_assignment(
             customer, request, assignment_id=assignment_id
         )
@@ -486,6 +500,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         waste_collection.wet_waste = wet
         waste_collection.dry_waste = dry
         waste_collection.mixed_waste = mixed
+        waste_collection.sanitary_waste = sanitary
         waste_collection.is_deleted = False
         waste_collection.is_active = True
         # save() auto-calculates total_quantity + inherits geo; the post_save
