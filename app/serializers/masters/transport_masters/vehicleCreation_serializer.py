@@ -2,6 +2,7 @@ from rest_framework import serializers
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from app.models.masters.transport_masters.fuel import Fuel
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -59,6 +60,8 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
 
     # Government hierarchy — mirrors Collection Point's location fields
     # (see app/serializers/schedule_masters/collection_point_serializer.py).
+    country_id = UniqueIdOrPkField(source="country", slug_field="unique_id", queryset=Country.objects.filter(is_deleted=False), required=False, allow_null=True)
+    country_name = serializers.CharField(source="country.name", read_only=True)
     state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True)
     state_name = serializers.CharField(source="state.name", read_only=True)
     district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True)
@@ -80,6 +83,8 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
         model = VehicleCreation
         fields = [
             "unique_id",
+            "country_id",
+            "country_name",
             "state_id",
             "state_name",
             "district_id",
@@ -119,6 +124,17 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
         validators = []
 
     def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        state = attrs.get("state") or getattr(instance, "state", None)
+        country = attrs.get("country") or getattr(instance, "country", None)
+
+        if state:
+            state_country = state.country_id
+            if country and country.pk != state_country.pk:
+                raise serializers.ValidationError(
+                    {"country_id": "Country must match the selected state."}
+                )
+            attrs["country"] = state_country
 
         return unique_name_validator(
             Model=VehicleCreation,

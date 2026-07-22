@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from app.models.masters.waste_masters.bins import Bins
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -8,12 +9,13 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 
-class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
+class BinsSerializer(serializers.ModelSerializer):
 
+    country_id = UniqueIdOrPkField(source="country", slug_field="unique_id", queryset=Country.objects.filter(is_deleted=False), required=False, allow_null=True)
+    country_name = serializers.CharField(source="country.name", read_only=True)
     state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True)
     state_name = serializers.CharField(source="state.name", read_only=True)
     district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True)
@@ -37,6 +39,8 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         model = Bins
         fields = [
             "unique_id",
+            "country_id",
+            "country_name",
             "state_id",
             "state_name",
             "district_id",
@@ -60,7 +64,8 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
             "bin_type",
             "bin_image",
             "bin_qr",
-            "coordinates",
+            "latitude",
+            "longitude",
             "wastetype_id",
             "wastetype_name",
             "created_at",
@@ -72,6 +77,7 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         ]
         read_only_fields = [
             "unique_id",
+            "country_id",
             "state_id",
             "district_id",
             "area_type_id",
@@ -92,6 +98,21 @@ class BinsSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
 
 
     def validate(self, attrs):
+        latitude = attrs.get("latitude", getattr(self.instance, "latitude", None))
+        longitude = attrs.get("longitude", getattr(self.instance, "longitude", None))
+        if (latitude is None) != (longitude is None):
+            raise serializers.ValidationError(
+                {"latitude": "Latitude and longitude must be provided together."}
+            )
+        if latitude is not None and not -90 <= latitude <= 90:
+            raise serializers.ValidationError(
+                {"latitude": "Latitude must be between -90 and 90."}
+            )
+        if longitude is not None and not -180 <= longitude <= 180:
+            raise serializers.ValidationError(
+                {"longitude": "Longitude must be between -180 and 180."}
+            )
+
         if attrs.get("bin_qr") is None:
             attrs["bin_qr"] = ""
 

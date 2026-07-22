@@ -36,7 +36,6 @@ class State(BaseMaster):
 
     name = models.CharField(max_length=100)
     label = models.CharField(max_length=20, blank=True, null=True)
-    coordinates = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["name"]

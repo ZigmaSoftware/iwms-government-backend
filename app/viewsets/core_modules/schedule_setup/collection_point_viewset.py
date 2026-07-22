@@ -18,6 +18,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Collection_point.objects.select_related(
+            "country",
             "state",
             "district",
             "area_type",
@@ -29,6 +30,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ).filter(is_deleted=False)
 
         for field in (
+            "country_id",
             "state_id",
             "district_id",
             "area_type_id",

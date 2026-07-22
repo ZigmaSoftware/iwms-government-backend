@@ -69,6 +69,7 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Bins.objects.select_related(
+            "country",
             "state",
             "district",
             "area_type",
@@ -87,6 +88,7 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
         for field in (
+            "country_id",
             "state_id",
             "district_id",
             "area_type_id",

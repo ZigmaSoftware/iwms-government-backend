@@ -4,6 +4,7 @@ from app.utils.comfun import generate_unique_id
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.utils.bin_qr import generate_bin_qr_content
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -43,6 +44,15 @@ class Bins(BaseMaster):
         db_column="collection_point_id"
     )
 
+    country = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bins",
+        to_field="unique_id",
+        db_column="country_id",
+    )
     state = models.ForeignKey(
         State,
         on_delete=models.SET_NULL,
@@ -128,7 +138,8 @@ class Bins(BaseMaster):
     bin_type = models.CharField(max_length=10, choices=BinType.choices)
     bin_image = models.CharField(max_length=100)
     bin_qr = models.ImageField(upload_to="bin_qr/", blank=True, null=True)
-    coordinates = models.JSONField(default=list, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -143,6 +154,7 @@ class Bins(BaseMaster):
 
     def save(self, *args, **kwargs):
         if self.collection_point_id:
+            self.country = self.collection_point_id.country
             self.state = self.collection_point_id.state
             self.district = self.collection_point_id.district
             self.area_type = self.collection_point_id.area_type
