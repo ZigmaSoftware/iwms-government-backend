@@ -7,7 +7,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.user_creations.staffcreation import Staffcreation, StaffcreationOfficeDetails
+from app.models.superadmin.user_management.staffcreation import Staffcreation, StaffcreationOfficeDetails
 
 
 class VehicleBreakdownSeeder(BaseSeeder):

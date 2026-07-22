@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from app.models.assets.bins import Bins, BinType
+from app.models.masters.waste_masters.bins import Bins, BinType
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
@@ -11,10 +11,10 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.models.assets.wastetype import WasteType
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 
 
 class CollectionPointBinInputSerializer(serializers.Serializer):

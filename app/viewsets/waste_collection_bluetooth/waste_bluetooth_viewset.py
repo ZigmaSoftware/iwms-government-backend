@@ -6,13 +6,13 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum
 from datetime import datetime, timedelta
-from app.models.user_creations.waste_collection_bluetooth import (
+from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
     WasteCollectionMain,
     WasteCollectionSub,
     generate_unique_id,
     upload_image,
 )
-from app.models.assets.wastetype import WasteType
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 
@@ -466,7 +466,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         """Create or refresh the canonical WasteCollection row for this
         household so the web backend (dashboards, trip log, household stops)
         sees the app's collection."""
-        from app.models.masters.customer_masters.wastecollection import WasteCollection
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 
         customer = CustomerCreation.objects.filter(
             unique_id=customer_id, is_deleted=False

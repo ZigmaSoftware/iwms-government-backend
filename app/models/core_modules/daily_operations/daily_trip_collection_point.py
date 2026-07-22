@@ -1,10 +1,10 @@
 from django.db import models
 from django.utils import timezone
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType

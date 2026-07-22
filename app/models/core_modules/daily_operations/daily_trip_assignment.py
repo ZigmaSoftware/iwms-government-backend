@@ -6,7 +6,7 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
-from app.models.assets.wastetype import WasteType
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
@@ -14,7 +14,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.serializers.assets.bins_serializer import BinsSerializer
+from app.serializers.masters.waste_masters.bins_serializer import BinsSerializer
 from app.serializers.masters.transport_masters.vehicleCreation_serializer import (
     VehicleCreationSerializer,
 )
@@ -22,8 +22,8 @@ from app.serializers.core_modules.schedule_setup.alternative_staff_template_seri
     AlternativeStaffTemplateSerializer,
 )
 from app.serializers.core_modules.schedule_setup.staff_template_serializer import StaffTemplateSerializer
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.serializers.assets.wastetype_serializer import (
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.serializers.masters.waste_masters.wastetype_serializer import (
     WasteTypeSerializer,
 )
 from app.utils.hierarchy import flat_geo_display

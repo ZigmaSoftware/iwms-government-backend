@@ -1,11 +1,15 @@
 from django.db import models
 
-from app.models.user_creations.auditlog import generate_login_id
+from app.utils.comfun import generate_unique_id
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.staffUserType import StaffUserType
+
+
+def generate_login_id():
+    return f"AUDITLOG-{generate_unique_id()}"
 
 
 class AuditLog(models.Model):

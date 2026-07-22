@@ -1,7 +1,7 @@
 """API tests for WasteCollection (customer) endpoint — CRUD operations."""
 import pytest
 
-BASE = "/api/v1/schedule-masters/wastecollections/"
+BASE = "/api/v1/schedule-operations/wastecollections/"
 
 
 @pytest.mark.django_db

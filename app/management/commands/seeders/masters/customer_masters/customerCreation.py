@@ -3,8 +3,8 @@ from django.contrib.auth.hashers import make_password
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.masters.panchayat import Panchayat
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
 
 
 # min 6 chars, 1 uppercase + 1 lowercase + 1 digit — same convention as CustomerUserSeeder
