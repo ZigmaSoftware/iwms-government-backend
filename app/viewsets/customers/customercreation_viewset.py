@@ -147,6 +147,12 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             if value:
                 queryset = queryset.filter(**{field: value})
 
+        waste_type_param = params.get("waste_type_id")
+        if waste_type_param:
+            waste_type_ids = [v for v in waste_type_param.split(",") if v]
+            if waste_type_ids:
+                queryset = queryset.filter(waste_types__unique_id__in=waste_type_ids).distinct()
+
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset

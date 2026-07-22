@@ -161,6 +161,9 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         return result
 
     def get_collection_points(self, obj):
+        from django.db.models import Sum
+        from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
+
         assignment = obj.trip_assignment_id
         if not assignment:
             return []
@@ -170,18 +173,41 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             .select_related("collection_point_id", "bin_id", "bin_id__wastetype_id")
             .order_by("sequence")
         )
+        cp_ids = [tcp.unique_id for tcp in cps]
+        breakdown_by_cp = {}
+        if cp_ids:
+            event_rows = (
+                BinCollectionEvent.objects.filter(
+                    trip_collection_point_id__in=cp_ids, is_deleted=False
+                )
+                .values("trip_collection_point_id", "waste_type_id", "waste_type_id__waste_type_name")
+                .annotate(total_weight=Sum("collected_weight_kg"))
+            )
+            for row in event_rows:
+                if not row["total_weight"]:
+                    continue
+                breakdown_by_cp.setdefault(row["trip_collection_point_id"], []).append(
+                    {
+                        "waste_type_id": row["waste_type_id"],
+                        "waste_type_name": row["waste_type_id__waste_type_name"],
+                        "collected_weight_kg": str(row["total_weight"]),
+                    }
+                )
         return [
             {
                 "unique_id": tcp.collection_point_id.unique_id,
                 "cp_name": tcp.collection_point_id.cp_name,
                 "sequence": tcp.sequence,
                 "is_collected": tcp.is_collected,
+                "status": tcp.status,
+                "collected_at": tcp.collected_at.isoformat() if tcp.collected_at else None,
                 "collected_weight_kg": (
                     str(tcp.collected_weight_kg)
                     if tcp.collected_weight_kg is not None
                     else None
                 ),
                 "waste_type_name": getattr(getattr(tcp.bin_id, "wastetype_id", None), "waste_type_name", None),
+                "waste_type_breakdown": breakdown_by_cp.get(tcp.unique_id, []),
             }
             for tcp in cps
             if tcp.collection_point_id
@@ -217,6 +243,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         from app.models.schedule_masters.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
+        from app.utils.waste_type_breakdown import HOUSEHOLD_WASTE_TYPE_NAMES
+
         assignment = obj.trip_assignment_id
         if not assignment:
             return []
@@ -230,6 +258,18 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         for hh in hh_list:
             customer = hh.customer_id
             wc = hh.waste_collection_id
+            waste_type_breakdown = []
+            for column, label in HOUSEHOLD_WASTE_TYPE_NAMES.items():
+                value = getattr(wc, column, None) if wc else None
+                if not value:
+                    continue
+                waste_type_breakdown.append(
+                    {
+                        "waste_type_id": None,
+                        "waste_type_name": label,
+                        "collected_weight_kg": str(value),
+                    }
+                )
             result.append({
                 "unique_id": hh.unique_id,
                 "sequence": hh.sequence,
@@ -242,6 +282,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "wet_waste": getattr(wc, "wet_waste", None),
                 "dry_waste": getattr(wc, "dry_waste", None),
                 "mixed_waste": getattr(wc, "mixed_waste", None),
+                "sanitary_waste": getattr(wc, "sanitary_waste", None),
+                "waste_type_breakdown": waste_type_breakdown,
                 "collected_at": hh.collected_at.isoformat() if hh.collected_at else None,
                 "status": hh.status,
             })

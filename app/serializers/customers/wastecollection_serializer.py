@@ -166,13 +166,15 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
             "wet_waste",
             "dry_waste",
             "mixed_waste",
+            "sanitary_waste",
             "total_quantity",
+            "status",
             "collection_date",
             "collection_time",
             "is_active",
             "is_deleted",
         ]
-        read_only_fields = ["unique_id", "total_quantity", "collection_date", "collection_time"]
+        read_only_fields = ["unique_id", "total_quantity", "collection_time"]
 
     def get_location_name(self, obj):
         # Prefer the record's own geo; fall back to the household's.

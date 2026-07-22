@@ -91,6 +91,7 @@ from .user_creations.staff_data_scope import StaffDataScope
 from .audits.login_audit import LoginAudit
 from .audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
+from .audits.staff_audit import StaffAudit
 from .audits.permission_audit import PermissionAuditLog
 
 

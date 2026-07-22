@@ -219,6 +219,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "wet_waste": getattr(stop.waste_collection_id, "wet_waste", None),
             "dry_waste": getattr(stop.waste_collection_id, "dry_waste", None),
             "mixed_waste": getattr(stop.waste_collection_id, "mixed_waste", None),
+            "sanitary_waste": getattr(stop.waste_collection_id, "sanitary_waste", None),
             "status": stop.status,
         } for stop in stops]
 
