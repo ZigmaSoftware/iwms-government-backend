@@ -13,8 +13,8 @@ from app.models.core_modules.daily_operations.daily_trip_assignment import Daily
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.assets.wastetype import WasteType
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 from app.utils.waste_images import capture_images_for_customer
 
 

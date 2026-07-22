@@ -10,11 +10,11 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.waste_masters.subproperty import SubProperty
 from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.common_masters.country import Country
-from app.models.waste_types.property import Property
-from app.models.assets.wastetype import WasteType
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.wastetype import WasteType
 
 from app.serializers.masters.customer_masters.customercreation_serializer import CustomerCreationSerializer
 

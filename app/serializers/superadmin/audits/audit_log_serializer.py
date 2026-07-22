@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from app.models.superadmin.audits.audit_log import AuditLog
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen

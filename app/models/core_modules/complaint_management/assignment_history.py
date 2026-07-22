@@ -4,7 +4,7 @@ from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
 from app.models.core_modules.complaint_management.team_master import ComplaintTeam
-from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 
 
 def generate_assignment_history_id():

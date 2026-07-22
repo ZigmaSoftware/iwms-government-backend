@@ -13,7 +13,7 @@ from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.masters.district import District
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 
 
 

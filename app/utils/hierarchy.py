@@ -1,6 +1,6 @@
 from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
 from django.db.models import Q
-from app.models.user_creations.staff_data_scope import StaffDataScope
+from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
 
 # NOTE: The Hierarchy Tree/Level/Assignment admin UI and management API have
 # been removed. HierarchyNode/HierarchyClosure themselves — and the helpers

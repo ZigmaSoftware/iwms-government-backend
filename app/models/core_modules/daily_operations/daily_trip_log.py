@@ -5,14 +5,14 @@ from django.db import models
 from django.db.models import Sum
 from django.utils import timezone
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.user_creations.staffcreation import Staffcreation
-from app.models.assets.wastetype import WasteType
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -303,7 +303,7 @@ class DailyTripLog(BaseMaster):
         Mirrors sync_from_secondary_bin_collection_events() — only overrides when records exist
         so that manually-entered values are preserved when no WasteCollections are linked.
         """
-        from app.models.masters.customer_masters.wastecollection import WasteCollection
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 
         records = WasteCollection.objects.filter(
             trip_assignment_id=self.trip_assignment_id_id,

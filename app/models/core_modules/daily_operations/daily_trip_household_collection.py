@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.masters.customer_masters.wastecollection import WasteCollection
+from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District

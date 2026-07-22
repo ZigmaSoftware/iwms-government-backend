@@ -1,13 +1,13 @@
 from rest_framework import serializers
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.user_creations.staffcreation import Staffcreation
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display, hierarchy_payload
 
 

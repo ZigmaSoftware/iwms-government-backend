@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint

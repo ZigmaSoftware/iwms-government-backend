@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
@@ -15,9 +15,9 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.user_creations.staffcreation import Staffcreation
-from app.models.assets.wastetype import WasteType
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 
 
 class TripPlanStopInputSerializer(serializers.Serializer):

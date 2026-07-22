@@ -8,8 +8,8 @@ from app.models.core_modules.schedule_setup.collection_point import Collection_p
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
-from app.models.assets.wastetype import WasteType
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.masters.waste_masters.wastetype import WasteType
 
 
 class TripPlanSeeder(BaseSeeder):

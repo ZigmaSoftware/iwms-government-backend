@@ -5,7 +5,7 @@ from app.models.core_modules.daily_operations.daily_trip_assignment import Daily
 from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
 
 

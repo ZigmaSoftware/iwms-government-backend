@@ -6,10 +6,6 @@ from django.db import transaction
 
 from rest_framework import serializers
 
-from app.serializers.company_projects.tenancy import (
-    TenancyReadSerializerMixin
-)
-
 from app.models.superadmin.screen_management.userscreen import UserScreen
 
 from app.utils.userscreen_column_sync import (

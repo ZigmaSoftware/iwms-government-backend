@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -11,7 +11,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import FLAT_GEO_FIELDS, normalize_flat_geo_attrs
 
 

@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from app.models.assets.bins import Bins
+from app.models.masters.waste_masters.bins import Bins
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan

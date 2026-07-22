@@ -42,7 +42,7 @@ from app.models.core_modules.complaint_management.comment import ComplaintCommen
 from app.models.core_modules.complaint_management.reopen_history import ComplaintReopenHistory
 from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
 from app.models.core_modules.complaint_management.ticket_attachment import ComplaintAttachment
-from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 
 from app.serializers.core_modules.complaint_management.transaction_serializers import (
     ComplaintTicketSerializer,

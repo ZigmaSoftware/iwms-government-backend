@@ -325,30 +325,45 @@ class PermissionSeeder(BaseSeeder):
                 ],
             },
             {
-                "module": "schedule-masters",
+                "module": "schedule-setup",
                 "icon": "event_note",
                 "order": 12,
-                "description": "Schedule planning, operations, and reports",
+                "description": "Schedule planning and configuration",
                 "subitems": [
                     ("staff-templates", "staff-templates", "staff-templates", 1, "Staff templates"),
                     ("alternative-staff-templates", "alternative-staff-templates", "alternative-staff-templates", 2, "Alternative staff templates"),
                     ("collection-points", "collection-points", "collection-points", 3, "Collection points"),
                     ("trip-plans", "trip-plans", "trip-plans", 4, "Trip plans"),
-                    ("daily-trip-assignments", "daily-trip-assignments", "daily-trip-assignments", 5, "Daily trip assignments"),
-                    ("daily-trip-collection-points", "daily-trip-collection-points", "daily-trip-collection-points", 6, "Daily trip collection points"),
-                    ("daily-trip-household-collections", "daily-trip-household-collections", "daily-trip-household-collections", 7, "Daily trip household collections"),
-                    ("secondary-bin-collection-events", "secondary-bin-collection-events", "secondary-bin-collection-events", 8, "Secondary bin collection events"),
-                    ("vehicle-breakdowns", "vehicle-breakdowns", "vehicle-breakdowns", 9, "Vehicle breakdowns"),
-                    ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 10, "Daily trip logs"),
-                    ("householdcollection-events", "householdcollection-events", "householdcollection-events", 11, "Household collection events"),
-                    ("daily-waste-comparisons", "daily-waste-comparisons", "daily-waste-comparisons", 12, "Daily waste comparisons"),
-                    ("MonthlyWasteComparison", "MonthlyWasteComparison", "MonthlyWasteComparison", 13, "Monthly waste comparison"),
+                ],
+            },
+            {
+                "module": "schedule-operations",
+                "icon": "calendar_check",
+                "order": 13,
+                "description": "Daily schedule execution and tracking",
+                "subitems": [
+                    ("daily-trip-assignments", "daily-trip-assignments", "daily-trip-assignments", 1, "Daily trip assignments"),
+                    ("daily-trip-collection-points", "daily-trip-collection-points", "daily-trip-collection-points", 2, "Daily trip tracking"),
+                    ("secondary-bin-collection-events", "secondary-bin-collection-events", "secondary-bin-collection-events", 3, "Secondary bin collection events"),
+                    ("householdcollection-events", "householdcollection-events", "householdcollection-events", 4, "Household collection events"),
+                    ("vehicle-breakdowns", "vehicle-breakdowns", "vehicle-breakdowns", 5, "Vehicle breakdowns"),
+                    ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 6, "Daily trip logs"),
+                ],
+            },
+            {
+                "module": "schedule-masters",
+                "icon": "bar_chart",
+                "order": 14,
+                "description": "Schedule and waste reports",
+                "subitems": [
+                    ("daily-waste-comparisons", "daily-waste-comparisons", "daily-waste-comparisons", 1, "Daily waste comparisons"),
+                    ("MonthlyWasteComparison", "MonthlyWasteComparison", "MonthlyWasteComparison", 2, "Monthly waste comparison"),
                 ],
             },
             {
                 "module": "audits",
                 "icon": "fact_check",
-                "order": 13,
+                "order": 15,
                 "description": "Audit and activity logs",
                 "subitems": [
                     ("common-audit", "common-audit", "common-audit", 1, "Common audit"),
@@ -358,7 +373,7 @@ class PermissionSeeder(BaseSeeder):
             {
                 "module": "vehicle-tracking",
                 "icon": "local_shipping",
-                "order": 14,
+                "order": 16,
                 "description": "Vehicle tracking and history",
                 "subitems": [
                     ("VehicleTrack", "VehicleTrack", "VehicleTrack", 1, "Vehicle tracking"),
@@ -368,7 +383,7 @@ class PermissionSeeder(BaseSeeder):
             {
                 "module": "reports",
                 "icon": "bar_chart",
-                "order": 15,
+                "order": 17,
                 "description": "Fleet and waste reports",
                 "subitems": [
                     ("TripSummary", "TripSummary", "TripSummary", 1, "Trip summary"),
@@ -379,7 +394,7 @@ class PermissionSeeder(BaseSeeder):
             {
                 "module": "workforce",
                 "icon": "group",
-                "order": 16,
+                "order": 18,
                 "description": "Workforce management",
                 "subitems": [
                     ("WorkforceManagement", "WorkforceManagement", "WorkforceManagement", 1, "Workforce management"),
@@ -388,7 +403,7 @@ class PermissionSeeder(BaseSeeder):
             {
                 "module": "leader-login",
                 "icon": "badge",
-                "order": 17,
+                "order": 19,
                 "description": "Leader login management",
                 "subitems": [
                     ("plb-leader-creation", "plb-leader-creation", "plb-leader-creation", 1, "PLB leader creation"),
@@ -399,7 +414,7 @@ class PermissionSeeder(BaseSeeder):
             {
                 "module": "attendance",
                 "icon": "calendar_check",
-                "order": 18,
+                "order": 20,
                 "description": "Staff face-recognition attendance",
                 "subitems": [
                     ("attendance", "attendance", "attendance", 1, "Attendance records"),
