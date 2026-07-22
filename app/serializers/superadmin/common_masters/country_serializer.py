@@ -1,9 +1,8 @@
 from rest_framework import serializers
 from app.models.superadmin.common_masters.country import Country
-from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
-class CountrySerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
+class CountrySerializer(serializers.ModelSerializer):
     continent_name = serializers.CharField(
         source="continent_id.name", read_only=True
     )

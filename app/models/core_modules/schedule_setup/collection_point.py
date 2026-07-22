@@ -2,6 +2,7 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from django.core.exceptions import ValidationError
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -32,6 +33,15 @@ class Collection_point(BaseMaster):
         editable=False
     )
 
+    country = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="collection_points",
+        to_field="unique_id",
+        db_column="country_id",
+    )
     state = models.ForeignKey(
         State,
         on_delete=models.SET_NULL,
