@@ -2,10 +2,9 @@ from rest_framework import serializers
 from app.models.superadmin.common_masters.continent import Continent
 from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
-from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
-class StateSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
+class StateSerializer(serializers.ModelSerializer):
     continent_id = serializers.SlugRelatedField(
         queryset=Continent.objects.filter(is_deleted=False),
         slug_field="unique_id",
@@ -33,7 +32,6 @@ class StateSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer)
             "state_code",
             "name",
             "label",
-            "coordinates",
             "continent_id",
             "continent_name",
             "country_id",

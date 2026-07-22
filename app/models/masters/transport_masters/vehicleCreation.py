@@ -3,6 +3,7 @@ from django.db import models
 from app.models.masters.transport_masters.fuel import Fuel
 from .vehicleTypeCreation import VehicleTypeCreation
 from app.utils.comfun import generate_unique_id
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -46,6 +47,15 @@ class VehicleCreation(models.Model):
 
     # Government hierarchy the vehicle belongs to (mirrors Collection_point's
     # flat geo FKs — see app/models/schedule_masters/collection_point.py).
+    country = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vehicles",
+        to_field="unique_id",
+        db_column="country_id",
+    )
     state = models.ForeignKey(
         State,
         on_delete=models.SET_NULL,
