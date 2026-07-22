@@ -1,6 +1,6 @@
 """API tests for StaffUserType endpoint — CRUD operations."""
 import pytest
-from app.models.role_assigns.staffUserType import StaffUserType
+from app.models.superadmin.role_management.staffUserType import StaffUserType
 
 BASE = "/api/v1/role-assigns/staffusertypes/"
 

@@ -8,10 +8,10 @@ from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.customers.customercreation import CustomerCreation
-from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
-from app.models.leader_login.district_leader_login import DistrictLeaderLogin
-from app.models.leader_login.state_leader_login import StateLeaderLogin
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
+from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.utils.hierarchy import local_body_scope_for_staff
 from app.utils.permission_response import (
     resolve_intersected_permission_payload,

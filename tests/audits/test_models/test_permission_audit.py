@@ -1,6 +1,6 @@
 """Unit tests for PermissionAuditLog model — read-only audit trail."""
 import pytest
-from app.models.audits.permission_audit import PermissionAuditLog
+from app.models.superadmin.audits.permission_audit import PermissionAuditLog
 
 
 @pytest.mark.django_db

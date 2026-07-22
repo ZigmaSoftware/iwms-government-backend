@@ -1,9 +1,9 @@
 from rest_framework import serializers
 from django.db.models import Q
 
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.role_assigns.userType import UserType
+from app.models.superadmin.role_management.userType import UserType
 
 
 class UniqueIdOrPkField(serializers.SlugRelatedField):

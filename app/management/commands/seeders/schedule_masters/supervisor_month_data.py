@@ -5,9 +5,9 @@ from decimal import Decimal
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
-from app.models.schedule_masters.trip_plan import TripPlan
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.user_creations.staffcreation import Staffcreation
 
 

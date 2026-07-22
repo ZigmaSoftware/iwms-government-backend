@@ -13,7 +13,7 @@ from app.management.commands.seeders.superadmin_masters import (
 )
 
 # common-masters (router: common-masters/continents, countries, states)
-from app.management.commands.seeders.common_masters import COMMON_MASTER_SEEDERS as _COMMON_MASTER_SEEDERS
+from app.management.commands.seeders.superadmin.common_masters import COMMON_MASTER_SEEDERS as _COMMON_MASTER_SEEDERS
 
 # masters (router: masters/districts, cities, zones, wards, panchayat, ...)
 from app.management.commands.seeders.masters import MASTER_SEEDERS as CORE_MASTER_SEEDERS
@@ -29,47 +29,47 @@ from app.management.commands.seeders.assets.wastetype import WasteTypeSeeder
 from app.management.commands.seeders.assets.bins import BinSeeder
 
 # role-assigns (router: role-assigns/user-type, staffusertypes, contractorusertypes)
-from app.management.commands.seeders.role_assigns import ROLE_ASSIGN_SEEDERS
+from app.management.commands.seeders.superadmin.role_management import ROLE_ASSIGN_SEEDERS
 
 # user-creations (router: user-creations/staffcreation, ...)
 from app.management.commands.seeders.user_creations.auth_user_seeder import AuthUserSeeder
 from app.management.commands.seeders.user_creations.driver_user import DriverUserSeeder
 from app.management.commands.seeders.user_creations.supervisor_user import SupervisorUserSeeder
-from app.management.commands.seeders.customers.customer_user import CustomerUserSeeder
+from app.management.commands.seeders.masters.customer_masters.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.user_creations.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.user_creations.staff_personal import StaffPersonalSeeder
 from app.management.commands.seeders.user_creations.corporation_access import CorporationAccessSeeder
 
 # transport-masters (router: transport-masters/vehicle-type, vehicle-creation, trip-attendance, fuels)
-from app.management.commands.seeders.transport_masters.vehicleTypeCreation import VehicleTypeCreationSeeder
-from app.management.commands.seeders.transport_masters.vehicleCreation import VehicleCreationSeeder
-from app.management.commands.seeders.transport_masters.fuel import FuelSeeder
-from app.management.commands.seeders.transport_masters.trip_attendance import TripAttendanceSeeder
+from app.management.commands.seeders.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreationSeeder
+from app.management.commands.seeders.masters.transport_masters.vehicleCreation import VehicleCreationSeeder
+from app.management.commands.seeders.masters.transport_masters.fuel import FuelSeeder
+from app.management.commands.seeders.masters.transport_masters.trip_attendance import TripAttendanceSeeder
 
 # process-items
 
 
 # schedule-masters (router: schedule-masters/ — all 9 submodules)
-from app.management.commands.seeders.schedule_masters.collection_point import CollectionPointSeeder
-from app.management.commands.seeders.schedule_masters.staff_template import StaffTemplateSeeder
-from app.management.commands.seeders.schedule_masters.alternative_staff_template import AlternativeStaffTemplateSeeder
-from app.management.commands.seeders.schedule_masters.trip_plan import TripPlanSeeder
-from app.management.commands.seeders.schedule_masters.trip_plan_collection_point import TripPlanCollectionPointSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_assignment import DailyTripAssignmentSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_collection_point import DailyTripCollectionPointSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
-from app.management.commands.seeders.schedule_masters.daily_trip_log import DailyTripLogSeeder
-from app.management.commands.seeders.schedule_masters.secondary_bin_collection_event import BinCollectionEventSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.collection_point import CollectionPointSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.staff_template import StaffTemplateSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplateSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.trip_plan import TripPlanSeeder
+from app.management.commands.seeders.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPointSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignmentSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPointSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
+from app.management.commands.seeders.core_modules.daily_operations.daily_trip_log import DailyTripLogSeeder
+from app.management.commands.seeders.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.schedule_masters.scheduler_demo import SchedulerDemoSeeder
-from app.management.commands.seeders.schedule_masters.vehicle_breakdown import VehicleBreakdownSeeder
+from app.management.commands.seeders.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdownSeeder
 from app.management.commands.seeders.schedule_masters.supervisor_month_data import SupervisorMonthDataSeeder
 from app.management.commands.seeders.schedule_masters.multi_district_demo import MultiDistrictTripDataSeeder
 from app.management.commands.seeders.masters.telangana_masters import TelanganaMastersSeeder
 from app.management.commands.seeders.schedule_masters.waste_collection import WasteCollectionSeeder
 
 # screen-managements (router: screen-managements/...)
-from app.management.commands.seeders.screen_managements import PERMISSION_SEEDERS
-from app.management.commands.seeders.screen_managements.corporation_permissions import (
+from app.management.commands.seeders.superadmin.screen_management import PERMISSION_SEEDERS
+from app.management.commands.seeders.superadmin.screen_management.corporation_permissions import (
     CorporationPermissionSeeder,
 )
 
@@ -77,10 +77,10 @@ from app.management.commands.seeders.screen_managements.corporation_permissions 
 from app.management.commands.seeders.collections import COLLECTION_SEEDERS
 
 # customer-masters (router: customer-masters/customercreations, ...)
-from app.management.commands.seeders.customers import CUSTOMER_SEEDERS
+from app.management.commands.seeders.masters.customer_masters import CUSTOMER_SEEDERS
 
 # complaint-ticket (router: complaint-ticket/tickets, categories, subcategories, ...)
-from app.management.commands.seeders.complaint_ticket import COMPLAINT_TICKET_SEEDERS
+from app.management.commands.seeders.core_modules.complaint_management import COMPLAINT_TICKET_SEEDERS
 
 # audits (router: audits/vehicle-trip-audit, trip-exception-log, ...)
 

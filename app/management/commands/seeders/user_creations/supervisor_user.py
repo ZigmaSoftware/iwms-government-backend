@@ -2,11 +2,11 @@ from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.complaint_ticket.team_master import ComplaintTeam
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
-from app.models.role_assigns.userType import UserType
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.trip_plan import TripPlan
+from app.models.core_modules.complaint_management.team_master import ComplaintTeam
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.userType import UserType
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.user_creations.staffcreation import Staffcreation
 from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
 

@@ -1,6 +1,6 @@
 """API tests for Continent endpoint — CRUD operations."""
 import pytest
-from app.models.common_masters.continent import Continent
+from app.models.superadmin.common_masters.continent import Continent
 
 BASE = "/api/v1/common-masters/continents/"
 

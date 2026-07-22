@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.role_assigns.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.serializers.user_creations.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope

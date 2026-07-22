@@ -5,12 +5,12 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.permissions.operator_permission import IsOperatorRole
 from app.serializers.operator_mobile.scan_serializers import (
     ScanBinRequestSerializer,

@@ -6,9 +6,9 @@ Structured to mirror API router groupings.
 # ============================================================
 # GROUP: COMMON MASTERS
 # ============================================================
-from .common_masters.continent import Continent
-from .common_masters.country import Country
-from .common_masters.state import State
+from .superadmin.common_masters.continent import Continent
+from .superadmin.common_masters.country import Country
+from .superadmin.common_masters.state import State
 
 
 # ============================================================
@@ -17,9 +17,9 @@ from .common_masters.state import State
 from .masters.district import District
 from .masters.department import Department
 from .masters.designation import Designation
-from .leader_login.panchayat_leader_login import PanchayatLeaderLogin
-from .leader_login.district_leader_login import DistrictLeaderLogin
-from .leader_login.state_leader_login import StateLeaderLogin
+from .masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
+from .masters.leader_management.district_leader_login import DistrictLeaderLogin
+from .masters.leader_management.state_leader_login import StateLeaderLogin
 from .masters.areatype import AreaType
 from .masters.corporation import Corporation
 from .masters.municipality import Municipality
@@ -33,7 +33,7 @@ from .masters.hierarchy_assignment import HierarchyAssignment
 # ============================================================
 # GROUP: ASSETS
 # ============================================================
-from .transport_masters.fuel import Fuel
+from .masters.transport_masters.fuel import Fuel
 
 
 # ============================================================
@@ -51,25 +51,25 @@ from .waste_types.subproperty import SubProperty
 # ============================================================
 # GROUP: USERS & ROLE ASSIGNMENT
 # ============================================================
-from .role_assigns.userType import UserType
-from .role_assigns.staffUserType import StaffUserType
-from .role_assigns.governmentStaffUserType import GovernmentStaffUserType
+from .superadmin.role_management.userType import UserType
+from .superadmin.role_management.staffUserType import StaffUserType
+from .superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 
 
 # ============================================================
 # GROUP: SCREEN MANAGEMENT / PERMISSIONS
 # ============================================================
-from .screen_managements.mainscreentype import MainScreenType
-from .screen_managements.mainscreen import MainScreen
-from .screen_managements.userscreen import UserScreen
-from .screen_managements.userscreenaction import UserScreenAction
-from .screen_managements.userscreencolumn import UserScreenColumn
-from .screen_managements.companyuserscreenpermission import (
+from .superadmin.screen_management.mainscreentype import MainScreenType
+from .superadmin.screen_management.mainscreen import MainScreen
+from .superadmin.screen_management.userscreen import UserScreen
+from .superadmin.screen_management.userscreenaction import UserScreenAction
+from .superadmin.screen_management.userscreencolumn import UserScreenColumn
+from .superadmin.screen_management.companyuserscreenpermission import (
     CompanyUserScreenPermission,
     UserScreenPermission,
 )
-from .screen_managements.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
-from .screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
+from .superadmin.screen_management.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
+from .superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 
 
 # ============================================================
@@ -79,8 +79,8 @@ from .user_creations.staffcreation import (
     StaffcreationOfficeDetails,
     StaffPersonalDetails,
 )
-from .schedule_masters.staff_template import StaffTemplate
-from .schedule_masters.alternative_staff_template import AlternativeStaffTemplate
+from .core_modules.schedule_setup.staff_template import StaffTemplate
+from .core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from .user_creations.unassigned_staff_pool import UnassignedStaffPool
 from .user_creations.staff_data_scope import StaffDataScope
 
@@ -88,47 +88,46 @@ from .user_creations.staff_data_scope import StaffDataScope
 # ============================================================
 # GROUP: AUTH / LOGIN / AUDIT (USER)
 # ============================================================
-from .audits.login_audit import LoginAudit
-from .audits.audit_log import AuditLog
+from .superadmin.audits.login_audit import LoginAudit
+from .superadmin.audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
-from .audits.staff_audit import StaffAudit
-from .audits.permission_audit import PermissionAuditLog
+from .superadmin.audits.permission_audit import PermissionAuditLog
 
 
 # ============================================================
 # GROUP: CUSTOMER MODULES
 # ============================================================
-from .customers.customercreation import CustomerCreation
-from .customers.wastecollection import WasteCollection
-from .customers.feedback import FeedBack
-from .customers.userchargerule import UserChargeRule
-from .customers.password_reset_otp import PasswordResetOTP
+from .masters.customer_masters.customercreation import CustomerCreation
+from .masters.customer_masters.wastecollection import WasteCollection
+from .masters.customer_masters.feedback import FeedBack
+from .masters.customer_masters.userchargerule import UserChargeRule
+from .masters.customer_masters.password_reset_otp import PasswordResetOTP
 
 
 # ============================================================
 # GROUP: COMPLAINT TICKETING
 # ============================================================
-from .complaint_ticket.source_master import ComplaintSource
-from .complaint_ticket.language_master import ComplaintLanguage
-from .complaint_ticket.priority_master import ComplaintPriority
-from .complaint_ticket.status_master import ComplaintStatus
-from .complaint_ticket.module_master import ComplaintModule
-from .complaint_ticket.category_master import ComplaintCategory
-from .complaint_ticket.subcategory_master import ComplaintSubcategory
-from .complaint_ticket.team_master import ComplaintTeam
-from .complaint_ticket.sla_rule_master import ComplaintSlaRule
-from .complaint_ticket.routing_rule import ComplaintRoutingRule
-from .complaint_ticket.ticket import ComplaintTicket
-from .complaint_ticket.ticket_extra_detail import ComplaintTicketExtraDetail
-from .complaint_ticket.ticket_attachment import ComplaintAttachment
-from .complaint_ticket.status_history import ComplaintStatusHistory
-from .complaint_ticket.assignment_history import ComplaintAssignmentHistory
-from .complaint_ticket.escalation_history import ComplaintEscalationHistory
-from .complaint_ticket.reopen_history import ComplaintReopenHistory
-from .complaint_ticket.comment import ComplaintComment
-from .complaint_ticket.feedback import ComplaintFeedback
-from .complaint_ticket.address_change_request import ComplaintAddressChangeRequest
-from .complaint_ticket.notification import ComplaintNotification
+from .core_modules.complaint_management.source_master import ComplaintSource
+from .core_modules.complaint_management.language_master import ComplaintLanguage
+from .core_modules.complaint_management.priority_master import ComplaintPriority
+from .core_modules.complaint_management.status_master import ComplaintStatus
+from .core_modules.complaint_management.module_master import ComplaintModule
+from .core_modules.complaint_management.category_master import ComplaintCategory
+from .core_modules.complaint_management.subcategory_master import ComplaintSubcategory
+from .core_modules.complaint_management.team_master import ComplaintTeam
+from .core_modules.complaint_management.sla_rule_master import ComplaintSlaRule
+from .core_modules.complaint_management.routing_rule import ComplaintRoutingRule
+from .core_modules.complaint_management.ticket import ComplaintTicket
+from .core_modules.complaint_management.ticket_extra_detail import ComplaintTicketExtraDetail
+from .core_modules.complaint_management.ticket_attachment import ComplaintAttachment
+from .core_modules.complaint_management.status_history import ComplaintStatusHistory
+from .core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
+from .core_modules.complaint_management.escalation_history import ComplaintEscalationHistory
+from .core_modules.complaint_management.reopen_history import ComplaintReopenHistory
+from .core_modules.complaint_management.comment import ComplaintComment
+from .core_modules.complaint_management.feedback import ComplaintFeedback
+from .core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
+from .core_modules.complaint_management.notification import ComplaintNotification
 
 
 # ============================================================
@@ -144,24 +143,24 @@ from .assets.wastetype import WasteType
 # ============================================================
 # GROUP: ATTENDANCE (MOBILE)
 # ============================================================
-from .attendance import DailyAttendanceReg
+from .core_modules.attendance import DailyAttendanceReg
 
 
 # ============================================================
 # GROUP: TRANSPORT MASTERS & TRIPS
 # ============================================================
-from .transport_masters.vehicleTypeCreation import VehicleTypeCreation
-from .transport_masters.vehicleCreation import VehicleCreation
-from .schedule_masters.trip_plan import TripPlan
-from .schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
-from .transport_masters.trip_attendance import TripAttendance
-from .schedule_masters.daily_trip_assignment import DailyTripAssignment
-from .schedule_masters.daily_trip_log import DailyTripLog
-from .schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
-from .schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
-from .schedule_masters.secondary_bin_collection_event import BinCollectionEvent
+from .masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
+from .masters.transport_masters.vehicleCreation import VehicleCreation
+from .core_modules.schedule_setup.trip_plan import TripPlan
+from .core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
+from .masters.transport_masters.trip_attendance import TripAttendance
+from .core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from .core_modules.daily_operations.daily_trip_log import DailyTripLog
+from .core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
+from .core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollection
+from .core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from .schedule_masters.scheduler_config import SchedulerConfig
-from .schedule_masters.vehicle_breakdown import VehicleBreakdown
+from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 
 
 # ============================================================

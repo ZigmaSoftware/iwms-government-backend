@@ -4,14 +4,14 @@ from django.db import IntegrityError
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
-from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.role_assigns.userType import UserType
-from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
-from app.models.screen_managements.mainscreen import MainScreen
-from app.models.screen_managements.mainscreentype import MainScreenType
-from app.models.screen_managements.userscreen import UserScreen
-from app.models.screen_managements.userscreenaction import UserScreenAction
-from app.models.screen_managements.userscreencolumn import UserScreenColumn
+from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.models.superadmin.role_management.userType import UserType
+from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.mainscreen import MainScreen
+from app.models.superadmin.screen_management.mainscreentype import MainScreenType
+from app.models.superadmin.screen_management.userscreen import UserScreen
+from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
+from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
 from app.models.superadmin_masters.auth_user import User
 from app.models.user_creations.staffcreation import Staffcreation
 

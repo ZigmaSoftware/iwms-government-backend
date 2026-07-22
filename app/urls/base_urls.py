@@ -7,16 +7,16 @@ from .custom_router import GroupedRouter
 # ============================================================
 
 # Common masters
-from ..viewsets.common_masters.continent_viewset import ContinentViewSet
-from ..viewsets.common_masters.country_viewset import CountryViewSet
-from ..viewsets.common_masters.state_viewset import StateViewSet
+from ..viewsets.superadmin.common_masters.continent_viewset import ContinentViewSet
+from ..viewsets.superadmin.common_masters.country_viewset import CountryViewSet
+from ..viewsets.superadmin.common_masters.state_viewset import StateViewSet
 
 # Masters
 from ..viewsets.masters.district_viewset import DistrictViewSet
 from ..viewsets.masters.panchayat_viweset import PanhayatViewSet
-from ..viewsets.leader_login.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
-from ..viewsets.leader_login.district_leader_viewset import DistrictLeaderLoginViewSet
-from ..viewsets.leader_login.state_leader_viewset import StateLeaderLoginViewSet
+from ..viewsets.masters.leader_management.panchayat_leader_viewset import PanchayatLeaderLoginViewSet
+from ..viewsets.masters.leader_management.district_leader_viewset import DistrictLeaderLoginViewSet
+from ..viewsets.masters.leader_management.state_leader_viewset import StateLeaderLoginViewSet
 from ..viewsets.masters.areatype_viewset import AreaTypeViewSet
 from ..viewsets.masters.hierarchy_viewset import AdministrativeHierarchyViewSet
 from ..viewsets.masters.department_viewset import DepartmentViewSet
@@ -35,24 +35,24 @@ from ..viewsets.assets.wastetype_viewset import WasteTypeViewSet
 from ..viewsets.assets.bins_viewset import BinsViewSet
 
 # Screen management
-from ..viewsets.screen_managements.mainscreentype_viewset import MainScreenTypeViewSet
-from ..viewsets.screen_managements.mainscreen_viewset import MainScreenViewSet
-from ..viewsets.screen_managements.userscreen_viewset import UserScreenViewSet
-from ..viewsets.screen_managements.userscreenaction_viewset import UserScreenActionViewSet
-from ..viewsets.screen_managements.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
-from ..viewsets.screen_managements.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
-from ..viewsets.screen_managements.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
-from ..viewsets.screen_managements.permission_api_views import (
+from ..viewsets.superadmin.screen_management.mainscreentype_viewset import MainScreenTypeViewSet
+from ..viewsets.superadmin.screen_management.mainscreen_viewset import MainScreenViewSet
+from ..viewsets.superadmin.screen_management.userscreen_viewset import UserScreenViewSet
+from ..viewsets.superadmin.screen_management.userscreenaction_viewset import UserScreenActionViewSet
+from ..viewsets.superadmin.screen_management.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
+from ..viewsets.superadmin.screen_management.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
+from ..viewsets.superadmin.screen_management.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
+from ..viewsets.superadmin.screen_management.permission_api_views import (
     PermissionAssignAPIView,
     UserScreenColumnsAPIView,
     UserPermissionsAPIView,
 )
 
 # Role assignments
-from ..viewsets.role_assigns.usertype_viewset import UserTypeViewSet
-from ..viewsets.role_assigns.staffusertype_viewset import StaffUserTypeViewSet
-from ..viewsets.role_assigns.contractorusertype_viewset import ContractorUserTypeViewSet
-from ..viewsets.role_assigns.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
+from ..viewsets.superadmin.role_management.usertype_viewset import UserTypeViewSet
+from ..viewsets.superadmin.role_management.staffusertype_viewset import StaffUserTypeViewSet
+from ..viewsets.superadmin.role_management.contractorusertype_viewset import ContractorUserTypeViewSet
+from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
 
 # User creations
 from ..viewsets.user_creations.staff_viewset import StaffViewSet
@@ -75,13 +75,13 @@ from ..viewsets.auth.change_password_viewset import (
 )
 
 # Customer modules
-from ..viewsets.customers.customercreation_viewset import CustomerCreationViewSet
-from ..viewsets.customers.wastecollection_viewset import WasteCollectionViewSet
-from ..viewsets.customers.feedback_viewset import FeedBackViewSet
-from ..viewsets.customers.userchargerule_viewset import UserChargeRuleViewSet
+from ..viewsets.masters.customer_masters.customercreation_viewset import CustomerCreationViewSet
+from ..viewsets.masters.customer_masters.wastecollection_viewset import WasteCollectionViewSet
+from ..viewsets.masters.customer_masters.feedback_viewset import FeedBackViewSet
+from ..viewsets.masters.customer_masters.userchargerule_viewset import UserChargeRuleViewSet
 
 # Complaint Ticketing
-from ..viewsets.complaint_ticket.master_viewsets import (
+from ..viewsets.core_modules.complaint_management.master_viewsets import (
     ComplaintSourceViewSet,
     ComplaintLanguageViewSet,
     ComplaintPriorityViewSet,
@@ -92,43 +92,42 @@ from ..viewsets.complaint_ticket.master_viewsets import (
     ComplaintSubcategoryViewSet,
     ComplaintSlaRuleViewSet,
 )
-from ..viewsets.complaint_ticket.ticket_viewset import ComplaintTicketViewSet
-from ..viewsets.complaint_ticket.citizen_viewset import (
+from ..viewsets.core_modules.complaint_management.ticket_viewset import ComplaintTicketViewSet
+from ..viewsets.core_modules.complaint_management.citizen_viewset import (
     CitizenComplaintTicketViewSet,
     PublicGrievanceViewSet,
 )
-from ..viewsets.complaint_ticket.address_change_viewset import ComplaintAddressChangeViewSet
-from ..viewsets.complaint_ticket.secondary_viewsets import (
+from ..viewsets.core_modules.complaint_management.address_change_viewset import ComplaintAddressChangeViewSet
+from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintRoutingRuleViewSet,
     ComplaintFeedbackViewSet,
     ComplaintReopenHistoryViewSet,
 )
-from ..viewsets.complaint_ticket.notification_viewset import ComplaintNotificationViewSet
+from ..viewsets.core_modules.complaint_management.notification_viewset import ComplaintNotificationViewSet
 
 # Transport masters
-from ..viewsets.transport_masters.vehicletypecreation_viewset import VehicleTypeCreationViewSet
-from ..viewsets.transport_masters.vehicleCreation_viewset import VehicleCreationViewSet
-from ..viewsets.transport_masters.trip_attendance_viewset import TripAttendanceViewSet
-from ..viewsets.transport_masters.fuel_viewset import FuelViewSet
+from ..viewsets.masters.transport_masters.vehicletypecreation_viewset import VehicleTypeCreationViewSet
+from ..viewsets.masters.transport_masters.vehicleCreation_viewset import VehicleCreationViewSet
+from ..viewsets.masters.transport_masters.trip_attendance_viewset import TripAttendanceViewSet
+from ..viewsets.masters.transport_masters.fuel_viewset import FuelViewSet
 
 # Schedule masters
-from ..viewsets.schedule_masters.staff_template_viewset import StaffTemplateViewSet
-from ..viewsets.schedule_masters.alternative_staff_template_viewset import AlternativeStaffTemplateViewSet
-from ..viewsets.schedule_masters.collection_point_viewset import CollectionPointViewSet
-from ..viewsets.schedule_masters.trip_plan_viewset import TripPlanViewSet
-from ..viewsets.schedule_masters.daily_trip_assignment_viewset import DailyTripAssignmentViewSet
-from ..viewsets.schedule_masters.daily_trip_collection_point_viewset import DailyTripCollectionPointViewSet
-from ..viewsets.schedule_masters.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
-from ..viewsets.schedule_masters.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
-from ..viewsets.schedule_masters.vehicle_breakdown_viewset import VehicleBreakdownViewSet
-from ..viewsets.schedule_masters.daily_trip_log_viewset import DailyTripLogViewSet
+from ..viewsets.core_modules.schedule_setup.staff_template_viewset import StaffTemplateViewSet
+from ..viewsets.core_modules.schedule_setup.alternative_staff_template_viewset import AlternativeStaffTemplateViewSet
+from ..viewsets.core_modules.schedule_setup.collection_point_viewset import CollectionPointViewSet
+from ..viewsets.core_modules.schedule_setup.trip_plan_viewset import TripPlanViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_assignment_viewset import DailyTripAssignmentViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_collection_point_viewset import DailyTripCollectionPointViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
+from ..viewsets.core_modules.daily_operations.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
+from ..viewsets.core_modules.daily_operations.vehicle_breakdown_viewset import VehicleBreakdownViewSet
+from ..viewsets.core_modules.daily_operations.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.schedule_masters.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet
 from ..viewsets.schedule_masters.daily_waste_comparison_viewset import DailyWasteComparisonViewSet
 
 # Audits
-from ..viewsets.audits.login_audit_viewset import LoginAuditViewSet
-from ..viewsets.audits.common_audit_viewset import CommonAuditViewSet
-from ..viewsets.audits.staff_audit_viewset import StaffAuditViewSet
+from ..viewsets.superadmin.audits.login_audit_viewset import LoginAuditViewSet
+from ..viewsets.superadmin.audits.common_audit_viewset import CommonAuditViewSet
 
 # Localbody
 from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardViewSet

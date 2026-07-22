@@ -1,7 +1,7 @@
 from django.urls import reverse
 from django.views.generic import TemplateView
-from app.models.customers.customercreation import CustomerCreation
-from app.models.role_assigns.userType import UserType
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.superadmin.role_management.userType import UserType
 
 
 class CitizenLoginPage(TemplateView):

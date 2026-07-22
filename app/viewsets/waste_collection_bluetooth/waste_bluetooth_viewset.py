@@ -13,8 +13,7 @@ from app.models.user_creations.waste_collection_bluetooth import (
     upload_image,
 )
 from app.models.assets.wastetype import WasteType
-from app.models.customers.customercreation import CustomerCreation
-from app.utils.audit_mixin import log_common_audit, serialize_instance_for_audit
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 
 
@@ -51,7 +50,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         Writes to the DailyTripHouseholdCollection row for the requester's active
         trip today, so the update stays scoped to the trip (and its hierarchy).
         """
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
         from app.viewsets.operator_mobile.helpers import (
@@ -97,7 +96,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 {"status": "error", "message": "reason is required"}, status=400
             )
 
-        from app.models.schedule_masters.daily_trip_assignment import (
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
 
@@ -419,10 +418,10 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         sent (preferred — a driver can hold both a bin and a household trip),
         else the trip where this household is a stop today, else the requester's
         active operator trip. None when nothing applies."""
-        from app.models.schedule_masters.daily_trip_assignment import (
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
 
@@ -467,7 +466,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         """Create or refresh the canonical WasteCollection row for this
         household so the web backend (dashboards, trip log, household stops)
         sees the app's collection."""
-        from app.models.customers.wastecollection import WasteCollection
+        from app.models.masters.customer_masters.wastecollection import WasteCollection
 
         customer = CustomerCreation.objects.filter(
             unique_id=customer_id, is_deleted=False

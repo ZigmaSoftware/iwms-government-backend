@@ -1,6 +1,6 @@
 """API tests for Fuel endpoint — CRUD operations."""
 import pytest
-from app.models.transport_masters.fuel import Fuel
+from app.models.masters.transport_masters.fuel import Fuel
 
 BASE = "/api/v1/transport-masters/fuels/"
 

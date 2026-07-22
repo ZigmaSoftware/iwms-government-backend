@@ -1,6 +1,6 @@
 """Unit tests for UserScreenAction model — CRUD + constraints."""
 import pytest
-from app.models.screen_managements.userscreenaction import UserScreenAction
+from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 
 
 @pytest.mark.django_db

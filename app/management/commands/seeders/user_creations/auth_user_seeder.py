@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.role_assigns.userType import UserType
+from app.models.superadmin.role_management.userType import UserType
 from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
 
 

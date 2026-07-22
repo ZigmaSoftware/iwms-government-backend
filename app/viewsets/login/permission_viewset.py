@@ -3,9 +3,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.user_creations.staffcreation import Staffcreation
-from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
 from app.utils.permission_response import resolve_permission_payload
 
 CompanyUserScreenPermission = UserScreenPermission

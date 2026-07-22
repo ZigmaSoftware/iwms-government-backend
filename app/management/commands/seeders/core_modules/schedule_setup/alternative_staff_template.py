@@ -1,0 +1,77 @@
+from datetime import timedelta
+
+from django.utils import timezone
+
+from app.management.commands.seeders.base import BaseSeeder
+from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+
+
+class AlternativeStaffTemplateSeeder(BaseSeeder):
+    name = "AlternativeStaffTemplateSeeder"
+
+    # (alt_driver_username, alt_operator_username, change_reason)
+    ALT_ASSIGNMENTS = [
+        ("geetha.lakshmi", "priya.devi",   "Sick leave"),
+        ("priya.devi",     "geetha.lakshmi","Annual leave"),
+        ("muthu.samy",     "anbu.arasan",  "Emergency replacement"),
+        ("anbu.arasan",    "ravi.kumar",   "Training duty"),
+        ("ravi.kumar",     "geetha.lakshmi","Vehicle change"),
+    ]
+
+    def run(self):
+        templates = StaffTemplate.objects.filter(
+            is_deleted=False, status=StaffTemplate.Status.ACTIVE
+        ).order_by("created_at")
+
+        if not templates.exists():
+            self.log("No StaffTemplates found — run StaffTemplateSeeder first.")
+            return
+
+        count = 0
+        updated = 0
+        base_date = timezone.localdate()
+        for idx, (driver_username, operator_username, change_reason) in enumerate(
+            self.ALT_ASSIGNMENTS
+        ):
+            template = templates[idx % templates.count()]
+            from_date = base_date + timedelta(days=idx + 1)
+            to_date = from_date + timedelta(days=6)
+
+            driver = StaffcreationOfficeDetails.objects.filter(
+                username=driver_username, is_deleted=False
+            ).first()
+            operator = StaffcreationOfficeDetails.objects.filter(
+                username=operator_username, is_deleted=False
+            ).first()
+
+            if not driver or not operator:
+                self.log(f"Staff not found for alt template {idx + 1} — skipping.")
+                continue
+
+            existing = AlternativeStaffTemplate.objects.filter(staff_template=template).first()
+            if existing:
+                existing.driver_id = driver
+                existing.operator_id = operator
+                existing.change_reason = change_reason
+                existing.from_date = existing.from_date or from_date
+                existing.to_date = existing.to_date or to_date
+                existing.approval_status = "APPROVED"
+                existing.save()
+                updated += 1
+                self.log(f"Updated alt template for '{template.display_code}'.")
+                continue
+
+            AlternativeStaffTemplate.objects.create(
+                staff_template=template,
+                driver_id=driver,
+                operator_id=operator,
+                from_date=from_date,
+                to_date=to_date,
+                change_reason=change_reason,
+                approval_status="APPROVED",
+            )
+            count += 1
+
+        self.log(f"---Alternative staff templates seeded ({count} created, {updated} updated)---")
