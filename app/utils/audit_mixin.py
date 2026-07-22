@@ -8,6 +8,7 @@ from datetime import datetime, date, time
 from decimal import Decimal
 from uuid import UUID
 from django.db.models.fields.files import FieldFile
+from app.models.superadmin.audits.staff_audit import StaffAudit
 
 
 def serialize_instance_for_audit(instance, redact_fields=()):

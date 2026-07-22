@@ -280,12 +280,31 @@ SEED_GROUPS = {
 }
 
 # ============================================================
-# EXPLICIT "ALL" GROUP — ordered for correct dependency chain
+# EXPLICIT "ALL" GROUP — ordered for correct dependency chain.
+#
+# CustomerCreation must precede schedule operations: creating a daily household
+# assignment expands its household stop by querying the customers in that local
+# body. WasteCollectionSeeder, however, needs those assignments, so it remains
+# after schedule operations. This intentionally differs from simply flattening
+# CUSTOMER_MASTERS_SEEDERS as a single block.
 # ============================================================
 SEED_GROUPS["all"] = [
-    seeder
-    for group in ORDERED_GROUPS
-    for seeder in SEED_GROUPS[group]
+    *SUPERADMIN_SEEDERS,
+    *COMMON_MASTER_SEEDERS,
+    *MASTERS_SEEDERS,
+    *WASTE_TYPES_SEEDERS,
+    *ROLE_ASSIGNS_SEEDERS,
+    *USER_CREATIONS_SEEDERS,
+    *TRANSPORT_MASTERS_SEEDERS,
+    *CUSTOMER_SEEDERS,
+    *SCHEDULE_SETUP_SEEDERS,
+    *SCHEDULE_OPERATIONS_SEEDERS,
+    WasteCollectionSeeder,
+    *SCREEN_MANAGEMENTS_SEEDERS,
+    *COLLECTIONS_SEEDERS,
+    *COMPLAINT_TICKET_SEEDER_GROUP,
+    *REPORTS_SEEDERS,
+    *DRIVER_DEMO_SEEDERS,
 ]
 
 
