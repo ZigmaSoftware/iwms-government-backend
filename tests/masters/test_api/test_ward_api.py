@@ -13,16 +13,15 @@ class TestWardAPIList:
 
 @pytest.mark.django_db
 class TestWardAPICreate:
-    def test_create_returns_success(self, auth_client, state, district, city, zone):
+    def test_create_returns_success(self, auth_client, state, district, corporation):
         resp = auth_client.post(
             BASE,
             {
                 "ward_name": "New Ward",
                 "state_id": state.unique_id,
                 "district_id": district.unique_id,
-                "city_id": city.unique_id,
-                "zone_id": zone.unique_id,
-                "geofencing_type": "polygon",
+                "area_type_id": corporation.area_type_id.unique_id,
+                "corporation_id": corporation.unique_id,
                 "coordinates": [
                     {"latitude": 13.0808, "longitude": 80.2731},
                     {"latitude": 13.0832, "longitude": 80.2775},
@@ -35,6 +34,27 @@ class TestWardAPICreate:
         data = resp.json()
         assert len(data["coordinates"]) == 3
         assert data["coordinates"][0]["longitude"] == 80.2731
+        assert data["local_body_type"] == "corporation"
+
+    def test_create_without_local_body_fails(self, auth_client, state, district):
+        resp = auth_client.post(
+            BASE,
+            {"ward_name": "Orphan Ward", "state_id": state.unique_id, "district_id": district.unique_id},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_create_with_two_local_bodies_fails(self, auth_client, corporation):
+        resp = auth_client.post(
+            BASE,
+            {
+                "ward_name": "Ambiguous Ward",
+                "corporation_id": corporation.unique_id,
+                "panchayat_id": corporation.unique_id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
 
 
 @pytest.mark.django_db

@@ -15,6 +15,7 @@ USER_SCREEN_MODELS = {
     "town-panchayats": ("app", "TownPanchayat"),
     "panchayat-unions": ("app", "PanchayatUnion"),
     "panchayats": ("app", "Panchayat"),
+    "wards": ("app", "Ward"),
     "properties": ("app", "Property"),
     "subproperties": ("app", "SubProperty"),
     "bins": ("app", "Bins"),
@@ -233,6 +234,7 @@ class PermissionSeeder(BaseSeeder):
                     ("town-panchayats", "town-panchayats", "town-panchayats", 5, "Town panchayats"),
                     ("panchayat-unions", "panchayat-unions", "panchayat-unions", 6, "Panchayat unions"),
                     ("panchayats", "panchayats", "panchayats", 7, "Panchayats"),
+                    ("wards", "wards", "wards", 8, "Wards"),
                 ],
             },
             {
