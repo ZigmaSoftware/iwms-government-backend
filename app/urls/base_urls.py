@@ -25,6 +25,7 @@ from ..viewsets.masters.corporation_viewset import CorporationViewSet
 from ..viewsets.masters.municipality_viewset import MunicipalityViewSet
 from ..viewsets.masters.town_panchayat_viewset import TownPanchayatViewSet
 from ..viewsets.masters.panchayat_union_viewset import PanchayatUnionViewSet
+from ..viewsets.masters.ward_viewset import WardViewSet
 
 # Waste masters
 from ..viewsets.masters.waste_masters.property_viewset import PropertyViewSet
@@ -180,6 +181,7 @@ router.register_group("masters", "corporations",           CorporationViewSet)
 router.register_group("masters", "municipalities",          MunicipalityViewSet)
 router.register_group("masters", "town-panchayats",         TownPanchayatViewSet)
 router.register_group("masters", "panchayat-unions",        PanchayatUnionViewSet)
+router.register_group("masters", "wards",                   WardViewSet)
 
 # ============================================================
 # GROUP: Waste-Type
