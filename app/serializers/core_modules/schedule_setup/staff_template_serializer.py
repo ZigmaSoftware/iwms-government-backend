@@ -32,9 +32,6 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
         queryset=Staffcreation.objects.filter(is_deleted=False)
     )
 
-
-
-
     approved_by = UniqueIdOrPkField(
         slug_field="staff_unique_id",
         queryset=Staffcreation.objects.filter(is_deleted=False),

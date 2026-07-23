@@ -12,6 +12,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
@@ -49,6 +50,15 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
 
     bins = CollectionPointBinInputSerializer(many=True, write_only=True, required=False)
     bins_detail = serializers.SerializerMethodField()
+    ward_ids = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=Ward.objects.filter(is_deleted=False),
+        many=True,
+        required=False,
+        source="wards",
+        write_only=True,
+    )
+    wards_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Collection_point
@@ -79,6 +89,8 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "coordinates",
             "bins",
             "bins_detail",
+            "ward_ids",
+            "wards_detail",
             "is_active",
             "created_at",
             "updated_at",
@@ -99,6 +111,12 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "wastetype_name": getattr(bin_obj.wastetype_id, "waste_type_name", None),
             "is_active": bin_obj.is_active,
         } for bin_obj in bins]
+
+    def get_wards_detail(self, obj):
+        return [
+            {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
+            for ward in obj.wards.all()
+        ]
 
     def _sync_bins(self, collection_point, bins):
         if bins is None:

@@ -8,6 +8,7 @@ from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.ward import Ward
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
@@ -41,6 +42,15 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     waste_type_breakdown = serializers.SerializerMethodField(read_only=True)
     household_waste_type_ids = serializers.SlugRelatedField(slug_field="unique_id", queryset=WasteType.objects.filter(is_deleted=False), many=True, required=False)
     household_waste_types = serializers.SerializerMethodField(read_only=True)
+    ward_ids = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=Ward.objects.filter(is_deleted=False),
+        many=True,
+        required=False,
+        source="wards",
+        write_only=True,
+    )
+    wards_detail = serializers.SerializerMethodField(read_only=True)
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
     alt_staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=AlternativeStaffTemplate.objects.all(), write_only=True, required=False, allow_null=True)
 
@@ -69,6 +79,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "unique_id", "trip_plan_id", "staff_template_id", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "waste_type_ids", "waste_types_detail", "waste_type_breakdown",
+            "ward_ids", "wards_detail",
             "household_waste_type_ids", "household_waste_types",
             "vehicle_id", "alt_staff_template_id", "collection_points_input", "trip_plan", "staff_template",
             "effective_staff", "state", "district", "area_type", "corporation", "municipality",
@@ -155,6 +166,9 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
 
     def get_waste_types_detail(self, obj):
         return [{"unique_id": wt.unique_id, "waste_type_name": wt.waste_type_name} for wt in obj.waste_types.all()]
+
+    def get_wards_detail(self, obj):
+        return [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in obj.wards.all()]
 
     def get_waste_type_breakdown(self, obj):
         from app.utils.waste_type_breakdown import waste_type_breakdown_for_assignment
@@ -294,6 +308,8 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             attrs.setdefault("vehicle_id", trip_plan.vehicle_id)
             if "waste_types" not in attrs:
                 attrs["waste_types"] = list(trip_plan.waste_types.all())
+            if "wards" not in attrs:
+                attrs["wards"] = list(trip_plan.wards.all())
             for field in geo_fields:
                 attrs.setdefault(field, getattr(trip_plan, field, None))
             attrs.setdefault("scheduled_time", trip_plan.scheduled_time)

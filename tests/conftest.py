@@ -101,14 +101,32 @@ def zone(db, state, district, city):
 
 
 @pytest.fixture
-def ward(db, state, district, city, zone):
+def corporation(db, state, district):
+    from app.models.masters.areatype import AreaType
+    from app.models.masters.corporation import Corporation
+
+    area_type = AreaType.objects.create(
+        state_id=state,
+        district_id=district,
+        name="Urban Local Body",
+    )
+    return Corporation.objects.create(
+        state_id=state,
+        district_id=district,
+        area_type_id=area_type,
+        corporation_name="Test Corporation",
+    )
+
+
+@pytest.fixture
+def ward(db, state, district, corporation):
     from app.models.masters.ward import Ward
     return Ward.objects.create(
         ward_name="Ward 1",
-        state_id=state,
-        district_id=district,
-        city_id=city,
-        zone_id=zone,
+        state=state,
+        district=district,
+        area_type=corporation.area_type_id,
+        corporation=corporation,
     )
 
 

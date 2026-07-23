@@ -10,6 +10,7 @@ from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.ward import Ward
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
@@ -53,6 +54,14 @@ class TripPlanSerializer(serializers.ModelSerializer):
         source="waste_types",
         write_only=True,
     )
+    ward_ids = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=Ward.objects.filter(is_deleted=False),
+        many=True,
+        required=False,
+        source="wards",
+        write_only=True,
+    )
     collection_points = TripPlanStopInputSerializer(many=True, write_only=True, required=False)
     is_auto_assign = serializers.BooleanField(required=False)
     repeat_days = serializers.ListField(child=serializers.IntegerField(min_value=0, max_value=6), required=False, allow_null=True)
@@ -69,6 +78,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
     vehicle = serializers.SerializerMethodField()
     supervisor = serializers.SerializerMethodField()
     waste_types_detail = serializers.SerializerMethodField()
+    wards_detail = serializers.SerializerMethodField()
     plan_collection_points = serializers.SerializerMethodField()
 
     class Meta:
@@ -77,7 +87,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
             "unique_id", "display_code", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "staff_template_id", "vehicle_id", "supervisor_id",
-            "waste_type_ids", "state", "district", "area_type", "corporation",
+            "waste_type_ids", "ward_ids", "wards_detail", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
             "staff_template", "vehicle", "supervisor",
             "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
@@ -146,6 +156,12 @@ class TripPlanSerializer(serializers.ModelSerializer):
             for wt in obj.waste_types.all()
         ]
 
+    def get_wards_detail(self, obj):
+        return [
+            {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
+            for ward in obj.wards.all()
+        ]
+
     def get_plan_collection_points(self, obj):
         stops = obj.plan_collection_points.filter(is_deleted=False).select_related("collection_point_id", "bin_id", "customer_id")
         return [{
@@ -180,6 +196,17 @@ class TripPlanSerializer(serializers.ModelSerializer):
 
         if not trip_hierarchy_obj:
             raise serializers.ValidationError({"district_id": "Trip plan must be assigned to at least a district."})
+
+        wards = attrs.get("wards")
+        if wards and trip_hierarchy_field != "district":
+            mismatched = [
+                ward for ward in wards
+                if getattr(ward, f"{trip_hierarchy_field}_id", None) != trip_hierarchy_obj.pk
+            ]
+            if mismatched:
+                raise serializers.ValidationError(
+                    {"ward_ids": "Selected wards must belong to the trip plan's local body."}
+                )
 
         trigger = attrs.get("trip_trigger_weight_kg", getattr(instance, "trip_trigger_weight_kg", None))
         capacity = attrs.get("max_vehicle_capacity_kg", getattr(instance, "max_vehicle_capacity_kg", None))
@@ -296,17 +323,23 @@ class TripPlanSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         stops = validated_data.pop("collection_points", None)
         waste_types = validated_data.pop("waste_types", None)
+        wards = validated_data.pop("wards", None)
         trip_plan = super().create(validated_data)
         if waste_types is not None:
             trip_plan.waste_types.set(waste_types)
+        if wards is not None:
+            trip_plan.wards.set(wards)
         self._sync_stops(trip_plan, stops)
         return trip_plan
 
     def update(self, instance, validated_data):
         stops = validated_data.pop("collection_points", None)
         waste_types = validated_data.pop("waste_types", None)
+        wards = validated_data.pop("wards", None)
         trip_plan = super().update(instance, validated_data)
         if waste_types is not None:
             trip_plan.waste_types.set(waste_types)
+        if wards is not None:
+            trip_plan.wards.set(wards)
         self._sync_stops(trip_plan, stops)
         return trip_plan

@@ -11,6 +11,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 
 def geneate_collection_point_id():
     return f"CP-{generate_unique_id()}"
@@ -113,6 +114,12 @@ class Collection_point(BaseMaster):
         related_name="collection_points",
         to_field="unique_id",
         db_column="panchayat_id",
+    )
+    wards = models.ManyToManyField(
+        Ward,
+        related_name="collection_points_multi",
+        blank=True,
+        help_text="Wards this collection point serves.",
     )
 
     cp_name = models.CharField(max_length=100)
