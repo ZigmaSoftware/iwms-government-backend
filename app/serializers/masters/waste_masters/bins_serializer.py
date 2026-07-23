@@ -9,8 +9,10 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.validators.unique_name_validator import unique_name_validator
 from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import validate_wards_for_flat_geo
 
 class BinsSerializer(serializers.ModelSerializer):
 
@@ -32,6 +34,14 @@ class BinsSerializer(serializers.ModelSerializer):
     panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
     panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
     panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
+    ward_id = UniqueIdOrPkField(
+        source="ward",
+        slug_field="unique_id",
+        queryset=Ward.objects.filter(is_deleted=False),
+        required=True,
+        allow_null=False,
+    )
+    ward_name = serializers.CharField(source="ward.ward_name", read_only=True)
     wastetype_name = serializers.CharField(source="wastetype_id.waste_type_name", read_only = True)
     collection_point_name = serializers.CharField(source="collection_point_id.cp_name", read_only = True)
 
@@ -57,6 +67,8 @@ class BinsSerializer(serializers.ModelSerializer):
             "panchayat_union_name",
             "panchayat_id",
             "panchayat_name",
+            "ward_id",
+            "ward_name",
             "collection_point_id",
             "collection_point_name",
             "bin_capacity",
@@ -98,6 +110,36 @@ class BinsSerializer(serializers.ModelSerializer):
 
 
     def validate(self, attrs):
+        collection_point = attrs.get(
+            "collection_point_id",
+            getattr(self.instance, "collection_point_id", None),
+        )
+        ward = attrs.get("ward", getattr(self.instance, "ward", None))
+        if not ward:
+            if not self.instance or not self.partial:
+                raise serializers.ValidationError({"ward_id": "Ward is required."})
+        if not collection_point:
+            raise serializers.ValidationError(
+                {"collection_point_id": "Collection point is required."}
+            )
+        if ward and not collection_point.wards.filter(pk=ward.pk).exists():
+            raise serializers.ValidationError(
+                {"ward_id": "Ward must be one of the selected collection point's wards."}
+            )
+        if ward:
+            ward_error = validate_wards_for_flat_geo(
+                [ward],
+                {
+                    "corporation": collection_point.corporation,
+                    "municipality": collection_point.municipality,
+                    "town_panchayat": collection_point.town_panchayat,
+                    "panchayat_union": collection_point.panchayat_union,
+                    "panchayat": collection_point.panchayat,
+                },
+            )
+            if ward_error:
+                raise serializers.ValidationError({"ward_id": ward_error})
+
         latitude = attrs.get("latitude", getattr(self.instance, "latitude", None))
         longitude = attrs.get("longitude", getattr(self.instance, "longitude", None))
         if (latitude is None) != (longitude is None):

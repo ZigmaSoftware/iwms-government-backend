@@ -244,6 +244,36 @@ LOCAL_BODY_FIELDS = (
 )
 
 
+def validate_wards_for_flat_geo(wards, attrs, instance=None):
+    """
+    Validate that every selected Ward belongs to the record's effective local
+    body.  ``attrs`` uses serializer source names (``corporation`` rather than
+    ``corporation_id``); values omitted by PATCH are read from ``instance``.
+
+    Returns an error string, or ``None`` when all wards match.
+    """
+    selected_field = next(
+        (
+            field
+            for field in LOCAL_BODY_FIELDS
+            if _resolve_geo_value(attrs, instance, field)
+        ),
+        None,
+    )
+    if not selected_field:
+        return "Select a local body before selecting a ward."
+
+    selected_body = _resolve_geo_value(attrs, instance, selected_field)
+    selected_pk = _object_pk(selected_body)
+    for ward in wards:
+        if _object_pk(getattr(ward, selected_field, None)) != selected_pk:
+            return (
+                f"Ward '{ward.ward_name}' does not belong to the selected "
+                f"{selected_field.replace('_', ' ')}."
+            )
+    return None
+
+
 def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
     """
     Apply explicit state/district/area_type/local-body query params to a
