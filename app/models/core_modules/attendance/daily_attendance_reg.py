@@ -35,6 +35,7 @@ class DailyAttendanceReg(models.Model):
     recognition_date = models.DateField()
     recognition_time = models.TimeField()
     punch_type = models.CharField(max_length=3, default="IN")
+    worked_seconds = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = "app_trip_attendance"

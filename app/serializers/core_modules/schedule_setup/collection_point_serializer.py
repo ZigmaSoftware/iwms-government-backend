@@ -90,6 +90,7 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "bin_name": bin_obj.bin_name,
             "bin_capacity": bin_obj.bin_capacity,
             "bin_type": bin_obj.bin_type,
+            "bin_qr": bin_obj.bin_qr.url if bin_obj.bin_qr else None,
             "wastetype_id": bin_obj.wastetype_id_id,
             "wastetype_name": getattr(bin_obj.wastetype_id, "waste_type_name", None),
             "is_active": bin_obj.is_active,

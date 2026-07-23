@@ -15,6 +15,7 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.assets.wastetype import WasteType
 from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.utils.crew import CrewPresenceCache, crew_payload
 from app.utils.waste_images import capture_images_for_customer
 
 
@@ -62,6 +63,10 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     panchayat = serializers.SerializerMethodField(read_only=True)
     vehicle = serializers.SerializerMethodField(read_only=True)
     collection_types = serializers.SerializerMethodField(read_only=True)
+    # Driver + operator (+ extras) with photo and today's attendance, so the
+    # supervisor Teams/Trips screens can show stacked crew avatars and presence
+    # without a second request. Same shape/source as the mobile "Your crew".
+    crew = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DailyTripAssignment
@@ -71,7 +76,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "waste_type_ids", "waste_types_detail", "waste_type_breakdown",
             "household_waste_type_ids", "household_waste_types",
             "vehicle_id", "alt_staff_template_id", "collection_points_input", "trip_plan", "staff_template",
-            "effective_staff", "state", "district", "area_type", "corporation", "municipality",
+            "effective_staff", "crew", "state", "district", "area_type", "corporation", "municipality",
             "town_panchayat", "panchayat_union", "panchayat", "vehicle", "collection_types",
             "collection_points", "household_collection_points", "breakdown_info",
             "trip_date", "scheduled_time", "actual_start_time", "actual_end_time",
@@ -109,6 +114,19 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
         if alt:
             return {"source": "alternative", "unique_id": alt.unique_id, "display_code": alt.display_code, "driver": getattr(getattr(alt, "driver_id", None), "employee_name", None), "operator": getattr(getattr(alt, "operator_id", None), "employee_name", None), "from_date": str(alt.from_date), "to_date": str(alt.to_date)}
         return self.get_staff_template(obj)
+
+    def get_crew(self, obj):
+        presence_cache = getattr(self, "_presence_cache", None)
+        if presence_cache is None:
+            presence_cache = CrewPresenceCache()
+            self._presence_cache = presence_cache
+        return crew_payload(
+            obj.staff_template_id,
+            obj.alt_staff_template_id,
+            obj.trip_date,
+            request=self.context.get("request"),
+            presence_cache=presence_cache,
+        )
 
     def get_panchayat(self, obj):
         return self._panchayat_payload(obj.panchayat)
@@ -186,7 +204,11 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
                 "longitude": stop.collection_point_id.longitude,
             } if stop.collection_point_id else None,
             "bin_id": stop.bin_id_id,
-            "bin": {"unique_id": stop.bin_id.unique_id, "bin_name": stop.bin_id.bin_name} if stop.bin_id else None,
+            "bin": {
+                "unique_id": stop.bin_id.unique_id,
+                "bin_name": stop.bin_id.bin_name,
+                "bin_qr": stop.bin_id.bin_qr.url if getattr(stop.bin_id, "bin_qr", None) else None,
+            } if stop.bin_id else None,
             "waste_type_name": getattr(getattr(stop.bin_id, "wastetype_id", None), "waste_type_name", None),
             "sequence": stop.sequence,
             "is_collected": stop.is_collected,
@@ -210,6 +232,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
                 "customer_name": getattr(stop.customer_id, "customer_name", None),
                 "building_no": getattr(stop.customer_id, "building_no", None),
                 "street": getattr(stop.customer_id, "street", None),
+                "qr_code": stop.customer_id.qr_code.url if getattr(stop.customer_id, "qr_code", None) else None,
             } if stop.customer_id else None,
             "collection_type": stop.collection_type,
             "sequence": stop.sequence,
@@ -220,6 +243,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "dry_waste": getattr(stop.waste_collection_id, "dry_waste", None),
             "mixed_waste": getattr(stop.waste_collection_id, "mixed_waste", None),
             "status": stop.status,
+            "status_reason": getattr(stop, "status_reason", None),
         } for stop in stops]
 
     def get_breakdown_info(self, obj):

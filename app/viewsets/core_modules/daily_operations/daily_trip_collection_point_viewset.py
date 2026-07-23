@@ -14,6 +14,9 @@ from rest_framework.response import Response
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
+from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+    DailyTripHouseholdCollection,
+)
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
@@ -106,6 +109,111 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             float(latest_event.driver_longitude),
             float(latest_event.driver_latitude),
         ]
+
+    def _to_float(self, value):
+        if value in (None, ""):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _serialize_tracking_bin_stop(self, stop):
+        cp = stop.collection_point_id
+        bin_obj = stop.bin_id
+        return {
+            "unique_id": stop.unique_id,
+            "stop_kind": "collection_point",
+            "trip_assignment_id": stop.trip_assignment_id_id,
+            "collection_point": {
+                "unique_id": getattr(cp, "unique_id", None),
+                "cp_name": getattr(cp, "cp_name", None),
+                "latitude": getattr(cp, "latitude", None),
+                "longitude": getattr(cp, "longitude", None),
+            } if cp else None,
+            "bin_id": stop.bin_id_id,
+            "bin": {
+                "unique_id": getattr(bin_obj, "unique_id", None),
+                "bin_name": getattr(bin_obj, "bin_name", None),
+            } if bin_obj else None,
+            "sequence": stop.sequence,
+            "is_collected": stop.is_collected,
+            "collected_at": stop.collected_at,
+            "collected_weight_kg": stop.collected_weight_kg,
+            "status": stop.status,
+            "status_reason": getattr(stop, "status_reason", None),
+        }
+
+    def _serialize_tracking_household_stop(self, stop):
+        customer = stop.customer_id
+        return {
+            "unique_id": stop.unique_id,
+            "stop_kind": "household",
+            "trip_assignment_id": stop.trip_assignment_id_id,
+            "customer_id": stop.customer_id_id,
+            "customer": {
+                "unique_id": getattr(customer, "unique_id", None),
+                "customer_name": getattr(customer, "customer_name", None),
+                "contact_no": getattr(customer, "contact_no", None),
+                "building_no": getattr(customer, "building_no", None),
+                "street": getattr(customer, "street", None),
+                "panchayat_name": getattr(getattr(customer, "panchayat", None), "panchayat_name", None),
+                "latitude": getattr(customer, "latitude", None),
+                "longitude": getattr(customer, "longitude", None),
+            } if customer else None,
+            "collection_type": stop.collection_type,
+            "sequence": stop.sequence,
+            "is_collected": stop.is_collected,
+            "collected_at": stop.collected_at,
+            "collected_weight_kg": stop.collected_weight_kg,
+            "status": stop.status,
+            "status_reason": getattr(stop, "status_reason", None),
+        }
+
+    def _route_for_mixed_assignment_stops(self, assignment, bin_stops, household_stops):
+        route_input = []
+        stop_signatures = []
+
+        for stop in bin_stops:
+            cp = stop.collection_point_id
+            lat = self._to_float(getattr(cp, "latitude", None))
+            lng = self._to_float(getattr(cp, "longitude", None))
+            if lat is None or lng is None:
+                continue
+            route_input.append({
+                "id": stop.unique_id,
+                "location": [lng, lat],
+            })
+            stop_signatures.append(
+                f"cp:{stop.unique_id}:{stop.sequence}:{lat}:{lng}"
+            )
+
+        for stop in household_stops:
+            customer = stop.customer_id
+            lat = self._to_float(getattr(customer, "latitude", None))
+            lng = self._to_float(getattr(customer, "longitude", None))
+            if lat is None or lng is None:
+                continue
+            route_input.append({
+                "id": stop.unique_id,
+                "location": [lng, lat],
+            })
+            stop_signatures.append(
+                f"hh:{stop.unique_id}:{stop.sequence}:{lat}:{lng}"
+            )
+
+        vehicle_start = self._latest_vehicle_start(assignment)
+        route_signature = "|".join([
+            assignment.unique_id,
+            str(vehicle_start),
+            *stop_signatures,
+        ])
+        cache_key = f"daily-trip-mixed-route:{hashlib.sha1(route_signature.encode()).hexdigest()}"
+        route = cache.get(cache_key)
+        if route is None:
+            route = route_stops(route_input, vehicle_start)
+            cache.set(cache_key, route, timeout=300)
+        return route
 
     def _route_for_assignment_stops(self, assignment, stops):
         route_input = []
@@ -427,6 +535,175 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if assignment_id:
             selected_assignment = self._ensure_assignment_stops(assignment_id)
             self._ensure_current_stop(selected_assignment)
+
+            assignment = (
+                DailyTripAssignment.objects.filter(
+                    unique_id=assignment_id,
+                    is_deleted=False,
+                )
+                .select_related("vehicle_id")
+                .first()
+            )
+            bin_rows = list(
+                DailyTripCollectionPoint.objects.select_related(
+                    "trip_assignment_id",
+                    "collection_point_id",
+                    "bin_id",
+                )
+                .filter(
+                    trip_assignment_id__unique_id=assignment_id,
+                    is_deleted=False,
+                )
+                .order_by("sequence")
+            )
+            household_rows = list(
+                DailyTripHouseholdCollection.objects.select_related(
+                    "trip_assignment_id",
+                    "customer_id",
+                    "customer_id__panchayat",
+                    "waste_collection_id",
+                )
+                .filter(
+                    trip_assignment_id__unique_id=assignment_id,
+                    is_deleted=False,
+                )
+                .order_by("sequence")
+            )
+
+            route_payload = [
+                *[self._serialize_tracking_bin_stop(stop) for stop in bin_rows],
+                *[
+                    self._serialize_tracking_household_stop(stop)
+                    for stop in household_rows
+                ],
+            ]
+            route_payload.sort(
+                key=lambda item: (
+                    int(item.get("sequence") or 0),
+                    item.get("stop_kind") != "collection_point",
+                )
+            )
+
+            status_value = request.query_params.get("status")
+            if status_value == DailyTripCollectionPoint.STATUS_MISSED:
+                filtered_payload = [
+                    item for item in route_payload
+                    if item.get("status") in [
+                        DailyTripCollectionPoint.STATUS_MISSED,
+                        DailyTripCollectionPoint.STATUS_SKIPPED,
+                        DailyTripHouseholdCollection.STATUS_MISSED,
+                        DailyTripHouseholdCollection.STATUS_SKIPPED,
+                    ]
+                ]
+            elif status_value:
+                filtered_payload = [
+                    item for item in route_payload
+                    if item.get("status") == status_value
+                ]
+            else:
+                filtered_payload = route_payload
+
+            page = max(int(request.query_params.get("page", 1)), 1)
+            page_size = min(max(int(request.query_params.get("page_size", 20)), 1), 100)
+            total = len(filtered_payload)
+            start = (page - 1) * page_size
+            rows = filtered_payload[start:start + page_size]
+
+            route_total = len(route_payload)
+            completed = sum(item.get("status") == DailyTripCollectionPoint.STATUS_COLLECTED for item in route_payload)
+            in_progress = sum(item.get("status") == DailyTripCollectionPoint.STATUS_IN_PROGRESS for item in route_payload)
+            pending = sum(item.get("status") == DailyTripCollectionPoint.STATUS_PENDING for item in route_payload)
+            missed = sum(
+                item.get("status") in [
+                    DailyTripCollectionPoint.STATUS_SKIPPED,
+                    DailyTripCollectionPoint.STATUS_MISSED,
+                    DailyTripHouseholdCollection.STATUS_SKIPPED,
+                    DailyTripHouseholdCollection.STATUS_MISSED,
+                ]
+                for item in route_payload
+            )
+
+            latest_event = None
+            if assignment:
+                latest_event = (
+                    BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
+                    .exclude(driver_latitude=None)
+                    .exclude(driver_longitude=None)
+                    .select_related("collection_point_id")
+                    .order_by("-created_at")
+                    .first()
+                )
+
+            next_stop_payload = next(
+                (
+                    item for item in route_payload
+                    if item.get("status") in [
+                        DailyTripCollectionPoint.STATUS_PENDING,
+                        DailyTripCollectionPoint.STATUS_IN_PROGRESS,
+                        DailyTripHouseholdCollection.STATUS_PENDING,
+                        DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
+                    ]
+                ),
+                None,
+            )
+            route = {
+                "distance": 0,
+                "duration": 0,
+                "geometry": None,
+                "vehicle_start": None,
+            }
+            if assignment and (bin_rows or household_rows):
+                route = self._route_for_mixed_assignment_stops(
+                    assignment,
+                    bin_rows,
+                    household_rows,
+                )
+
+            next_collection_point = None
+            if next_stop_payload:
+                if next_stop_payload.get("collection_point"):
+                    next_collection_point = next_stop_payload["collection_point"]
+                elif next_stop_payload.get("customer"):
+                    customer = next_stop_payload["customer"]
+                    next_collection_point = {
+                        "unique_id": customer.get("unique_id"),
+                        "cp_name": customer.get("customer_name"),
+                        "latitude": customer.get("latitude"),
+                        "longitude": customer.get("longitude"),
+                    }
+
+            return Response({
+                "count": total,
+                "page": page,
+                "page_size": page_size,
+                "summary": {
+                    "total": route_total,
+                    "completed": completed,
+                    "in_progress": in_progress,
+                    "pending": pending,
+                    "missed": missed,
+                    "completion_percentage": round((completed / route_total) * 100, 2) if route_total else 0,
+                },
+                "results": rows,
+                "route_results": route_payload,
+                "distance_meters": route["distance"],
+                "duration_seconds": route["duration"],
+                "route_geojson": route["geometry"],
+                "vehicle_start": route["vehicle_start"],
+                "vehicle_tracking": {
+                    "vehicle_no": getattr(getattr(assignment, "vehicle_id", None), "vehicle_no", None),
+                    "current_location": None if not latest_event else {
+                        "latitude": latest_event.driver_latitude,
+                        "longitude": latest_event.driver_longitude,
+                        "recorded_at": latest_event.created_at,
+                        "collection_point": latest_event.collection_point_id.cp_name,
+                    },
+                    "next_collection_point": next_collection_point,
+                    "remaining_collection_points": sum(
+                        not bool(item.get("is_collected")) for item in route_payload
+                    ),
+                },
+            })
 
         route_queryset = self.filter_queryset(self.get_queryset()).order_by(
             "trip_assignment_id", "sequence"

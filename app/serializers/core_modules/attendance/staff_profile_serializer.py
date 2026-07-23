@@ -13,6 +13,8 @@ class StaffPersonalSerializer(serializers.ModelSerializer):
             "gender",
             "present_address",
             "permanent_address",
+            "contact_mobile",
+            "contact_email",
         ]
 
 
@@ -30,6 +32,9 @@ class StaffOfficeSerializer(serializers.ModelSerializer):
             "doj",
             "photo",
             "attendance_reg_image",
+            "driving_licence_no",
+            "driving_licence_expiry_date",
+            "driving_experience_years",
             "personal",
         ]
 

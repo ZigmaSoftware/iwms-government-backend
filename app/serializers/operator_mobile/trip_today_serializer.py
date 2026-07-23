@@ -9,6 +9,7 @@ from app.models.core_modules.daily_operations.daily_trip_collection_point import
     DailyTripCollectionPoint,
 )
 from app.services.openroute_service import route_stops
+from app.utils.crew import CrewPresenceCache, crew_payload
 
 
 class _PanchayatBriefSerializer(serializers.Serializer):
@@ -91,7 +92,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
     panchayat = _PanchayatBriefSerializer()
-    waste_types = _WasteTypeBriefSerializer(source="waste_types", many=True)
+    waste_types = _WasteTypeBriefSerializer(many=True)
     vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
     progress = serializers.SerializerMethodField()
     distance_meters = serializers.SerializerMethodField()
@@ -102,12 +103,28 @@ class MyTripTodaySerializer(serializers.Serializer):
     # Household stops (customers) for household/bulk trips — the driver collects
     # each household directly rather than scanning a bin.
     household_collections = serializers.SerializerMethodField()
+    # Everyone working this vehicle today (driver + operator + extras), so the
+    # mobile home page can show "Your crew" — who else is on this trip.
+    crew = serializers.SerializerMethodField()
 
     _HOUSEHOLD_TYPES = ("household_collection", "bulk_waste_collection")
 
     def get_collection_type(self, obj):
         plan = getattr(obj, "trip_plan_id", None)
         return getattr(plan, "collection_type", None)
+
+    def get_crew(self, obj):
+        presence_cache = getattr(self, "_presence_cache", None)
+        if presence_cache is None:
+            presence_cache = CrewPresenceCache()
+            self._presence_cache = presence_cache
+        return crew_payload(
+            obj.staff_template_id,
+            obj.alt_staff_template_id,
+            obj.trip_date,
+            request=self.context.get("request"),
+            presence_cache=presence_cache,
+        )
 
     def _household_rows(self, obj):
         from app.models.core_modules.daily_operations.daily_trip_household_collection import (

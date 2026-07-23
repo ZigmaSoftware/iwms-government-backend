@@ -1,5 +1,5 @@
 import math
-from datetime import time
+from datetime import date, time
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
@@ -33,8 +33,10 @@ from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.user_creations.staffcreation import (
     Staffcreation,
     StaffcreationOfficeDetails,
+    StaffPersonalDetails,
 )
 from app.models.assets.wastetype import WasteType
+from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
 from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
 
 
@@ -118,11 +120,42 @@ class DriverUserSeeder(BaseSeeder):
 
         # 1. Logins ----------------------------------------------------
         driver = self._upsert_staff(
-            self.USERNAME, "Driver User", self.PASSWORD, user_type, driver_role
+            self.USERNAME, "Driver User", self.PASSWORD, user_type, driver_role,
+            department="Transport",
+            designation="Senior Driver",
+            doj=date(2023, 1, 15),
+            driving_licence_no="TN33 20230012345",
+            driving_licence_expiry_date=date(2028, 6, 30),
+            driving_experience_years=8,
         )
         operator = self._upsert_staff(
             self.OPERATOR_USERNAME, "Operator User", self.OPERATOR_PASSWORD,
             user_type, operator_role,
+            department="Sanitation",
+            designation="Field Operator",
+            doj=date(2023, 3, 1),
+        )
+        self._upsert_personal_details(
+            driver,
+            dob=date(1988, 4, 12),
+            blood_group="O+",
+            gender="Male",
+            marital_status="Married",
+            present_address="12, Gandhi Street, Anthiyur, Erode, Tamil Nadu - 638501",
+            permanent_address="12, Gandhi Street, Anthiyur, Erode, Tamil Nadu - 638501",
+            contact_mobile="9876543210",
+            contact_email="driver.user@zigma.in",
+        )
+        self._upsert_personal_details(
+            operator,
+            dob=date(1992, 9, 5),
+            blood_group="B+",
+            gender="Male",
+            marital_status="Single",
+            present_address="45, Bharathi Nagar, Anthiyur, Erode, Tamil Nadu - 638501",
+            permanent_address="7, Market Street, Bhavani, Erode, Tamil Nadu - 638301",
+            contact_mobile="9876500001",
+            contact_email="operator.user@zigma.in",
         )
 
         # 2. Dedicated staff template (driver_user + operator_user) -----
@@ -198,7 +231,20 @@ class DriverUserSeeder(BaseSeeder):
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
-    def _upsert_staff(self, username, name, password, user_type, role):
+    def _upsert_staff(
+        self, username, name, password, user_type, role, *,
+        department=None, designation=None, doj=None,
+        driving_licence_no=None, driving_licence_expiry_date=None,
+        driving_experience_years=None,
+    ):
+        profile_fields = {
+            "department": department,
+            "designation": designation,
+            "doj": doj,
+            "driving_licence_no": driving_licence_no,
+            "driving_licence_expiry_date": driving_licence_expiry_date,
+            "driving_experience_years": driving_experience_years,
+        }
         staff, created = Staffcreation.objects.get_or_create(
             username=username,
             defaults={
@@ -210,6 +256,7 @@ class DriverUserSeeder(BaseSeeder):
                 "is_deleted": False,
                 "is_superuser": False,
                 "login_enabled": True,
+                **profile_fields,
             },
         )
         if not created:
@@ -222,11 +269,34 @@ class DriverUserSeeder(BaseSeeder):
             staff.is_deleted = False
             staff.is_superuser = False
             staff.login_enabled = True
+            for field, value in profile_fields.items():
+                setattr(staff, field, value)
             staff.save()
         self.log(
             f"{'Created' if created else 'Updated'} login: {username} / {password}"
         )
         return staff
+
+    def _upsert_personal_details(
+        self, staff, *, dob, blood_group, gender, marital_status,
+        present_address, permanent_address, contact_mobile, contact_email,
+    ):
+        StaffPersonalDetails.objects.update_or_create(
+            staff=staff,
+            defaults={
+                "staff_unique_id": staff.staff_unique_id,
+                "dob": dob,
+                "blood_group": blood_group,
+                "gender": gender,
+                "marital_status": marital_status,
+                # JSONField: a plain string is valid JSON, and keeps the mobile
+                # app's display simple (no address-object formatting needed).
+                "present_address": present_address,
+                "permanent_address": permanent_address,
+                "contact_mobile": contact_mobile,
+                "contact_email": contact_email,
+            },
+        )
 
     def _pick_demo_panchayat(self):
         """Prefer a panchayat that actually has active customers so the
@@ -526,18 +596,32 @@ class DriverUserSeeder(BaseSeeder):
             )
 
     def _sync_bin_stops(self, plan, bins):
+        # Keyed by (trip_plan, collection_type, sequence) — the actual
+        # unique-constrained columns — not by collection_point_id. If a prior
+        # run's `Collection_point.objects.filter(...).first()` resolved a
+        # different (but same-named) row, keying by collection_point_id would
+        # miss the existing sequence row and try to INSERT a duplicate,
+        # colliding with the DB's uniq_sequence_per_trip_plan constraint.
         for seq, (cp, bin_obj) in enumerate(bins, start=1):
             TripPlanCollectionPoint.objects.update_or_create(
                 trip_plan_id=plan,
                 collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
-                collection_point_id=cp,
+                sequence=seq,
                 defaults={
+                    "collection_point_id": cp,
                     "bin_id": bin_obj,
-                    "sequence": seq,
                     "is_active": True,
                     "is_deleted": False,
                 },
             )
+        # Clean up stale stops beyond the current bin count (e.g. left over
+        # from a run with a different NUM_COLLECTION_POINTS or duplicate
+        # underlying collection points), so they don't pile up or collide.
+        TripPlanCollectionPoint.objects.filter(
+            trip_plan_id=plan,
+            collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+            sequence__gt=len(bins),
+        ).update(is_active=False, is_deleted=True)
 
     def _sync_household_stop(self, plan):
         # Area-scoped household stop (customer_id=None) — the assignment signal
@@ -590,6 +674,25 @@ class DriverUserSeeder(BaseSeeder):
             collected_at=None,
             collected_weight_kg=None,
         )
+        # Reconcile: the daily mirror (populated by a post_save signal on
+        # assignment creation) only ever ADDS stops, so bins from a stale/
+        # duplicate plan stop (e.g. from a run before _sync_bin_stops'
+        # dedup) can persist on an already-existing daily assignment even
+        # after the plan side is cleaned up. Drop anything that isn't one of
+        # the plan's current active bins, then backfill any that are missing.
+        valid_cp_ids = set(
+            TripPlanCollectionPoint.objects.filter(
+                trip_plan_id=assignment.trip_plan_id,
+                collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+                is_active=True,
+                is_deleted=False,
+            ).values_list("collection_point_id", flat=True)
+        )
+        DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id=assignment
+        ).exclude(collection_point_id__in=valid_cp_ids).delete()
+        sync_daily_assignment_stops_from_plan(assignment)
+
         assignment.status = DailyTripAssignment.STATUS_SCHEDULED
         assignment.approval_status = DailyTripAssignment.APPROVAL_APPROVED
         assignment.actual_start_time = None
