@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from app.models.core_modules.attendance import DailyAttendanceReg
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.serializers.core_modules.attendance import DailyAttendanceRegSerializer
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 

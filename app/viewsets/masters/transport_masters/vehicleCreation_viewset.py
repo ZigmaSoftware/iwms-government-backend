@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from app.models.masters.transport_masters.fuel import Fuel
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -43,6 +44,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         queryset = super().get_queryset()
 
         for field in (
+            "country_id",
             "state_id",
             "district_id",
             "area_type_id",
@@ -161,6 +163,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 errors.append({"row": index, "error": f"vehicle_condition must be one of: {allowed}"})
                 continue
 
+            country = self._find_location(Country, row.get("country_id"))
             state = self._find_location(State, row.get("state_id"))
             district = self._find_location(District, row.get("district_id"))
             area_type = self._find_location(AreaType, row.get("area_type_id"))
@@ -174,6 +177,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "vehicle_no": vehicle_no,
                 "vehicle_type_id": vehicle_type.unique_id if vehicle_type else None,
                 "fuel_type_id": fuel.unique_id if fuel else None,
+                "country_id": country.unique_id if country else None,
                 "state_id": state.unique_id if state else None,
                 "district_id": district.unique_id if district else None,
                 "area_type_id": area_type.unique_id if area_type else None,

@@ -150,6 +150,7 @@ def _describe_waste_collection(instance):
             ("wet", instance.wet_waste),
             ("dry", instance.dry_waste),
             ("mixed", instance.mixed_waste),
+            ("sanitary", instance.sanitary_waste),
         )
         if value
     ]
@@ -206,6 +207,7 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
             "wet_waste": instance.wet_waste,
             "dry_waste": instance.dry_waste,
             "mixed_waste": instance.mixed_waste,
+            "sanitary_waste": instance.sanitary_waste,
             "total_quantity": instance.total_quantity,
         },
     )

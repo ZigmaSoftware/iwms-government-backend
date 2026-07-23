@@ -1,8 +1,9 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from app.models.assets.bins import Bins, BinType
+from app.models.masters.waste_masters.bins import Bins, BinType
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -11,10 +12,10 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.models.assets.wastetype import WasteType
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 
 
 class CollectionPointBinInputSerializer(serializers.Serializer):
@@ -27,6 +28,8 @@ class CollectionPointBinInputSerializer(serializers.Serializer):
 
 
 class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
+    country_id = UniqueIdOrPkField(source="country", slug_field="unique_id", queryset=Country.objects.filter(is_deleted=False), required=False, allow_null=True)
+    country_name = serializers.CharField(source="country.name", read_only=True)
     state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True)
     state_name = serializers.CharField(source="state.name", read_only=True)
     district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), required=True)
@@ -51,6 +54,8 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
         model = Collection_point
         fields = [
             "unique_id",
+            "country_id",
+            "country_name",
             "state_id",
             "state_name",
             "district_id",
@@ -145,7 +150,18 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
+        state = attrs.get("state") or getattr(instance, "state", None)
+        country = attrs.get("country") or getattr(instance, "country", None)
         district = attrs.get("district") or getattr(instance, "district", None)
+
+        if state:
+            state_country = state.country_id
+            if country and country.pk != state_country.pk:
+                raise serializers.ValidationError(
+                    {"country_id": "Country must match the selected state."}
+                )
+            attrs["country"] = state_country
+
         if not district:
             raise serializers.ValidationError({"district_id": "Collection Point must be assigned to a district."})
 
@@ -154,6 +170,7 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
                 Model=Collection_point,
                 name_field="cp_name",
                 scope_fields=[
+                    "country",
                     "district",
                     "corporation",
                     "municipality",

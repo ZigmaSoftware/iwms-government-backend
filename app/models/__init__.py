@@ -43,10 +43,10 @@ from .superadmin_masters.auth_user import User
 
 
 # ============================================================
-# GROUP: WASTE TYPES
+# GROUP: WASTE MASTERS
 # ============================================================
-from .waste_types.property import Property
-from .waste_types.subproperty import SubProperty
+from .masters.waste_masters.property import Property
+from .masters.waste_masters.subproperty import SubProperty
 
 # ============================================================
 # GROUP: USERS & ROLE ASSIGNMENT
@@ -75,14 +75,14 @@ from .superadmin.screen_management.dashboardwidgetpermission import DashboardWid
 # ============================================================
 # GROUP: USER CREATION & STAFF
 # ============================================================
-from .user_creations.staffcreation import (
+from .superadmin.user_management.staffcreation import (
     StaffcreationOfficeDetails,
     StaffPersonalDetails,
 )
 from .core_modules.schedule_setup.staff_template import StaffTemplate
 from .core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
-from .user_creations.unassigned_staff_pool import UnassignedStaffPool
-from .user_creations.staff_data_scope import StaffDataScope
+from .superadmin.user_management.unassigned_staff_pool import UnassignedStaffPool
+from .superadmin.user_management.staff_data_scope import StaffDataScope
 
 
 # ============================================================
@@ -98,7 +98,7 @@ from .superadmin.audits.permission_audit import PermissionAuditLog
 # GROUP: CUSTOMER MODULES
 # ============================================================
 from .masters.customer_masters.customercreation import CustomerCreation
-from .masters.customer_masters.wastecollection import WasteCollection
+from .core_modules.daily_operations.waste_collection import WasteCollection
 from .masters.customer_masters.feedback import FeedBack
 from .masters.customer_masters.userchargerule import UserChargeRule
 from .masters.customer_masters.password_reset_otp import PasswordResetOTP
@@ -133,11 +133,11 @@ from .core_modules.complaint_management.notification import ComplaintNotificatio
 # ============================================================
 # GROUP: BLUETOOTH / MOBILE WASTE COLLECTION
 # ============================================================
-from .user_creations.waste_collection_bluetooth import (
+from .waste_collection_bluetooth.waste_collection_bluetooth import (
     WasteCollectionSub,
     WasteCollectionMain,
 )
-from .assets.wastetype import WasteType
+from .masters.waste_masters.wastetype import WasteType
 
 
 # ============================================================
@@ -159,7 +159,7 @@ from .core_modules.daily_operations.daily_trip_log import DailyTripLog
 from .core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
 from .core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollection
 from .core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
-from .schedule_masters.scheduler_config import SchedulerConfig
+from .core_modules.daily_operations.scheduler_config import SchedulerConfig
 from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 
 

@@ -13,9 +13,8 @@ from app.models.core_modules.daily_operations.daily_trip_assignment import Daily
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.assets.wastetype import WasteType
-from app.serializers.user_creations.user_serializer import UniqueIdOrPkField
-from app.utils.crew import CrewPresenceCache, crew_payload
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
 from app.utils.waste_images import capture_images_for_customer
 
 
@@ -242,6 +241,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "wet_waste": getattr(stop.waste_collection_id, "wet_waste", None),
             "dry_waste": getattr(stop.waste_collection_id, "dry_waste", None),
             "mixed_waste": getattr(stop.waste_collection_id, "mixed_waste", None),
+            "sanitary_waste": getattr(stop.waste_collection_id, "sanitary_waste", None),
             "status": stop.status,
             "status_reason": getattr(stop, "status_reason", None),
         } for stop in stops]

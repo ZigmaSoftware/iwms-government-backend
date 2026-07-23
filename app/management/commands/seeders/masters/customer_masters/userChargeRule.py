@@ -2,8 +2,8 @@ from decimal import Decimal
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.customer_masters.userchargerule import UserChargeRule
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
 
 
 class UserChargeRuleSeeder(BaseSeeder):
@@ -11,6 +11,8 @@ class UserChargeRuleSeeder(BaseSeeder):
 
     # (property_name, sub_property_name, min_sqmtr, max_sqmtr, charge_amount, is_bulk)
     CHARGE_RULES = [
+        ("Residential",   "Individual House",Decimal("0"),  Decimal("50"),   Decimal("100.00"), False),
+        ("Residential",   "Individual House",Decimal("50"), Decimal("100"),  Decimal("150.00"), False),
         ("Residential",   "Apartment",       Decimal("0"),    Decimal("50"),   Decimal("100.00"), False),
         ("Residential",   "Apartment",       Decimal("50"),   Decimal("100"),  Decimal("150.00"), False),
         ("Commercial",    "Shop",            Decimal("0"),    Decimal("100"),  Decimal("250.00"), False),

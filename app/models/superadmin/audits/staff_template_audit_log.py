@@ -1,7 +1,7 @@
 from django.db import models
 
 from app.utils.comfun import generate_unique_id
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 
 
 def generate_staff_template_audit_id():

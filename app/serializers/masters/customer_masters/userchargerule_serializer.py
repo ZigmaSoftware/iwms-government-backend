@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
 from app.models.masters.customer_masters.userchargerule import UserChargeRule
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
 
 
 class UserChargeRuleSerializer(

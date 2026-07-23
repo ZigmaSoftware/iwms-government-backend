@@ -12,7 +12,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 from app.models.core_modules.attendance import DailyAttendanceReg
-from app.models.user_creations.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staffcreation import Staffcreation
 
 
 def _safe_filename(value: str) -> str:

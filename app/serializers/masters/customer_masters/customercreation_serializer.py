@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
@@ -9,12 +11,18 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
-from app.models.assets.wastetype import WasteType
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
+
+PASSWORD_PATTERN = re.compile(r"^(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9]).{8,12}$")
+PASSWORD_RULE_MESSAGE = (
+    "Password must be 8-12 characters long and include at least one uppercase "
+    "letter, one lowercase letter, and one special character."
+)
 
 
 class CustomerCreationSerializer(serializers.ModelSerializer):
@@ -120,6 +128,11 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     industry_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     industry_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
+    member_count = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    family_members = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_empty=True,
+    )
+
     group_qr_id = serializers.CharField(read_only=True)
     is_bulkwaste_generator = serializers.BooleanField(required=False)
     qr_code = serializers.ImageField(read_only=True)
@@ -164,8 +177,12 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
             "latitude",
             "longitude",
             "sqft",
+            "water_consumption_lpd",
+            "waste_collection_kg_per_day",
             "id_proof_type",
             "id_no",
+            "member_count",
+            "family_members",
             "property_id",
             "sub_property_id",
             "waste_type_ids",
@@ -217,6 +234,29 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
             instance.save(update_fields=["password"])
 
         return instance
+
+    def validate_password(self, value):
+        if value and not PASSWORD_PATTERN.match(value):
+            raise serializers.ValidationError(PASSWORD_RULE_MESSAGE)
+        return value
+
+    def validate_family_members(self, value):
+        allowed_keys = {"member_name", "id_proof_type", "id_no"}
+        valid_id_proof_types = {choice for choice, _ in CustomerCreation.IDProofType.choices}
+        for member in value:
+            if not isinstance(member, dict):
+                raise serializers.ValidationError("Each family member must be an object.")
+            extra_keys = set(member.keys()) - allowed_keys
+            if extra_keys:
+                raise serializers.ValidationError(
+                    f"Unsupported family member field(s): {', '.join(sorted(extra_keys))}"
+                )
+            id_proof_type = member.get("id_proof_type")
+            if id_proof_type and id_proof_type not in valid_id_proof_types:
+                raise serializers.ValidationError(
+                    f"Invalid id_proof_type '{id_proof_type}' for family member."
+                )
+        return value
 
     def validate(self, attrs):
         # attrs = unique_name_validator(

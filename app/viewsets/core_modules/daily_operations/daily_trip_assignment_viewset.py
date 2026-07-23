@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from app.management.commands.generate_daily_trips import run_for_date
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.scheduler_config import SchedulerConfig
+from app.models.core_modules.daily_operations.scheduler_config import SchedulerConfig
 from app.services.daily_trip_scheduler import (
     notify_scheduler_config_changed,
     run_daily_trip_job,
