@@ -256,3 +256,29 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             {"status": True, "message": "Staff Deleted Successfully"},
             status=status.HTTP_200_OK
         )
+
+    # -----------------------------------------------------
+    # FCM device token registration (push notifications)
+    # -----------------------------------------------------
+
+    permission_exempt_actions = ["register_fcm_token"]
+
+    @action(detail=False, methods=["post"], url_path="register-fcm-token")
+    def register_fcm_token(self, request):
+        """Driver/operator/supervisor apps call this after login (and on
+        token refresh) to register their Firebase device token, so the
+        backend can push notifications (e.g. vehicle breakdown reports) to
+        this staff member. Always acts on the authenticated caller's own
+        record. Mirrors CustomerCreationViewSet.register_fcm_token."""
+        staff = request.user
+        if not isinstance(staff, Staffcreation):
+            return Response(
+                {"error": "Only a staff account can register a device token."},
+                status=403,
+            )
+        token = (request.data.get("fcm_token") or "").strip()
+        if not token:
+            return Response({"error": "fcm_token is required"}, status=400)
+        staff.fcm_token = token
+        staff.save(update_fields=["fcm_token"])
+        return Response({"status": "ok"})

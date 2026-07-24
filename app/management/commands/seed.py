@@ -35,6 +35,7 @@ from app.management.commands.seeders.superadmin.role_management import ROLE_ASSI
 from app.management.commands.seeders.superadmin.user_management.auth_user_seeder import AuthUserSeeder
 from app.management.commands.seeders.superadmin.user_management.driver_user import DriverUserSeeder
 from app.management.commands.seeders.superadmin.user_management.supervisor_user import SupervisorUserSeeder
+from app.management.commands.seeders.superadmin.user_management.supervisor_hierarchy_demo import SupervisorHierarchyDemoSeeder
 from app.management.commands.seeders.masters.customer_masters.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.superadmin.user_management.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.superadmin.user_management.staff_personal import StaffPersonalSeeder
@@ -214,6 +215,7 @@ REPORTS_SEEDERS = [
 DRIVER_DEMO_SEEDERS = [
     DriverUserSeeder,
     SupervisorUserSeeder,
+    SupervisorHierarchyDemoSeeder,  # extra staff/templates/alt-template under supervisor_user's own hierarchy
     SupervisorMonthDataSeeder,  # a month of trips + logs for the supervisor graph
     CustomerUserSeeder,
 ]

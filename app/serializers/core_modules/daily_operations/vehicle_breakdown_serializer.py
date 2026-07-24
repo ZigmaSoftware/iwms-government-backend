@@ -22,15 +22,22 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
     replacement_vehicle_id = serializers.SlugRelatedField(
         slug_field="unique_id",
         queryset=VehicleCreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
     )
     replacement_driver_id = serializers.SlugRelatedField(
         slug_field="staff_unique_id",
         queryset=Staffcreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
     )
     replacement_operator_id = serializers.SlugRelatedField(
         slug_field="staff_unique_id",
         queryset=Staffcreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
     )
+    photos = serializers.SerializerMethodField(read_only=True)
 
     # Read-only detail fields
     trip_assignment_detail = serializers.SerializerMethodField(read_only=True)
@@ -72,6 +79,7 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
             "approved_by_detail",
             "approved_at",
             "rejection_remarks",
+            "photos",
             "created_at",
             "updated_at",
         ]
@@ -198,10 +206,39 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
     def get_approved_by_detail(self, obj):
         return self._staff_dict(obj.approved_by)
 
+    def get_photos(self, obj):
+        request = self.context.get("request")
+        photos = []
+        for photo in obj.photos.all():
+            url = photo.photo.url if photo.photo else None
+            if url and request is not None:
+                url = request.build_absolute_uri(url)
+            photos.append({"id": photo.pk, "photo": url, "uploaded_at": photo.uploaded_at})
+        return photos
+
 
 class VehicleBreakdownVerifySerializer(serializers.Serializer):
-    """Used for PATCH /{id}/verify/ — approves the breakdown and wires the replacement."""
+    """Used for PATCH /{id}/verify/ — the supervisor picks the replacement
+    vehicle/driver/operator here (if not already set) and approves the breakdown."""
     remarks = serializers.CharField(required=False, allow_blank=True, default="")
+    replacement_vehicle_id = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=VehicleCreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    replacement_driver_id = serializers.SlugRelatedField(
+        slug_field="staff_unique_id",
+        queryset=Staffcreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
+    replacement_operator_id = serializers.SlugRelatedField(
+        slug_field="staff_unique_id",
+        queryset=Staffcreation.objects.filter(is_deleted=False),
+        required=False,
+        allow_null=True,
+    )
 
     def save(self):
         instance = self.context["instance"]
@@ -214,11 +251,22 @@ class VehicleBreakdownVerifySerializer(serializers.Serializer):
         if instance.approval_status == VehicleBreakdown.APPROVAL_REJECTED:
             raise serializers.ValidationError("Rejected breakdowns cannot be approved.")
 
+        replacement_vehicle = self.validated_data.get("replacement_vehicle_id") or instance.replacement_vehicle_id
+        replacement_driver = self.validated_data.get("replacement_driver_id") or instance.replacement_driver_id
+        replacement_operator = self.validated_data.get("replacement_operator_id") or instance.replacement_operator_id
+        if not (replacement_vehicle and replacement_driver and replacement_operator):
+            raise serializers.ValidationError(
+                "Select a replacement vehicle, driver, and operator before approving this breakdown."
+            )
+
         from django.db import transaction
         from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 
         with transaction.atomic():
             assignment = instance.trip_assignment_id
+            instance.replacement_vehicle_id = replacement_vehicle
+            instance.replacement_driver_id = replacement_driver
+            instance.replacement_operator_id = replacement_operator
 
             # Create or update AlternativeStaffTemplate for replacement crew.
             # The model has a UniqueConstraint on staff_template, so use
@@ -254,6 +302,9 @@ class VehicleBreakdownVerifySerializer(serializers.Serializer):
                     pass
 
             VehicleBreakdown.objects.filter(pk=instance.pk).update(
+                replacement_vehicle_id=replacement_vehicle,
+                replacement_driver_id=replacement_driver,
+                replacement_operator_id=replacement_operator,
                 alt_staff_template_id=alt_template,
                 status=VehicleBreakdown.STATUS_REPLACEMENT_ARRANGED,
                 approval_status=VehicleBreakdown.APPROVAL_APPROVED,

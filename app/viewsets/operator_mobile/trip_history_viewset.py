@@ -107,20 +107,27 @@ class TripHistoryViewSet(viewsets.ViewSet):
     lookup_field = "unique_id"
 
     def _base_queryset(self, operator):
-        # Primary path: assignments where the operator is the template's main operator.
-        # We omit the extra_operator_id JSON membership query here because it isn't
-        # supported on SQLite (used in tests); extras are uncommon and can be added
-        # later as a Python-side filter when needed.
+        # Primary path: assignments where the operator is the EFFECTIVE template's
+        # main operator/driver — i.e. the alt template's crew when a substitution
+        # (`alt_staff_template_id`) is active on that assignment, else the base
+        # template's crew. This keeps history consistent with "my trips today":
+        # a substituted-out driver stops seeing the trip, the substituted-in one
+        # does. We omit the extra_operator_id JSON membership query here because
+        # it isn't supported on SQLite (used in tests); extras are uncommon and
+        # can be added later as a Python-side filter when needed.
         return (
             DailyTripAssignment.objects
             .filter(is_deleted=False)
             .filter(
-                Q(staff_template_id__operator_id=operator)
-                | Q(staff_template_id__driver_id=operator)
+                Q(alt_staff_template_id__isnull=False, alt_staff_template_id__operator_id=operator)
+                | Q(alt_staff_template_id__isnull=False, alt_staff_template_id__driver_id=operator)
+                | Q(alt_staff_template_id__isnull=True, staff_template_id__operator_id=operator)
+                | Q(alt_staff_template_id__isnull=True, staff_template_id__driver_id=operator)
             )
             .select_related(
                 "panchayat",
                 "vehicle_id",
+                "alt_staff_template_id",
             )
             .prefetch_related("trip_collection_points", "waste_types")
             .order_by("-trip_date", "-scheduled_time")

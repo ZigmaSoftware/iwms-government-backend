@@ -7,6 +7,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
 from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.schedule_setup.collection_point import Collection_point

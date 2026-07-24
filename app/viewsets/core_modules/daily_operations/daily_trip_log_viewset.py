@@ -70,19 +70,23 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "daily-trip-logs"
 
     def _get_account(self):
+        from django.contrib.auth import get_user_model
+
         user = getattr(self.request, "user", None)
         if not user or getattr(user, "is_anonymous", False):
             return None
 
-        account = Account.objects.filter(user=user).first()
-        if account:
+        # JWT-authenticated requests resolve `request.user` to a
+        # Staffcreation row directly (not a User instance) for staff
+        # logins — querying Account.objects.filter(user=user) with that
+        # raises ValueError, so check the staff case first.
+        if hasattr(user, "staff_unique_id"):
+            account, _ = Account.objects.get_or_create(staff=user)
             return account
 
-        staff = getattr(user, "staff", None)
-        if staff:
-            account = Account.objects.filter(staff=staff).first()
-            if account:
-                return account
+        if isinstance(user, get_user_model()):
+            account, _ = Account.objects.get_or_create(user=user)
+            return account
 
         unique_id = getattr(user, "unique_id", None) or getattr(user, "username", None)
         if unique_id:

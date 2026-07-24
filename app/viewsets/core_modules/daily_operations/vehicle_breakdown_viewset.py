@@ -2,9 +2,13 @@ from django.db.models import Q
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
+from app.models.core_modules.daily_operations.vehicle_breakdown import (
+    VehicleBreakdown,
+    VehicleBreakdownPhoto,
+)
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.serializers.core_modules.daily_operations.vehicle_breakdown_serializer import (
@@ -12,6 +16,7 @@ from app.serializers.core_modules.daily_operations.vehicle_breakdown_serializer 
     VehicleBreakdownVerifySerializer,
     VehicleBreakdownRejectSerializer,
 )
+from app.services.push_notification_service import send_push_to_staff
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.base_models import Account
 from app.utils.hierarchy import (
@@ -42,9 +47,11 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "alt_staff_template_id",
             "approved_by",
         )
+        .prefetch_related("photos")
         .filter(is_deleted=False)
     )
     serializer_class = VehicleBreakdownSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = "unique_id"
     permission_resource = "VehicleBreakdown"
 
@@ -99,19 +106,23 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return qs
 
     def _get_account(self):
+        from django.contrib.auth import get_user_model
+
         user = getattr(self.request, "user", None)
         if not user or getattr(user, "is_anonymous", False):
             return None
 
-        account = Account.objects.filter(user=user).first()
-        if account:
+        # JWT-authenticated requests resolve `request.user` to a
+        # Staffcreation row directly (not a User instance) for staff
+        # logins — querying Account.objects.filter(user=user) with that
+        # raises ValueError, so check the staff case first.
+        if hasattr(user, "staff_unique_id"):
+            account, _ = Account.objects.get_or_create(staff=user)
             return account
 
-        staff = getattr(user, "staff", None)
-        if staff:
-            account = Account.objects.filter(staff=staff).first()
-            if account:
-                return account
+        if isinstance(user, get_user_model()):
+            account, _ = Account.objects.get_or_create(user=user)
+            return account
 
         unique_id = getattr(user, "unique_id", None) or getattr(user, "username", None)
         if unique_id:
@@ -169,6 +180,22 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=self._serialize_instance(instance),
         )
 
+        driver = instance.replacement_driver_id
+        if driver is not None:
+            send_push_to_staff(
+                driver,
+                title="Vehicle replaced",
+                body=(
+                    f"Your vehicle on trip {instance.trip_assignment_id.unique_id} "
+                    f"has been replaced with {getattr(instance.replacement_vehicle_id, 'vehicle_no', 'a new vehicle')}."
+                ),
+                data={
+                    "type": "vehicle_breakdown_approved",
+                    "vehicle_breakdown_id": instance.unique_id,
+                    "trip_assignment_id": instance.trip_assignment_id.unique_id,
+                },
+            )
+
         return Response(
             VehicleBreakdownSerializer(instance, context={"request": request}).data,
             status=status.HTTP_200_OK,
@@ -224,6 +251,8 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         role_value = role.strip().lower().replace(" ", "_")
+        is_driver_role = "driver" in role_value
+        is_operator_role = "operator" in role_value
 
         active_assignments = DailyTripAssignment.objects.filter(
             trip_date=trip_date,
@@ -245,15 +274,19 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             if tmpl.operator_id_id:
                 busy_operator_ids.add(tmpl.operator_id_id)
 
+        # Government staff carry their role on `governmentusertype_id` (e.g.
+        # `govt_panchayat_driver`), not `staffusertype_id` (main-backend
+        # convention) — match either so this endpoint works on both.
         qs = Staffcreation.objects.filter(
+            Q(governmentusertype_id__name__iexact=role_value)
+            | Q(staffusertype_id__name__iexact=role_value),
             is_deleted=False,
             active_status=True,
-            staffusertype_id__name=role_value,
         )
 
-        if role_value == "company_driver":
+        if is_driver_role:
             qs = qs.exclude(staff_unique_id__in=busy_driver_ids)
-        elif role_value == "company_operator":
+        elif is_operator_role:
             qs = qs.exclude(staff_unique_id__in=busy_operator_ids)
 
         qs = filter_staff_queryset_by_requester_scope(qs, request.user)
@@ -321,12 +354,35 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         super().perform_create(serializer)
         instance = serializer.instance
+
+        photos = self.request.FILES.getlist("photos")
+        for photo in photos:
+            VehicleBreakdownPhoto.objects.create(breakdown=instance, photo=photo)
+
         self.log_audit(
             self.request,
             instance=instance,
             previous_data=None,
             new_data=self._serialize_instance(instance),
         )
+
+        assignment = instance.trip_assignment_id
+        trip_plan = getattr(assignment, "trip_plan_id", None)
+        supervisor = getattr(trip_plan, "supervisor_id", None)
+        if supervisor is not None:
+            vehicle_no = getattr(instance.breakdown_vehicle_id, "vehicle_no", "A vehicle")
+            send_push_to_staff(
+                supervisor,
+                title="Vehicle breakdown reported",
+                body=f"{vehicle_no} broke down on trip {assignment.unique_id}.",
+                data={
+                    "type": "vehicle_breakdown_reported",
+                    "vehicle_breakdown_id": instance.unique_id,
+                    "trip_assignment_id": assignment.unique_id,
+                    "latitude": str(instance.breakdown_lat or ""),
+                    "longitude": str(instance.breakdown_lng or ""),
+                },
+            )
 
     def perform_update(self, serializer):
         previous_data = self._serialize_instance(serializer.instance)

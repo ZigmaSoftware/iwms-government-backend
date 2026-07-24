@@ -67,7 +67,7 @@ def crew_payload(template, alt, trip_date, *, request=None, presence_cache=None)
     its regular `staff_template` and (possibly None) active `alt_staff_template`.
     An active alternative overrides the regular crew for its date range — same
     source of truth as `get_effective_staff` on the desktop serializer."""
-    from app.models.user_creations.staffcreation import Staffcreation
+    from app.models.superadmin.user_management.staffcreation import Staffcreation
 
     source = alt if alt is not None else template
     if source is None:

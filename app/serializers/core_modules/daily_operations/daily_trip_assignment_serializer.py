@@ -15,6 +15,7 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.utils.crew import CrewPresenceCache, crew_payload
 from app.utils.waste_images import capture_images_for_customer
 
 

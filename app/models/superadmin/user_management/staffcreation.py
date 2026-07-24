@@ -144,6 +144,11 @@ class StaffcreationOfficeDetails(BaseMaster):
     last_login_at = models.DateTimeField(null=True, blank=True)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
 
+    # Mobile push notifications (driver/operator/supervisor apps) — the
+    # device's current FCM registration token, refreshed on each login/token
+    # rotation. Mirrors `CustomerCreation.fcm_token` for the citizen app.
+    fcm_token = models.CharField(max_length=255, null=True, blank=True)
+
     # Type Links
     user_type_id = models.ForeignKey(
         UserType,
