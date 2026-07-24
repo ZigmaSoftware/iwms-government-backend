@@ -105,6 +105,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         trip_plan = params.get("trip_plan_id")
         trip_status = params.get("status")
         waste_type = params.get("waste_type_id") or params.get("waste_type_ids")
+        ward_id = params.get("ward_id") or params.get("ward_ids")
 
         if trip_date:
             qs = qs.filter(trip_date=trip_date)
@@ -120,6 +121,8 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         if waste_type:
             qs = qs.filter(waste_types__unique_id=waste_type).distinct()
+        if ward_id:
+            qs = qs.filter(wards__unique_id=ward_id).distinct()
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)

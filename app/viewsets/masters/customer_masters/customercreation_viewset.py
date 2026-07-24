@@ -25,6 +25,11 @@ from app.utils.customer_qr import generate_customer_qr_content, generate_apartme
 
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.ward import Ward
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
@@ -126,7 +131,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         .select_related(
             "state", "district", "area_type",
             "corporation", "municipality", "town_panchayat",
-            "panchayat_union", "panchayat",
+            "panchayat_union", "panchayat", "ward",
             "property_ref", "sub_property",
         )
         .prefetch_related("waste_types")
@@ -152,6 +157,10 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             waste_type_ids = [v for v in waste_type_param.split(",") if v]
             if waste_type_ids:
                 queryset = queryset.filter(waste_types__unique_id__in=waste_type_ids).distinct()
+
+        ward_uid = params.get("ward") or params.get("ward_id")
+        if ward_uid:
+            queryset = queryset.filter(ward_id=ward_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
@@ -494,7 +503,62 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
 
                 district = get_fk(District, "name", row.get("district_id") or row.get("district_name"))
-                panchayat = get_fk(Panchayat, "panchayat_name", row.get("panchayat_id") or row.get("panchayat_name"))
+                local_body_specs = {
+                    "corporation": (Corporation, "corporation_name"),
+                    "municipality": (Municipality, "municipality_name"),
+                    "town_panchayat": (TownPanchayat, "town_panchayat_name"),
+                    "panchayat_union": (PanchayatUnion, "union_name"),
+                    "panchayat": (Panchayat, "panchayat_name"),
+                }
+                requested_type = _normalize_key(row.get("local_body_type"))
+                local_body_field = None
+                local_body = None
+                for field, (model, name_field) in local_body_specs.items():
+                    explicit_value = (
+                        row.get(f"{field}_id")
+                        or row.get(f"{field}_name")
+                        or (
+                            row.get("local_body_id")
+                            or row.get("local_body_name")
+                            if requested_type == field
+                            else None
+                        )
+                    )
+                    if not explicit_value:
+                        continue
+                    if local_body_field is not None:
+                        local_body = None
+                        local_body_field = "multiple"
+                        break
+                    local_body = (
+                        model.objects.filter(
+                            district_id=district,
+                            is_deleted=False,
+                        )
+                        .filter(
+                            Q(unique_id=clean(explicit_value))
+                            | Q(**{f"{name_field}__iexact": clean(explicit_value)})
+                        )
+                        .first()
+                        if district
+                        else None
+                    )
+                    local_body_field = field
+
+                ward_value = clean(row.get("ward_id") or row.get("ward_name"))
+                ward = None
+                if local_body and local_body_field != "multiple" and ward_value:
+                    ward = (
+                        Ward.objects.filter(
+                            **{local_body_field: local_body},
+                            is_deleted=False,
+                        )
+                        .filter(
+                            Q(unique_id=ward_value)
+                            | Q(ward_name__iexact=ward_value)
+                        )
+                        .first()
+                    )
                 waste_type_ids, invalid_waste_types = get_waste_type_ids(
                     row.get("waste_type_ids") or row.get("waste_types") or row.get("waste_type_names")
                 )
@@ -527,11 +591,18 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     })
                     continue
 
-                if not panchayat:
+                if not local_body or local_body_field == "multiple":
                     errors.append({
                         "row": index,
-                        "error": "Panchayat is required"
+                        "error": (
+                            "Select exactly one valid local body: Corporation, "
+                            "Municipality, Town Panchayat, Panchayat Union, or Panchayat"
+                        )
                     })
+                    continue
+
+                if not ward:
+                    errors.append({"row": index, "error": "Ward is required"})
                     continue
 
                 if invalid_waste_types:
@@ -555,7 +626,13 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
                     "state_id": state.unique_id,
                     "district_id": district.unique_id,
-                    "panchayat_id": panchayat.unique_id,
+                    "area_type_id": (
+                        local_body.area_type_id.unique_id
+                        if local_body.area_type_id
+                        else None
+                    ),
+                    f"{local_body_field}_id": local_body.unique_id,
+                    "ward_id": ward.unique_id,
 
                     "pincode": clean(row.get("pincode")),
                     "latitude": clean(row.get("latitude")),

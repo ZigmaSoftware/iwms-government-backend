@@ -10,6 +10,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
 
@@ -95,6 +96,10 @@ class WasteCollection(BaseMaster):
         Panchayat, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="waste_collections", to_field="unique_id", db_column="panchayat_id",
     )
+    ward = models.ForeignKey(
+        Ward, on_delete=models.PROTECT, related_name="waste_collections",
+        to_field="unique_id", db_column="ward_id", null=True, blank=True,
+    )
 
     #  Waste details
     wet_waste = models.FloatField(default=0.0)
@@ -138,6 +143,8 @@ class WasteCollection(BaseMaster):
         # record is always scoped even when created via seeders/admin/API.
         if self.customer_id and not self.district_id:
             copy_flat_geo(self, self.customer, only_empty=True)
+        if self.customer_id and not self.ward_id:
+            self.ward = getattr(self.customer, "ward", None)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

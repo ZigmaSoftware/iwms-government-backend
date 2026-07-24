@@ -10,6 +10,7 @@ from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.ward import Ward
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
@@ -53,6 +54,14 @@ class TripPlanSerializer(serializers.ModelSerializer):
         source="waste_types",
         write_only=True,
     )
+    ward_ids = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=Ward.objects.filter(is_deleted=False),
+        many=True,
+        required=False,
+        source="wards",
+        write_only=True,
+    )
     collection_points = TripPlanStopInputSerializer(many=True, write_only=True, required=False)
     is_auto_assign = serializers.BooleanField(required=False)
     repeat_days = serializers.ListField(child=serializers.IntegerField(min_value=0, max_value=6), required=False, allow_null=True)
@@ -69,6 +78,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
     vehicle = serializers.SerializerMethodField()
     supervisor = serializers.SerializerMethodField()
     waste_types_detail = serializers.SerializerMethodField()
+    wards_detail = serializers.SerializerMethodField()
     plan_collection_points = serializers.SerializerMethodField()
 
     class Meta:
@@ -77,7 +87,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
             "unique_id", "display_code", "state_id", "district_id", "area_type_id", "corporation_id",
             "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
             "staff_template_id", "vehicle_id", "supervisor_id",
-            "waste_type_ids", "state", "district", "area_type", "corporation",
+            "waste_type_ids", "ward_ids", "wards_detail", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
             "staff_template", "vehicle", "supervisor",
             "waste_types_detail", "collection_type", "trip_trigger_weight_kg",
@@ -146,17 +156,24 @@ class TripPlanSerializer(serializers.ModelSerializer):
             for wt in obj.waste_types.all()
         ]
 
+    def get_wards_detail(self, obj):
+        return [
+            {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
+            for ward in obj.wards.all()
+        ]
+
     def get_plan_collection_points(self, obj):
-        stops = obj.plan_collection_points.filter(is_deleted=False).select_related("collection_point_id", "bin_id", "customer_id")
+        stops = obj.plan_collection_points.filter(is_deleted=False).select_related("collection_point_id", "bin_id", "customer_id").prefetch_related("collection_point_id__wards")
         return [{
             "unique_id": stop.unique_id,
             "collection_type": stop.collection_type,
             "collection_point_id": stop.collection_point_id_id,
             "collection_point": {"unique_id": stop.collection_point_id.unique_id, "cp_name": stop.collection_point_id.cp_name} if stop.collection_point_id else None,
+            "collection_point_wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in stop.collection_point_id.wards.all()] if stop.collection_point_id else [],
             "bin_id": stop.bin_id_id,
             "bin": {"unique_id": stop.bin_id.unique_id, "bin_name": stop.bin_id.bin_name} if stop.bin_id else None,
             "customer_id": stop.customer_id_id,
-            "customer": {"unique_id": stop.customer_id.unique_id, "customer_name": stop.customer_id.customer_name} if stop.customer_id else None,
+            "customer": {"unique_id": stop.customer_id.unique_id, "customer_name": stop.customer_id.customer_name, "ward_id": stop.customer_id.ward_id, "ward_name": getattr(stop.customer_id.ward, "ward_name", None)} if stop.customer_id else None,
             "sequence": stop.sequence,
             "is_active": stop.is_active,
         } for stop in stops]
@@ -181,6 +198,32 @@ class TripPlanSerializer(serializers.ModelSerializer):
         if not trip_hierarchy_obj:
             raise serializers.ValidationError({"district_id": "Trip plan must be assigned to at least a district."})
 
+        staff_template = attrs.get("staff_template_id", getattr(instance, "staff_template_id", None))
+        vehicle = attrs.get("vehicle_id", getattr(instance, "vehicle_id", None))
+        other_plans = TripPlan.objects.filter(is_deleted=False, status=TripPlan.Status.ACTIVE)
+        if instance:
+            # TripPlan uses unique_id as its primary key. Exclude explicitly
+            # by that identifier so an edit of the current plan never treats
+            # its own staff template or vehicle as a duplicate.
+            other_plans = other_plans.exclude(unique_id=instance.unique_id)
+        staff_changed = not instance or staff_template != instance.staff_template_id
+        vehicle_changed = not instance or vehicle != instance.vehicle_id
+        if staff_template and staff_changed and other_plans.filter(staff_template_id=staff_template).exists():
+            raise serializers.ValidationError({"staff_template_id": "This staff template is already assigned to another Trip Plan."})
+        if vehicle and vehicle_changed and other_plans.filter(vehicle_id=vehicle).exists():
+            raise serializers.ValidationError({"vehicle_id": "This vehicle is already assigned to another Trip Plan."})
+
+        wards = attrs.get("wards")
+        if wards and trip_hierarchy_field != "district":
+            mismatched = [
+                ward for ward in wards
+                if getattr(ward, f"{trip_hierarchy_field}_id", None) != trip_hierarchy_obj.pk
+            ]
+            if mismatched:
+                raise serializers.ValidationError(
+                    {"ward_ids": "Selected wards must belong to the trip plan's local body."}
+                )
+
         trigger = attrs.get("trip_trigger_weight_kg", getattr(instance, "trip_trigger_weight_kg", None))
         capacity = attrs.get("max_vehicle_capacity_kg", getattr(instance, "max_vehicle_capacity_kg", None))
         if trigger is not None and capacity is not None and trigger >= capacity:
@@ -195,13 +238,13 @@ class TripPlanSerializer(serializers.ModelSerializer):
             sequences = [stop["sequence"] for stop in stops]
             if len(sequences) != len(set(sequences)):
                 raise serializers.ValidationError({"collection_points": "Stop sequences must be unique."})
-            collection_point_ids = [
-                stop.get("collection_point_id")
+            collection_point_bins = [
+                (stop.get("collection_point_id"), stop.get("bin_id"))
                 for stop in stops
                 if stop.get("collection_type") == TripPlanCollectionPoint.COLLECTION_TYPE_BIN
             ]
-            if len(collection_point_ids) != len(set(collection_point_ids)):
-                raise serializers.ValidationError({"collection_points": "Collection points must be unique per trip plan."})
+            if len(collection_point_bins) != len(set(collection_point_bins)):
+                raise serializers.ValidationError({"collection_points": "The same bin cannot be repeated at the same collection point in a trip plan."})
             # A plan generates exactly one category of daily work (see
             # TripPlan.collection_type), so every stop's type must match the
             # plan's own type. Bulk-waste plans are auto-generated and never
@@ -254,8 +297,20 @@ class TripPlanSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"collection_points": "Invalid collection point."})
                 if getattr(cp, f"{trip_hierarchy_field}_id", None) != getattr(trip_hierarchy_obj, "unique_id", None):
                     raise serializers.ValidationError({"collection_points": "Collection point does not belong to the selected hierarchy level."})
+                if wards and not cp.wards.filter(unique_id__in=[ward.unique_id for ward in wards]).exists():
+                    raise serializers.ValidationError({"collection_points": "Collection point does not serve any selected ward."})
                 if not bin_obj or bin_obj.collection_point_id != cp:
                     raise serializers.ValidationError({"collection_points": "Selected bin does not belong to the collection point."})
+                reserved_bins = TripPlanCollectionPoint.objects.filter(
+                    bin_id=bin_obj,
+                    trip_plan_id__is_deleted=False,
+                )
+                if instance:
+                    reserved_bins = reserved_bins.exclude(trip_plan_id=instance)
+                if reserved_bins.exists():
+                    raise serializers.ValidationError(
+                        {"collection_points": "This bin is already assigned to another Trip Plan."}
+                    )
 
         return attrs
 
@@ -296,17 +351,39 @@ class TripPlanSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         stops = validated_data.pop("collection_points", None)
         waste_types = validated_data.pop("waste_types", None)
+        wards = validated_data.pop("wards", None)
         trip_plan = super().create(validated_data)
         if waste_types is not None:
             trip_plan.waste_types.set(waste_types)
+        if wards is not None:
+            trip_plan.wards.set(wards)
         self._sync_stops(trip_plan, stops)
         return trip_plan
 
     def update(self, instance, validated_data):
         stops = validated_data.pop("collection_points", None)
         waste_types = validated_data.pop("waste_types", None)
+        wards = validated_data.pop("wards", None)
         trip_plan = super().update(instance, validated_data)
         if waste_types is not None:
             trip_plan.waste_types.set(waste_types)
+        if wards is not None:
+            trip_plan.wards.set(wards)
         self._sync_stops(trip_plan, stops)
+
+        # A Trip Plan can be edited after its Daily Trip Assignment was
+        # generated. Keep existing assignments in sync so newly added bin
+        # stops (including another bin at the same collection point) appear
+        # immediately in that day's trip instead of requiring a duplicate
+        # assignment to be created.
+        if stops is not None:
+            from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+            from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
+
+            assignments = DailyTripAssignment.objects.filter(
+                trip_plan_id=trip_plan,
+                is_deleted=False,
+            ).exclude(status=DailyTripAssignment.STATUS_CANCELLED)
+            for assignment in assignments:
+                sync_daily_assignment_stops_from_plan(assignment)
         return trip_plan

@@ -11,12 +11,14 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.masters.waste_masters.property import Property
 from app.models.masters.waste_masters.subproperty import SubProperty
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
+from app.utils.hierarchy import normalize_flat_geo_attrs, validate_wards_for_flat_geo
 
 PASSWORD_PATTERN = re.compile(r"^(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9]).{8,12}$")
 PASSWORD_RULE_MESSAGE = (
@@ -100,6 +102,15 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     )
     panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
 
+    ward_id = serializers.SlugRelatedField(
+        source="ward",
+        queryset=Ward.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=True,
+        allow_null=False,
+    )
+    ward_name = serializers.CharField(source="ward.ward_name", read_only=True)
+
     property_id = serializers.SlugRelatedField(
         source="property_ref",
         queryset=Property.objects.all(),
@@ -173,6 +184,8 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
             "panchayat_union_name",
             "panchayat_id",
             "panchayat_name",
+            "ward_id",
+            "ward_name",
             "pincode",
             "latitude",
             "longitude",
@@ -265,6 +278,27 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         # )(self, attrs)
 
         instance = getattr(self, "instance", None)
+        geo_errors = normalize_flat_geo_attrs(attrs, instance=instance, require_geo=True)
+        if geo_errors:
+            raise serializers.ValidationError(geo_errors)
+
+        ward = attrs.get("ward") or getattr(instance, "ward", None)
+        if not ward:
+            geo_is_being_changed = any(
+                field in attrs
+                for field in (
+                    "state", "district", "area_type", "corporation",
+                    "municipality", "town_panchayat", "panchayat_union",
+                    "panchayat",
+                )
+            )
+            if not instance or not self.partial or geo_is_being_changed:
+                raise serializers.ValidationError({"ward_id": "Ward is required."})
+        else:
+            ward_error = validate_wards_for_flat_geo([ward], attrs, instance)
+            if ward_error:
+                raise serializers.ValidationError({"ward_id": ward_error})
+
         district = attrs.get("district") or getattr(instance, "district", None)
         if not district:
             raise serializers.ValidationError({"district_id": "Customer must be assigned to a district."})

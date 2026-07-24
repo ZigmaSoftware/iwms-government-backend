@@ -78,6 +78,7 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "town_panchayat",
             "panchayat_union",
             "panchayat",
+            "ward",
             "collection_point_id",
             "wastetype_id",
         ).filter(is_deleted=False)
@@ -104,6 +105,13 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         if collection_point_uid:
             queryset = queryset.filter(collection_point_id__unique_id=collection_point_uid)
+
+        ward_uid = (
+            self.request.query_params.get("ward")
+            or self.request.query_params.get("ward_id")
+        )
+        if ward_uid:
+            queryset = queryset.filter(ward_id=ward_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 

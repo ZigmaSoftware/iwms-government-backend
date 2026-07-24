@@ -27,7 +27,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "town_panchayat",
             "panchayat_union",
             "panchayat",
-        ).filter(is_deleted=False)
+        ).prefetch_related("wards").filter(is_deleted=False)
 
         for field in (
             "country_id",
@@ -43,6 +43,13 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             value = self.request.query_params.get(field)
             if value:
                 queryset = queryset.filter(**{field: value})
+
+        ward_uid = (
+            self.request.query_params.get("ward")
+            or self.request.query_params.get("ward_id")
+        )
+        if ward_uid:
+            queryset = queryset.filter(wards__unique_id=ward_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 

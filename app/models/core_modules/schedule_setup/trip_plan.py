@@ -18,6 +18,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 
 
 def generate_trip_plan_id():
@@ -134,6 +135,14 @@ class TripPlan(BaseMaster):
         related_name="trip_plans",
         to_field="unique_id",
         db_column="panchayat_id",
+    )
+    # A trip plan can span multiple wards within its selected local body
+    # (e.g. one corporation route covering several wards in a single run).
+    wards = models.ManyToManyField(
+        Ward,
+        related_name="trip_plans_multi",
+        blank=True,
+        help_text="Wards covered by this trip plan.",
     )
     # ---- WHO -------------------------------------------------------
     staff_template_id = models.ForeignKey(

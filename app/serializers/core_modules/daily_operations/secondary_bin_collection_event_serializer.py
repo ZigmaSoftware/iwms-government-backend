@@ -14,6 +14,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.serializers.masters.waste_masters.bins_serializer import BinsSerializer
 from app.serializers.masters.transport_masters.vehicleCreation_serializer import (
     VehicleCreationSerializer,
@@ -30,6 +31,11 @@ from app.utils.hierarchy import flat_geo_display
 
 
 class BinCollectionEventSerializer(serializers.ModelSerializer):
+    ward_id = serializers.SlugRelatedField(
+        source="ward", slug_field="unique_id", queryset=Ward.objects.filter(is_deleted=False),
+        required=False, allow_null=True,
+    )
+    ward_name = serializers.CharField(source="ward.ward_name", read_only=True, allow_null=True)
     trip_assignment_id = UniqueIdOrPkField(
         slug_field="unique_id",
         queryset=DailyTripAssignment.objects.filter(is_deleted=False),
@@ -127,6 +133,8 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "town_panchayat_id",
             "panchayat_union_id",
             "panchayat_id",
+            "ward_id",
+            "ward_name",
             "state_name",
             "district_name",
             "area_type_name",
@@ -220,6 +228,16 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             attrs.get("collection_date")
             or getattr(assignment, "trip_date", None)
         )
+        ward = attrs.get("ward", getattr(self.instance, "ward", None))
+        if not ward and assignment:
+            assignment_wards = assignment.wards.all()
+            if assignment_wards.count() == 1:
+                ward = assignment_wards.first()
+                attrs["ward"] = ward
+        if ward and assignment and not assignment.wards.filter(unique_id=ward.unique_id).exists():
+            raise serializers.ValidationError({"ward_id": "Ward must belong to the selected trip assignment."})
+        if ward and collection_point and not collection_point.wards.filter(unique_id=ward.unique_id).exists():
+            raise serializers.ValidationError({"ward_id": "Ward is not served by the selected collection point."})
 
         # These are intentionally not serializer fields. They are derived only
         # to satisfy the current model while the API exposes nested objects.

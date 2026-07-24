@@ -34,6 +34,9 @@ from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignm
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
 
+UNCLASSIFIED_WASTE_TYPE_ID = "UNCLASSIFIED"
+UNCLASSIFIED_WASTE_TYPE_NAME = "Unclassified"
+
 LOCAL_BODY_FIELDS = (
     "corporation",
     "municipality",
@@ -195,6 +198,42 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
                 bucket["weight_kg"] += wt_row["weight_kg"]
                 bucket["trip_assignment_ids"].add(wt_row["trip_assignment_id"])
 
+        # ── trips with no per-waste-type detail at all (no BinCollectionEvent
+        # / WasteCollection rows) still carry a real trip-log-level weight —
+        # fold that into an "Unclassified" bucket instead of dropping it, so
+        # the waste-type table/pie/count don't go empty just because detail
+        # rows were never recorded for those trips. ─────────────────────────
+        if not waste_type_param:
+            classified_assignment_ids = {r["trip_assignment_id"] for r in wt_rows}
+            for row in trip_log_info:
+                assignment_id = row["trip_assignment_id_id"]
+                if assignment_id in classified_assignment_ids:
+                    continue
+                local_body_field, local_body_id = self._local_body_from_row(row)
+                if not local_body_id:
+                    continue
+                year_val, month_val = row["trip_date"].year, row["trip_date"].month
+                key = (year_val, month_val, local_body_field, local_body_id, UNCLASSIFIED_WASTE_TYPE_ID)
+                bucket = bucket_totals.setdefault(key, {
+                    "year": year_val,
+                    "month": month_val,
+                    "local_body_field": local_body_field,
+                    "local_body_id": local_body_id,
+                    "waste_type_id": UNCLASSIFIED_WASTE_TYPE_ID,
+                    "waste_type_name": UNCLASSIFIED_WASTE_TYPE_NAME,
+                    "weight_kg": ZERO,
+                    "trip_assignment_ids": set(),
+                })
+                bucket["trip_assignment_ids"].add(assignment_id)
+
+            if classified_assignment_ids != set(info_by_assignment.keys()):
+                unclassified_weight_by_key = self._unclassified_weight_by_bucket(
+                    base_qs, source, classified_assignment_ids,
+                )
+                for key, weight in unclassified_weight_by_key.items():
+                    if key in bucket_totals:
+                        bucket_totals[key]["weight_kg"] += weight
+
         local_body_names = {}
         for r in location_qs:
             lb_field, lb_id = self._local_body_from_row(r)
@@ -286,6 +325,43 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             if value:
                 return field, value
         return None, None
+
+    def _unclassified_weight_by_bucket(self, base_qs, source, classified_assignment_ids):
+        """Trip-log-level weight (per year/month/local body) for trips whose
+        trip_assignment has no BinCollectionEvent/WasteCollection detail rows
+        at all, so that weight isn't silently dropped from the waste-type
+        breakdown/table."""
+        unclassified_qs = base_qs.exclude(trip_assignment_id_id__in=classified_assignment_ids)
+        group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
+
+        if source == "household":
+            weight_expr = Coalesce(F("household_collected_weight_kg"), Value(0, output_field=DecimalField()))
+        elif source == "all":
+            weight_expr = (
+                Coalesce(F("collected_weight_kg"), Value(0, output_field=DecimalField()))
+                + Coalesce(F("household_collected_weight_kg"), Value(0, output_field=DecimalField()))
+            )
+        else:
+            weight_expr = Coalesce(F("collected_weight_kg"), Value(0, output_field=DecimalField()))
+
+        rows = unclassified_qs.values(
+            "trip_date__year", "trip_date__month", *group_fields,
+        ).annotate(
+            weight_kg=Sum(
+                ExpressionWrapper(weight_expr, output_field=DecimalField(max_digits=14, decimal_places=2))
+            ),
+        )
+        result = {}
+        for row in rows:
+            local_body_field, local_body_id = self._local_body_from_row(row)
+            if not local_body_id:
+                continue
+            key = (
+                row["trip_date__year"], row["trip_date__month"],
+                local_body_field, local_body_id, UNCLASSIFIED_WASTE_TYPE_ID,
+            )
+            result[key] = result.get(key, ZERO) + decimal_value(row["weight_kg"])
+        return result
 
     # ── analytics helpers ────────────────────────────────────────────────
 

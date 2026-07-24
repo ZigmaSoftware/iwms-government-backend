@@ -11,6 +11,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from app.utils.customer_qr import (
     QR_SUBPROPERTY_APARTMENT,
@@ -179,6 +180,15 @@ class CustomerCreation(BaseMaster):
         related_name="customer_creations",
         to_field="unique_id",
         db_column="panchayat_id",
+    )
+    ward = models.ForeignKey(
+        Ward,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="customers",
+        to_field="unique_id",
+        db_column="ward_id",
     )
 
     pincode = models.CharField(max_length=10)

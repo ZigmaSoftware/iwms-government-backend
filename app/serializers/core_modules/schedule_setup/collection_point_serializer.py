@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import serializers
 
 from app.models.masters.waste_masters.bins import Bins, BinType
@@ -12,10 +13,12 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.utils.hierarchy import normalize_flat_geo_attrs, validate_wards_for_flat_geo
 
 
 class CollectionPointBinInputSerializer(serializers.Serializer):
@@ -24,6 +27,11 @@ class CollectionPointBinInputSerializer(serializers.Serializer):
     bin_name = serializers.CharField()
     bin_capacity = serializers.IntegerField()
     bin_type = serializers.ChoiceField(choices=BinType.choices)
+    ward_id = serializers.SlugRelatedField(
+        queryset=Ward.objects.filter(is_deleted=False),
+        slug_field="unique_id",
+        required=True,
+    )
     is_active = serializers.BooleanField(default=True)
 
 
@@ -49,6 +57,15 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
 
     bins = CollectionPointBinInputSerializer(many=True, write_only=True, required=False)
     bins_detail = serializers.SerializerMethodField()
+    ward_ids = serializers.SlugRelatedField(
+        slug_field="unique_id",
+        queryset=Ward.objects.filter(is_deleted=False),
+        many=True,
+        required=False,
+        source="wards",
+        write_only=True,
+    )
+    wards_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Collection_point
@@ -79,6 +96,8 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "coordinates",
             "bins",
             "bins_detail",
+            "ward_ids",
+            "wards_detail",
             "is_active",
             "created_at",
             "updated_at",
@@ -95,11 +114,19 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "bin_name": bin_obj.bin_name,
             "bin_capacity": bin_obj.bin_capacity,
             "bin_type": bin_obj.bin_type,
+            "ward_id": bin_obj.ward_id,
+            "ward_name": getattr(bin_obj.ward, "ward_name", None),
             "bin_qr": bin_obj.bin_qr.url if bin_obj.bin_qr else None,
             "wastetype_id": bin_obj.wastetype_id_id,
             "wastetype_name": getattr(bin_obj.wastetype_id, "waste_type_name", None),
             "is_active": bin_obj.is_active,
         } for bin_obj in bins]
+
+    def get_wards_detail(self, obj):
+        return [
+            {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
+            for ward in obj.wards.all()
+        ]
 
     def _sync_bins(self, collection_point, bins):
         if bins is None:
@@ -120,6 +147,7 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
                 existing.bin_name = bin_data["bin_name"]
                 existing.bin_capacity = bin_data["bin_capacity"]
                 existing.bin_type = bin_data["bin_type"]
+                existing.ward = bin_data["ward_id"]
                 existing.is_active = bin_data.get("is_active", True)
                 existing.is_deleted = False
                 existing.save()
@@ -130,6 +158,7 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
                     bin_name=bin_data["bin_name"],
                     bin_capacity=bin_data["bin_capacity"],
                     bin_type=bin_data["bin_type"],
+                    ward=bin_data["ward_id"],
                     bin_image="default.png",
                     is_active=bin_data.get("is_active", True),
                 )
@@ -150,6 +179,62 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
+        geo_errors = normalize_flat_geo_attrs(attrs, instance=instance, require_geo=True)
+        if geo_errors:
+            raise serializers.ValidationError(geo_errors)
+
+        wards = attrs.get("wards")
+        effective_wards = list(wards) if wards is not None else (
+            list(instance.wards.all()) if instance else []
+        )
+        if not effective_wards:
+            hierarchy_is_being_changed = any(
+                field in attrs
+                for field in (
+                    "state", "district", "area_type", "corporation",
+                    "municipality", "town_panchayat", "panchayat_union",
+                    "panchayat",
+                )
+            )
+            legacy_partial_update = (
+                instance
+                and self.partial
+                and "wards" not in attrs
+                and "bins" not in attrs
+                and not hierarchy_is_being_changed
+            )
+            if not legacy_partial_update:
+                raise serializers.ValidationError(
+                    {"ward_ids": "Select at least one ward."}
+                )
+        else:
+            ward_error = validate_wards_for_flat_geo(effective_wards, attrs, instance)
+            if ward_error:
+                raise serializers.ValidationError({"ward_ids": ward_error})
+
+        submitted_bins = attrs.get("bins")
+        if submitted_bins is not None:
+            for index, bin_data in enumerate(submitted_bins):
+                if bin_data["ward_id"] not in effective_wards:
+                    raise serializers.ValidationError(
+                        {"bins": {index: {"ward_id": "Bin ward must be selected for this collection point."}}}
+                    )
+        elif instance and "wards" in attrs:
+            allowed_ward_ids = {ward.pk for ward in effective_wards}
+            invalid_existing_bin = instance.bin.filter(
+                Q(ward__isnull=True) | ~Q(ward_id__in=allowed_ward_ids),
+                is_deleted=False,
+            ).exists()
+            if invalid_existing_bin:
+                raise serializers.ValidationError(
+                    {
+                        "ward_ids": (
+                            "A ward assigned to an existing bin cannot be removed "
+                            "from the collection point."
+                        )
+                    }
+                )
+
         state = attrs.get("state") or getattr(instance, "state", None)
         country = attrs.get("country") or getattr(instance, "country", None)
         district = attrs.get("district") or getattr(instance, "district", None)

@@ -15,6 +15,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.utils.hierarchy import copy_flat_geo
 
 
@@ -178,6 +179,13 @@ class DailyTripAssignment(BaseMaster):
         to_field="unique_id",
         db_column="panchayat_id",
     )
+    # Inherited from the Trip Plan on create (see `save`), can be narrowed
+    # per-trip the same way `waste_types` already is.
+    wards = models.ManyToManyField(
+        Ward,
+        related_name="daily_trip_assignments_multi",
+        blank=True,
+    )
 
     # ------------------------------------------------------------------
     # WASTE TYPE
@@ -276,6 +284,13 @@ class DailyTripAssignment(BaseMaster):
         super().save(*args, **kwargs)
         if is_new and self.trip_plan_id and not self.waste_types.exists():
             self.waste_types.set(self.trip_plan_id.waste_types.all())
+        if is_new and self.trip_plan_id and not self.wards.exists():
+            self.wards.set(self.trip_plan_id.wards.all())
+            # post_save fires before the assignment's many-to-many wards are
+            # available. Sync once more after the default wards are copied so
+            # household stops are restricted to the selected wards.
+            from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
+            sync_daily_assignment_stops_from_plan(self)
 
     def __str__(self):
         return self.unique_id

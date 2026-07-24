@@ -60,7 +60,6 @@ from app.management.commands.seeders.core_modules.schedule_setup.trip_plan_colle
 from app.management.commands.seeders.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignmentSeeder
 from app.management.commands.seeders.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPointSeeder
 from app.management.commands.seeders.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
-from app.management.commands.seeders.core_modules.daily_operations.daily_trip_log import DailyTripLogSeeder
 from app.management.commands.seeders.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.core_modules.daily_operations.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdownSeeder
@@ -171,7 +170,6 @@ SCHEDULE_OPERATIONS_SEEDERS = [
     DailyTripAssignmentSeeder,      # 6. daily-trip-assignments
     DailyTripCollectionPointSeeder, # 7. daily-trip-collection-points
     DailyTripHouseholdCollectionSeeder,
-    DailyTripLogSeeder,             # 8. daily-trip-logs
     TripAttendanceSeeder,
     BinCollectionEventSeeder,       # 9. bin-collection-events
     VehicleBreakdownSeeder,         # 10. vehicle-breakdowns
@@ -273,7 +271,6 @@ SEED_GROUPS = {
     "bin-collection-events": [BinCollectionEventSeeder],
     "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "waste-collections": [WasteCollectionSeeder],
-    "trip-logs":          [DailyTripLogSeeder],
     "supervisor-graph":   [SupervisorMonthDataSeeder],  # month of trips+logs for supervisor_user
     "multi-district-demo": [MultiDistrictTripDataSeeder],  # month of trips+logs for any district with none yet
     "telangana-masters":  [TelanganaMastersSeeder],  # districts/area-types/corporations for Telangana
