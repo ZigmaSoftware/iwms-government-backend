@@ -65,6 +65,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         collection_date = params.get("collection_date") or params.get("date")
         date_from = params.get("date_from")
         date_to = params.get("date_to")
+        ward_id = params.get("ward_id") or params.get("ward_ids")
 
         if trip_assignment:
             queryset = queryset.filter(trip_assignment_id=trip_assignment)
@@ -80,6 +81,8 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(collection_date__gte=date_from)
         if date_to:
             queryset = queryset.filter(collection_date__lte=date_to)
+        if ward_id:
+            queryset = queryset.filter(ward__unique_id=ward_id)
 
         queryset = filter_flat_geo_queryset_by_params(
             queryset,

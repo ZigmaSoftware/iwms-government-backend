@@ -9,6 +9,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.ward import Ward
 from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
@@ -65,50 +66,35 @@ class StaffDataScope(BaseMaster):
         to_field="unique_id",
         db_column="area_type_id",
     )
-    corporation = models.ForeignKey(
+    corporations = models.ManyToManyField(
         Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="corporation_id",
     )
-    municipality = models.ForeignKey(
+    municipalities = models.ManyToManyField(
         Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="municipality_id",
     )
-    town_panchayat = models.ForeignKey(
+    town_panchayats = models.ManyToManyField(
         TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
     )
-    panchayat_union = models.ForeignKey(
+    panchayat_unions = models.ManyToManyField(
         PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
     )
-    panchayat = models.ForeignKey(
+    panchayats = models.ManyToManyField(
         Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
         blank=True,
         related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="panchayat_id",
+    )
+    wards = models.ManyToManyField(
+        Ward,
+        blank=True,
+        related_name="scoped_staff",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

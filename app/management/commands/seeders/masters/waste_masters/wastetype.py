@@ -9,6 +9,8 @@ class WasteTypeSeeder(BaseSeeder):
         # Primary segregated household streams — shown first in the operator app.
         "Wet Waste",
         "Dry Waste",
+        "Mixed Waste",
+        "Sanitary Waste",
         "Organic Waste",
         "Plastic Waste",
         "Paper Waste",

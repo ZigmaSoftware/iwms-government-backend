@@ -100,6 +100,7 @@ class DailyTripCollectionPointSerializer(
             "latitude": cp.latitude,
             "longitude": cp.longitude,
             **hierarchy_payload(cp),
+            "wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in cp.wards.all()],
         }
 
     def get_hierarchy(self, obj):
@@ -158,13 +159,14 @@ class DailyTripCollectionPointSerializer(
             conflict = DailyTripCollectionPoint.objects.filter(
                 trip_assignment_id=assignment,
                 collection_point_id=collection_point,
+                bin_id=bin_obj,
                 is_deleted=False,
             )
             if instance:
                 conflict = conflict.exclude(pk=instance.pk)
             if conflict.exists():
                 raise serializers.ValidationError(
-                    "This collection point is already added to the trip assignment."
+                    "This bin is already added at this collection point for the trip assignment."
                 )
 
         is_collected = attrs.get(

@@ -47,11 +47,11 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not assignment or not assignment.trip_plan_id_id:
             return assignment
 
-        existing_cp_ids = set(
+        existing_cp_bins = set(
             DailyTripCollectionPoint.objects.filter(
                 trip_assignment_id=assignment,
                 is_deleted=False,
-            ).values_list("collection_point_id_id", flat=True)
+            ).values_list("collection_point_id_id", "bin_id_id")
         )
         plan_stops = TripPlanCollectionPoint.objects.filter(
             trip_plan_id=assignment.trip_plan_id,
@@ -63,7 +63,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             # the household-collection table, not here (collection_point is NOT NULL).
             if not stop.collection_point_id_id:
                 continue
-            if stop.collection_point_id_id in existing_cp_ids:
+            if (stop.collection_point_id_id, stop.bin_id_id) in existing_cp_bins:
                 continue
             DailyTripCollectionPoint.objects.create(
                 trip_assignment_id=assignment,

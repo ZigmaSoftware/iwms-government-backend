@@ -46,6 +46,7 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
         collection_type = params.get("collection_type")
         is_collected = params.get("is_collected")
         trip_date = params.get("date") or params.get("trip_date")
+        ward_id = params.get("ward_id") or params.get("ward_ids")
         search = params.get("search")
 
         if assignment:
@@ -62,6 +63,8 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
             )
         if trip_date:
             queryset = queryset.filter(trip_assignment_id__trip_date=trip_date)
+        if ward_id:
+            queryset = queryset.filter(customer_id__ward__unique_id=ward_id)
         if search:
             queryset = queryset.filter(
                 Q(customer_id__customer_name__icontains=search)
