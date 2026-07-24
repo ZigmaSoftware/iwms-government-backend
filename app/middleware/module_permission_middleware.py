@@ -121,12 +121,11 @@ MODULE_RESOURCE_ALLOWLIST = {
     "waste-types": {
         "Property",
         "SubProperty",
+        "Bin",
+        "WasteType",
     },
     "assets": {
-        "Bin",
         "CollectionPoint",
-        "WasteType",
-        "Bin"
     },
     "screen-managements": {
         "MainScreenType",
@@ -144,6 +143,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "UserType",
         "StaffUserType",
         "ContractorUserType",
+        "GovernmentStaffUserType",
     },
     "user-creations": {
         "UsersCreation",
@@ -237,6 +237,8 @@ RESOURCE_PERMISSION_ALIASES = {
     "UserScreenAction": ("userscreen-action",),
     "UserType": ("user-type",),
     "StaffUserType": ("staff-user-type",),
+    "ContractorUserType": ("contractorusertypes",),
+    "GovernmentStaffUserType": ("governmentusertypes",),
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
     "StaffCreation": ("staffcreation",),
