@@ -37,6 +37,8 @@ class DailyTripHouseholdCollectionSerializer(
             "collection_type",
             "waste_collection_id",
             "hierarchy",
+            "ward_id",
+            "ward_name",
             "sequence",
             "is_collected",
             "collected_at",
@@ -84,3 +86,10 @@ class DailyTripHouseholdCollectionSerializer(
     def get_hierarchy(self, obj):
         name, level = flat_geo_display(obj)
         return {"location_name": name, "location_level": level}
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        ward = getattr(instance.customer_id, "ward", None)
+        data["ward_id"] = getattr(ward, "unique_id", None)
+        data["ward_name"] = getattr(ward, "ward_name", None)
+        return data

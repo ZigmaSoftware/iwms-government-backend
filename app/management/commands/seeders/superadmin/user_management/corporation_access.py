@@ -97,21 +97,21 @@ class CorporationAccessSeeder(BaseSeeder):
 
             # StaffDataScope scoped to Erode Corporation (state/district/
             # area_type/corporation) — the enforced access boundary.
-            StaffDataScope.objects.update_or_create(
+            scope, _ = StaffDataScope.objects.update_or_create(
                 staff=staff,
                 is_deleted=False,
                 defaults={
                     "state_id": corporation.state_id_id,
                     "district_id": corporation.district_id_id,
                     "area_type_id": corporation.area_type_id_id,
-                    "corporation_id": corporation.unique_id,
-                    "municipality_id": None,
-                    "town_panchayat_id": None,
-                    "panchayat_union_id": None,
-                    "panchayat_id": None,
                     "is_active": True,
                 },
             )
+            scope.corporations.set([corporation.unique_id])
+            scope.municipalities.clear()
+            scope.town_panchayats.clear()
+            scope.panchayat_unions.clear()
+            scope.panchayats.clear()
 
         self.log(
             f"---Corporation access seeded ({created} created, {updated} updated); "

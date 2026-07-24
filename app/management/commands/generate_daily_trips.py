@@ -120,8 +120,8 @@ def run_for_date(target_date=None, logger=None, force=False):
                     DailyTripCollectionPoint.objects.get_or_create(
                         trip_assignment_id=assignment,
                         collection_point_id=stop.collection_point_id,
+                        bin_id=stop.bin_id,
                         defaults={
-                            "bin_id": stop.bin_id,
                             "sequence": stop.sequence,
                             "status": DailyTripCollectionPoint.STATUS_PENDING,
                         },

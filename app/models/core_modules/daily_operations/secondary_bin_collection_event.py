@@ -18,6 +18,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
@@ -189,6 +190,10 @@ class BinCollectionEvent(BaseMaster):
         related_name="secondary_bin_collection_events",
         to_field="unique_id",
         db_column="panchayat_id",
+    )
+    ward = models.ForeignKey(
+        Ward, on_delete=models.PROTECT, related_name="bin_collection_events",
+        to_field="unique_id", db_column="ward_id", null=True, blank=True,
     )
 
     collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

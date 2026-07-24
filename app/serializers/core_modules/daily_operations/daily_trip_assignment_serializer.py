@@ -189,7 +189,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     def get_collection_points(self, obj):
         stops = obj.trip_collection_points.filter(is_deleted=False).select_related(
             "collection_point_id", "bin_id", "bin_id__wastetype_id", "collected_by",
-        ).order_by("sequence")
+        ).prefetch_related("collection_point_id__wards").order_by("sequence")
         return [{
             "unique_id": stop.unique_id,
             "collection_point_id": stop.collection_point_id_id,
@@ -199,6 +199,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
                 "latitude": stop.collection_point_id.latitude,
                 "longitude": stop.collection_point_id.longitude,
             } if stop.collection_point_id else None,
+            "wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in stop.collection_point_id.wards.all()] if stop.collection_point_id else [],
             "bin_id": stop.bin_id_id,
             "bin": {"unique_id": stop.bin_id.unique_id, "bin_name": stop.bin_id.bin_name} if stop.bin_id else None,
             "waste_type_name": getattr(getattr(stop.bin_id, "wastetype_id", None), "waste_type_name", None),
@@ -224,6 +225,8 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
                 "customer_name": getattr(stop.customer_id, "customer_name", None),
                 "building_no": getattr(stop.customer_id, "building_no", None),
                 "street": getattr(stop.customer_id, "street", None),
+                "ward_id": getattr(stop.customer_id, "ward_id", None),
+                "ward_name": getattr(getattr(stop.customer_id, "ward", None), "ward_name", None),
             } if stop.customer_id else None,
             "collection_type": stop.collection_type,
             "sequence": stop.sequence,
@@ -283,7 +286,12 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("collection_points_input", None)
-        return super().create(validated_data)
+        assignment = super().create(validated_data)
+        # Model post_save runs before DRF applies explicit M2M ward_ids.
+        # Re-sync after DRF has saved the selected wards.
+        from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
+        sync_daily_assignment_stops_from_plan(assignment)
+        return assignment
 
     def update(self, instance, validated_data):
         collection_points = validated_data.pop("collection_points_input", None)
@@ -322,17 +330,16 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
         if not any(attrs.get(field, getattr(instance, field, None)) for field in ("district", "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat")):
             raise serializers.ValidationError("Daily trip assignment must belong to a geographic area.")
 
-        if trip_plan and trip_date and scheduled_time:
+        if trip_plan and trip_date:
             conflict_qs = DailyTripAssignment.objects.filter(
                 trip_plan_id=trip_plan,
                 trip_date=trip_date,
-                scheduled_time=scheduled_time,
                 is_deleted=False,
             ).exclude(status=DailyTripAssignment.STATUS_CANCELLED)
             if instance:
                 conflict_qs = conflict_qs.exclude(pk=instance.pk)
             if conflict_qs.exists():
-                raise serializers.ValidationError("Trip plan already assigned for this date and time.")
+                raise serializers.ValidationError("Trip plan already assigned for this date.")
 
         staff_template = attrs.get("staff_template_id", getattr(instance, "staff_template_id", None))
         if staff_template and trip_date and "alt_staff_template_id" not in attrs:

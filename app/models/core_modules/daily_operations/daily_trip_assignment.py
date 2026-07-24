@@ -286,6 +286,11 @@ class DailyTripAssignment(BaseMaster):
             self.waste_types.set(self.trip_plan_id.waste_types.all())
         if is_new and self.trip_plan_id and not self.wards.exists():
             self.wards.set(self.trip_plan_id.wards.all())
+            # post_save fires before the assignment's many-to-many wards are
+            # available. Sync once more after the default wards are copied so
+            # household stops are restricted to the selected wards.
+            from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
+            sync_daily_assignment_stops_from_plan(self)
 
     def __str__(self):
         return self.unique_id

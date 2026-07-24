@@ -10,6 +10,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.ward import Ward
 from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
@@ -38,11 +39,24 @@ class DataScopeInputSerializer(serializers.Serializer):
     stateId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     districtId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     areaTypeId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    corporationId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    municipalityId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    townPanchayatId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    panchayatUnionId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    panchayatId = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    corporationIds = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True,
+    )
+    municipalityIds = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True,
+    )
+    townPanchayatIds = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True,
+    )
+    panchayatUnionIds = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True,
+    )
+    panchayatIds = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True,
+    )
+    wardIds = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True,
+    )
 
 
 class LoginConfigInputSerializer(serializers.Serializer):
@@ -127,12 +141,24 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "data_scope": data_scope,
         }
 
+    LOCAL_BODY_M2M_LEVELS = (
+        ("corporation", "corporations"),
+        ("municipality", "municipalities"),
+        ("town_panchayat", "town_panchayats"),
+        ("panchayat_union", "panchayat_unions"),
+        ("panchayat", "panchayats"),
+    )
+
     def _access_scope_payload(self, scope):
         """
         Derive the permission ownership key (state/district/area_type/
-        optional local_body_type/local_body_id) from a saved StaffDataScope row,
-        using the same most-specific-populated-field precedence as
-        `_data_scope_payload`.
+        optional local_body_type/local_body_id) from a saved StaffDataScope
+        row. A staff scoped to exactly ONE local body in total keeps today's
+        exact behaviour (permissions/dashboard widgets scoped to that body).
+        A staff scoped to zero or SEVERAL local bodies falls back to their
+        District/State boundary — screens and dashboard widgets are governed
+        by the broader geo boundary rather than an ambiguous or merged set
+        of local-body-specific configs.
         """
         if not scope:
             return {
@@ -140,17 +166,12 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "localBodyType": None, "localBodyId": None,
             }
 
-        local_body_pairs = (
-            ("corporation", scope.corporation_id),
-            ("municipality", scope.municipality_id),
-            ("town_panchayat", scope.town_panchayat_id),
-            ("panchayat_union", scope.panchayat_union_id),
-            ("panchayat", scope.panchayat_id),
-        )
-        local_body_type, local_body_id = next(
-            ((level, value) for level, value in local_body_pairs if value),
-            (None, None),
-        )
+        candidates = [
+            (level, local_body_id)
+            for level, m2m_field in self.LOCAL_BODY_M2M_LEVELS
+            for local_body_id in getattr(scope, m2m_field).values_list("unique_id", flat=True)
+        ]
+        local_body_type, local_body_id = candidates[0] if len(candidates) == 1 else (None, None)
         return {
             "stateId": scope.state_id,
             "districtId": scope.district_id,
@@ -243,24 +264,36 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         state_id = data_scope.get("stateId") or None
         district_id = data_scope.get("districtId") or None
         area_type_id = data_scope.get("areaTypeId") or None
-        corporation_id = data_scope.get("corporationId") or None
-        municipality_id = data_scope.get("municipalityId") or None
-        town_panchayat_id = data_scope.get("townPanchayatId") or None
-        panchayat_union_id = data_scope.get("panchayatUnionId") or None
-        panchayat_id = data_scope.get("panchayatId") or None
+        local_body_ids_by_model = (
+            (Corporation, data_scope.get("corporationIds") or [], "corporationIds"),
+            (Municipality, data_scope.get("municipalityIds") or [], "municipalityIds"),
+            (TownPanchayat, data_scope.get("townPanchayatIds") or [], "townPanchayatIds"),
+            (PanchayatUnion, data_scope.get("panchayatUnionIds") or [], "panchayatUnionIds"),
+            (Panchayat, data_scope.get("panchayatIds") or [], "panchayatIds"),
+        )
+        ward_ids = data_scope.get("wardIds") or []
 
         def _validate(model, value, field_name):
             if value and not model.objects.filter(unique_id=value, is_deleted=False).exists():
                 raise serializers.ValidationError({"dataScope": {field_name: f"Invalid {field_name}."}})
 
+        def _validate_many(model, values, field_name):
+            valid_ids = set(
+                model.objects.filter(unique_id__in=values, is_deleted=False)
+                .values_list("unique_id", flat=True)
+            )
+            invalid_ids = set(values) - valid_ids
+            if invalid_ids:
+                raise serializers.ValidationError({
+                    "dataScope": {field_name: f"Invalid {field_name}: {', '.join(sorted(invalid_ids))}"}
+                })
+
         _validate(State, state_id, "stateId")
         _validate(District, district_id, "districtId")
         _validate(AreaType, area_type_id, "areaTypeId")
-        _validate(Corporation, corporation_id, "corporationId")
-        _validate(Municipality, municipality_id, "municipalityId")
-        _validate(TownPanchayat, town_panchayat_id, "townPanchayatId")
-        _validate(PanchayatUnion, panchayat_union_id, "panchayatUnionId")
-        _validate(Panchayat, panchayat_id, "panchayatId")
+        for model, values, field_name in local_body_ids_by_model:
+            _validate_many(model, values, field_name)
+        _validate_many(Ward, ward_ids, "wardIds")
 
         valid_node_ids = set(
             HierarchyNode.objects.filter(
@@ -283,15 +316,16 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "state_id": state_id,
                 "district_id": district_id,
                 "area_type_id": area_type_id,
-                "corporation_id": corporation_id,
-                "municipality_id": municipality_id,
-                "town_panchayat_id": town_panchayat_id,
-                "panchayat_union_id": panchayat_union_id,
-                "panchayat_id": panchayat_id,
                 "is_active": True,
             },
         )
         scope.location_nodes.set(location_node_ids)
+        scope.corporations.set(local_body_ids_by_model[0][1])
+        scope.municipalities.set(local_body_ids_by_model[1][1])
+        scope.town_panchayats.set(local_body_ids_by_model[2][1])
+        scope.panchayat_unions.set(local_body_ids_by_model[3][1])
+        scope.panchayats.set(local_body_ids_by_model[4][1])
+        scope.wards.set(ward_ids)
         return scope
 
     def _local_body_filters(self, staff):
@@ -432,7 +466,15 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
     def _data_scope_payload(self, staff):
         scope = (
             StaffDataScope.objects.filter(staff=staff, is_active=True, is_deleted=False)
-            .prefetch_related("location_nodes")
+            .prefetch_related(
+                "location_nodes",
+                "corporations",
+                "municipalities",
+                "town_panchayats",
+                "panchayat_unions",
+                "panchayats",
+                "wards",
+            )
             .first()
         )
         if not scope:
@@ -457,36 +499,49 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "stateId": staff.state_id,
                 "districtId": staff.district_id,
                 "areaTypeId": staff.area_type_id,
-                "corporationId": staff.corporation_id,
-                "municipalityId": staff.municipality_id,
-                "townPanchayatId": staff.town_panchayat_id,
-                "panchayatUnionId": staff.panchayat_union_id,
-                "panchayatId": staff.panchayat_id,
+                "corporationIds": [staff.corporation_id] if staff.corporation_id else [],
+                "municipalityIds": [staff.municipality_id] if staff.municipality_id else [],
+                "townPanchayatIds": [staff.town_panchayat_id] if staff.town_panchayat_id else [],
+                "panchayatUnionIds": [staff.panchayat_union_id] if staff.panchayat_union_id else [],
+                "panchayatIds": [staff.panchayat_id] if staff.panchayat_id else [],
+                "wardIds": [],
                 "localBodyLevel": local_body_level,
                 "localBodyId": local_body_id,
             }
 
-        local_body_pairs = (
-            ("corporation_id", scope.corporation_id),
-            ("municipality_id", scope.municipality_id),
-            ("town_panchayat_id", scope.town_panchayat_id),
-            ("panchayat_union_id", scope.panchayat_union_id),
-            ("panchayat_id", scope.panchayat_id),
-        )
-        local_body_level, local_body_id = next(
-            ((level, value) for level, value in local_body_pairs if value),
-            (None, None),
-        )
+        corporation_ids = list(scope.corporations.values_list("unique_id", flat=True))
+        municipality_ids = list(scope.municipalities.values_list("unique_id", flat=True))
+        town_panchayat_ids = list(scope.town_panchayats.values_list("unique_id", flat=True))
+        panchayat_union_ids = list(scope.panchayat_unions.values_list("unique_id", flat=True))
+        panchayat_ids = list(scope.panchayats.values_list("unique_id", flat=True))
+        ward_ids = list(scope.wards.values_list("unique_id", flat=True))
+
+        candidates = [
+            (level, local_body_id)
+            for level, ids in (
+                ("corporation_id", corporation_ids),
+                ("municipality_id", municipality_ids),
+                ("town_panchayat_id", town_panchayat_ids),
+                ("panchayat_union_id", panchayat_union_ids),
+                ("panchayat_id", panchayat_ids),
+            )
+            for local_body_id in ids
+        ]
+        # Backward-compatible single value for consumers still expecting one
+        # local body — populated only when exactly one is selected in total.
+        local_body_level, local_body_id = candidates[0] if len(candidates) == 1 else (None, None)
+
         return {
             "locationNodes": list(scope.location_nodes.values_list("unique_id", flat=True)),
             "stateId": scope.state_id,
             "districtId": scope.district_id,
             "areaTypeId": scope.area_type_id,
-            "corporationId": scope.corporation_id,
-            "municipalityId": scope.municipality_id,
-            "townPanchayatId": scope.town_panchayat_id,
-            "panchayatUnionId": scope.panchayat_union_id,
-            "panchayatId": scope.panchayat_id,
+            "corporationIds": corporation_ids,
+            "municipalityIds": municipality_ids,
+            "townPanchayatIds": town_panchayat_ids,
+            "panchayatUnionIds": panchayat_union_ids,
+            "panchayatIds": panchayat_ids,
+            "wardIds": ward_ids,
             "localBodyLevel": local_body_level,
             "localBodyId": local_body_id,
         }

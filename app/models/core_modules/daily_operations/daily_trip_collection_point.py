@@ -192,8 +192,8 @@ class DailyTripCollectionPoint(BaseMaster):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["trip_assignment_id", "collection_point_id"],
-                name="uniq_trip_cp_per_assignment",
+                fields=["trip_assignment_id", "collection_point_id", "bin_id"],
+                name="uniq_trip_cp_bin_per_assignment",
             ),
         ]
 

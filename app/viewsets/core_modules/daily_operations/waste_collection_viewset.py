@@ -23,3 +23,14 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
     AUDIT_ENDPOINT = "wastecollections"
     # Scoping (params + requester StaffDataScope) is applied automatically by
     # FlatGeoScopedViewSetMixin using the record-level flat geo columns (B2/G2).
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+        ward_id = params.get("ward_id") or params.get("ward_ids")
+        collection_date = params.get("date") or params.get("collection_date")
+        if ward_id:
+            queryset = queryset.filter(ward__unique_id=ward_id)
+        if collection_date:
+            queryset = queryset.filter(collection_date=collection_date)
+        return queryset

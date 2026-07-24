@@ -16,14 +16,14 @@ from app.utils.hierarchy import normalize_flat_geo_attrs
 
 class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     # ---- Geo hierarchy (write via *_id, read via nested objects) ----
-    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True)
+    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True)
+    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), required=False, allow_null=True)
+    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), required=False, allow_null=True)
+    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), required=False, allow_null=True)
+    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
+    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), required=False, allow_null=True)
+    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
 
     state_name = serializers.CharField(source="state.name", read_only=True)
     district_name = serializers.CharField(source="district.name", read_only=True)
@@ -36,6 +36,7 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
 
     local_body_type = serializers.SerializerMethodField(read_only=True)
     local_body_name = serializers.SerializerMethodField(read_only=True)
+    local_body_id = serializers.SerializerMethodField(read_only=True)
 
     LOCAL_BODY_FIELDS = (
         ("corporation", "corporation_name"),
@@ -58,6 +59,13 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
                 return getattr(value, name_attr, None)
         return None
 
+    def get_local_body_id(self, obj):
+        for field, _ in self.LOCAL_BODY_FIELDS:
+            value = getattr(obj, field, None)
+            if value:
+                return value.unique_id
+        return None
+
     class Meta:
         model = Ward
         fields = [
@@ -73,6 +81,7 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
             "panchayat_id", "panchayat_name",
             "local_body_type",
             "local_body_name",
+            "local_body_id",
             "coordinates",
             "is_active",
             "created_at",

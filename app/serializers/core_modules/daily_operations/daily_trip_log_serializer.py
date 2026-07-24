@@ -57,6 +57,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     collection_status = serializers.SerializerMethodField(read_only=True)
     household_collections = serializers.SerializerMethodField(read_only=True)
     capture_images = serializers.SerializerMethodField(read_only=True)
+    wards_detail = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DailyTripLog
@@ -70,6 +71,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "location_name",
             "location_level",
             "location",
+            "wards_detail",
             "collection_point_id",
             "collection_point",
             "collection_points",
@@ -132,6 +134,12 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "scheduled_time": str(assignment.scheduled_time),
             "display_code": getattr(trip_plan, "display_code", assignment.unique_id),
         }
+
+    def get_wards_detail(self, obj):
+        return [
+            {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
+            for ward in obj.trip_assignment_id.wards.all()
+        ] if obj.trip_assignment_id else []
 
     def get_staff_template(self, obj):
         # Fall back to trip assignment's templates for records created before the migration
