@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
@@ -52,16 +53,25 @@ class VehicleBreakdownSeeder(BaseSeeder):
             if not replacement:
                 continue
 
+            district_name = assignment.district.name if assignment.district_id else None
+            geo = DISTRICTS.get(district_name)
+            if geo:
+                lat, lon = geo["corporation_wards"][idx % len(geo["corporation_wards"])][1:]
+                road = geo["breakdown_roads"][idx % len(geo["breakdown_roads"])]
+                location = f"{road} km {12 + idx}, {district_name}"
+            else:
+                lat, lon, location = 11.0, 78.0, f"State Highway km {12 + idx}"
+
             VehicleBreakdown.objects.create(
                 trip_assignment_id=assignment,
                 breakdown_vehicle_id=broken_vehicle,
                 replacement_vehicle_id=replacement,
                 replacement_driver_id=staff[idx % len(staff)],
                 replacement_operator_id=staff[(idx + 1) % len(staff)],
-                breakdown_time=time(8 + idx, 15),
-                breakdown_lat=Decimal("11.3410") + Decimal(idx) * Decimal("0.01"),
-                breakdown_lng=Decimal("77.7172") + Decimal(idx) * Decimal("0.01"),
-                breakdown_location=f"NH-544 km {12 + idx}, Erode",
+                breakdown_time=time(8 + (idx % 10), 15),
+                breakdown_lat=Decimal(str(lat)),
+                breakdown_lng=Decimal(str(lon)),
+                breakdown_location=location,
                 collected_weight_before_breakdown_kg=Decimal("120.50") + Decimal(idx * 40),
                 breakdown_reason=reason,
                 breakdown_remarks=f"Seeder demo breakdown ({reason.replace('_', ' ').title()}).",

@@ -102,13 +102,16 @@ class DriverUserSeeder(BaseSeeder):
             self.log(f"WasteType '{self.WASTE_TYPE_NAME}' missing — skipping.")
             return
 
-        vehicle = (
-            VehicleCreation.objects.filter(is_deleted=False)
-            .order_by("vehicle_no")
-            .first()
+        # Household routes only ever handle these 4 segregated streams,
+        # project-wide — matches TripPlanSeeder / CustomerCreationSeeder.
+        household_waste_types = list(
+            WasteType.objects.filter(
+                waste_type_name__in=["Wet Waste", "Dry Waste", "Mixed Waste", "Sanitary Waste"],
+                is_deleted=False,
+            )
         )
-        if not vehicle:
-            self.log("No vehicle found — run VehicleCreationSeeder first. Skipping.")
+        if not household_waste_types:
+            self.log("Household WasteTypes missing — skipping.")
             return
 
         panchayat = self._pick_demo_panchayat()
@@ -133,17 +136,26 @@ class DriverUserSeeder(BaseSeeder):
         #     trips this seeder builds.
         self._detach_from_foreign_templates(driver, operator, keep=template)
 
+        # 2c. Vehicle — reuse whatever this template's own plan already has
+        #     (idempotent across re-runs), otherwise claim one no other
+        #     active TripPlan is using, so driver_user's demo route never
+        #     ends up sharing a vehicle with a seeded ward-level trip plan.
+        vehicle = self._pick_vehicle(template)
+        if not vehicle:
+            self.log("No unused vehicle found — run VehicleCreationSeeder first. Skipping.")
+            return
+
         # 3. Organic bins + collection points inside the demo panchayat -
         bins = self._ensure_bins(panchayat, wet_waste)
 
         # 4. Trip plans (bin + household) sharing the template ----------
         bin_plan = self._get_or_create_plan(
-            TripPlan.COLLECTION_TYPE_BIN, template, vehicle, panchayat, wet_waste
+            TripPlan.COLLECTION_TYPE_BIN, template, vehicle, panchayat, [wet_waste]
         )
         self._sync_bin_stops(bin_plan, bins)
 
         household_plan = self._get_or_create_plan(
-            TripPlan.COLLECTION_TYPE_HOUSEHOLD, template, vehicle, panchayat, wet_waste
+            TripPlan.COLLECTION_TYPE_HOUSEHOLD, template, vehicle, panchayat, household_waste_types
         )
         self._sync_household_stop(household_plan)
 
@@ -466,7 +478,29 @@ class DriverUserSeeder(BaseSeeder):
             bins.append((cp, bin_obj))
         return bins
 
-    def _get_or_create_plan(self, collection_type, template, vehicle, panchayat, wet_waste):
+    def _pick_vehicle(self, template):
+        """Reuse whatever vehicle this template's own plan(s) already claim
+        (idempotent across re-runs); otherwise claim the first vehicle no
+        other active TripPlan is currently using."""
+        existing_vehicle_id = (
+            TripPlan.objects.filter(staff_template_id=template, is_deleted=False)
+            .exclude(vehicle_id__isnull=True)
+            .values_list("vehicle_id", flat=True)
+            .first()
+        )
+        if existing_vehicle_id:
+            vehicle = VehicleCreation.objects.filter(unique_id=existing_vehicle_id).first()
+            if vehicle:
+                return vehicle
+
+        return (
+            VehicleCreation.objects.filter(is_deleted=False)
+            .exclude(trip_plans__is_deleted=False)
+            .order_by("vehicle_no")
+            .first()
+        )
+
+    def _get_or_create_plan(self, collection_type, template, vehicle, panchayat, waste_types):
         plan, _ = TripPlan.objects.update_or_create(
             staff_template_id=template,
             collection_type=collection_type,
@@ -488,7 +522,7 @@ class DriverUserSeeder(BaseSeeder):
                 "repeat_days": [0, 1, 2, 3, 4, 5, 6],
             },
         )
-        plan.waste_types.set([wet_waste])
+        plan.waste_types.set(waste_types)
         return plan
 
     def _retire_stale_plans(self, template, keep):

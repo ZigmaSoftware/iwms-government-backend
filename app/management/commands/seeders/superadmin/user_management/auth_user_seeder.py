@@ -23,7 +23,7 @@ class AuthUserSeeder(BaseSeeder):
         staff_members = StaffcreationOfficeDetails.objects.filter(
             is_deleted=False,
             governmentusertype_id__isnull=False,
-        ).order_by("created_at")[:5]
+        ).order_by("created_at")
 
         if not staff_members.exists():
             self.log("No government staff found — run StaffOfficeSeeder first.")
