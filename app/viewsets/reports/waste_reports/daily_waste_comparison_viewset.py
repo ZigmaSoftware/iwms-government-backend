@@ -19,8 +19,9 @@ Response:
 Query params:
   source  bin (default) | household | all
   date, month  optional date filters
-  Any of: corporation_id | municipality_id | town_panchayat_id |
-          panchayat_union_id | panchayat_id — optional local body filter
+  Any of: state_id | district_id | area_type_id | corporation_id |
+          municipality_id | town_panchayat_id | panchayat_union_id |
+          panchayat_id | ward_id — optional hierarchy filter
 """
 import datetime
 from decimal import Decimal, ROUND_HALF_UP
@@ -33,6 +34,11 @@ from rest_framework.response import Response
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.reports.waste_reports.daily_waste_comparison_serializer import DailyWasteComparisonSerializer
 from app.models.reports.waste_reports.daily_waste_comparison import DailyWasteComparison
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+    filter_daily_trip_logs_by_ward_scope,
+)
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 ZERO = Decimal("0")
@@ -104,6 +110,13 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
             ],
         )
 
+        queryset = filter_flat_geo_queryset_by_params(queryset, request.query_params)
+        queryset = filter_flat_geo_queryset_by_requester_scope(
+            queryset, request.user
+        )
+        queryset = filter_daily_trip_logs_by_ward_scope(
+            queryset, request.user, request.query_params.get("ward_id")
+        )
         queryset = self.filter_queryset(queryset)
 
         # ── date / month / local body / waste_type filters ───────────────
@@ -126,7 +139,11 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         for field in LOCAL_BODY_FIELDS:
             value = request.query_params.get(f"{field}_id")
             if value:
-                queryset = queryset.filter(**{f"{field}_id": value})
+                values = [item.strip() for item in value.split(",") if item.strip()]
+                queryset = queryset.filter(**{
+                    f"{field}_id__in" if len(values) > 1 else f"{field}_id":
+                    values if len(values) > 1 else values[0]
+                })
 
         if waste_type_param:
             queryset = queryset.filter(waste_types=waste_type_param)
