@@ -37,9 +37,9 @@ class MultiDistrictTripDataSeeder(BaseSeeder):
     Assignments + Logs per plan, mirroring SupervisorMonthDataSeeder's
     weight-generation shape.
 
-    We deliberately DON'T create BinCollectionEvent / WasteCollection rows,
-    so the weights set on the log are preserved (the log's post-save sync
-    only overrides when those source rows exist).
+    We deliberately don't create BinCollectionEvent / WasteCollection rows,
+    so the weights set on the log are preserved. Plans and assignments retain
+    their configured WasteType, allowing reports to classify log-only totals.
     """
 
     name = "multi_district_demo"
@@ -215,6 +215,9 @@ class MultiDistrictTripDataSeeder(BaseSeeder):
                         total_assignments += 1
                     elif assignment.status == DailyTripAssignment.STATUS_CANCELLED:
                         continue
+
+                    if not assignment.waste_types.exists():
+                        assignment.waste_types.set(plan.waste_types.all())
 
                     if DailyTripLog.objects.filter(trip_assignment_id=assignment, is_deleted=False).exists():
                         continue

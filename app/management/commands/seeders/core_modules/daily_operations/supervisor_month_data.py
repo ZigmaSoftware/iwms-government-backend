@@ -8,6 +8,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.superadmin.user_management.staffcreation import Staffcreation
 
 
@@ -26,9 +27,10 @@ class SupervisorMonthDataSeeder(BaseSeeder):
       3. Create a Submitted DailyTripLog per assignment with day-varying bin +
          household weights (kept under vehicle capacity so full_clean passes).
 
-    We deliberately DON'T create BinCollectionEvent / WasteCollection rows, so
-    the weights we set on the log are preserved (the log's post-save sync only
-    overrides when those source rows exist).
+    We deliberately don't create BinCollectionEvent / WasteCollection rows, so
+    the weights set on the log are preserved. Every plan/assignment is still
+    linked to a configured WasteType, allowing reports to classify those
+    log-only totals correctly.
 
     Must run AFTER SupervisorUserSeeder (needs supervisor_user + its plans).
     """
@@ -77,6 +79,17 @@ class SupervisorMonthDataSeeder(BaseSeeder):
             )
             return
 
+        fallback_waste_type = (
+            WasteType.objects.filter(
+                waste_type_name="Dry Waste",
+                is_deleted=False,
+            ).first()
+            or WasteType.objects.filter(is_deleted=False).order_by("created_at").first()
+        )
+        if not fallback_waste_type:
+            self.log("No WasteType found — run the WasteType seeder first. Skipping.")
+            return
+
         today = timezone.localdate()
         created_assignments = 0
         created_logs = 0
@@ -84,6 +97,8 @@ class SupervisorMonthDataSeeder(BaseSeeder):
         skipped_plans = 0
 
         for plan in plans:
+            if not plan.waste_types.exists():
+                plan.waste_types.set([fallback_waste_type])
             template = plan.staff_template_id
             if not template or not template.driver_id_id or not template.operator_id_id:
                 # DailyTripLog requires non-null driver + operator (autofilled
@@ -137,6 +152,9 @@ class SupervisorMonthDataSeeder(BaseSeeder):
                     # Can't log a cancelled trip.
                     skipped_logs += 1
                     continue
+
+                if not assignment.waste_types.exists():
+                    assignment.waste_types.set(plan.waste_types.all())
 
                 if DailyTripLog.objects.filter(
                     trip_assignment_id=assignment, is_deleted=False
