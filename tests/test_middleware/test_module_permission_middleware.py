@@ -70,7 +70,7 @@ def test_staff_template_creation_permission_matches_staff_templates_route():
     }
 
     assert _resource_is_allowed(
-        "schedule-masters",
+        "schedule-setup",
         "StaffTemplateCreation",
         "staff-templates",
     )
