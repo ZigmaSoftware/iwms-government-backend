@@ -123,6 +123,8 @@ def bulk_waste_type_rows_for_trip_assignments(
 
     trip_assignment_ids = list(trip_assignment_ids)
     rows_by_key = {}
+    bin_detail_keys = set()
+    household_detail_keys = set()
 
     def _add(key_tuple, extra_values, waste_type_id, waste_type_name, weight):
         if not weight:
@@ -162,6 +164,8 @@ def bulk_waste_type_rows_for_trip_assignments(
                 row[f"trip_assignment_id__daily_trip_log__{f}"] for f in extra_group_by
             )
             key_tuple = (row["trip_assignment_id"],) + extra_values
+            if row["total_weight"]:
+                bin_detail_keys.add(key_tuple)
             _add(
                 key_tuple,
                 extra_values,
@@ -197,11 +201,98 @@ def bulk_waste_type_rows_for_trip_assignments(
                 row[f"trip_assignment_id__daily_trip_log__{f}"] for f in extra_group_by
             )
             key_tuple = (row["trip_assignment_id"],) + extra_values
+            has_household_detail = False
             for column in HOUSEHOLD_WASTE_TYPE_NAMES:
                 value = row.get(column)
                 if not value:
                     continue
+                has_household_detail = True
                 wt_id, wt_name = household_map[column]
                 _add(key_tuple, extra_values, wt_id, wt_name, value)
+            if has_household_detail:
+                household_detail_keys.add(key_tuple)
+
+    # Some imported/demo histories legitimately contain only DailyTripLog
+    # totals and no BinCollectionEvent/WasteCollection detail rows. Attribute
+    # those totals to the assignment's configured waste type(s) instead of
+    # forcing the report to display an "Unclassified" bucket. When several
+    # types are configured, split the total evenly while assigning the final
+    # remainder to the last type so the breakdown still sums exactly to the
+    # trip-log total.
+    from app.models.core_modules.daily_operations.daily_trip_assignment import (
+        DailyTripAssignment,
+    )
+    from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+
+    assignments = (
+        DailyTripAssignment.objects.filter(
+            unique_id__in=trip_assignment_ids,
+            is_deleted=False,
+        )
+        .select_related("trip_plan_id")
+        .prefetch_related(
+            "waste_types",
+            "household_waste_type_ids",
+            "trip_plan_id__waste_types",
+        )
+    )
+    configured_types = {}
+    for assignment in assignments:
+        standard = list(assignment.waste_types.all())
+        if not standard and assignment.trip_plan_id:
+            standard = list(assignment.trip_plan_id.waste_types.all())
+        household = list(assignment.household_waste_type_ids.all()) or standard
+        configured_types[assignment.unique_id] = {
+            "bin": standard,
+            "household": household,
+        }
+
+    log_rows = DailyTripLog.objects.filter(
+        trip_assignment_id_id__in=trip_assignment_ids,
+        is_deleted=False,
+    ).values(
+        "trip_assignment_id_id",
+        *extra_group_by,
+        "collected_weight_kg",
+        "household_collected_weight_kg",
+    )
+
+    def _add_configured_fallback(key_tuple, extra_values, weight, types):
+        total = Decimal(str(weight or 0))
+        if total <= 0 or not types:
+            return
+        remaining = total
+        even_share = total / Decimal(len(types))
+        for index, waste_type in enumerate(types):
+            share = remaining if index == len(types) - 1 else even_share
+            remaining -= share
+            _add(
+                key_tuple,
+                extra_values,
+                waste_type.unique_id,
+                waste_type.waste_type_name,
+                share,
+            )
+
+    for log_row in log_rows:
+        assignment_id = log_row["trip_assignment_id_id"]
+        extra_values = tuple(log_row[field] for field in extra_group_by)
+        key_tuple = (assignment_id,) + extra_values
+        types = configured_types.get(assignment_id, {})
+
+        if source in ("bin", "all") and key_tuple not in bin_detail_keys:
+            _add_configured_fallback(
+                key_tuple,
+                extra_values,
+                log_row["collected_weight_kg"],
+                types.get("bin", []),
+            )
+        if source in ("household", "all") and key_tuple not in household_detail_keys:
+            _add_configured_fallback(
+                key_tuple,
+                extra_values,
+                log_row["household_collected_weight_kg"],
+                types.get("household", []),
+            )
 
     return list(rows_by_key.values())

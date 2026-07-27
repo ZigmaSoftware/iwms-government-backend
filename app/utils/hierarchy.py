@@ -295,7 +295,13 @@ def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
     for field in FLAT_GEO_QUERY_FIELDS:
         value = params.get(field)
         if value:
-            queryset = queryset.filter(**{f"{prefix}{field}": value})
+            values = [item.strip() for item in str(value).split(",") if item.strip()]
+            lookup = (
+                f"{prefix}{field}__in"
+                if len(values) > 1
+                else f"{prefix}{field}"
+            )
+            queryset = queryset.filter(**{lookup: values if len(values) > 1 else values[0]})
     return queryset
 
 
@@ -508,6 +514,7 @@ STAFF_GEO_LEVEL_FIELDS = (
     "town_panchayat_id",
     "municipality_id",
     "corporation_id",
+    "area_type_id",
     "district_id",
     "state_id",
 )
@@ -633,6 +640,52 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
             return _narrow_by_ward(queryset.filter(**{queryset_field: value}), scope)
 
     return _narrow_by_ward(queryset, scope)
+
+
+def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):
+    """
+    Restrict DailyTripLog rows through their DailyTripAssignment.wards M2M.
+
+    A subquery of assignment ids is used instead of joining wards directly
+    onto the report queryset; this prevents a trip assigned to several
+    permitted wards from being duplicated before Sum/Count aggregation.
+    An explicit ward filter is also checked against the requester's own ward
+    scope so a crafted query parameter cannot widen access.
+    """
+    from app.models.core_modules.daily_operations.daily_trip_assignment import (
+        DailyTripAssignment,
+    )
+
+    scope = _staff_scope(user)
+    scoped_ward_ids = (
+        list(scope.wards.values_list("unique_id", flat=True))
+        if scope is not None
+        else []
+    )
+
+    requested_ward_ids = [
+        item.strip() for item in str(ward_id or "").split(",") if item.strip()
+    ]
+    if (
+        requested_ward_ids
+        and scoped_ward_ids
+        and not set(requested_ward_ids).issubset(scoped_ward_ids)
+    ):
+        return queryset.none()
+
+    effective_ward_ids = requested_ward_ids or scoped_ward_ids
+    if not effective_ward_ids:
+        return queryset
+
+    assignment_ids = (
+        DailyTripAssignment.objects.filter(
+            wards__unique_id__in=effective_ward_ids,
+            is_deleted=False,
+        )
+        .values("unique_id")
+        .distinct()
+    )
+    return queryset.filter(trip_assignment_id_id__in=assignment_ids)
 
 
 def _single_local_body(scope):

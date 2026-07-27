@@ -182,16 +182,22 @@ MODULE_RESOURCE_ALLOWLIST = {
         "TripAttendance",
         "Fuel",
     },
-    "schedule-masters": {
+    "schedule-setup": {
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
         "CollectionPoint",
         "TripPlan",
         "TripPlanCollectionPoint",
+    },
+    "schedule-operations": {
         "DailyTripAssignment",
         "DailyTripCollectionPoint",
+        "DailyTripHouseholdCollection",
         "BinCollectionEvent",
+        "VehicleBreakdown",
         "DailyTripLog",
+    },
+    "schedule-masters": {
         "DailyWasteComparison",
         "MonthlyWasteComparisonReport",
     },
@@ -264,6 +270,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "TripPlan": ("trip-plans",),
     "DailyTripAssignment": ("daily-trip-assignments",),
     "DailyTripCollectionPoint": ("daily-trip-collection-points", "daily-trip-collection-point"),
+    "DailyTripHouseholdCollection": ("daily-trip-household-collections",),
     "BinCollectionEvent": ("bin-collection-events", "bin-collection-event"),
     "VehicleBreakdown": ("vehicle-breakdowns",),
     "DailyTripLog": ("daily-trip-logs",),
