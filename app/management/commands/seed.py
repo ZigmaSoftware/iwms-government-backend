@@ -57,14 +57,9 @@ from app.management.commands.seeders.core_modules.schedule_setup.alternative_sta
 from app.management.commands.seeders.core_modules.schedule_setup.trip_plan import TripPlanSeeder
 from app.management.commands.seeders.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPointSeeder
 from app.management.commands.seeders.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignmentSeeder
-from app.management.commands.seeders.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPointSeeder
-from app.management.commands.seeders.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollectionSeeder
 from app.management.commands.seeders.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEventSeeder
 from app.management.commands.seeders.core_modules.daily_operations.scheduler_demo import SchedulerDemoSeeder
 from app.management.commands.seeders.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdownSeeder
-from app.management.commands.seeders.core_modules.daily_operations.supervisor_month_data import SupervisorMonthDataSeeder
-from app.management.commands.seeders.core_modules.daily_operations.multi_district_demo import MultiDistrictTripDataSeeder
-from app.management.commands.seeders.masters.telangana_masters import TelanganaMastersSeeder
 from app.management.commands.seeders.core_modules.daily_operations.waste_collection import WasteCollectionSeeder
 
 # screen-managements (router: screen-managements/...)
@@ -166,12 +161,11 @@ SCHEDULE_SETUP_SEEDERS = [
 # vehicle-breakdowns, daily-trip-logs, ...)
 # ============================================================
 SCHEDULE_OPERATIONS_SEEDERS = [
-    DailyTripAssignmentSeeder,      # 6. daily-trip-assignments
-    DailyTripCollectionPointSeeder, # 7. daily-trip-collection-points
-    DailyTripHouseholdCollectionSeeder,
+    DailyTripAssignmentSeeder,      # daily-trip-assignments (7 days x 3 districts)
     TripAttendanceSeeder,
-    BinCollectionEventSeeder,       # 9. bin-collection-events
-    VehicleBreakdownSeeder,         # 10. vehicle-breakdowns
+    BinCollectionEventSeeder,       # bin-collection-events — also drives DailyTripCollectionPoint
+                                     # status + the auto-created DailyTripLog via signals
+    VehicleBreakdownSeeder,         # vehicle-breakdowns
 ]
 
 # Legacy alias — `schedule-masters` used to cover both of the above before it was
@@ -212,7 +206,6 @@ REPORTS_SEEDERS = [
 DRIVER_DEMO_SEEDERS = [
     DriverUserSeeder,
     SupervisorUserSeeder,
-    SupervisorMonthDataSeeder,  # a month of trips + logs for the supervisor graph
     CustomerUserSeeder,
 ]
 
@@ -267,11 +260,7 @@ SEED_GROUPS = {
     # Single-seeder shortcuts
     "scheduler-demo":     [SchedulerDemoSeeder],   # one ready-to-run demo TripPlan for the job scheduler
     "bin-collection-events": [BinCollectionEventSeeder],
-    "daily-trip-household-collections": [DailyTripHouseholdCollectionSeeder],
     "waste-collections": [WasteCollectionSeeder],
-    "supervisor-graph":   [SupervisorMonthDataSeeder],  # month of trips+logs for supervisor_user
-    "multi-district-demo": [MultiDistrictTripDataSeeder],  # month of trips+logs for any district with none yet
-    "telangana-masters":  [TelanganaMastersSeeder],  # districts/area-types/corporations for Telangana
     "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
 }

@@ -1,57 +1,45 @@
 from django.contrib.auth.hashers import make_password
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.tn_geo_data import DISTRICTS, TAMIL_NAME_POOL
 from app.models.masters.department import Department
 from app.models.masters.district import District
 from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 
-_LOCAL_BODY_MODELS = [
-    ("corporation", Corporation, "corporation_name"),
-    ("municipality", Municipality, "municipality_name"),
-    ("town_panchayat", TownPanchayat, "town_panchayat_name"),
-    ("panchayat_union", PanchayatUnion, "union_name"),
-    ("panchayat", Panchayat, "panchayat_name"),
-]
+# Drivers/operators must be numerous enough that DRIVERS_PER_DISTRICT *
+# OPERATORS_PER_DISTRICT unique (driver, operator) combinations comfortably
+# exceed the largest district's total ward count x 2 (every local body's
+# StaffTemplate pool needs one unique pairing per ward per collection type,
+# and pairs are never reused anywhere in the district — see
+# StaffTemplateSeeder / ward_utils.py), plus 1 corporation-scoped field
+# supervisor and 1 sanitation inspector.
+DRIVERS_PER_DISTRICT = 9
+OPERATORS_PER_DISTRICT = 9
 
-
-def _local_body(name):
-    """Resolve a specific corporation/municipality/.../panchayat record by
-    name (finer-grained than a district). Returns (field_name, instance) or
-    (None, None) if no local body with that name exists."""
-    if not name:
-        return None, None
-    for field_name, model, name_field in _LOCAL_BODY_MODELS:
-        obj = model.objects.filter(is_deleted=False, **{name_field: name}).first()
-        if obj:
-            return field_name, obj
-    return None, None
+# (department_code_prefix, designation, govt_role_suffix, is_corp_scoped)
+ROLE_PLAN = (
+    [("TRP", "Vehicle Driver", "govt_district_driver", False)] * DRIVERS_PER_DISTRICT
+    + [("FOP", "Waste Collector", "govt_district_operator", False)] * OPERATORS_PER_DISTRICT
+    + [
+        ("FOP", "Field Supervisor", "govt_district_officer", True),
+        ("SAN", "Sanitation Inspector", "govt_district_inspector", True),
+    ]
+)
 
 
 class StaffOfficeSeeder(BaseSeeder):
-    name = "StaffOfficeSeeder"
+    """Government staff per operational district (Erode/Coimbatore/Salem):
+    8 drivers + 8 operators (sized so StaffTemplateSeeder can form one
+    unique driver/operator pairing per ward-level trip plan without ever
+    reusing a pairing), plus 1 field supervisor + 1 sanitation inspector.
+    Usernames carry a district-code suffix (e.g. `ravi.kumar.erd`) so the
+    same first/last name pattern reused across 3 districts never collides
+    on StaffcreationOfficeDetails.username (globally unique)."""
 
-    # (employee_name, username, dept_code, designation, district_name, local_body_name, govt_role)
-    # `designation` is free text (not an FK master) — government designations
-    # vary too widely across states/districts to enumerate.
-    # `govt_role` is a GovernmentStaffUserType name: this is a government-only
-    # project, so every seeded staff is a government user (no staff/contractor).
-    # local_body_name is optional - most staff cover a whole district; a couple
-    # are tagged to one specific town/panchayat inside it, so district- and
-    # city-scoped assignment filtering both have real data to prove out.
-    STAFF = [
-        ("Ravi Kumar",      "ravi.kumar",      "TRP", "Vehicle Driver",       "Erode",      None,                 "govt_district_driver"),
-        ("Priya Devi",      "priya.devi",      "FOP", "Waste Collector",      "Erode",      "Anthiyur Panchayat", "govt_district_operator"),
-        ("Muthu Samy",      "muthu.samy",      "FOP", "Field Supervisor",     "Salem",      None,                 "govt_district_officer"),
-        ("Anbu Arasan",     "anbu.arasan",     "TRP", "Vehicle Driver",       "Salem",      None,                 "govt_district_driver"),
-        ("Geetha Lakshmi",  "geetha.lakshmi",  "SAN", "Sanitation Inspector", "Coimbatore", None,                 "govt_district_inspector"),
-    ]
+    name = "StaffOfficeSeeder"
 
     def run(self):
         government_type = UserType.objects.filter(name__iexact="government").first()
@@ -61,58 +49,68 @@ class StaffOfficeSeeder(BaseSeeder):
 
         count = 0
         updated = 0
-        for emp_name, username, dept_code, designation, district_name, local_body_name, govt_role in self.STAFF:
-            dept = Department.objects.filter(department_code=dept_code).first()
+        for district_idx, (district_name, geo) in enumerate(DISTRICTS.items()):
             district = District.objects.filter(name=district_name).first()
-            local_body_field, local_body = _local_body(local_body_name)
-            role = GovernmentStaffUserType.objects.filter(
-                name=govt_role, is_deleted=False
+            if not district:
+                self.log(f"District '{district_name}' not found — skipping staff.")
+                continue
+            corporation = Corporation.objects.filter(
+                corporation_name=geo["corporation_name"], is_deleted=False
             ).first()
-            if not role:
-                self.log(
-                    f"GovernmentStaffUserType '{govt_role}' not found — run "
-                    "GovernmentStaffUserTypeSeeder first. Skipping this staff."
-                )
-                continue
+            code = geo["code"]
 
-            defaults = {
-                "employee_name": emp_name,
-                "department_id": dept,
-                "state": district.state_id if district else None,
-                "district": district,
-                "department": dept.department_name if dept else "",
-                # Free-text designation (no FK). Explicitly clear the legacy
-                # designation_id FK so re-seeding normalizes older rows too.
-                "designation": designation,
-                "designation_id": None,
-                # Government-only project: every staff is a government user.
-                "user_type_id": government_type,
-                "governmentusertype_id": role,
-                "staffusertype_id": None,
-                "contractorusertype_id": None,
-                "active_status": True,
-                "login_enabled": True,
-                "is_active": True,
-                "is_deleted": False,
-            }
-            if local_body_field:
-                defaults[local_body_field] = local_body
+            for slot, (dept_prefix, designation, govt_role, is_corp_scoped) in enumerate(ROLE_PLAN):
+                name_idx = district_idx * len(ROLE_PLAN) + slot
+                full_name = TAMIL_NAME_POOL[name_idx % len(TAMIL_NAME_POOL)]
+                first, _, last = full_name.partition(" ")
+                username = f"{first.lower()}.{last.lower().replace(' ', '')}.{code.lower()}"
 
-            staff = StaffcreationOfficeDetails.objects.filter(username=username).first()
-            if staff:
-                for field, value in defaults.items():
-                    setattr(staff, field, value)
-                staff.save(update_fields=[*defaults.keys(), "updated_at"])
-                updated += 1
-                self.log(f"Updated staff: {emp_name} ({username})")
-                continue
+                dept = Department.objects.filter(department_code=f"{dept_prefix}-{code}").first()
+                role = GovernmentStaffUserType.objects.filter(
+                    name=govt_role, is_deleted=False
+                ).first()
+                if not role:
+                    self.log(
+                        f"GovernmentStaffUserType '{govt_role}' not found — run "
+                        "GovernmentStaffUserTypeSeeder first. Skipping this staff."
+                    )
+                    continue
 
-            StaffcreationOfficeDetails.objects.create(
-                username=username,
-                password=make_password("Staff@1234"),
-                **defaults,
-            )
-            count += 1
-            self.log(f"Created staff: {emp_name} ({username})")
+                defaults = {
+                    "employee_name": full_name,
+                    "department_id": dept,
+                    "state": district.state_id,
+                    "district": district,
+                    # Supervisor/inspector additionally scoped to the corporation
+                    # itself so corporation-level schedule filtering has data.
+                    "corporation": corporation if is_corp_scoped else None,
+                    "department": dept.department_name if dept else "",
+                    "designation": designation,
+                    "designation_id": None,
+                    "user_type_id": government_type,
+                    "governmentusertype_id": role,
+                    "staffusertype_id": None,
+                    "contractorusertype_id": None,
+                    "active_status": True,
+                    "login_enabled": True,
+                    "is_active": True,
+                    "is_deleted": False,
+                }
+
+                staff = StaffcreationOfficeDetails.objects.filter(username=username).first()
+                if staff:
+                    for field, value in defaults.items():
+                        setattr(staff, field, value)
+                    staff.save(update_fields=[*defaults.keys(), "updated_at"])
+                    updated += 1
+                    self.log(f"Updated staff: {full_name} ({username})")
+                else:
+                    StaffcreationOfficeDetails.objects.create(
+                        username=username,
+                        password=make_password("Staff@1234"),
+                        **defaults,
+                    )
+                    count += 1
+                    self.log(f"Created staff: {full_name} ({username})")
 
         self.log(f"---Staff office records seeded ({count} created, {updated} updated)---")

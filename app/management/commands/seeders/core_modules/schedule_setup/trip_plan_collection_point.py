@@ -20,13 +20,27 @@ FLAT_HIERARCHY_FIELDS = (
     "state",
 )
 
+# DriverUserSeeder/SupervisorUserSeeder build and maintain their own dedicated
+# demo trip plan's stops directly (driver_user.py::_sync_bin_stops /
+# _sync_household_stop), scoped to a handful of hand-picked collection points.
+# This seeder's generic "every collection point under the plan's local body"
+# fan-out must not also touch those plans — now that real collection points
+# exist in every district/panchayat (not just Erode), a plan sharing a
+# panchayat with driver_user's demo route would otherwise pick up extra,
+# unwanted stops and collide with driver_user's own sequence numbering.
+DEMO_STAFF_USERNAMES = {"driver_user", "operator_user"}
+
 
 class TripPlanCollectionPointSeeder(BaseSeeder):
     name = "trip_plan_collection_point"
 
     def run(self):
         total_created = 0
-        plans = TripPlan.objects.filter(is_deleted=False, status=TripPlan.Status.ACTIVE)
+        plans = TripPlan.objects.filter(
+            is_deleted=False, status=TripPlan.Status.ACTIVE
+        ).exclude(
+            staff_template_id__driver_id__username__in=DEMO_STAFF_USERNAMES
+        )
 
         for plan in plans:
             # The DB enforces UNIQUE(trip_plan, sequence) across ALL rows (MariaDB
@@ -62,12 +76,22 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
 
             if plan.collection_type == TripPlan.COLLECTION_TYPE_BIN:
                 cps = Collection_point.objects.filter(is_deleted=False, is_active=True)
-                for field in FLAT_HIERARCHY_FIELDS:
-                    value = getattr(plan, field, None)
-                    if value:
-                        cps = cps.filter(**{field: value})
-                        break
-                cps = cps.order_by("cp_name")
+                plan_wards = list(plan.wards.all())
+                if plan_wards:
+                    # Ward-level trip plans (one plan per ward — see
+                    # TripPlanSeeder) share their base local body FK with
+                    # every other ward under that same local body, so the
+                    # local-body match alone would pull in every ward's
+                    # collection points. Narrow to just this plan's own
+                    # ward(s) first.
+                    cps = cps.filter(wards__in=plan_wards)
+                else:
+                    for field in FLAT_HIERARCHY_FIELDS:
+                        value = getattr(plan, field, None)
+                        if value:
+                            cps = cps.filter(**{field: value})
+                            break
+                cps = cps.order_by("cp_name").distinct()
 
                 for cp in cps:
                     bin_obj = Bins.objects.filter(

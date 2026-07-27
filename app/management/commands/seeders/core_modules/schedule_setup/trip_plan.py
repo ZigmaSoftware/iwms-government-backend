@@ -1,107 +1,109 @@
 from datetime import time
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.masters.district import District
-from app.models.masters.corporation import Corporation
-from app.models.masters.panchayat import Panchayat
-from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.management.commands.seeders.tn_geo_data import DISTRICTS
+from app.management.commands.seeders.ward_utils import (
+    geo_defaults_for_local_body,
+    local_bodies_for_district,
+    wards_for_local_body,
+)
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 from app.models.masters.waste_masters.wastetype import WasteType
 
+# Household collection only ever handles these 4 segregated streams.
+HOUSEHOLD_WASTE_TYPES = ["Wet Waste", "Dry Waste", "Mixed Waste", "Sanitary Waste"]
+# Bin (secondary collection point) routes can carry any of the 9 types —
+# matches whatever the ward's collection point actually has bins for.
+BIN_WASTE_TYPES = [
+    "Organic Waste", "Plastic Waste", "Paper Waste", "Metal Waste", "Hazardous Waste",
+    "Wet Waste", "Dry Waste", "Mixed Waste", "Sanitary Waste",
+]
+
 
 class TripPlanSeeder(BaseSeeder):
+    """One bin_collection + one household_collection TripPlan per Ward.
+    Each ward's pair draws its own never-reused staff template and vehicle
+    from its parent local body's dedicated pool (StaffTemplateSeeder /
+    VehicleCreationSeeder create exactly ward_count x 2 of each per local
+    body, in the same order consumed here) — mirroring real dispatch, where
+    a local body owns a fleet/crew roster and assigns one crew + one
+    vehicle per route, never double-booking either onto a second route."""
+
     name = "TripPlanSeeder"
 
-    # (panchayat_name, primary_waste_type, extra_waste_types, scheduled_time, trigger_kg, max_kg)
-    TRIP_PLANS = [
-        ("Anthiyur Panchayat",          "Organic Waste",   ["Plastic Waste"],           time(7, 0),  200, 5000),
-        ("Bhavani Panchayat",           "Plastic Waste",   ["Paper Waste"],             time(7, 30), 150, 4000),
-        ("Gobichettipalayam Panchayat", "Paper Waste",     [],                          time(8, 0),  100, 1500),
-        ("Kavundampalayam Panchayat",   "Metal Waste",     [],                          time(8, 30), 100, 4000),
-        ("Modakkurichi Panchayat",      "Hazardous Waste", ["Organic Waste"],           time(9, 0),   50, 1500),
-    ]
-    COLLECTION_TYPES = [
-        TripPlan.COLLECTION_TYPE_BIN,
-        TripPlan.COLLECTION_TYPE_HOUSEHOLD,
-        TripPlan.COLLECTION_TYPE_BULK,
-    ]
-
     def run(self):
-        district = District.objects.filter(name="Erode").first()
-        if not district:
-            self.log("District 'Erode' not found — run DistrictSeeder first.")
+        household_types = list(
+            WasteType.objects.filter(waste_type_name__in=HOUSEHOLD_WASTE_TYPES, is_deleted=False)
+        )
+        bin_types = list(
+            WasteType.objects.filter(waste_type_name__in=BIN_WASTE_TYPES, is_deleted=False)
+        )
+        if not household_types or not bin_types:
+            self.log("WasteTypes not found — run WasteTypeSeeder first.")
             return
-
-        templates = list(StaffTemplate.objects.filter(
-            is_deleted=False, status=StaffTemplate.Status.ACTIVE
-        ).order_by("created_at")[:5])
-        if not templates:
-            self.log("No StaffTemplates found — run StaffTemplateSeeder first.")
-            return
-
-        vehicles = list(VehicleCreation.objects.filter(is_deleted=False).order_by("vehicle_no")[:5])
-        if not vehicles:
-            self.log("No vehicles found — run VehicleCreationSeeder first.")
-            return
-
-        supervisor = StaffcreationOfficeDetails.objects.filter(
-            username="muthu.samy", is_deleted=False
-        ).first()
-        if not supervisor:
-            supervisor = StaffcreationOfficeDetails.objects.filter(is_deleted=False).first()
 
         count = 0
-        for idx, (panchayat_name, primary_waste_type_name, extra_waste_type_names, sched_time, trigger_kg, max_kg) in enumerate(
-            self.TRIP_PLANS
-        ):
-            panchayat = Panchayat.objects.filter(
-                panchayat_name=panchayat_name, district_id=district
-            ).first()
-            primary_waste_type = WasteType.objects.filter(
-                waste_type_name=primary_waste_type_name, is_deleted=False
-            ).first()
+        for district_name in DISTRICTS:
+            for lb in local_bodies_for_district(district_name):
+                count += self._seed_local_body(lb, household_types, bin_types)
 
-            if not panchayat:
-                self.log(f"Panchayat '{panchayat_name}' not found — skipping.")
-                continue
-            if not primary_waste_type:
-                self.log(f"WasteType '{primary_waste_type_name}' not found — skipping.")
-                continue
+        self.log(f"---Trip plans seeded ({count} created)---")
 
-            # Collect all waste types for M2M (primary + extras)
-            all_waste_types = [primary_waste_type]
-            for extra_name in extra_waste_type_names:
-                wt = WasteType.objects.filter(waste_type_name=extra_name, is_deleted=False).first()
-                if wt:
-                    all_waste_types.append(wt)
+    def _seed_local_body(self, lb, household_types, bin_types):
+        parent_type, parent = lb["parent_type"], lb["parent"]
+        wards = wards_for_local_body(parent_type, parent)
+        if not wards:
+            return 0
 
-            template = templates[idx % len(templates)]
-            vehicle = vehicles[idx % len(vehicles)]
+        templates = list(
+            StaffTemplate.objects.filter(**{parent_type: parent}, is_deleted=False).order_by("created_at")
+        )
+        vehicles = list(
+            VehicleCreation.objects.filter(**{parent_type: parent}, is_deleted=False).order_by("created_at")
+        )
+        needed = len(wards) * 2
+        if len(templates) < needed or len(vehicles) < needed:
+            self.log(
+                f"'{parent}': only {len(templates)} templates / {len(vehicles)} vehicles "
+                f"for {needed} ward slots — some wards will be skipped."
+            )
 
-            for collection_type in self.COLLECTION_TYPES:
-                # Natural key: (district, panchayat, collection_type, staff_template).
-                # staff_template is part of the key because (district, panchayat,
-                # collection_type) is NOT unique — other crews (e.g. the dedicated
-                # driver_user template) legitimately have their own plan for the same
-                # area+type. Scoping the lookup to THIS template keeps the seeder
-                # matching only its own row instead of raising MultipleObjectsReturned.
-                # waste_type stays in defaults so reassigning it updates in place.
+        supervisor = StaffcreationOfficeDetails.objects.filter(
+            district=parent.district_id, designation="Field Supervisor", is_deleted=False,
+        ).first()
+
+        geo_fields = geo_defaults_for_local_body(parent_type, parent)
+
+        created_count = 0
+        slot = 0
+        for ward_idx, ward in enumerate(wards):
+            for collection_type, waste_types, sched_hour in (
+                (TripPlan.COLLECTION_TYPE_BIN, bin_types, 6),
+                (TripPlan.COLLECTION_TYPE_HOUSEHOLD, household_types, 8),
+            ):
+                if slot >= len(templates) or slot >= len(vehicles):
+                    slot += 1
+                    continue
+                template = templates[slot]
+                vehicle = vehicles[slot]
+                slot += 1
+
+                sched_time = time(sched_hour, (ward_idx * 15) % 60)
+                max_kg = int(vehicle.capacity or 1500)
+
                 plan, created = TripPlan.objects.update_or_create(
-                    district=district,
-                    panchayat=panchayat,
-                    collection_type=collection_type,
                     staff_template_id=template,
+                    vehicle_id=vehicle,
+                    collection_type=collection_type,
                     is_deleted=False,
                     defaults={
-                        "state": district.state_id,
-                        "area_type": panchayat.area_type_id,
-                        "vehicle_id": vehicle,
+                        **geo_fields,
                         "supervisor_id": supervisor,
                         "scheduled_time": sched_time,
-                        "trip_trigger_weight_kg": trigger_kg,
+                        "trip_trigger_weight_kg": max(50, max_kg // 4),
                         "max_vehicle_capacity_kg": max_kg,
                         "approval_status": TripPlan.ApprovalStatus.APPROVED,
                         "status": TripPlan.Status.ACTIVE,
@@ -110,69 +112,9 @@ class TripPlanSeeder(BaseSeeder):
                         "repeat_days": [0, 1, 2, 3, 4, 5, 6],
                     },
                 )
-                # Sync M2M waste types
-                plan.waste_types.set(all_waste_types)
+                plan.waste_types.set(waste_types)
+                plan.wards.set([ward])
                 if created:
-                    count += 1
-                    self.log(f"Created TripPlan: {panchayat_name} - {primary_waste_type_name} - {collection_type}")
-                else:
-                    self.log(f"Updated TripPlan: {plan.display_code} - {collection_type}")
-
-        count += self._seed_corporation_plans(district, templates, vehicles, supervisor)
-
-        self.log(f"---Trip plans seeded ({count} created)---")
-
-    def _seed_corporation_plans(self, district, templates, vehicles, supervisor):
-        """Seed corporation-scoped trip plans (corporation=Erode Corporation)
-        so corporation-level schedule data exists — the trigger for
-        daily_trip_assignment / generate_daily_trips to propagate the
-        corporation FK downward (S1/S3). Existing plans were panchayat-only."""
-        corporation = Corporation.objects.filter(
-            corporation_name="Erode Corporation", is_deleted=False
-        ).first()
-        if not corporation:
-            self.log("Corporation 'Erode Corporation' not found — skipping corporation trip plans.")
-            return 0
-
-        primary_waste_type = WasteType.objects.filter(
-            waste_type_name="Organic Waste", is_deleted=False
-        ).first()
-        if not primary_waste_type:
-            self.log("WasteType 'Organic Waste' not found — skipping corporation trip plans.")
-            return 0
-
-        created_count = 0
-        for idx, collection_type in enumerate([
-            TripPlan.COLLECTION_TYPE_BIN,
-            TripPlan.COLLECTION_TYPE_HOUSEHOLD,
-        ]):
-            plan, created = TripPlan.objects.update_or_create(
-                district=district,
-                corporation=corporation,
-                panchayat=None,
-                collection_type=collection_type,
-                staff_template_id=templates[idx % len(templates)],
-                is_deleted=False,
-                defaults={
-                    "state": corporation.state_id,
-                    "area_type": corporation.area_type_id,
-                    "vehicle_id": vehicles[idx % len(vehicles)],
-                    "supervisor_id": supervisor,
-                    "scheduled_time": time(6, 30),
-                    "trip_trigger_weight_kg": 300,
-                    "max_vehicle_capacity_kg": 6000,
-                    "approval_status": TripPlan.ApprovalStatus.APPROVED,
-                    "status": TripPlan.Status.ACTIVE,
-                    "is_active": True,
-                    "is_auto_assign": True,
-                    "repeat_days": [0, 1, 2, 3, 4, 5, 6],
-                },
-            )
-            plan.waste_types.set([primary_waste_type])
-            if created:
-                created_count += 1
-                self.log(f"Created corporation TripPlan: Erode Corporation - {collection_type}")
-            else:
-                self.log(f"Updated corporation TripPlan: {plan.display_code} - {collection_type}")
+                    created_count += 1
 
         return created_count

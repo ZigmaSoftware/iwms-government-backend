@@ -107,6 +107,24 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             float(latest_event.driver_latitude),
         ]
 
+    def _latest_vehicle_location(self, assignment):
+        latest_event = (
+            BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
+            .exclude(driver_latitude=None)
+            .exclude(driver_longitude=None)
+            .select_related("collection_point_id")
+            .order_by("-created_at")
+            .first()
+        )
+        if not latest_event:
+            return None
+        return {
+            "latitude": latest_event.driver_latitude,
+            "longitude": latest_event.driver_longitude,
+            "recorded_at": latest_event.created_at,
+            "collection_point": getattr(latest_event.collection_point_id, "cp_name", None),
+        }
+
     def _route_for_assignment_stops(self, assignment, stops):
         route_input = []
         for stop in stops:
@@ -538,10 +556,12 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="tracking-overview")
     def tracking_overview(self, request):
+        scoped_stops = self.filter_queryset(self.get_queryset())
+        scoped_assignment_ids = scoped_stops.values_list("trip_assignment_id", flat=True).distinct()
         assignments = DailyTripAssignment.objects.select_related(
             "vehicle_id",
             "trip_plan_id",
-        ).filter(is_deleted=False)
+        ).filter(is_deleted=False, unique_id__in=scoped_assignment_ids)
         trip_date = request.query_params.get("date") or request.query_params.get("trip_date")
         if trip_date:
             assignments = assignments.filter(trip_date=trip_date)
@@ -622,6 +642,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "trip_date": assignment.trip_date,
                 "status": assignment.status,
                 "vehicle_no": getattr(assignment.vehicle_id, "vehicle_no", None),
+                "vehicle_tracking": {
+                    "current_location": self._latest_vehicle_location(assignment),
+                },
                 "summary": {
                     "total": len(stops),
                     "completed": completed,
