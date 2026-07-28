@@ -2,11 +2,11 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from app.models.schedule_masters.trip_plan import TripPlan
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.trip_plan_collection_point import TripPlanCollectionPoint
-from app.models.schedule_masters.daily_trip_collection_point import DailyTripCollectionPoint
-from app.models.schedule_masters.daily_trip_household_collection import DailyTripHouseholdCollection
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
+from app.models.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
+from app.models.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollection
 from app.signals.trip_plan_signals import _create_daily_household_collections
 from app.utils.hierarchy import FLAT_GEO_FIELDS
 
@@ -73,7 +73,6 @@ def run_for_date(target_date=None, logger=None, force=False):
         defaults = {
             "staff_template_id": plan.staff_template_id,
             "vehicle_id": plan.vehicle_id,
-            "waste_type_id": plan.waste_type_id,
             "scheduled_time": plan.scheduled_time,
         }
         for field in FLAT_GEO_FIELDS:
@@ -91,6 +90,9 @@ def run_for_date(target_date=None, logger=None, force=False):
                 log(f"Assignment already exists for plan {plan.unique_id} on {today}")
                 continue
 
+            if not assignment.waste_types.exists():
+                assignment.waste_types.set(plan.waste_types.all())
+
             created_count += 1
             # Build the operational child records from the master stop list.
             #
@@ -103,7 +105,12 @@ def run_for_date(target_date=None, logger=None, force=False):
             # inserted), so the summary is accurate regardless of which path won.
             stops = (
                 TripPlanCollectionPoint.objects
-                .filter(trip_plan_id=plan, is_active=True, is_deleted=False)
+                .filter(
+                    trip_plan_id=plan,
+                    collection_type=plan.collection_type,
+                    is_active=True,
+                    is_deleted=False,
+                )
                 .order_by("sequence")
             )
             for stop in stops:
@@ -113,8 +120,8 @@ def run_for_date(target_date=None, logger=None, force=False):
                     DailyTripCollectionPoint.objects.get_or_create(
                         trip_assignment_id=assignment,
                         collection_point_id=stop.collection_point_id,
+                        bin_id=stop.bin_id,
                         defaults={
-                            "bin_id": stop.bin_id,
                             "sequence": stop.sequence,
                             "status": DailyTripCollectionPoint.STATUS_PENDING,
                         },

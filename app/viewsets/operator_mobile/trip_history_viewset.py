@@ -4,9 +4,9 @@ from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
 from app.permissions.operator_permission import IsOperatorRole
@@ -34,7 +34,6 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
         (c.collected_weight_kg or Decimal("0")) for c in children
     )
     panchayat = assignment.panchayat
-    waste_type = assignment.waste_type_id
     return {
         "assignment_unique_id": assignment.unique_id,
         "trip_date": assignment.trip_date.isoformat(),
@@ -45,10 +44,10 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
             "unique_id": panchayat.unique_id,
             "name": panchayat.panchayat_name,
         } if panchayat else None,
-        "waste_type": {
-            "unique_id": waste_type.unique_id,
-            "name": waste_type.waste_type_name,
-        } if waste_type else None,
+        "waste_types": [
+            {"unique_id": wt.unique_id, "name": wt.waste_type_name}
+            for wt in assignment.waste_types.all()
+        ],
         "progress": {
             "collected": collected,
             "total": total,
@@ -121,10 +120,9 @@ class TripHistoryViewSet(viewsets.ViewSet):
             )
             .select_related(
                 "panchayat",
-                "waste_type_id",
                 "vehicle_id",
             )
-            .prefetch_related("trip_collection_points")
+            .prefetch_related("trip_collection_points", "waste_types")
             .order_by("-trip_date", "-scheduled_time")
         )
 

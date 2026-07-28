@@ -7,7 +7,7 @@ BASE = "/api/v1/role-assigns/user-type/"
 
 
 def _staff_auth_client(api_client, company, project, user_type):
-    from app.models.user_creations.staffcreation import Staffcreation
+    from app.models.superadmin.user_management.staffcreation import Staffcreation
 
     staff = Staffcreation.objects.create(
         employee_name="Company Admin",

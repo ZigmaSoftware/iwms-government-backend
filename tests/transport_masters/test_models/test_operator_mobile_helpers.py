@@ -4,25 +4,25 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from app.models.assets.bins import Bins, BinType
-from app.models.assets.collection_point import Collection_point
+from app.models.masters.waste_masters.bins import Bins, BinType
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.masters.hierarchy import AdministrativeHierarchy
 from app.models.masters.areatype import AreaType
 from app.models.masters.panchayat import Panchayat, GeoFencingType
-from app.models.role_assigns.staffUserType import StaffUserType
-from app.models.transport_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.transport_masters.daily_trip_collection_point import (
+from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.models.masters.transport_masters.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.transport_masters.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.transport_masters.trip_definition import TripDefinition
-from app.models.transport_masters.vehicleCreation import VehicleCreation
-from app.models.transport_masters.vehicleTypeCreation import VehicleTypeCreation
-from app.models.transport_masters.fuel import Fuel
-from app.models.user_creations.staffcreation import Staffcreation
-from app.models.user_creations.stafftemplate import StaffTemplate
-from app.models.user_creations.waste_collection_bluetooth import WasteType
-from app.models.waste_types.property import Property
-from app.models.waste_types.subproperty import SubProperty
+from app.models.masters.transport_masters.trip_definition import TripDefinition
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
+from app.models.masters.transport_masters.fuel import Fuel
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.masters.waste_masters.property import Property
+from app.models.masters.waste_masters.subproperty import SubProperty
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
     build_scan_context,

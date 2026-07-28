@@ -2,7 +2,7 @@ from django.db import models
 from app.utils.comfun import generate_unique_id
 from app.utils.base_models import BaseMaster
 from app.models.masters.district import District
-from app.models.common_masters.state import State
+from app.models.superadmin.common_masters.state import State
 
 
 def generate_area_type_id():

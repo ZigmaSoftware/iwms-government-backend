@@ -4,11 +4,11 @@ import re
 
 from django.utils import timezone
 
-from app.models.screen_managements.companyuserscreencolumnpermission import (
+from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
     CompanyUserScreenColumnPermission,
 )
-from app.models.screen_managements.companyuserscreenpermission import UserScreenPermission
-from app.models.screen_managements.dashboardwidgetpermission import DashboardWidgetPermission
+from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 
 
 ACTION_KEYS = ("view", "add", "edit", "delete")

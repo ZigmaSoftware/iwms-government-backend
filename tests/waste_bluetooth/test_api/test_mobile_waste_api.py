@@ -2,7 +2,7 @@
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from app.models.user_creations.waste_collection_bluetooth import (
+from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
     WasteCollectionMain,
     WasteCollectionSub,
 )

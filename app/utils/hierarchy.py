@@ -1,6 +1,6 @@
 from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
 from django.db.models import Q
-from app.models.user_creations.staff_data_scope import StaffDataScope
+from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
 
 # NOTE: The Hierarchy Tree/Level/Assignment admin UI and management API have
 # been removed. HierarchyNode/HierarchyClosure themselves — and the helpers
@@ -124,16 +124,16 @@ def _staff_scope(user):
             is_active=True,
             is_deleted=False,
         )
-        .prefetch_related("location_nodes")
-        .select_related(
-            "state",
-            "district",
-            "corporation",
-            "municipality",
-            "town_panchayat",
-            "panchayat_union",
-            "panchayat",
+        .prefetch_related(
+            "location_nodes",
+            "corporations",
+            "municipalities",
+            "town_panchayats",
+            "panchayat_unions",
+            "panchayats",
+            "wards",
         )
+        .select_related("state", "district", "area_type")
         .first()
     )
 
@@ -243,6 +243,48 @@ LOCAL_BODY_FIELDS = (
     "panchayat",
 )
 
+# `StaffDataScope`'s local-body levels are many-to-many (a staff can be
+# scoped to several corporations/municipalities/etc at once). Each tuple is
+# (level name, single-value FK field name as carried by other flat-geo
+# models like TripPlan/CustomerCreation, the M2M attribute on StaffDataScope).
+STAFF_LOCAL_BODY_M2M_LEVELS = (
+    ("corporation", "corporation_id", "corporations"),
+    ("municipality", "municipality_id", "municipalities"),
+    ("town_panchayat", "town_panchayat_id", "town_panchayats"),
+    ("panchayat_union", "panchayat_union_id", "panchayat_unions"),
+    ("panchayat", "panchayat_id", "panchayats"),
+)
+
+
+def validate_wards_for_flat_geo(wards, attrs, instance=None):
+    """
+    Validate that every selected Ward belongs to the record's effective local
+    body.  ``attrs`` uses serializer source names (``corporation`` rather than
+    ``corporation_id``); values omitted by PATCH are read from ``instance``.
+
+    Returns an error string, or ``None`` when all wards match.
+    """
+    selected_field = next(
+        (
+            field
+            for field in LOCAL_BODY_FIELDS
+            if _resolve_geo_value(attrs, instance, field)
+        ),
+        None,
+    )
+    if not selected_field:
+        return "Select a local body before selecting a ward."
+
+    selected_body = _resolve_geo_value(attrs, instance, selected_field)
+    selected_pk = _object_pk(selected_body)
+    for ward in wards:
+        if _object_pk(getattr(ward, selected_field, None)) != selected_pk:
+            return (
+                f"Ward '{ward.ward_name}' does not belong to the selected "
+                f"{selected_field.replace('_', ' ')}."
+            )
+    return None
+
 
 def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
     """
@@ -253,7 +295,13 @@ def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
     for field in FLAT_GEO_QUERY_FIELDS:
         value = params.get(field)
         if value:
-            queryset = queryset.filter(**{f"{prefix}{field}": value})
+            values = [item.strip() for item in str(value).split(",") if item.strip()]
+            lookup = (
+                f"{prefix}{field}__in"
+                if len(values) > 1
+                else f"{prefix}{field}"
+            )
+            queryset = queryset.filter(**{lookup: values if len(values) > 1 else values[0]})
     return queryset
 
 
@@ -378,21 +426,20 @@ def sync_staff_data_scope(staff, source):
     `source` is any model carrying the flat geo FK block (a DailyTripAssignment,
     TripPlan, etc.). `staff` must expose `staff_unique_id`.
     """
-    return StaffDataScope.objects.update_or_create(
+    scope, created = StaffDataScope.objects.update_or_create(
         staff_id=staff.staff_unique_id,
         is_deleted=False,
         defaults={
             "state_id": getattr(source, "state_id", None),
             "district_id": getattr(source, "district_id", None),
             "area_type_id": getattr(source, "area_type_id", None),
-            "corporation_id": getattr(source, "corporation_id", None),
-            "municipality_id": getattr(source, "municipality_id", None),
-            "town_panchayat_id": getattr(source, "town_panchayat_id", None),
-            "panchayat_union_id": getattr(source, "panchayat_union_id", None),
-            "panchayat_id": getattr(source, "panchayat_id", None),
             "is_active": True,
         },
     )
+    for _, source_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+        value = getattr(source, source_field, None)
+        getattr(scope, m2m_field).set([value] if value else [])
+    return scope, created
 
 
 def flat_geo_fields_for_node(node):
@@ -467,6 +514,7 @@ STAFF_GEO_LEVEL_FIELDS = (
     "town_panchayat_id",
     "municipality_id",
     "corporation_id",
+    "area_type_id",
     "district_id",
     "state_id",
 )
@@ -484,19 +532,59 @@ def filter_staff_queryset_by_requester_scope(queryset, user):
     return filter_flat_geo_queryset_by_requester_scope(queryset, user)
 
 
+LOCAL_BODY_SCOPE_FIELDS = {scope_field for _, scope_field, _ in STAFF_LOCAL_BODY_M2M_LEVELS}
+M2M_FIELD_BY_SCOPE_FIELD = {
+    scope_field: m2m_field for _, scope_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS
+}
+
+
+def _narrow_by_ward(queryset, scope):
+    """
+    Further restrict `queryset` to the requester's selected Wards, when both
+    the requester has any Wards in scope AND the target model actually
+    carries ward-level granularity. A no-op otherwise — Ward is an optional
+    extra narrowing on top of the local-body/district scope, never a
+    widening, so it's safe to apply speculatively across every scoped
+    queryset in the app. Detects both conventions in use: a singular `ward`
+    FK (Bins, CustomerCreation, ...) and a plural `wards` M2M (TripPlan).
+    """
+    ward_ids = list(scope.wards.values_list("unique_id", flat=True))
+    if not ward_ids:
+        return queryset
+
+    model = queryset.model
+    try:
+        field = model._meta.get_field("ward")
+    except Exception:
+        field = None
+    if field is not None:
+        if field.many_to_many:
+            return queryset.filter(ward__unique_id__in=ward_ids).distinct()
+        return queryset.filter(ward_id__in=ward_ids)
+
+    try:
+        model._meta.get_field("wards")
+    except Exception:
+        return queryset
+    return queryset.filter(wards__unique_id__in=ward_ids).distinct()
+
+
 def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
     """
     Auto-scope a queryset whose model carries its own flat geo FKs (e.g.
     Corporation/Municipality/.../Panchayat, or any model with matching
     state_id/district_id/.../panchayat_id columns) to the requester's
-    `StaffDataScope`. The most specific scope level the staff has set wins:
-    a staff scoped to a single Panchayat only sees that Panchayat's rows,
-    while one scoped to a District sees every local body within it.
+    `StaffDataScope`. A staff scoped to one or more specific local bodies
+    (across one or several levels — e.g. two Corporations and a
+    Municipality at once) sees the union of every local body they were
+    granted; one scoped only to a District sees everything within it. A
+    Ward selection further narrows whichever rows that produces (see
+    `_narrow_by_ward`).
 
     `field_map` lets a model whose columns don't match `STAFF_GEO_LEVEL_FIELDS`
-    verbatim supply its own {scope_field: queryset_field} pairs, most specific
-    first. Super admins see everything; a non-super staff user with no scope
-    row is denied by default (empty queryset) — see `_unscoped_result` (G4).
+    verbatim supply its own {scope_field: queryset_field} pairs. Super admins
+    see everything; a non-super staff user with no scope row is denied by
+    default (empty queryset) — see `_unscoped_result` (G4).
     """
     scope = _staff_scope(user)
     if not scope:
@@ -522,37 +610,111 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
             if has_filter:
                 combined_filter |= node_filter
         if combined_filter:
-            return queryset.filter(combined_filter)
+            return _narrow_by_ward(queryset.filter(combined_filter), scope)
         return queryset.none()
 
+    local_body_filter = Q()
+    has_local_body_filter = False
     for scope_field, queryset_field in fields.items():
+        if scope_field not in LOCAL_BODY_SCOPE_FIELDS:
+            continue
+        m2m_field = M2M_FIELD_BY_SCOPE_FIELD.get(scope_field)
+        if not m2m_field:
+            continue
+        ids = list(getattr(scope, m2m_field).values_list("unique_id", flat=True))
+        if ids:
+            local_body_filter |= Q(**{f"{queryset_field}__in": ids})
+            has_local_body_filter = True
+    if has_local_body_filter:
+        return _narrow_by_ward(queryset.filter(local_body_filter), scope)
+
+    for scope_field, queryset_field in fields.items():
+        if scope_field in LOCAL_BODY_SCOPE_FIELDS:
+            continue
         try:
             attname = scope._meta.get_field(scope_field).attname
         except Exception:
             attname = scope_field
         value = getattr(scope, attname, None)
         if value:
-            return queryset.filter(**{queryset_field: value})
+            return _narrow_by_ward(queryset.filter(**{queryset_field: value}), scope)
 
-    return queryset
+    return _narrow_by_ward(queryset, scope)
 
 
-LOCAL_BODY_TYPE_FIELDS = (
-    ("corporation", "corporation_id"),
-    ("municipality", "municipality_id"),
-    ("town_panchayat", "town_panchayat_id"),
-    ("panchayat_union", "panchayat_union_id"),
-    ("panchayat", "panchayat_id"),
-)
+def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):
+    """
+    Restrict DailyTripLog rows through their DailyTripAssignment.wards M2M.
+
+    A subquery of assignment ids is used instead of joining wards directly
+    onto the report queryset; this prevents a trip assigned to several
+    permitted wards from being duplicated before Sum/Count aggregation.
+    An explicit ward filter is also checked against the requester's own ward
+    scope so a crafted query parameter cannot widen access.
+    """
+    from app.models.core_modules.daily_operations.daily_trip_assignment import (
+        DailyTripAssignment,
+    )
+
+    scope = _staff_scope(user)
+    scoped_ward_ids = (
+        list(scope.wards.values_list("unique_id", flat=True))
+        if scope is not None
+        else []
+    )
+
+    requested_ward_ids = [
+        item.strip() for item in str(ward_id or "").split(",") if item.strip()
+    ]
+    if (
+        requested_ward_ids
+        and scoped_ward_ids
+        and not set(requested_ward_ids).issubset(scoped_ward_ids)
+    ):
+        return queryset.none()
+
+    effective_ward_ids = requested_ward_ids or scoped_ward_ids
+    if not effective_ward_ids:
+        return queryset
+
+    assignment_ids = (
+        DailyTripAssignment.objects.filter(
+            wards__unique_id__in=effective_ward_ids,
+            is_deleted=False,
+        )
+        .values("unique_id")
+        .distinct()
+    )
+    return queryset.filter(trip_assignment_id_id__in=assignment_ids)
+
+
+def _single_local_body(scope):
+    """
+    The requester's (local_body_type, local_body_id) permission-ownership
+    key, populated ONLY when the staff is scoped to exactly one local body
+    in total across every level. A staff scoped to zero or several local
+    bodies falls back to their District/State boundary for permission
+    purposes instead (screens/dashboard widgets are governed by the
+    broader geo boundary in that case, not an ambiguous or merged set of
+    local-body-specific configs). Mirrors the identical rule applied in
+    `staff_access_configuration_serializer._access_scope_payload`.
+    """
+    candidates = []
+    for level, _, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+        for local_body_id in getattr(scope, m2m_field).values_list("unique_id", flat=True):
+            candidates.append((level, local_body_id))
+    if len(candidates) == 1:
+        return candidates[0]
+    return None, None
 
 
 def local_body_scope_for_staff(user):
     """
     Derive the requester's effective Local Body ownership key
     (local_body_type, local_body_id) plus state/district/area_type, from
-    their `StaffDataScope` row. Mirrors the most-specific-populated-field
-    derivation already used for `localBodyLevel`/`localBodyId` in
-    `staff_access_configuration_serializer._data_scope_payload`.
+    their `StaffDataScope` row. Mirrors the derivation used for
+    `localBodyLevel`/`localBodyId` in
+    `staff_access_configuration_serializer._access_scope_payload`.
 
     Returns None if the requester has no resolvable data scope.
     """
@@ -560,14 +722,7 @@ def local_body_scope_for_staff(user):
     if not scope:
         return None
 
-    local_body_type = None
-    local_body_id = None
-    for level, field in LOCAL_BODY_TYPE_FIELDS:
-        value = getattr(scope, field, None)
-        if value:
-            local_body_type = level
-            local_body_id = value
-            break
+    local_body_type, local_body_id = _single_local_body(scope)
 
     return {
         "state_unique_id": scope.state_id,
@@ -593,15 +748,39 @@ def staff_scope_payload(user):
             return None
         return {"unique_id": obj.unique_id, "name": getattr(obj, name_attr, None)}
 
+    local_body_name_attrs = {
+        "corporations": "corporation_name",
+        "municipalities": "municipality_name",
+        "town_panchayats": "town_panchayat_name",
+        "panchayat_unions": "union_name",
+        "panchayats": "panchayat_name",
+    }
+    local_body_lists = {
+        m2m_field: [
+            _ref(obj, local_body_name_attrs[m2m_field]) for obj in getattr(scope, m2m_field).all()
+        ]
+        for _, _, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS
+    }
+
     return {
         "state": _ref(scope.state, "name"),
         "district": _ref(scope.district, "name"),
         "area_type": _ref(scope.area_type, "name"),
-        "corporation": _ref(scope.corporation, "corporation_name"),
-        "municipality": _ref(scope.municipality, "municipality_name"),
-        "town_panchayat": _ref(scope.town_panchayat, "town_panchayat_name"),
-        "panchayat_union": _ref(scope.panchayat_union, "union_name"),
-        "panchayat": _ref(scope.panchayat, "panchayat_name"),
+        # Backward-compatible single value — the first selected local body of
+        # each level — so existing consumers (every form that locks a field
+        # to the staff's own single corporation/etc via scopeOption()) keep
+        # working unchanged. The plural `*s` lists below carry the full set.
+        "corporation": (local_body_lists["corporations"] or [None])[0],
+        "municipality": (local_body_lists["municipalities"] or [None])[0],
+        "town_panchayat": (local_body_lists["town_panchayats"] or [None])[0],
+        "panchayat_union": (local_body_lists["panchayat_unions"] or [None])[0],
+        "panchayat": (local_body_lists["panchayats"] or [None])[0],
+        "corporations": local_body_lists["corporations"],
+        "municipalities": local_body_lists["municipalities"],
+        "town_panchayats": local_body_lists["town_panchayats"],
+        "panchayat_unions": local_body_lists["panchayat_unions"],
+        "panchayats": local_body_lists["panchayats"],
+        "wards": [_ref(ward, "ward_name") for ward in scope.wards.all()],
         "location_nodes": [
             {"unique_id": node.unique_id, "name": node.name}
             for node in scope.location_nodes.all()
@@ -620,28 +799,6 @@ def staff_scope_payload(user):
 # Downstream scope expansion (login response)
 # ============================================================
 
-# Most-specific-first precedence, mirroring the derivation used across this
-# module and `staff_access_configuration_serializer._access_scope_payload`.
-GEO_SCOPE_LEVELS = (
-    ("panchayat", "panchayat_id"),
-    ("panchayat_union", "panchayat_union_id"),
-    ("town_panchayat", "town_panchayat_id"),
-    ("municipality", "municipality_id"),
-    ("corporation", "corporation_id"),
-    ("area_type", "area_type_id"),
-    ("district", "district_id"),
-    ("state", "state_id"),
-)
-
-# StaffDataScope raw-id attname per local-body level.
-SCOPE_LOCAL_BODY_FIELDS = {
-    "corporation": "corporation_id",
-    "municipality": "municipality_id",
-    "town_panchayat": "town_panchayat_id",
-    "panchayat_union": "panchayat_union_id",
-    "panchayat": "panchayat_id",
-}
-
 # Human-friendly grouping for the two AreaType names.
 AREA_TYPE_GROUP = {
     "Urban Local Body": "urban",
@@ -649,14 +806,52 @@ AREA_TYPE_GROUP = {
 }
 
 
+def _local_body_ids_by_level(scope):
+    """{level: [unique_ids]} for every local-body level with at least one
+    selection, e.g. a staff scoped to two Corporations and one Municipality
+    returns {"corporation": [...2 ids...], "municipality": [...1 id...]}.
+    Levels with no selection are omitted."""
+    result = {}
+    for level, _, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+        manager = getattr(scope, m2m_field, None)
+        if manager is None:
+            # Keep this helper usable with lightweight scope stand-ins used by
+            # tests and older callers that only expose the legacy FK fields.
+            legacy_id = getattr(scope, f"{level}_id", None)
+            ids = [legacy_id] if legacy_id else []
+        else:
+            ids = list(manager.values_list("unique_id", flat=True))
+        if ids:
+            result[level] = ids
+    return result
+
+
 def _granted_scope_level(scope):
-    """The level at which `scope` was granted: the most-specific populated
-    geo field. Returns None for an all-null scope row."""
+    """The level at which `scope` was granted.
+
+    Ward is the most specific scope: its selected wards narrow the parent
+    local body and must not be treated as an unrestricted local-body scope.
+    """
     if not scope:
         return None
-    for level, attname in GEO_SCOPE_LEVELS:
-        if getattr(scope, attname, None):
-            return level
+    wards = getattr(scope, "wards", None)
+    if wards is not None and wards.exists():
+        return "ward"
+    # Legacy/plain scope objects may expose only singular FK fields. Preserve
+    # their precise level when no local-body M2M managers are available.
+    if not any(
+        getattr(scope, m2m_field, None) is not None
+        for _, _, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS
+    ):
+        for level in reversed([level for level, _, _ in STAFF_LOCAL_BODY_M2M_LEVELS]):
+            if getattr(scope, f"{level}_id", None):
+                return level
+    if _local_body_ids_by_level(scope):
+        return "local_body"
+    if scope.district_id:
+        return "district"
+    if scope.state_id:
+        return "state"
     return None
 
 
@@ -677,6 +872,7 @@ def _expanded_descendants(scope):
     from app.models.masters.town_panchayat import TownPanchayat
     from app.models.masters.panchayat_union import PanchayatUnion
     from app.models.masters.panchayat import Panchayat
+    from app.models.masters.ward import Ward
 
     lb_models = {
         "corporation": (Corporation, "corporation_name"),
@@ -690,20 +886,45 @@ def _expanded_descendants(scope):
     district_id = scope.district_id
     area_type_id = scope.area_type_id
 
-    # If the scope is pinned to a single local body, that is the anchor.
-    specific_lb = None
-    for level, attname in SCOPE_LOCAL_BODY_FIELDS.items():
-        value = getattr(scope, attname, None)
-        if value:
-            specific_lb = (level, value)
-            break
+    # Every local body selected, grouped by level — a staff can now be
+    # anchored to several local bodies (across one or more levels) at once.
+    lb_ids_by_level = _local_body_ids_by_level(scope)
+    wards = getattr(scope, "wards", None)
+    selected_ward_ids = (
+        list(wards.values_list("unique_id", flat=True)) if wards is not None else []
+    )
+    any_lb_level, any_lb_ids = next(iter(lb_ids_by_level.items()), (None, None))
 
-    # Backfill missing parents from the anchoring local body so the tree can
-    # still be rooted at a district even if only the local body was stored.
-    if specific_lb and not (state_id and district_id and area_type_id):
-        model, _ = lb_models[specific_lb[0]]
+    # A ward-only scope has no local-body M2M selection. Resolve its parent
+    # local body IDs so the descendant tree can still be rooted correctly.
+    if selected_ward_ids and not lb_ids_by_level:
+        for row in Ward.objects.filter(unique_id__in=selected_ward_ids).values(
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
+            "panchayat_id",
+        ):
+            for level in (
+                "corporation",
+                "municipality",
+                "town_panchayat",
+                "panchayat_union",
+                "panchayat",
+            ):
+                parent_id = row[f"{level}_id"]
+                if parent_id:
+                    lb_ids_by_level.setdefault(level, []).append(parent_id)
+        any_lb_level, any_lb_ids = next(iter(lb_ids_by_level.items()), (None, None))
+
+    # Backfill missing parents from one of the anchoring local bodies (they
+    # all share the same district/area_type, enforced by the Staff Access
+    # Configuration form's cascading selection) so the tree can still be
+    # rooted at a district even if only the local body was stored.
+    if any_lb_level and not (state_id and district_id and area_type_id):
+        model, _ = lb_models[any_lb_level]
         row = (
-            model.objects.filter(unique_id=specific_lb[1])
+            model.objects.filter(unique_id=any_lb_ids[0])
             .values("state_id", "district_id", "area_type_id")
             .first()
         )
@@ -736,15 +957,15 @@ def _expanded_descendants(scope):
 
     # Local bodies, grouped by (district, area_type). One query per model.
     lb_rows_by_key = {}
-    lb_ids_by_level = {level: [] for level in lb_models}
+    lb_ids_by_level_seen = {level: [] for level in lb_models}
     for level, (model, name_attr) in lb_models.items():
-        if specific_lb and specific_lb[0] != level:
+        if lb_ids_by_level and level not in lb_ids_by_level:
             continue
         qs = model.objects.filter(is_deleted=False, district_id__in=district_ids)
         if area_type_id:
             qs = qs.filter(area_type_id=area_type_id)
-        if specific_lb and specific_lb[0] == level:
-            qs = qs.filter(unique_id=specific_lb[1])
+        if level in lb_ids_by_level:
+            qs = qs.filter(unique_id__in=lb_ids_by_level[level])
         for row in qs.values("unique_id", name_attr, "district_id", "area_type_id"):
             key = (row["district_id"], row["area_type_id"])
             lb_rows_by_key.setdefault(key, []).append(
@@ -754,22 +975,66 @@ def _expanded_descendants(scope):
                     "local_body_type": level,
                 }
             )
-            lb_ids_by_level[level].append(row["unique_id"])
+            lb_ids_by_level_seen[level].append(row["unique_id"])
+
+    # Wards are the next level below every local body. Fetch them in one
+    # query and attach them to their owning local body so district/state
+    # scopes expose the complete flat-geo descendant tree.
+    wards_by_local_body = {}
+    ward_filters = Q()
+    for level, ids in lb_ids_by_level_seen.items():
+        if ids:
+            ward_filters |= Q(**{f"{level}_id__in": ids})
+    if ward_filters:
+        ward_rows = Ward.objects.filter(
+            ward_filters,
+            is_deleted=False,
+            district_id__in=district_ids,
+        )
+        if area_type_id:
+            ward_rows = ward_rows.filter(area_type_id=area_type_id)
+        if selected_ward_ids:
+            ward_rows = ward_rows.filter(unique_id__in=selected_ward_ids)
+        for row in ward_rows.values(
+            "unique_id",
+            "ward_name",
+            "corporation_id",
+            "municipality_id",
+            "town_panchayat_id",
+            "panchayat_union_id",
+            "panchayat_id",
+        ):
+            owner_id = next(
+                (
+                    row[f"{level}_id"]
+                    for level in lb_models
+                    if row[f"{level}_id"]
+                ),
+                None,
+            )
+            if owner_id:
+                wards_by_local_body.setdefault(owner_id, []).append(
+                    {
+                        "unique_id": row["unique_id"],
+                        "name": row["ward_name"],
+                        "ward_name": row["ward_name"],
+                    }
+                )
 
     # Government staff (sub-admins / supervisors) scoped within each local
     # body. One query per non-empty level; mapped back in Python.
     staff_by_lb = {}
-    for level, ids in lb_ids_by_level.items():
+    for level, ids in lb_ids_by_level_seen.items():
         if not ids:
             continue
-        scope_field = SCOPE_LOCAL_BODY_FIELDS[level]
+        m2m_field = next(f for lvl, _, f in STAFF_LOCAL_BODY_M2M_LEVELS if lvl == level)
         rows = (
             StaffDataScope.objects.filter(
                 is_active=True,
                 is_deleted=False,
-                **{f"{scope_field}__in": ids},
+                **{f"{m2m_field}__unique_id__in": ids},
             ).values(
-                scope_field,
+                f"{m2m_field}__unique_id",
                 "staff_id",
                 "staff__employee_name",
                 "staff__staff_config_name",
@@ -777,7 +1042,7 @@ def _expanded_descendants(scope):
             )
         )
         for row in rows:
-            staff_by_lb.setdefault(row[scope_field], []).append(
+            staff_by_lb.setdefault(row[f"{m2m_field}__unique_id"], []).append(
                 {
                     "staff_unique_id": row["staff_id"],
                     "employee_name": row["staff__employee_name"],
@@ -803,6 +1068,7 @@ def _expanded_descendants(scope):
             local_bodies = lb_rows_by_key.get((did, area_type["unique_id"]), [])
             for local_body in local_bodies:
                 local_body["staff"] = staff_by_lb.get(local_body["unique_id"], [])
+                local_body["wards"] = wards_by_local_body.get(local_body["unique_id"], [])
             area_type_payload.append(
                 {
                     "unique_id": area_type["unique_id"],

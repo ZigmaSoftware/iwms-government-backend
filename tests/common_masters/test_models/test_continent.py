@@ -1,6 +1,6 @@
 """Unit tests for Continent model — CRUD + constraints."""
 import pytest
-from app.models.common_masters.continent import Continent
+from app.models.superadmin.common_masters.continent import Continent
 
 
 @pytest.mark.django_db

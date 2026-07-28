@@ -6,9 +6,9 @@ BASE = "/api/v1/customer-masters/customercreations/"
 
 @pytest.fixture
 def customer_payload(db, country, state, district, city, zone, ward):
-    from app.models.waste_types.property import Property
-    from app.models.waste_types.subproperty import SubProperty
-    from app.models.user_creations.waste_collection_bluetooth import WasteType
+    from app.models.masters.waste_masters.property import Property
+    from app.models.masters.waste_masters.subproperty import SubProperty
+    from app.models.waste_collection_bluetooth.waste_collection_bluetooth import WasteType
 
     prop = Property.objects.create(property_name="Residential")
     sub_prop = SubProperty.objects.create(sub_property_name="Apartment", property_id=prop)
@@ -73,7 +73,7 @@ class TestCustomerAPIWasteTypes:
         assert len(data["waste_types"]) == 2
 
     def test_patch_replaces_waste_type_ids(self, auth_client, customer_payload):
-        from app.models.user_creations.waste_collection_bluetooth import WasteType
+        from app.models.waste_collection_bluetooth.waste_collection_bluetooth import WasteType
 
         create_resp = auth_client.post(BASE, customer_payload, format="json")
         assert create_resp.status_code in (200, 201), create_resp.json()

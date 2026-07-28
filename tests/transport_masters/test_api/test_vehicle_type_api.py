@@ -1,6 +1,6 @@
 """API tests for VehicleType endpoint — CRUD operations."""
 import pytest
-from app.models.transport_masters.vehicleTypeCreation import VehicleTypeCreation
+from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 
 BASE = "/api/v1/transport-masters/vehicle-type/"
 

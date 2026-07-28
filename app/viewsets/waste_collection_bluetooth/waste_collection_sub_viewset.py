@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 
-from app.models.user_creations.waste_collection_bluetooth import WasteCollectionSub
+from app.models.waste_collection_bluetooth.waste_collection_bluetooth import WasteCollectionSub
 from app.serializers.waste_collection_bluetooth.waste_collection_sub_serializer import (
     WasteCollectionSubSerializer,
 )

@@ -1,7 +1,7 @@
 from django.db import models, transaction
 from django.db.models import ForeignKey
 
-from app.models.screen_managements.userscreencolumn import UserScreenColumn
+from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
 from app.utils.model_mapper import iter_model_columns, resolve_userscreen_model
 
 
@@ -136,7 +136,7 @@ def sync_screen_columns(userscreen):
 
 @transaction.atomic
 def sync_all_screens():
-    from app.models.screen_managements.userscreen import UserScreen
+    from app.models.superadmin.screen_management.userscreen import UserScreen
 
     results = {
         "total_screens": 0,

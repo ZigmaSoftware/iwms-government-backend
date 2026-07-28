@@ -1,12 +1,104 @@
 from django.forms.models import model_to_dict
 from django.db.models.fields.files import FieldFile
-from app.models.user_creations.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import Account
 from app.utils.common_audit import CommonAudit
+from app.utils.hierarchy import copy_flat_geo
 from datetime import datetime, date, time
 from decimal import Decimal
 from uuid import UUID
 from django.db.models.fields.files import FieldFile
+from app.models.superadmin.audits.staff_audit import StaffAudit
+
+
+def serialize_instance_for_audit(instance, redact_fields=()):
+    """Standalone version of AuditViewSetMixin._serialize_instance for plain
+    function-based views (e.g. mobile actions) that don't inherit the mixin."""
+    data = model_to_dict(instance)
+
+    for field in instance._meta.fields:
+        value = getattr(instance, field.name)
+
+        if field.is_relation:
+            data[field.name] = getattr(value, "unique_id", None) if value else None
+        elif isinstance(value, Decimal):
+            data[field.name] = float(value)
+        elif isinstance(value, (datetime, date, time)):
+            data[field.name] = value.isoformat()
+        elif isinstance(value, UUID):
+            data[field.name] = str(value)
+        elif isinstance(value, FieldFile):
+            data[field.name] = value.name or None
+        else:
+            data[field.name] = value
+
+    for field_name in redact_fields:
+        if field_name in data and data[field_name]:
+            data[field_name] = "[REDACTED]"
+
+    for field in instance._meta.many_to_many:
+        related_qs = getattr(instance, field.name).all()
+        data[field.name] = [
+            getattr(obj, "unique_id", None) or str(obj.pk)
+            for obj in related_qs
+        ]
+
+    return data
+
+
+def get_audit_object_id(instance):
+    for field in ("unique_id", "staff_unique_id", "id", "pk"):
+        value = getattr(instance, field, None)
+        if value:
+            return str(value)
+    return None
+
+
+def _write_audit_pair(
+    *, module_name, endpoint_name, method, instance, previous_data, new_data, created_by,
+):
+    """Write one CommonAudit row (super-admin, unscoped, unchanged) and one
+    mirrored StaffAudit row (same data, read by the staff-facing hierarchy-
+    scoped viewset). Kept as a single call site so the two ledgers can never
+    drift out of sync."""
+    object_id = get_audit_object_id(instance) if instance is not None else None
+    shared_kwargs = dict(
+        module_name=module_name,
+        endpoint_name=endpoint_name,
+        method=method,
+        object_id=object_id,
+        previous_data=previous_data,
+        new_data=new_data,
+        createdBy=created_by,
+    )
+
+    common_audit = CommonAudit(**shared_kwargs)
+    staff_audit = StaffAudit(**shared_kwargs)
+
+    if instance is not None:
+        copy_flat_geo(common_audit, instance, only_empty=True)
+        copy_flat_geo(staff_audit, instance, only_empty=True)
+
+    common_audit.save()
+    staff_audit.save()
+    return common_audit
+
+
+def log_common_audit(
+    request, *, module_name, endpoint_name, instance=None,
+    previous_data=None, new_data=None,
+):
+    """Standalone version of AuditViewSetMixin.log_audit for plain
+    function-based views (e.g. mobile actions) that don't inherit the mixin."""
+    return _write_audit_pair(
+        module_name=module_name,
+        endpoint_name=endpoint_name,
+        method=request.method,
+        instance=instance,
+        previous_data=previous_data,
+        new_data=new_data,
+        created_by=str(request.user) if request.user.is_authenticated else "SYSTEM",
+    )
 
 
 class AuditViewSetMixin:
@@ -117,15 +209,14 @@ class AuditViewSetMixin:
 
     def log_audit(self, request, instance=None, previous_data=None, new_data=None):
 
-        CommonAudit.objects.create(
+        _write_audit_pair(
             module_name=self.AUDIT_MODULE,
             endpoint_name=self.AUDIT_ENDPOINT,
             method=request.method,
-            # object_id=getattr(instance, "unique_id", None),
-            object_id=self.get_audit_object_id(instance),
+            instance=instance,
             previous_data=previous_data,
             new_data=new_data,
-            createdBy=str(request.user) if request.user.is_authenticated else "SYSTEM",
+            created_by=str(request.user) if request.user.is_authenticated else "SYSTEM",
         )
 
     # CREATE

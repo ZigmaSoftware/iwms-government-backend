@@ -1,5 +1,5 @@
 # from rest_framework import serializers
-# from api.api.customers.customercreation import CustomerCreation
+# from api.api.masters.customer_masters.customercreation import CustomerCreation
 
 
 # class CustomerNestedSerializer(serializers.ModelSerializer):

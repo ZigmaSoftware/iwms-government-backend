@@ -1,6 +1,6 @@
 """Unit tests for StaffUserType model — CRUD + constraints."""
 import pytest
-from app.models.role_assigns.staffUserType import StaffUserType
+from app.models.superadmin.role_management.staffUserType import StaffUserType
 
 
 @pytest.mark.django_db

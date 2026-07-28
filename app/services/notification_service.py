@@ -6,7 +6,7 @@ same way. Recipients log in either as a StaffcreationOfficeDetails record
 or an AUTH_USER_MODEL account (see app.authentication.jwt); pass whichever
 one applies.
 """
-from app.models.complaint_ticket.notification import ComplaintNotification
+from app.models.core_modules.complaint_management.notification import ComplaintNotification
 
 EVENT_TITLES = {
     ComplaintNotification.EVENT_ASSIGNED: "New grievance assigned to you",

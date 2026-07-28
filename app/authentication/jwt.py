@@ -3,11 +3,11 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
-from app.models.user_creations.staffcreation import Staffcreation
-from app.models.customers.customercreation import CustomerCreation
-from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
-from app.models.leader_login.district_leader_login import DistrictLeaderLogin
-from app.models.leader_login.state_leader_login import StateLeaderLogin
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
+from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 
 
 class JWTUserAuthentication(BaseAuthentication):

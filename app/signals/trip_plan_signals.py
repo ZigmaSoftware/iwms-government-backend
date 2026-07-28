@@ -1,11 +1,11 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.schedule_masters.trip_plan_collection_point import (
+from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 # Most specific level first: a stop/trip plan scoped to a single Panchayat
@@ -38,8 +38,8 @@ def _geo_filter_for(obj):
     return None
 
 
-def _customers_for_household_stop(stop):
-    from app.models.customers.customercreation import CustomerCreation
+def _customers_for_household_stop(stop, wards=None):
+    from app.models.masters.customer_masters.customercreation import CustomerCreation
 
     is_bulk_stop = stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
     if stop.customer_id_id:
@@ -54,16 +54,23 @@ def _customers_for_household_stop(stop):
         return CustomerCreation.objects.none()
 
     field, value = geo_filter
-    return CustomerCreation.objects.filter(
+    queryset = CustomerCreation.objects.filter(
         is_deleted=False,
         is_active=True,
         is_bulkwaste_generator=is_bulk_stop,
         **{field: value},
     )
+    # Narrow to the plan/assignment's selected wards, if any were chosen —
+    # an empty ward selection means "every ward in the local body", matching
+    # the old behaviour.
+    ward_ids = list(wards.values_list("unique_id", flat=True)) if wards is not None else []
+    if ward_ids:
+        queryset = queryset.filter(ward_id__in=ward_ids)
+    return queryset
 
 
 def _create_daily_household_collections(assignment, stop):
-    from app.models.schedule_masters.daily_trip_household_collection import (
+    from app.models.core_modules.daily_operations.daily_trip_household_collection import (
         DailyTripHouseholdCollection,
     )
 
@@ -73,7 +80,7 @@ def _create_daily_household_collections(assignment, stop):
         else DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD
     )
     created_count = 0
-    for offset, customer in enumerate(_customers_for_household_stop(stop), start=0):
+    for offset, customer in enumerate(_customers_for_household_stop(stop, wards=assignment.wards), start=0):
         _, created = DailyTripHouseholdCollection.objects.get_or_create(
             trip_assignment_id=assignment,
             customer_id=customer,
@@ -102,9 +109,26 @@ def sync_daily_assignment_stops_from_plan(assignment):
 
     plan_stops = TripPlanCollectionPoint.objects.filter(
         trip_plan_id=assignment.trip_plan_id,
+        collection_type=assignment.trip_plan_id.collection_type,
         is_active=True,
         is_deleted=False,
     ).order_by("sequence")
+
+    # The post_save signal runs before Django can populate the assignment's
+    # many-to-many wards. A later sync (after wards are set) must remove the
+    # rows that were initially expanded for the whole local body. Keep
+    # collected rows untouched, but remove pending rows outside the selected
+    # wards, including customers whose ward is null.
+    from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+        DailyTripHouseholdCollection,
+    )
+    selected_ward_ids = list(assignment.wards.values_list("unique_id", flat=True))
+    if selected_ward_ids:
+        DailyTripHouseholdCollection.objects.filter(
+            trip_assignment_id=assignment,
+            is_collected=False,
+            is_deleted=False,
+        ).exclude(customer_id__ward_id__in=selected_ward_ids).delete()
 
     added = 0
     for stop in plan_stops:
@@ -114,8 +138,8 @@ def sync_daily_assignment_stops_from_plan(assignment):
             _, created = DailyTripCollectionPoint.objects.get_or_create(
                 trip_assignment_id=assignment,
                 collection_point_id=stop.collection_point_id,
+                bin_id=stop.bin_id,
                 defaults={
-                    "bin_id": stop.bin_id,
                     "sequence": stop.sequence,
                     "is_collected": False,
                     "status": DailyTripCollectionPoint.STATUS_PENDING,
@@ -149,6 +173,7 @@ def _describe_waste_collection(instance):
             ("wet", instance.wet_waste),
             ("dry", instance.dry_waste),
             ("mixed", instance.mixed_waste),
+            ("sanitary", instance.sanitary_waste),
         )
         if value
     ]
@@ -173,10 +198,10 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     if not instance.trip_assignment_id_id or instance.is_deleted:
         return
 
-    from app.models.schedule_masters.daily_trip_household_collection import (
+    from app.models.core_modules.daily_operations.daily_trip_household_collection import (
         DailyTripHouseholdCollection,
     )
-    from app.models.schedule_masters.daily_trip_log import DailyTripLog
+    from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
     collection_type = (
         DailyTripHouseholdCollection.COLLECTION_TYPE_BULK
@@ -205,6 +230,7 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
             "wet_waste": instance.wet_waste,
             "dry_waste": instance.dry_waste,
             "mixed_waste": instance.mixed_waste,
+            "sanitary_waste": instance.sanitary_waste,
             "total_quantity": instance.total_quantity,
         },
     )
@@ -266,7 +292,7 @@ def sync_trip_log_on_bin_event_save(sender, instance, **kwargs):
     if not instance.trip_assignment_id_id or instance.is_deleted:
         return
 
-    from app.models.schedule_masters.daily_trip_log import DailyTripLog
+    from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
     log = DailyTripLog.objects.filter(
         trip_assignment_id=instance.trip_assignment_id_id,

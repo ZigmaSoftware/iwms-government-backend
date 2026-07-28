@@ -5,16 +5,17 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from app.models.schedule_masters.secondary_bin_collection_event import BinCollectionEvent
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_collection_point import (
+from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.permissions.operator_permission import IsOperatorRole
 from app.serializers.operator_mobile.scan_serializers import (
     ScanBinRequestSerializer,
 )
+from app.utils.audit_mixin import log_common_audit, serialize_instance_for_audit
 from app.utils.hierarchy import node_for_flat_geo
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
@@ -107,6 +108,15 @@ class ScanBinViewSet(viewsets.ViewSet):
                     status_reason=status_reason,
                 )
 
+                log_common_audit(
+                    request,
+                    module_name="transport-masters",
+                    endpoint_name="bin-collection-event",
+                    instance=event,
+                    previous_data=None,
+                    new_data=serialize_instance_for_audit(event),
+                )
+
                 ctx.assignment.refresh_from_db()
                 progress = progress_payload(ctx.assignment)
                 if progress["completed"]:
@@ -161,7 +171,7 @@ class ScanBinViewSet(viewsets.ViewSet):
             # Hierarchy visibility: stamp the audit row with the
             # collection point's location node so scope filtering works.
             location_node=node_for_flat_geo(ctx.bin.collection_point_id),
-            waste_type_id=ctx.assignment.waste_type_id,
+            waste_type_id=ctx.bin.wastetype_id,
             vehicle_id=ctx.assignment.vehicle_id,
             status=event_status,
             status_reason=status_reason,

@@ -6,14 +6,14 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum
 from datetime import datetime, timedelta
-from app.models.user_creations.waste_collection_bluetooth import (
+from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
     WasteCollectionMain,
     WasteCollectionSub,
     generate_unique_id,
     upload_image,
 )
-from app.models.assets.wastetype import WasteType
-from app.models.customers.customercreation import CustomerCreation
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 
 
@@ -50,7 +50,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         Writes to the DailyTripHouseholdCollection row for the requester's active
         trip today, so the update stays scoped to the trip (and its hierarchy).
         """
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
         from app.viewsets.operator_mobile.helpers import (
@@ -96,7 +96,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 {"status": "error", "message": "reason is required"}, status=400
             )
 
-        from app.models.schedule_masters.daily_trip_assignment import (
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
 
@@ -163,6 +163,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 status=409,
             )
 
+        previous_data = serialize_instance_for_audit(dthc)
+
         dthc.status = normalized_status
         dthc.status_reason = reason
         dthc.status_latitude = latitude or None
@@ -176,6 +178,15 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             "is_collected",
             "updated_at",
         ])
+
+        log_common_audit(
+            request,
+            module_name="transport-masters",
+            endpoint_name="daily-trip-household-collection",
+            instance=dthc,
+            previous_data=previous_data,
+            new_data=serialize_instance_for_audit(dthc),
+        )
 
         # Notify the customer instantly. Safe no-op if push isn't configured
         # or they have no registered device.
@@ -380,13 +391,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
     # ----- helpers for the WasteCollection mirror (new web backend) -----
     def _split_waste_by_type(self, collection_rows):
-        """Bucket the session's captured sub-rows into wet / dry / mixed by
-        waste-type name — same rule the citizen-summary aggregate uses."""
+        """Bucket the session's captured sub-rows into wet / dry / sanitary /
+        mixed by waste-type name — same rule the citizen-summary aggregate
+        uses."""
         type_names = {
             wt.unique_id: (wt.waste_type_name or "").lower()
             for wt in WasteType.objects.filter(is_deleted=False)
         }
-        wet = dry = mixed = 0.0
+        wet = dry = mixed = sanitary = 0.0
         for sub in collection_rows:
             key = str(sub.waste_type_id)
             name = type_names.get(key, "")
@@ -395,19 +407,21 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 wet += weight
             elif key == "2" or "dry" in name:
                 dry += weight
+            elif "sanitary" in name:
+                sanitary += weight
             else:
                 mixed += weight
-        return wet, dry, mixed
+        return wet, dry, mixed, sanitary
 
     def _resolve_trip_assignment(self, customer, request, assignment_id=None):
         """Best-effort trip for this collection: the exact assignment the app
         sent (preferred — a driver can hold both a bin and a household trip),
         else the trip where this household is a stop today, else the requester's
         active operator trip. None when nothing applies."""
-        from app.models.schedule_masters.daily_trip_assignment import (
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
-        from app.models.schedule_masters.daily_trip_household_collection import (
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
 
@@ -452,7 +466,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         """Create or refresh the canonical WasteCollection row for this
         household so the web backend (dashboards, trip log, household stops)
         sees the app's collection."""
-        from app.models.customers.wastecollection import WasteCollection
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 
         customer = CustomerCreation.objects.filter(
             unique_id=customer_id, is_deleted=False
@@ -461,7 +475,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             # Nothing to link to; the legacy Main record already stored the data.
             return None
 
-        wet, dry, mixed = self._split_waste_by_type(collection_rows)
+        wet, dry, mixed, sanitary = self._split_waste_by_type(collection_rows)
         trip_assignment = self._resolve_trip_assignment(
             customer, request, assignment_id=assignment_id
         )
@@ -486,6 +500,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         waste_collection.wet_waste = wet
         waste_collection.dry_waste = dry
         waste_collection.mixed_waste = mixed
+        waste_collection.sanitary_waste = sanitary
         waste_collection.is_deleted = False
         waste_collection.is_active = True
         # save() auto-calculates total_quantity + inherits geo; the post_save

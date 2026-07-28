@@ -2,8 +2,8 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.role_assigns.userType import UserType
-from app.models.role_assigns.staffUserType import StaffUserType
+from app.models.superadmin.role_management.userType import UserType
+from app.models.superadmin.role_management.staffUserType import StaffUserType
 
 
 class PlatformSuperUserSeeder(BaseSeeder):

@@ -7,11 +7,11 @@ from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
-from app.models.user_creations.staffcreation import Staffcreation
-from app.models.customers.customercreation import CustomerCreation
-from app.models.leader_login.panchayat_leader_login import PanchayatLeaderLogin
-from app.models.leader_login.district_leader_login import DistrictLeaderLogin
-from app.models.leader_login.state_leader_login import StateLeaderLogin
+from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
+from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.utils.hierarchy import local_body_scope_for_staff
 from app.utils.permission_response import (
     resolve_intersected_permission_payload,
@@ -113,6 +113,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "Municipality",
         "TownPanchayat",
         "PanchayatUnion",
+        "Ward",
         "AdministrativeHierarchy",
         "Department",
         "Designation",
@@ -120,12 +121,11 @@ MODULE_RESOURCE_ALLOWLIST = {
     "waste-types": {
         "Property",
         "SubProperty",
+        "Bin",
+        "WasteType",
     },
     "assets": {
-        "Bin",
         "CollectionPoint",
-        "WasteType",
-        "Bin"
     },
     "screen-managements": {
         "MainScreenType",
@@ -143,11 +143,13 @@ MODULE_RESOURCE_ALLOWLIST = {
         "UserType",
         "StaffUserType",
         "ContractorUserType",
+        "GovernmentStaffUserType",
     },
     "user-creations": {
         "UsersCreation",
         "StaffCreation",
         "StaffAccessConfiguration",
+        "StaffAccessDashboard",
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
         "UnassignedStaffPool",
@@ -181,16 +183,22 @@ MODULE_RESOURCE_ALLOWLIST = {
         "TripAttendance",
         "Fuel",
     },
-    "schedule-masters": {
+    "schedule-setup": {
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
         "CollectionPoint",
         "TripPlan",
         "TripPlanCollectionPoint",
+    },
+    "schedule-operations": {
         "DailyTripAssignment",
         "DailyTripCollectionPoint",
+        "DailyTripHouseholdCollection",
         "BinCollectionEvent",
+        "VehicleBreakdown",
         "DailyTripLog",
+    },
+    "schedule-masters": {
         "DailyWasteComparison",
         "MonthlyWasteComparisonReport",
     },
@@ -200,6 +208,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "StaffTemplateAuditLog",
         "LoginAudit",
         "CommonAudit",
+        "StaffAudit",
     },
     "attendance": {
         "DailyAttendanceReg",
@@ -224,6 +233,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "TownPanchayat": ("town-panchayats",),
     "PanchayatUnion": ("panchayat-unions",),
     "Panchayat": ("panchayats", "panchayat"),
+    "Ward": ("wards",),
     "Property": ("properties",),
     "SubProperty": ("subproperties",),
     "Bin": ("bins",),
@@ -234,10 +244,13 @@ RESOURCE_PERMISSION_ALIASES = {
     "UserScreenAction": ("userscreen-action",),
     "UserType": ("user-type",),
     "StaffUserType": ("staff-user-type",),
+    "ContractorUserType": ("contractorusertypes",),
+    "GovernmentStaffUserType": ("governmentusertypes",),
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
     "StaffCreation": ("staffcreation",),
     "StaffAccessConfiguration": ("staff-access-configuration",),
+    "StaffAccessDashboard": ("staff-access-dashboard",),
     "CustomerCreation": ("customercreations",),
     "FeedBack": ("feedbacks", "feedback"),
     "ComplaintTicket": ("tickets",),
@@ -259,12 +272,14 @@ RESOURCE_PERMISSION_ALIASES = {
     "TripPlan": ("trip-plans",),
     "DailyTripAssignment": ("daily-trip-assignments",),
     "DailyTripCollectionPoint": ("daily-trip-collection-points", "daily-trip-collection-point"),
+    "DailyTripHouseholdCollection": ("daily-trip-household-collections",),
     "BinCollectionEvent": ("bin-collection-events", "bin-collection-event"),
     "VehicleBreakdown": ("vehicle-breakdowns",),
     "DailyTripLog": ("daily-trip-logs",),
     "DailyWasteComparison": ("daily-waste-comparisons",),
     "MonthlyWasteComparisonReport": ("MonthlyWasteComparison", "monthly-waste-comparison"),
     "CommonAudit": ("common-audit",),
+    "StaffAudit": ("staff-audit",),
     "LoginAudit": ("login-audit",),
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
     "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),

@@ -4,8 +4,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.db.models import Sum
 
-from app.models.schedule_masters.daily_trip_assignment import DailyTripAssignment
-from app.models.schedule_masters.daily_trip_log import DailyTripLog
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
 
 class Command(BaseCommand):
@@ -28,9 +28,8 @@ class Command(BaseCommand):
             "alt_staff_template_id__driver_id",
             "alt_staff_template_id__operator_id",
             "panchayat_id",
-            "waste_type_id",
             "vehicle_id",
-        )
+        ).prefetch_related("waste_types")
 
         created = 0
         submitted = 0

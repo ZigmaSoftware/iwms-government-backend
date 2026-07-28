@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 
-from app.viewsets.attendance import (
+from app.viewsets.core_modules.attendance import (
     AttendanceRecordsViewSet,
     DailyAttendanceRegViewSet,
     RecognizeViewSet,

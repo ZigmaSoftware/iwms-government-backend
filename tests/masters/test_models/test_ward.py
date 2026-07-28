@@ -5,15 +5,21 @@ from app.models.masters.ward import Ward
 
 @pytest.mark.django_db
 class TestWardCreate:
-    def test_basic_create(self, state, district, city, zone):
-        w = Ward.objects.create(ward_name="Ward Alpha", state_id=state, district_id=district, city_id=city, zone_id=zone)
+    def test_basic_create(self, state, district, corporation):
+        w = Ward.objects.create(
+            ward_name="Ward Alpha",
+            state=state,
+            district=district,
+            area_type=corporation.area_type_id,
+            corporation=corporation,
+        )
         assert w.ward_name == "Ward Alpha"
 
     def test_unique_id_prefix(self, ward):
         assert ward.unique_id.startswith("WARD-")
 
-    def test_foreign_key_zone(self, ward, zone):
-        assert ward.zone_id == zone
+    def test_foreign_key_corporation(self, ward, corporation):
+        assert ward.corporation_id == corporation.pk
 
 
 @pytest.mark.django_db
@@ -45,7 +51,6 @@ class TestWardUpdate:
         assert ward.ward_name == "Renamed Ward"
 
     def test_update_coordinates(self, ward):
-        ward.geofencing_type = "polygon"
         ward.coordinates = [
             {"latitude": 13.0808, "longitude": 80.2731},
             {"latitude": 13.0832, "longitude": 80.2775},
@@ -53,5 +58,4 @@ class TestWardUpdate:
         ]
         ward.save()
         ward.refresh_from_db()
-        assert ward.geofencing_type == "polygon"
         assert len(ward.coordinates) == 3

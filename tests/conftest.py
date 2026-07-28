@@ -29,13 +29,13 @@ def project(db, company):
 
 @pytest.fixture
 def continent(db):
-    from app.models.common_masters.continent import Continent
+    from app.models.superadmin.common_masters.continent import Continent
     return Continent.objects.create(name="Asia")
 
 
 @pytest.fixture
 def country(db, continent):
-    from app.models.common_masters.country import Country
+    from app.models.superadmin.common_masters.country import Country
     return Country.objects.create(
         name="India",
         continent_id=continent,
@@ -46,7 +46,7 @@ def country(db, continent):
 
 @pytest.fixture
 def state(db, continent, country):
-    from app.models.common_masters.state import State
+    from app.models.superadmin.common_masters.state import State
     return State.objects.create(
         name="Tamil Nadu",
         label="TN",
@@ -101,14 +101,32 @@ def zone(db, state, district, city):
 
 
 @pytest.fixture
-def ward(db, state, district, city, zone):
+def corporation(db, state, district):
+    from app.models.masters.areatype import AreaType
+    from app.models.masters.corporation import Corporation
+
+    area_type = AreaType.objects.create(
+        state_id=state,
+        district_id=district,
+        name="Urban Local Body",
+    )
+    return Corporation.objects.create(
+        state_id=state,
+        district_id=district,
+        area_type_id=area_type,
+        corporation_name="Test Corporation",
+    )
+
+
+@pytest.fixture
+def ward(db, state, district, corporation):
     from app.models.masters.ward import Ward
     return Ward.objects.create(
         ward_name="Ward 1",
-        state_id=state,
-        district_id=district,
-        city_id=city,
-        zone_id=zone,
+        state=state,
+        district=district,
+        area_type=corporation.area_type_id,
+        corporation=corporation,
     )
 
 
@@ -118,7 +136,7 @@ def ward(db, state, district, city, zone):
 
 @pytest.fixture
 def user_type(db):
-    from app.models.role_assigns.userType import UserType
+    from app.models.superadmin.role_management.userType import UserType
     return UserType.objects.create(name="Staff")
 
 
