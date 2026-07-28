@@ -142,6 +142,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "customer", "assigned_team", "assigned_team__department",
             "assigned_staff", "state", "district", "area_type", "corporation",
             "municipality", "town_panchayat", "panchayat_union", "panchayat",
+            "created_by", "created_by__user",
         ).prefetch_related(
             "status_history", "status_history__to_status",
             "escalation_history", "escalation_history__escalated_to_team",
