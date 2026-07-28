@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Q
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
 from app.models.core_modules.complaint_management.ticket_extra_detail import ComplaintTicketExtraDetail
 from app.models.core_modules.complaint_management.ticket_attachment import ComplaintAttachment
@@ -10,6 +11,8 @@ from app.models.core_modules.complaint_management.escalation_history import Comp
 from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
 from app.models.core_modules.complaint_management.reopen_history import ComplaintReopenHistory
 from app.models.core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
 
 
 class ComplaintTicketSerializer(serializers.ModelSerializer):
@@ -35,6 +38,9 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     status_name = serializers.CharField(source="status.status_name", read_only=True)
     source_code = serializers.CharField(source="source.source_code", read_only=True)
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
+    reporter_type = serializers.SerializerMethodField()
+    reporter_name = serializers.SerializerMethodField()
+    raised_by_name = serializers.SerializerMethodField()
     assigned_team_name = serializers.CharField(source="assigned_team.team_name", read_only=True)
     assigned_staff_name = serializers.CharField(source="assigned_staff.employee_name", read_only=True)
     assigned_department_name = serializers.CharField(source="assigned_team.department.department_name", read_only=True)
@@ -70,6 +76,76 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
 
     def get_waste_type_names(self, obj):
         return [w.waste_type_name for w in obj.waste_types.all()]
+
+    def get_reporter_type(self, obj):
+        return "Customer" if obj.customer_id or self._matched_customer_name(obj) else "Public Grievance"
+
+    def get_reporter_name(self, obj):
+        return (
+            getattr(obj.customer, "customer_name", "")
+            or (obj.profile_name or "").strip()
+            or self._matched_customer_name(obj)
+            or "Anonymous"
+        )
+
+    def _matched_customer_name(self, obj):
+        phone = (obj.wa_phone or "").strip()
+        email = (obj.email or "").strip()
+        if not phone and not email:
+            return ""
+        cache = getattr(self, "_customer_identity_cache", {})
+        cache_key = (phone, email.lower())
+        if cache_key not in cache:
+            identity_filter = Q()
+            if phone:
+                identity_filter |= Q(contact_no=phone)
+            if email:
+                identity_filter |= Q(email__iexact=email)
+            cache[cache_key] = (
+                CustomerCreation.objects.filter(identity_filter, is_deleted=False)
+                .values_list("customer_name", flat=True)
+                .first()
+                or ""
+            )
+            self._customer_identity_cache = cache
+        return cache[cache_key]
+
+    def get_raised_by_name(self, obj):
+        account = getattr(obj, "created_by", None)
+        user = getattr(account, "user", None)
+        account_staff_name = (
+            StaffcreationOfficeDetails.objects.filter(pk=account.staff_id)
+            .values_list("employee_name", flat=True)
+            .first()
+            if account and account.staff_id
+            else ""
+        )
+        user_staff_model = (
+            user._meta.get_field("staff_id").remote_field.model
+            if user and getattr(user, "staff_id_id", None)
+            else None
+        )
+        user_staff_name = (
+            user_staff_model.objects.filter(pk=user.staff_id_id)
+            .values_list("employee_name", flat=True)
+            .first()
+            if user_staff_model
+            else ""
+        )
+        user_customer_name = (
+            CustomerCreation.objects.filter(pk=user.customer_id_id)
+            .values_list("customer_name", flat=True)
+            .first()
+            if user and getattr(user, "customer_id_id", None)
+            else ""
+        )
+        return (
+            account_staff_name
+            or user_staff_name
+            or user_customer_name
+            or getattr(user, "username", "")
+            or self.get_reporter_name(obj)
+        )
 
     def _pop_operational_context(self, validated_data):
         return {
