@@ -1,7 +1,18 @@
 from pathlib import Path
 import os
 import pymysql
+import warnings
 from dotenv import load_dotenv
+
+# drf-yasg 1.21.7 still imports pkg_resources internally. Setuptools emits
+# this deprecation notice on every development-server reload; suppress only
+# that known third-party warning while leaving all other warnings visible.
+warnings.filterwarnings(
+    "ignore",
+    message=r"pkg_resources is deprecated as an API.*",
+    category=UserWarning,
+    module=r"drf_yasg(\..*)?",
+)
 
 load_dotenv()
 pymysql.install_as_MySQLdb()
