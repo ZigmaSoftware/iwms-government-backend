@@ -2,6 +2,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.models.superadmin.screen_management.mainscreentype import MainScreenType
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen
+from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 
 
 USER_SCREEN_MODELS = {
@@ -29,6 +30,7 @@ USER_SCREEN_MODELS = {
     "staff-user-type": ("app", "StaffUserType"),
     "staffcreation": ("app", "StaffcreationOfficeDetails"),
     "staff-access-configuration": ("app", "StaffcreationOfficeDetails"),
+    "staff-access-dashboard": ("app", "StaffcreationOfficeDetails"),
     "customercreations": ("app", "CustomerCreation"),
     "feedbacks": ("app", "FeedBack"),
     "tickets": ("app", "ComplaintTicket"),
@@ -194,6 +196,16 @@ class PermissionSeeder(BaseSeeder):
             )
 
     def run(self):
+        for action_name in ("view", "export"):
+            UserScreenAction.objects.update_or_create(
+                action_name=action_name,
+                defaults={
+                    "variable_name": action_name,
+                    "is_active": True,
+                    "is_deleted": False,
+                },
+            )
+
         megamenu, _ = MainScreenType.objects.get_or_create(
             type_name="megamenu",
             defaults={
@@ -285,6 +297,13 @@ class PermissionSeeder(BaseSeeder):
                         "staff-access-configuration",
                         2,
                         "Staff access configuration",
+                    ),
+                    (
+                        "staff-access-dashboard",
+                        "staff-access-dashboard",
+                        "staff-access-dashboard",
+                        3,
+                        "Staff access dashboard",
                     ),
                 ],
             },

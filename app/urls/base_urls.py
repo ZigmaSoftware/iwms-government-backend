@@ -57,6 +57,7 @@ from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset impor
 from ..viewsets.superadmin.user_management.staff_viewset import StaffViewSet
 from ..viewsets.superadmin.user_management.staffcreation_viewset import StaffcreationViewset
 from ..viewsets.superadmin.user_management.staff_access_configuration_viewset import StaffAccessConfigurationViewSet
+from ..viewsets.superadmin.user_management.staff_access_dashboard_viewset import StaffAccessDashboardViewSet
 from ..viewsets.superadmin.user_management.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
@@ -230,6 +231,12 @@ router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUser
 router.register_group("user-creations", "users-creation",  StaffViewSet)
 router.register_group("user-creations", "staffcreation",   StaffcreationViewset)
 router.register_group("user-creations", "staff-access-configuration", StaffAccessConfigurationViewSet)
+router.register_group(
+    "user-creations",
+    "staff-access-dashboard",
+    StaffAccessDashboardViewSet,
+    basename="staff-access-dashboard",
+)
 router.register_group("user-creations", "unassigned-staff-pool", UnassignedStaffPoolViewSet)
 
 # ============================================================

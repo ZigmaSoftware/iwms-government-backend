@@ -5,7 +5,14 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
 from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
+from app.models.masters.areatype import AreaType
+from app.models.masters.district import District
+from app.models.masters.panchayat import Panchayat
+from app.models.superadmin.common_masters.continent import Continent
+from app.models.superadmin.common_masters.country import Country
+from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.mainscreentype import MainScreenType
@@ -14,11 +21,13 @@ from app.models.superadmin.screen_management.userscreenaction import UserScreenA
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
 from app.models.superadmin_masters.auth_user import User
 from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
 
 
 class StaffAccessConfigurationAPITest(APITestCase):
     url = "/api/v1/user-creations/staff-access-configuration/"
     preview_url = "/api/v1/user-creations/staff-access-configuration/preview/"
+    scope_admins_url = "/api/v1/user-creations/staff-access-configuration/scope-admins/"
 
     def setUp(self):
         self.superuser = User.objects.create_superuser(
@@ -160,3 +169,135 @@ class StaffAccessConfigurationAPITest(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("confirmPassword", response.data)
+
+    def _scope_admin_fixture(self):
+        continent = Continent.objects.create(name="Asia")
+        country = Country.objects.create(
+            continent_id=continent,
+            name="India",
+            currency="INR",
+            mob_code="+91",
+        )
+        state = State.objects.create(
+            continent_id=continent,
+            country_id=country,
+            name="Tamil Nadu",
+            label="TN",
+        )
+        district = District.objects.create(
+            continent_id=continent,
+            country_id=country,
+            state_id=state,
+            name="Scope District",
+        )
+        other_district = District.objects.create(
+            continent_id=continent,
+            country_id=country,
+            state_id=state,
+            name="Outside District",
+        )
+        area_type = AreaType.objects.create(
+            state_id=state,
+            district_id=district,
+            name="Rural Local Body",
+        )
+        admin_role = GovernmentStaffUserType.objects.create(
+            usertype_id=self.user_type,
+            name="govt_district_admin",
+            level="district",
+        )
+        operator_role = GovernmentStaffUserType.objects.create(
+            usertype_id=self.user_type,
+            name="govt_panchayat_operator",
+            level="panchayat",
+        )
+        scope_admin = Staffcreation.objects.create(
+            employee_name="District Admin",
+            username="district.scope.admin",
+            governmentusertype_id=admin_role,
+            state=state,
+            district=district,
+            active_status=True,
+            login_enabled=True,
+        )
+        StaffDataScope.objects.create(
+            staff=scope_admin,
+            state=state,
+            district=district,
+        )
+        return state, district, other_district, area_type, scope_admin, operator_role
+
+    def test_scope_admin_list_includes_name_and_hierarchy(self):
+        _, district, _, _, scope_admin, _ = self._scope_admin_fixture()
+
+        response = self.client.get(self.scope_admins_url)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data[0]["id"], scope_admin.staff_unique_id)
+        self.assertEqual(response.data[0]["name"], "District Admin")
+        self.assertEqual(response.data[0]["hierarchy"][-1]["id"], district.unique_id)
+
+    def test_child_scope_cannot_escape_selected_admin_district(self):
+        state, _, outside, _, scope_admin, operator_role = self._scope_admin_fixture()
+        payload = self.payload(username="outside.scope")
+        payload["basicInfo"]["staff_head_id"] = scope_admin.staff_unique_id
+        payload["loginConfig"]["governmentUserTypeId"] = operator_role.unique_id
+        payload["permissions"] = []
+        payload["dashboardPermissions"] = []
+        payload["dataScope"] = {
+            "locationNodes": [],
+            "stateId": state.unique_id,
+            "districtId": outside.unique_id,
+            "areaTypeId": None,
+            "corporationIds": [],
+            "municipalityIds": [],
+            "townPanchayatIds": [],
+            "panchayatUnionIds": [],
+            "panchayatIds": [],
+            "wardIds": [],
+        }
+
+        response = self.client.post(self.url, payload, format="json")
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("dataScope", response.data)
+        self.assertFalse(Staffcreation.objects.filter(username="outside.scope").exists())
+
+    def test_child_is_linked_to_admin_and_saved_inside_hierarchy(self):
+        state, district, _, area_type, scope_admin, operator_role = self._scope_admin_fixture()
+        panchayat = Panchayat.objects.create(
+            state_id=state,
+            district_id=district,
+            area_type_id=area_type,
+            panchayat_name="Scope Panchayat",
+        )
+        payload = self.payload(username="inside.scope")
+        payload["basicInfo"]["staff_head_id"] = scope_admin.staff_unique_id
+        payload["loginConfig"]["governmentUserTypeId"] = operator_role.unique_id
+        payload["permissions"] = []
+        payload["dashboardPermissions"] = []
+        payload["dataScope"] = {
+            "locationNodes": [],
+            "stateId": state.unique_id,
+            "districtId": district.unique_id,
+            "areaTypeId": area_type.unique_id,
+            "corporationIds": [],
+            "municipalityIds": [],
+            "townPanchayatIds": [],
+            "panchayatUnionIds": [],
+            "panchayatIds": [panchayat.unique_id],
+            "wardIds": [],
+        }
+
+        with patch(
+            "app.viewsets.superadmin.user_management."
+            "staff_access_configuration_viewset.StaffAccessConfigurationViewSet.log_audit"
+        ):
+            response = self.client.post(self.url, payload, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        child = Staffcreation.objects.get(username="inside.scope")
+        self.assertEqual(child.staff_head_id, scope_admin.staff_unique_id)
+        self.assertEqual(child.staff_head, scope_admin.employee_name)
+        self.assertEqual(child.district_id, district.unique_id)
+        self.assertEqual(child.panchayat_id, panchayat.unique_id)
