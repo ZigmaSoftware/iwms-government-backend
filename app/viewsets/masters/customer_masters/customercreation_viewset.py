@@ -2,7 +2,7 @@ import re
 import csv
 import io
 
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from django.db.models.functions import Upper
 from rest_framework import filters, status
 from rest_framework.decorators import action
@@ -101,6 +101,8 @@ def get_or_create_apartment_qr(apartment_name, request):
     if not obj:
         return None
 
+    if obj.apartment_qr:
+        return obj.apartment_qr.url
 
     # generate QR
     qr_data = generate_apartment_qr_data(obj.apartment_unique_id)
@@ -140,7 +142,12 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "panchayat_union", "panchayat", "ward",
             "property_ref", "sub_property",
         )
-        .prefetch_related("waste_types")
+        .prefetch_related(
+            Prefetch(
+                "waste_types",
+                queryset=WasteType.objects.filter(is_deleted=False).order_by("waste_type_name"),
+            )
+        )
         .order_by("customer_name")
     )
 

@@ -4,11 +4,15 @@ from app.serializers.masters.panchayat_serializer import PanchayatSerializer
 from rest_framework.response import Response
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 
 
-class PanhayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class PanhayatViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = PanchayatSerializer
+    lite_serializer_class = make_lite_serializer(
+        Panchayat, "panchayat_name", extra_fields=("state_id", "district_id", "area_type_id")
+    )
     lookup_field = "unique_id"
     permission_resource = "Panchayat"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
