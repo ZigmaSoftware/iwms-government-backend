@@ -3,6 +3,7 @@ from rest_framework import filters
 from app.models.masters.designation import Designation
 from app.serializers.masters.designation_serializer import DesignationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 
 
@@ -12,6 +13,7 @@ class DesignationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
     permission_resource = "Designation"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
     search_fields = ["designation_name", "designation_group", "description"]
     ordering_fields = ["designation_name", "designation_group", "created_at"]
     AUDIT_MODULE = "masters"

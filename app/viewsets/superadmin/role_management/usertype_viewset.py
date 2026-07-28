@@ -4,12 +4,16 @@ from rest_framework import viewsets
 from app.models.superadmin.role_management.userType import UserType
 from app.serializers.superadmin.role_management.usertype_serializer import UserTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class UserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = UserType.objects.filter(is_deleted=False)
     serializer_class = UserTypeSerializer
     lookup_field = "unique_id"
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["name"]
+    ordering_fields = ["name", "is_active"]
 
     AUDIT_MODULE = "role-assigns"
     AUDIT_ENDPOINT = "user-type"

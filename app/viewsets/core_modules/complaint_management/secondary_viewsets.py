@@ -1,7 +1,8 @@
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 from app.models.core_modules.complaint_management.routing_rule import ComplaintRoutingRule
 from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
@@ -36,6 +37,10 @@ class ComplaintRoutingRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
 class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ComplaintFeedbackSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["ticket__unique_id", "customer__customer_name"]
+    ordering_fields = ["submitted_at", "rating"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "feedback"
 

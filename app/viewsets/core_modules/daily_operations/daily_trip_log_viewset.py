@@ -64,6 +64,10 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DailyTripLogSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripLog"
+    # No SearchFilter here — get_queryset() already implements a broader manual
+    # ?search=/?q= OR-filter across 7 fields, and its own ?ordering= allowlist;
+    # adding DRF's SearchFilter on top would AND its own (narrower) search_fields
+    # condition against that, silently excluding legitimate matches.
     pagination_class = LimitOffsetWithPage
 
     AUDIT_MODULE = "trip-logs"

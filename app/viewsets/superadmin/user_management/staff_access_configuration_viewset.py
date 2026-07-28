@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -8,6 +8,7 @@ from app.serializers.superadmin.user_management.staff_access_configuration_seria
     StaffAccessConfigurationSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -22,6 +23,10 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = StaffAccessConfigurationSerializer
     lookup_field = "staff_unique_id"
     permission_resource = "StaffAccessConfiguration"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["employee_name", "staff_unique_id", "department", "designation"]
+    ordering_fields = ["employee_name", "staff_unique_id", "doj"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staff-access-configuration"

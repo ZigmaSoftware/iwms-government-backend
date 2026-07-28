@@ -1,7 +1,8 @@
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 from app.models.core_modules.complaint_management.source_master import ComplaintSource
 from app.models.core_modules.complaint_management.language_master import ComplaintLanguage
@@ -39,6 +40,10 @@ class ComplaintSourceViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
     queryset = ComplaintSource.objects.filter(is_deleted=False).order_by("source_code")
     serializer_class = ComplaintSourceSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["source_code", "source_name"]
+    ordering_fields = ["source_code", "source_name", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "sources"
 
@@ -47,6 +52,10 @@ class ComplaintLanguageViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     queryset = ComplaintLanguage.objects.filter(is_deleted=False).order_by("language_code")
     serializer_class = ComplaintLanguageSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["language_code", "language_name"]
+    ordering_fields = ["language_code", "language_name", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "languages"
 
@@ -55,6 +64,10 @@ class ComplaintPriorityViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     queryset = ComplaintPriority.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintPrioritySerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["priority_code", "priority_name"]
+    ordering_fields = ["sort_order", "priority_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "priorities"
 
@@ -63,6 +76,10 @@ class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
     queryset = ComplaintStatus.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintStatusSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["status_code", "status_name"]
+    ordering_fields = ["sort_order", "status_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "statuses"
 
@@ -71,6 +88,10 @@ class ComplaintTeamViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelVi
     queryset = ComplaintTeam.objects.filter(is_deleted=False).select_related("department").order_by("team_code")
     serializer_class = ComplaintTeamSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["team_code", "team_name", "department__department_name"]
+    ordering_fields = ["team_code", "team_name", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "teams"
 
@@ -79,6 +100,10 @@ class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
     queryset = ComplaintModule.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintModuleSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["module_code", "module_name"]
+    ordering_fields = ["sort_order", "module_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "modules"
 
@@ -89,6 +114,10 @@ class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     ).order_by("sort_order")
     serializer_class = ComplaintCategorySerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["category_code", "category_name", "module__module_name"]
+    ordering_fields = ["sort_order", "category_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "categories"
     permission_exempt_actions = {"list"}
@@ -97,6 +126,10 @@ class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
 class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ComplaintSubcategorySerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["subcategory_code", "subcategory_name", "category__category_name"]
+    ordering_fields = ["sort_order", "subcategory_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "subcategories"
 
@@ -114,5 +147,9 @@ class ComplaintSlaRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mode
     ).order_by("unique_id")
     serializer_class = ComplaintSlaRuleSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["category__category_name", "priority__priority_name"]
+    ordering_fields = ["unique_id", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "sla-rules"

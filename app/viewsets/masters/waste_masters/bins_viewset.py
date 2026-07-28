@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import filters, viewsets, status
 from rest_framework.response import Response
 from app.models.masters.waste_masters.bins import Bins
 from app.serializers.masters.waste_masters.bins_serializer import BinsSerializer
@@ -8,7 +8,7 @@ import datetime
 from django.conf import settings
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
-from rest_framework import viewsets
+from app.utils.pagination import LimitOffsetWithPage
 
 def save_uploaded_file(file, folder_name):
     """
@@ -48,6 +48,11 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
 
     permission_resource = "Bin"
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["bin_name", "ward__ward_name", "wastetype_id__waste_type_name"]
+    ordering_fields = ["bin_name", "bin_capacity", "is_active"]
 
     AUDIT_MODULE = "assets"
     AUDIT_ENDPOINT ="bins"

@@ -1,9 +1,9 @@
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 from app.serializers.core_modules.daily_operations.waste_collection_serializer import WasteCollectionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
-from rest_framework import viewsets
 
 class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = WasteCollection.objects.filter(is_deleted=False).select_related(
@@ -18,6 +18,10 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
     ).order_by("-collection_date","-collection_time")
     serializer_class = WasteCollectionSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["unique_id", "customer__customer_name"]
+    ordering_fields = ["collection_date", "collection_time", "status", "total_quantity"]
 
     AUDIT_MODULE = "schedule-masters"
     AUDIT_ENDPOINT = "wastecollections"

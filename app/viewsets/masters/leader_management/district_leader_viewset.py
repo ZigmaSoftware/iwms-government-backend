@@ -2,6 +2,7 @@ from rest_framework import filters, status
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.serializers.masters.leader_management.district_leader_serializer import DistrictLeaderLoginSerializer
@@ -20,6 +21,7 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "district-leaders"
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
     search_fields = ["username", "leader_name", "email", "district_id__name"]
     ordering_fields = ["username", "created_at"]
 
