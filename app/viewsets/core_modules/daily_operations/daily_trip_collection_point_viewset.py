@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.http import Http404
 from django.db.models import Q, Sum
-from rest_framework import status
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -27,6 +27,7 @@ from app.serializers.core_modules.daily_operations.daily_trip_collection_point_s
 )
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 
 
@@ -37,6 +38,14 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # Mobile trip-execution reads/actions used by the merged driver+operator app.
     # Authenticated but not module-gated (same treatment as operator-mobile).
     permission_exempt_actions = ["tracking", "tracking_overview", "optimize_route"]
+    # No SearchFilter — get_queryset() already implements its own broader
+    # ?search= OR-filter (cp_name/trip_assignment/bin_name); adding DRF's
+    # SearchFilter on top would AND a narrower condition against that and
+    # silently drop legitimate matches (same class of bug fixed elsewhere
+    # this session on VehicleBreakdownViewSet/DailyTripLogViewSet).
+    filter_backends = [filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    ordering_fields = ["sequence", "status", "collected_at"]
 
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "daily-trip-collection-point"

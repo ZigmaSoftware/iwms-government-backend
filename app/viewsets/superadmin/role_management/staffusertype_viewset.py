@@ -1,21 +1,26 @@
 from django.shortcuts import get_object_or_404
 
 from rest_framework.response import Response
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.serializers.superadmin.role_management.staffusertype_serializer import StaffUserTypeSerializer
 from rest_framework.decorators import action
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class StaffUserTypeViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
     queryset = StaffUserType.objects.filter(is_deleted=False)
     serializer_class = StaffUserTypeSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["name"]
+    ordering_fields = ["name", "is_active"]
 
-    AUDIT_MODULE = "role-assigns"   
+    AUDIT_MODULE = "role-assigns"
     AUDIT_ENDPOINT = "staff-user-type"
-    
+
     permission_resource = "StaffUserType"
 
     def perform_destroy(self, instance):

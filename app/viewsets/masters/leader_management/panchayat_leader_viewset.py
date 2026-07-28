@@ -2,6 +2,7 @@ from rest_framework import filters, status
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
 from app.serializers.masters.leader_management.panchayat_leader_serializer import PanchayatLeaderLoginSerializer
@@ -20,6 +21,7 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "panchayat-leaders"
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
     search_fields = ["username", "leader_name", "email", "panchayat_id__panchayat_name"]
     ordering_fields = ["username", "created_at"]
 

@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, serializers
+from rest_framework import filters, viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
@@ -15,6 +15,7 @@ from app.utils.hierarchy import (
 )
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
+from app.utils.pagination import LimitOffsetWithPage
 
 
 
@@ -40,6 +41,10 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     #  CRITICAL: single source of truth for middleware
     permission_resource = "AlternativeStaffTemplate"
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["unique_id", "driver_id__employee_name", "operator_id__employee_name"]
+    ordering_fields = ["from_date", "to_date", "approval_status"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "alternative-staff-templates"

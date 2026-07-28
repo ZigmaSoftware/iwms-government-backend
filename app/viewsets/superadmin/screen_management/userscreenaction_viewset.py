@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, status
+from rest_framework import filters, viewsets, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
@@ -7,12 +7,17 @@ from app.models.superadmin.screen_management.userscreenaction import UserScreenA
 from app.serializers.superadmin.screen_management.userscreenaction_serializer import (
     UserScreenActionSerializer
 )
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class UserScreenActionViewSet(viewsets.ModelViewSet):
     serializer_class = UserScreenActionSerializer
     queryset = UserScreenAction.objects.filter(is_deleted=False)
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["action_name", "variable_name"]
+    ordering_fields = ["action_name", "variable_name", "is_active"]
 
     def get_queryset(self):
         queryset = super().get_queryset()

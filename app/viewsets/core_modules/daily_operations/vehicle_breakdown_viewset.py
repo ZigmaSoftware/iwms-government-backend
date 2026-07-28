@@ -1,6 +1,6 @@
 from django.db.models import Q
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -26,6 +26,7 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_requester_scope,
     filter_staff_queryset_by_requester_scope,
 )
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -55,6 +56,13 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = "unique_id"
     permission_resource = "VehicleBreakdown"
+    # No SearchFilter here — get_queryset() already implements a broader manual
+    # ?search=/?q= OR-filter across 6 fields; adding DRF's SearchFilter on top
+    # would AND its own (narrower) search_fields condition against that, silently
+    # excluding legitimate matches that only hit the manually-searched fields.
+    filter_backends = [filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    ordering_fields = ["breakdown_time", "status", "approval_status"]
 
     AUDIT_MODULE = "schedule-masters"
     AUDIT_ENDPOINT = "vehicle-breakdowns"

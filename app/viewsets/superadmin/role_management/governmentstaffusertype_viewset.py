@@ -1,15 +1,20 @@
 from rest_framework.response import Response
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.serializers.superadmin.role_management.governmentstaffusertype_serializer import GovernmentStaffUserTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class GovernmentStaffUserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = GovernmentStaffUserType.objects.filter(is_deleted=False)
     serializer_class = GovernmentStaffUserTypeSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["name"]
+    ordering_fields = ["name", "level", "is_active"]
 
     AUDIT_MODULE = "role-assigns"
     AUDIT_ENDPOINT = "government-staff-user-type"

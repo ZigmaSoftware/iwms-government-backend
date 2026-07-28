@@ -11,6 +11,7 @@ from app.models.superadmin.role_management.governmentStaffUserType import Govern
 from app.serializers.superadmin.user_management.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 
 
@@ -31,6 +32,7 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "staffcreation"
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
     search_fields = [
         "employee_name",
         "staff_unique_id",
