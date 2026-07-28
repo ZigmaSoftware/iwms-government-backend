@@ -3,12 +3,16 @@ from app.models.superadmin.common_masters.state import State
 from app.serializers.superadmin.common_masters.state_serializer import StateSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 
 
-class StateViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
+class StateViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = State.objects.all()   # REQUIRED for DRF basename detection
     serializer_class = StateSerializer
+    # `name` included alongside the aliased `state_name` because
+    # useGeoHierarchy's resolveName() reads `.name` first (see useGeoHierarchy.ts).
+    lite_serializer_class = make_lite_serializer(State, "state_name", source="name", extra_fields=("name",))
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage

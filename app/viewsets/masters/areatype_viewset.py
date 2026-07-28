@@ -5,12 +5,19 @@ from app.models.masters.areatype import AreaType
 from app.serializers.masters.areatype_serializer import AreaTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 
 
-class AreaTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class AreaTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
 
     serializer_class = AreaTypeSerializer
+    # `name` included alongside the aliased `area_type_name` because
+    # useGeoHierarchy's edit-hydrate path reads `.name` directly off the
+    # cached area-type list (see hydrate() in useGeoHierarchy.ts).
+    lite_serializer_class = make_lite_serializer(
+        AreaType, "area_type_name", source="name", extra_fields=("name", "state_id", "district_id")
+    )
     lookup_field = "unique_id"
     permission_resource = "AreaType"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
