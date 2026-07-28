@@ -101,3 +101,30 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
+
+
+class LiteWardSerializer(serializers.ModelSerializer):
+    """Minimal ?lite=1 response: unique_id + ward_name + the district_id and
+    local_body_type/id fields the geo-cascade dropdowns (useGeoHierarchy
+    consumers) filter on, without the full nested name lookups."""
+
+    district_id = serializers.CharField(source="district.unique_id", read_only=True)
+    local_body_type = serializers.SerializerMethodField()
+    local_body_id = serializers.SerializerMethodField()
+
+    def get_local_body_type(self, obj):
+        for field, _ in WardSerializer.LOCAL_BODY_FIELDS:
+            if getattr(obj, field, None):
+                return field
+        return None
+
+    def get_local_body_id(self, obj):
+        for field, _ in WardSerializer.LOCAL_BODY_FIELDS:
+            value = getattr(obj, field, None)
+            if value:
+                return value.unique_id
+        return None
+
+    class Meta:
+        model = Ward
+        fields = ["unique_id", "ward_name", "district_id", "local_body_type", "local_body_id"]

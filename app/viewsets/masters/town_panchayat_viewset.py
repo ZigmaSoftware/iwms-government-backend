@@ -2,12 +2,16 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.serializers.masters.town_panchayat_serializer import TownPanchayatSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from rest_framework import filters, viewsets
 from app.utils.pagination import LimitOffsetWithPage
 
 
-class TownPanchayatViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class TownPanchayatViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = TownPanchayatSerializer
+    lite_serializer_class = make_lite_serializer(
+        TownPanchayat, "town_panchayat_name", extra_fields=("state_id", "district_id", "area_type_id")
+    )
     lookup_field = "unique_id"
     permission_resource = "TownPanchayat"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

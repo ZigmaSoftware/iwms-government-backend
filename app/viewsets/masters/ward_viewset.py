@@ -1,14 +1,16 @@
 from rest_framework import filters, viewsets
 
 from app.models.masters.ward import Ward
-from app.serializers.masters.ward_serializer import WardSerializer
+from app.serializers.masters.ward_serializer import LiteWardSerializer, WardSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.lite_serializer_mixin import LiteListMixin
 from app.utils.pagination import LimitOffsetWithPage
 
 
-class WardViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class WardViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = WardSerializer
+    lite_serializer_class = LiteWardSerializer
     lookup_field = "unique_id"
     permission_resource = "Ward"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
