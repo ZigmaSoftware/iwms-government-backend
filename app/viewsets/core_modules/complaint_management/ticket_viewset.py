@@ -146,7 +146,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_history", "status_history__to_status",
             "escalation_history", "escalation_history__escalated_to_team",
             "escalation_history__escalated_from_team",
-            "attachments",
+            "attachments", "extra_details",
         ).order_by("-created")
         params = self.request.query_params
 

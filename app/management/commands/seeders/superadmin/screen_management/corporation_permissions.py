@@ -16,6 +16,8 @@ so this seeder writes, for each Corporation's local body:
   2. Corporation Admin staff rows: full CRUD on every screen,
   3. Corporation Supervisor staff rows: full CRUD on the schedule / daily-trip
      screens, view-only everywhere else (the write ceiling from decision D4).
+  4. Other staff linked beneath the Corporation Admin: view access to every
+     seeded main screen/user screen, including Staff Access Dashboard.
 
 It also creates the ``view/add/edit/delete`` UserScreenAction rows (nothing
 else seeds them). Screen rows themselves are owned by ``PermissionSeeder`` and
@@ -67,7 +69,7 @@ class CorporationPermissionSeeder(BaseSeeder):
             .select_related("mainscreen_id")
         )
 
-        baseline_rows = admin_rows = supervisor_rows = 0
+        baseline_rows = admin_rows = supervisor_rows = managed_view_rows = 0
         for district_name, geo in DISTRICTS.items():
             corporation = Corporation.objects.filter(
                 corporation_name=geo["corporation_name"], is_deleted=False
@@ -86,6 +88,18 @@ class CorporationPermissionSeeder(BaseSeeder):
             if not admin or not supervisor:
                 self.log(f"Corporation staff for '{district_name}' not found — run CorporationAccessSeeder first. Skipping.")
                 continue
+            managed_staff = list(
+                StaffcreationOfficeDetails.objects.filter(
+                    staff_head_id=admin.staff_unique_id,
+                    is_deleted=False,
+                    is_active=True,
+                ).exclude(
+                    staff_unique_id__in=[
+                        admin.staff_unique_id,
+                        supervisor.staff_unique_id,
+                    ]
+                )
+            )
 
             scope = {
                 "state_id_id": corporation.state_id_id,
@@ -113,9 +127,23 @@ class CorporationPermissionSeeder(BaseSeeder):
                         self._upsert(scope, "staff", supervisor.staff_unique_id, screen, action)
                         supervisor_rows += 1
 
+                    # 4) Corporation-owned officers/inspectors — view-only.
+                    if action_name == "view":
+                        for staff in managed_staff:
+                            self._upsert(
+                                scope,
+                                "staff",
+                                staff.staff_unique_id,
+                                screen,
+                                action,
+                            )
+                            managed_view_rows += 1
+
         self.log(
             f"---Corporation permissions seeded (baseline={baseline_rows}, "
-            f"admin={admin_rows}, supervisor={supervisor_rows}) across {len(screens)} screens x {len(DISTRICTS)} districts---"
+            f"admin={admin_rows}, supervisor={supervisor_rows}, "
+            f"managed_view={managed_view_rows}) across {len(screens)} screens x "
+            f"{len(DISTRICTS)} districts---"
         )
 
     def _upsert(self, scope, owner_kind, staff_id, screen, action):

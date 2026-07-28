@@ -13,6 +13,15 @@ from app.models.core_modules.complaint_management.address_change_request import 
 
 
 class ComplaintTicketSerializer(serializers.ModelSerializer):
+    OPERATIONAL_CONTEXT_FIELDS = (
+        "incident_type",
+        "trip_reference",
+        "driver_reference",
+        "operator_reference",
+        "vehicle_reference",
+        "other_reference",
+    )
+
     module = serializers.CharField(source="category.module_id", read_only=True)
     module_code = serializers.CharField(source="category.module.module_code", read_only=True)
     module_name = serializers.CharField(source="category.module.module_name", read_only=True)
@@ -43,6 +52,13 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     public_timeline = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     close_image_url = serializers.SerializerMethodField()
+    operational_context = serializers.SerializerMethodField()
+    incident_type = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    trip_reference = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    driver_reference = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    operator_reference = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    vehicle_reference = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    other_reference = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = ComplaintTicket
@@ -54,6 +70,88 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
 
     def get_waste_type_names(self, obj):
         return [w.waste_type_name for w in obj.waste_types.all()]
+
+    def _pop_operational_context(self, validated_data):
+        return {
+            field: validated_data.pop(field, "")
+            for field in self.OPERATIONAL_CONTEXT_FIELDS
+            if field in validated_data
+        }
+
+    def _save_operational_context(self, ticket, values):
+        for field, value in values.items():
+            cleaned = str(value or "").strip()
+            row = ComplaintTicketExtraDetail.objects.filter(
+                ticket=ticket,
+                field_key=field,
+                is_deleted=False,
+            ).first()
+            if cleaned:
+                ComplaintTicketExtraDetail.objects.update_or_create(
+                    ticket=ticket,
+                    field_key=field,
+                    is_deleted=False,
+                    defaults={
+                        "field_value": cleaned,
+                        "field_type": "operational_context",
+                        "is_active": True,
+                    },
+                )
+            elif row:
+                row.is_deleted = True
+                row.is_active = False
+                row.save(update_fields=["is_deleted", "is_active"])
+
+    def create(self, validated_data):
+        context = self._pop_operational_context(validated_data)
+        ticket = super().create(validated_data)
+        self._save_operational_context(ticket, context)
+        return ticket
+
+    def update(self, instance, validated_data):
+        context = self._pop_operational_context(validated_data)
+        ticket = super().update(instance, validated_data)
+        self._save_operational_context(ticket, context)
+        return ticket
+
+    def get_operational_context(self, obj):
+        values = {
+            row.field_key: row.field_value
+            for row in obj.extra_details.all()
+            if not row.is_deleted and row.field_key in self.OPERATIONAL_CONTEXT_FIELDS
+        }
+        incident_type = (values.get("incident_type") or "").strip().lower()
+        if not incident_type:
+            source_code = (getattr(obj.source, "source_code", "") or "").lower()
+            searchable = " ".join(
+                str(value or "").lower()
+                for value in (
+                    obj.title,
+                    obj.description,
+                    getattr(obj.category, "category_name", ""),
+                    getattr(obj.subcategory, "subcategory_name", ""),
+                    getattr(getattr(obj.category, "module", None), "module_name", ""),
+                )
+            )
+            if source_code == "public_grievance":
+                incident_type = "public"
+            else:
+                incident_type = next(
+                    (
+                        kind
+                        for kind in ("driver", "operator", "vehicle", "trip")
+                        if kind in searchable
+                    ),
+                    "other",
+                )
+        return {
+            "incident_type": incident_type,
+            "trip_reference": values.get("trip_reference") or "",
+            "driver_reference": values.get("driver_reference") or "",
+            "operator_reference": values.get("operator_reference") or "",
+            "vehicle_reference": values.get("vehicle_reference") or "",
+            "other_reference": values.get("other_reference") or "",
+        }
 
     def get_waste_type_name(self, obj):
         """Comma-joined display string - kept for table/kanban columns that show one text value."""
