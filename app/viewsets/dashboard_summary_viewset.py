@@ -14,6 +14,7 @@ from app.models.core_modules.complaint_management.ticket import ComplaintTicket
 from app.models.core_modules.daily_operations.daily_trip_assignment import (
     DailyTripAssignment,
 )
+from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
@@ -151,6 +152,7 @@ class DashboardSummaryViewSet(ViewSet):
                     "masters": self._master_summary(params),
                 },
                 "recent_grievances": self._recent_grievances(params),
+                "critical_alerts": self._critical_alerts(params),
                 "vehicle_performance": self._vehicle_performance(params, target_date),
                 "trip_performance": self._trip_performance(params, target_date),
                 "team_performance": self._team_performance(params, target_date),
@@ -900,18 +902,194 @@ class DashboardSummaryViewSet(ViewSet):
             ).values_list("vehicle_id", flat=True)
         )
         idle_count = 0
-        breakdown_count = 0
         for v in vehicles.iterator():
             if not v.is_active:
                 continue
             if v.unique_id not in vehicles_with_trips_today:
                 idle_count += 1
-        breakdown_count = max(inactive, 0)
+        breakdowns = VehicleBreakdown.objects.filter(
+            is_deleted=False,
+            status=VehicleBreakdown.STATUS_REPORTED,
+        )
+        breakdowns = self._apply_breakdown_geo(breakdowns, params)
+        breakdown_count = breakdowns.count()
         return {
             "idle": idle_count,
             "breakdown": breakdown_count,
             "offline_gps": max(round(total * 0.06), 0),
         }
+
+    def _apply_breakdown_geo(self, qs, params):
+        prefix = "trip_assignment_id__"
+        for key, value in params.items():
+            if key == "local_body_type":
+                if value in LOCAL_BODY_MODELS:
+                    qs = qs.filter(**{f"{prefix}{value}__isnull": False})
+                continue
+            if key == "ward_id":
+                continue
+            if key in {
+                "state_id",
+                "district_id",
+                "area_type_id",
+                *LOCAL_BODY_MODELS.keys(),
+            }:
+                qs = qs.filter(**{f"{prefix}{key}": value})
+        return filter_flat_geo_queryset_by_requester_scope(
+            qs,
+            self.request.user,
+            field_map={
+                field: f"{prefix}{field}"
+                for field in (
+                    "state_id",
+                    "district_id",
+                    "area_type_id",
+                    "corporation_id",
+                    "municipality_id",
+                    "town_panchayat_id",
+                    "panchayat_union_id",
+                    "panchayat_id",
+                )
+            },
+        )
+
+    def _critical_alerts(self, params):
+        complaints = self._apply_dashboard_geo(
+            ComplaintTicket.objects.filter(is_deleted=False)
+            .exclude(status__is_final=True)
+            .select_related(
+                "status",
+                "priority",
+                "category",
+                "subcategory",
+                "source",
+                "assigned_team",
+                "assigned_staff",
+                "district",
+                "corporation",
+                "municipality",
+                "town_panchayat",
+                "panchayat_union",
+                "panchayat",
+            )
+            .prefetch_related("extra_details")
+            .order_by("-created"),
+            params,
+            include_ward=False,
+        )[:10]
+        breakdowns = self._apply_breakdown_geo(
+            VehicleBreakdown.objects.filter(
+                is_deleted=False,
+            )
+            .exclude(status=VehicleBreakdown.STATUS_REJECTED)
+            .select_related(
+                "trip_assignment_id",
+                "trip_assignment_id__trip_plan_id",
+                "breakdown_vehicle_id",
+                "replacement_driver_id",
+                "replacement_operator_id",
+                "replacement_vehicle_id",
+                "trip_assignment_id__staff_template_id",
+                "trip_assignment_id__staff_template_id__driver_id",
+                "trip_assignment_id__staff_template_id__operator_id",
+                "trip_assignment_id__alt_staff_template_id",
+                "trip_assignment_id__alt_staff_template_id__driver_id",
+                "trip_assignment_id__alt_staff_template_id__operator_id",
+            )
+            .order_by("-created_at"),
+            params,
+        )[:10]
+
+        alerts = []
+        for row in complaints:
+            context = {
+                detail.field_key: detail.field_value
+                for detail in row.extra_details.all()
+                if not detail.is_deleted
+            }
+            _, _, local_body_name = row.local_body
+            priority = getattr(row.priority, "priority_name", "") or ""
+            source_code = getattr(row.source, "source_code", "") or ""
+            alerts.append(
+                {
+                    "id": row.ticket_no or row.unique_id,
+                    "kind": "grievance",
+                    "title": row.title or getattr(row.category, "category_name", "") or "Complaint",
+                    "description": row.description or "",
+                    "status": getattr(row.status, "status_name", ""),
+                    "severity": (
+                        "critical"
+                        if "critical" in priority.lower() or "high" in priority.lower()
+                        else "warning"
+                    ),
+                    "created": row.created.isoformat() if row.created else None,
+                    "updated": row.updated.isoformat() if row.updated else None,
+                    "priority": priority,
+                    "category": getattr(row.category, "category_name", "") or "",
+                    "subcategory": getattr(row.subcategory, "subcategory_name", "") or "",
+                    "source": "Public Grievance" if source_code == "PUBLIC_GRIEVANCE" else source_code.replace("_", " ").title(),
+                    "incident_type": context.get("incident_type") or (
+                        "public" if source_code == "PUBLIC_GRIEVANCE" else "other"
+                    ),
+                    "assigned_to": (
+                        getattr(row.assigned_staff, "employee_name", "")
+                        or getattr(row.assigned_team, "team_name", "")
+                        or ""
+                    ),
+                    "location": " · ".join(
+                        value
+                        for value in (
+                            row.location_text or "",
+                            local_body_name or "",
+                            getattr(row.district, "name", "") or "",
+                        )
+                        if value
+                    ),
+                    "trip": context.get("trip_reference") or "",
+                    "vehicle": context.get("vehicle_reference") or "",
+                    "driver": context.get("driver_reference") or "",
+                    "operator": context.get("operator_reference") or "",
+                    "remarks": context.get("other_reference") or "",
+                }
+            )
+        for row in breakdowns:
+            assignment = row.trip_assignment_id
+            trip_plan = getattr(assignment, "trip_plan_id", None)
+            template = assignment.alt_staff_template_id or assignment.staff_template_id
+            alerts.append(
+                {
+                    "id": row.unique_id,
+                    "kind": "vehicle_breakdown",
+                    "title": f"{row.get_breakdown_reason_display()} · {row.breakdown_vehicle_id.vehicle_no}",
+                    "status": row.get_status_display(),
+                    "severity": "critical" if row.status == VehicleBreakdown.STATUS_REPORTED else "warning",
+                    "created": row.created_at.isoformat() if row.created_at else None,
+                    "updated": row.updated_at.isoformat() if row.updated_at else None,
+                    "priority": "Critical" if row.status == VehicleBreakdown.STATUS_REPORTED else "High",
+                    "category": "Vehicle Breakdown",
+                    "subcategory": row.get_breakdown_reason_display(),
+                    "source": "Operations",
+                    "incident_type": "vehicle",
+                    "assigned_to": "",
+                    "location": row.breakdown_location or "",
+                    "trip": getattr(trip_plan, "display_code", "") or assignment.unique_id,
+                    "vehicle": row.breakdown_vehicle_id.vehicle_no,
+                    "replacement_vehicle": getattr(row.replacement_vehicle_id, "vehicle_no", "") or "",
+                    "driver": getattr(getattr(template, "driver_id", None), "employee_name", "") or "",
+                    "operator": getattr(getattr(template, "operator_id", None), "employee_name", "") or "",
+                    "replacement_driver": getattr(row.replacement_driver_id, "employee_name", "") or "",
+                    "replacement_operator": getattr(row.replacement_operator_id, "employee_name", "") or "",
+                    "trip_date": assignment.trip_date.isoformat() if assignment.trip_date else "",
+                    "scheduled_time": str(assignment.scheduled_time) if assignment.scheduled_time else "",
+                    "breakdown_time": str(row.breakdown_time) if row.breakdown_time else "",
+                    "approval_status": row.get_approval_status_display(),
+                    "collected_weight_kg": str(row.collected_weight_before_breakdown_kg or ""),
+                    "description": row.breakdown_remarks or row.get_breakdown_reason_display(),
+                    "remarks": row.breakdown_remarks or "",
+                }
+            )
+        alerts.sort(key=lambda item: item.get("created") or "", reverse=True)
+        return alerts[:10]
 
     def _recent_grievances(self, params):
         qs = self._apply_dashboard_geo(

@@ -40,6 +40,27 @@ def resolve_operator_staff(user) -> Staffcreation:
     return user
 
 
+# Driver+operator app merge: the same mobile endpoints serve both roles, so
+# resolve today's assignment where the staff is either the effective template's
+# operator OR its driver. "Effective" means: when a substitution
+# (`alt_staff_template_id`) is active on the assignment, ONLY the alt
+# template's driver/operator/extras match — the original staff_template's crew
+# no longer sees the trip once they've been substituted out.
+def _effective_staff_q(staff: Staffcreation) -> Q:
+    return (
+        Q(alt_staff_template_id__isnull=False, alt_staff_template_id__operator_id=staff)
+        | Q(alt_staff_template_id__isnull=False, alt_staff_template_id__driver_id=staff)
+        | Q(alt_staff_template_id__isnull=True, staff_template_id__operator_id=staff)
+        | Q(alt_staff_template_id__isnull=True, staff_template_id__driver_id=staff)
+    )
+
+
+def _effective_extra_operator_ids(assignment: DailyTripAssignment):
+    alt = assignment.alt_staff_template_id
+    source = alt if alt is not None else assignment.staff_template_id
+    return getattr(source, "extra_operator_id", None) or []
+
+
 def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssignment:
     today = timezone.localdate()
 
@@ -53,24 +74,20 @@ def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssign
             "staff_template_id",
             "staff_template_id__driver_id",
             "staff_template_id__operator_id",
+            "alt_staff_template_id",
+            "alt_staff_template_id__driver_id",
+            "alt_staff_template_id__operator_id",
         )
         .prefetch_related("waste_types")
         .order_by("unique_id")
     )
 
-    # Driver+operator app merge: the same mobile endpoints serve both roles, so
-    # resolve today's assignment where the staff is either the template's operator
-    # OR its driver.
-    assignment = base.filter(
-        Q(staff_template_id__operator_id=staff)
-        | Q(staff_template_id__driver_id=staff)
-    ).first()
+    assignment = base.filter(_effective_staff_q(staff)).first()
     if assignment is None:
-        # Extra-operator fallback: walk staff_templates and check JSON membership in Python
-        # (avoids SQLite-incompatible JSON __contains lookups).
+        # Extra-operator fallback: walk assignments and check JSON membership in
+        # Python (avoids SQLite-incompatible JSON __contains lookups).
         for candidate in base:
-            extras = getattr(candidate.staff_template_id, "extra_operator_id", None) or []
-            if staff.staff_unique_id in extras:
+            if staff.staff_unique_id in _effective_extra_operator_ids(candidate):
                 assignment = candidate
                 break
 
@@ -100,21 +117,18 @@ def find_all_active_assignments_for_operator(staff: Staffcreation):
             "staff_template_id",
             "staff_template_id__driver_id",
             "staff_template_id__operator_id",
+            "alt_staff_template_id",
+            "alt_staff_template_id__driver_id",
+            "alt_staff_template_id__operator_id",
         )
         .prefetch_related("waste_types")
         .order_by("unique_id")
     )
 
-    assignments = list(
-        base.filter(
-            Q(staff_template_id__operator_id=staff)
-            | Q(staff_template_id__driver_id=staff)
-        )
-    )
+    assignments = list(base.filter(_effective_staff_q(staff)))
     if not assignments:
         for candidate in base:
-            extras = getattr(candidate.staff_template_id, "extra_operator_id", None) or []
-            if staff.staff_unique_id in extras:
+            if staff.staff_unique_id in _effective_extra_operator_ids(candidate):
                 assignments.append(candidate)
     return assignments
 

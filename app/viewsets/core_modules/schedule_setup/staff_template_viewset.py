@@ -1,5 +1,7 @@
 
+from django.db.models import Q
 from rest_framework import filters, viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
@@ -15,9 +17,12 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
+    filter_staff_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.roles import is_admin_role, is_super_admin
+from app.models.core_modules.notifications.staff_notification import StaffNotification
+from app.services.staff_notification_service import notify_staff
 
 
 class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -69,6 +74,53 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "panchayat_union",
             "panchayat",
         )
+
+    # ── available-staff action ────────────────────────────────────────
+    # Staff NOT already driver/operator on another ACTIVE team, so the "Add
+    # team" form can't double-book someone already on a team. `exclude_id`
+    # lets an edit keep showing the template's own current driver/operator.
+    # role param: "driver" or "operator".
+
+    @action(detail=False, methods=["get"], url_path="available-staff")
+    def available_staff(self, request):
+        role = request.query_params.get("role")
+        if role not in ("driver", "operator"):
+            return Response(
+                {"detail": "role query param is required ('driver' or 'operator')."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        exclude_id = request.query_params.get("exclude_id")
+
+        active_templates = StaffTemplate.objects.filter(
+            status=StaffTemplate.Status.ACTIVE, is_deleted=False
+        )
+        if exclude_id:
+            active_templates = active_templates.exclude(unique_id=exclude_id)
+
+        busy_ids = set(active_templates.values_list("driver_id", flat=True)) | set(
+            active_templates.values_list("operator_id", flat=True)
+        )
+
+        # Role names vary by scope (govt_panchayat_driver, govt_district_driver,
+        # ...) — match on "contains" rather than an exact/scoped name, same as
+        # the frontend's own driver/operator dropdown fetch.
+        qs = Staffcreation.objects.filter(
+            Q(governmentusertype_id__name__icontains=role)
+            | Q(staffusertype_id__name__icontains=role),
+            is_deleted=False,
+            active_status=True,
+        ).exclude(staff_unique_id__in=busy_ids)
+
+        qs = filter_staff_queryset_by_requester_scope(qs, request.user)
+
+        data = [
+            {
+                "staff_unique_id": s.staff_unique_id,
+                "employee_name": s.employee_name,
+            }
+            for s in qs.order_by("employee_name")
+        ]
+        return Response(data)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -213,6 +265,30 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 action=StaffTemplateAuditLog.Action.MODIFY,
                 entity_id=instance.unique_id,
                 remarks=None,
+            )
+
+        self._notify_team_change(previous_data, new_data, instance)
+
+    def _notify_team_change(self, previous_data, new_data, instance):
+        """Alert whichever driver/operator was swapped on or off this team —
+        both the one who lost the slot and the one who now holds it."""
+        changed_staff_ids = set()
+        for field in ("driver_id", "operator_id"):
+            old_value = previous_data.get(field)
+            new_value = new_data.get(field)
+            if old_value != new_value:
+                changed_staff_ids.update({old_value, new_value})
+        changed_staff_ids.discard(None)
+        if not changed_staff_ids:
+            return
+
+        for staff in Staffcreation.objects.filter(staff_unique_id__in=changed_staff_ids):
+            notify_staff(
+                staff,
+                StaffNotification.TYPE_TEAM_CHANGED,
+                title="Team assignment changed",
+                body=f"Your team assignment ({instance.display_code}) has been updated.",
+                data={"staff_template_id": instance.unique_id},
             )
 
     # ================= AUDIT =================

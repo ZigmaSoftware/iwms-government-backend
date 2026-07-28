@@ -111,3 +111,42 @@ def send_push_to_customer(customer, title, body, data=None):
             getattr(customer, "unique_id", customer),
         )
         return False
+
+
+def send_push_to_staff(staff, title, body, data=None):
+    """Send a push notification to a single staff member's registered device
+    (driver/operator/supervisor apps). Same contract as
+    `send_push_to_customer`: never raises, returns True only on an actual send.
+    """
+    if staff is None:
+        return False
+
+    token = getattr(staff, "fcm_token", None)
+    if not token:
+        return False
+
+    app = _get_firebase_app()
+    if app is None:
+        return False
+
+    try:
+        from firebase_admin import messaging
+
+        message = messaging.Message(
+            token=token,
+            notification=messaging.Notification(title=title, body=body),
+            data={str(k): str(v) for k, v in (data or {}).items()},
+            android=messaging.AndroidConfig(
+                notification=messaging.AndroidNotification(
+                    channel_id="iwms_default_channel",
+                ),
+            ),
+        )
+        messaging.send(message, app=app)
+        return True
+    except Exception:
+        logger.exception(
+            "[push] Failed to send push to staff %s",
+            getattr(staff, "staff_unique_id", staff),
+        )
+        return False

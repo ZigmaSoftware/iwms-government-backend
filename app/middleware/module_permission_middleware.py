@@ -48,6 +48,7 @@ AUTH_ONLY_SUFFIXES = (
     "recognize/",
     "employee/",
     "staff-profile/",
+    "schedule-operations/staff-notifications/",
     "waste/",
     "attendance-list/",
     "localbody/",        # panchayat leader portal — auth only, no module permission check
@@ -149,6 +150,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "UsersCreation",
         "StaffCreation",
         "StaffAccessConfiguration",
+        "StaffAccessDashboard",
         "StaffTemplateCreation",
         "AlternativeStaffTemplate",
         "UnassignedStaffPool",
@@ -249,6 +251,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "Designation": ("designations", "designation-masters"),
     "StaffCreation": ("staffcreation",),
     "StaffAccessConfiguration": ("staff-access-configuration",),
+    "StaffAccessDashboard": ("staff-access-dashboard",),
     "CustomerCreation": ("customercreations",),
     "FeedBack": ("feedbacks", "feedback"),
     "ComplaintTicket": ("tickets",),
@@ -434,6 +437,18 @@ def _permission_filters_for_user(user):
     }
 
 
+def _user_role_name(user):
+    for attr in ("governmentusertype_id", "staffusertype_id", "contractorusertype_id"):
+        name = getattr(getattr(user, attr, None), "name", None)
+        if name:
+            return name
+    return None
+
+
+def _user_type_name(user):
+    return getattr(getattr(user, "user_type_id", None), "name", None)
+
+
 def _resolve_permissions_for_request(request):
     payload_permissions = getattr(request, "jwt_payload", {}).get("permissions")
     if payload_permissions:
@@ -452,7 +467,10 @@ def _resolve_permissions_for_request(request):
             permissions = cache.get(cache_key)
             if permissions is None:
                 permissions = resolve_intersected_permission_payload(
-                    staff_id=staff_id, **local_body_scope
+                    staff_id=staff_id,
+                    role_name=_user_role_name(request.user),
+                    user_type=_user_type_name(request.user),
+                    **local_body_scope,
                 )["permissions"]
                 cache.set(cache_key, permissions, 60)
             return permissions
@@ -472,6 +490,8 @@ def _resolve_permissions_for_request(request):
                     state_unique_id=local_body_scope.get("state_unique_id"),
                     district_unique_id=local_body_scope.get("district_unique_id"),
                     area_type_unique_id=local_body_scope.get("area_type_unique_id"),
+                    role_name=_user_role_name(request.user),
+                    user_type=_user_type_name(request.user),
                 )["permissions"]
                 cache.set(cache_key, permissions, 60)
             return permissions
@@ -493,7 +513,11 @@ def _resolve_permissions_for_request(request):
 
     permissions = cache.get(cache_key)
     if permissions is None:
-        permissions = resolve_permission_payload(**filters)["permissions"]
+        permissions = resolve_permission_payload(
+            **filters,
+            role_name=_user_role_name(request.user),
+            user_type=_user_type_name(request.user),
+        )["permissions"]
         cache.set(cache_key, permissions, 60)
 
     return permissions

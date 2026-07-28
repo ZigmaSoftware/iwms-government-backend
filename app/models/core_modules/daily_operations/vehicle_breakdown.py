@@ -99,15 +99,19 @@ class VehicleBreakdown(BaseMaster):
         to_field="unique_id",
         db_column="replacement_vehicle_id",
         related_name="vehicle_breakdowns_as_replacement",
+        null=True,
+        blank=True,
     )
 
-    # ── Replacement Staff ─────────────────────────────────────────────
+    # ── Replacement Staff (assigned later by the supervisor) ──────────
     replacement_driver_id = models.ForeignKey(
         Staffcreation,
         on_delete=models.PROTECT,
         to_field="staff_unique_id",
         db_column="replacement_driver_id",
         related_name="vehicle_breakdowns_as_driver",
+        null=True,
+        blank=True,
     )
     replacement_operator_id = models.ForeignKey(
         Staffcreation,
@@ -115,6 +119,8 @@ class VehicleBreakdown(BaseMaster):
         to_field="staff_unique_id",
         db_column="replacement_operator_id",
         related_name="vehicle_breakdowns_as_operator",
+        null=True,
+        blank=True,
     )
 
     # ── Created AlternativeStaffTemplate (set during approval) ───────
@@ -265,3 +271,22 @@ class VehicleBreakdown(BaseMaster):
 
     def __str__(self):
         return self.unique_id
+
+
+def vehicle_breakdown_photo_upload_path(instance, filename):
+    return f"uploads/vehicle_breakdown/{instance.breakdown_id}/{filename}"
+
+
+class VehicleBreakdownPhoto(models.Model):
+    breakdown = models.ForeignKey(
+        VehicleBreakdown,
+        on_delete=models.CASCADE,
+        to_field="unique_id",
+        db_column="breakdown_id",
+        related_name="photos",
+    )
+    photo = models.ImageField(upload_to=vehicle_breakdown_photo_upload_path)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.breakdown_id} photo #{self.pk}"

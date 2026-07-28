@@ -35,6 +35,7 @@ from app.management.commands.seeders.superadmin.role_management import ROLE_ASSI
 from app.management.commands.seeders.superadmin.user_management.auth_user_seeder import AuthUserSeeder
 from app.management.commands.seeders.superadmin.user_management.driver_user import DriverUserSeeder
 from app.management.commands.seeders.superadmin.user_management.supervisor_user import SupervisorUserSeeder
+from app.management.commands.seeders.superadmin.user_management.supervisor_hierarchy_demo import SupervisorHierarchyDemoSeeder
 from app.management.commands.seeders.masters.customer_masters.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.superadmin.user_management.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.superadmin.user_management.staff_personal import StaffPersonalSeeder
@@ -203,9 +204,15 @@ REPORTS_SEEDERS = [
 ]
 
 # Mobile demo logins — must run last (need today's assignments + customers).
+# NOTE: SupervisorMonthDataSeeder (fabricated month of trips+logs purely to
+# populate the supervisor waste graph with demo data) is deliberately NOT in
+# this default list anymore — it was showing up as fake history in the graph.
+# Run it explicitly via `./manage.sh seed supervisor-graph` if demo data is
+# ever wanted again.
 DRIVER_DEMO_SEEDERS = [
     DriverUserSeeder,
     SupervisorUserSeeder,
+    SupervisorHierarchyDemoSeeder,  # extra staff/templates/alt-template under supervisor_user's own hierarchy
     CustomerUserSeeder,
 ]
 

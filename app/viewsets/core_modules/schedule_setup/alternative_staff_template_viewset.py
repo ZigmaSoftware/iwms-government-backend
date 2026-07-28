@@ -13,6 +13,8 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
+from app.models.core_modules.notifications.staff_notification import StaffNotification
+from app.services.staff_notification_service import notify_staff
 from app.utils.pagination import LimitOffsetWithPage
 
 
@@ -176,6 +178,30 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 entity_id=instance.unique_id,
                 remarks=instance.change_remarks,
             )
+
+        if (
+            previous_data.get("approval_status") != "APPROVED"
+            and new_data.get("approval_status") == "APPROVED"
+        ):
+            for staff in (instance.driver_id, instance.operator_id):
+                notify_staff(
+                    staff,
+                    StaffNotification.TYPE_TEAM_SUBSTITUTED,
+                    title="You've been added to a team",
+                    body=(
+                        f"You've been substituted onto team "
+                        f"{instance.staff_template.display_code}"
+                        + (
+                            f" from {instance.from_date} to {instance.to_date}."
+                            if instance.from_date and instance.to_date
+                            else "."
+                        )
+                    ),
+                    data={
+                        "staff_template_id": instance.staff_template_id,
+                        "alternative_staff_template_id": instance.unique_id,
+                    },
+                )
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()

@@ -172,8 +172,17 @@ class RecognizeViewSet(ViewSet):
             .first()
         )
         punch_type = "OUT" if last and last.punch_type == "IN" else "IN"
+        last_in = (
+            DailyAttendanceReg.objects
+            .filter(staff=staff, recognition_date=today, punch_type="IN")
+            .order_by("-records")
+            .first()
+        )
+        worked_seconds = 0
+        if punch_type == "OUT" and last_in and now >= last_in.records:
+            worked_seconds = max(int((now - last_in.records).total_seconds()), 0)
 
-        DailyAttendanceReg.objects.create(
+        created = DailyAttendanceReg.objects.create(
             staff=staff,
             emp_id=staff.emp_id,
             emp_id_raw=staff_unique_id,          # keep raw string too
@@ -186,7 +195,11 @@ class RecognizeViewSet(ViewSet):
             recognition_date=today,
             recognition_time=now.time(),
             punch_type=punch_type,
+            worked_seconds=worked_seconds,
         )
+        if worked_seconds and last_in and last_in.worked_seconds != worked_seconds:
+            last_in.worked_seconds = worked_seconds
+            last_in.save(update_fields=["worked_seconds"])
 
         return Response(
             {
@@ -196,6 +209,7 @@ class RecognizeViewSet(ViewSet):
                 "score": score,
                 "captured_image": f"{settings.MEDIA_URL}{captured_rel}",
                 "punch_type": punch_type,
+                "worked_seconds": created.worked_seconds,
             },
             status=200
         )

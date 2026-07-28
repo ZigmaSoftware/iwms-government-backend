@@ -57,6 +57,7 @@ from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset impor
 from ..viewsets.superadmin.user_management.staff_viewset import StaffViewSet
 from ..viewsets.superadmin.user_management.staffcreation_viewset import StaffcreationViewset
 from ..viewsets.superadmin.user_management.staff_access_configuration_viewset import StaffAccessConfigurationViewSet
+from ..viewsets.superadmin.user_management.staff_access_dashboard_viewset import StaffAccessDashboardViewSet
 from ..viewsets.superadmin.user_management.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
@@ -103,6 +104,7 @@ from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintReopenHistoryViewSet,
 )
 from ..viewsets.core_modules.complaint_management.notification_viewset import ComplaintNotificationViewSet
+from ..viewsets.core_modules.notifications.staff_notification_viewset import StaffNotificationViewSet
 
 # Transport masters
 from ..viewsets.masters.transport_masters.vehicletypecreation_viewset import VehicleTypeCreationViewSet
@@ -230,6 +232,12 @@ router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUser
 router.register_group("user-creations", "users-creation",  StaffViewSet)
 router.register_group("user-creations", "staffcreation",   StaffcreationViewset)
 router.register_group("user-creations", "staff-access-configuration", StaffAccessConfigurationViewSet)
+router.register_group(
+    "user-creations",
+    "staff-access-dashboard",
+    StaffAccessDashboardViewSet,
+    basename="staff-access-dashboard",
+)
 router.register_group("user-creations", "unassigned-staff-pool", UnassignedStaffPoolViewSet)
 
 # ============================================================
@@ -308,6 +316,7 @@ router.register_group("schedule-operations", "daily-trip-household-collections",
 router.register_group("schedule-operations", "bin-collection-events", BinCollectionEventViewSet)
 router.register_group("schedule-operations", "vehicle-breakdowns", VehicleBreakdownViewSet)
 router.register_group("schedule-operations", "daily-trip-logs", DailyTripLogViewSet)
+router.register_group("schedule-operations", "staff-notifications", StaffNotificationViewSet, basename="staff-notifications")
 
 # ============================================================
 # GROUP: SCHEDULE MASTERS (Waste Reports — intentionally reuses this
