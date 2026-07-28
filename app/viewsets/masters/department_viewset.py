@@ -3,6 +3,7 @@ from rest_framework import filters
 from app.models.masters.department import Department
 from app.serializers.masters.department_serializer import DepartmentSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 
 
@@ -12,6 +13,7 @@ class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
     permission_resource = "Department"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
     search_fields = ["department_name", "department_code", "description"]
     ordering_fields = ["department_name", "department_code", "created_at"]
     AUDIT_MODULE = "masters"

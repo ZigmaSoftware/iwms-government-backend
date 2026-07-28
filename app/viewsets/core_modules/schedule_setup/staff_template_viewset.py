@@ -1,12 +1,12 @@
 
-from rest_framework import viewsets, status
+from rest_framework import filters, viewsets, status
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
 from app.models.superadmin.user_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
-from app.utils.base_models import Account 
+from app.utils.base_models import Account
 
 from app.serializers.core_modules.schedule_setup.staff_template_serializer import (
     StaffTemplateSerializer
@@ -16,6 +16,7 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
+from app.utils.pagination import LimitOffsetWithPage
 from app.utils.roles import is_admin_role, is_super_admin
 
 
@@ -27,6 +28,10 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = StaffTemplateSerializer
     lookup_field = "unique_id"
     permission_resource = "StaffTemplateCreation"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["unique_id", "display_code", "driver_id__employee_name", "operator_id__employee_name"]
+    ordering_fields = ["display_code", "status", "approval_status"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staff-templates"

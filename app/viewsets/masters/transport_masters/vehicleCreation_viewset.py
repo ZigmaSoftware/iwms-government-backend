@@ -4,7 +4,7 @@ import io
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -24,11 +24,16 @@ from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.transport_masters.vehicleCreation_serializer import VehicleCreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params
+from app.utils.pagination import LimitOffsetWithPage
 
 class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = VehicleCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleCreationSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["vehicle_no"]
+    ordering_fields = ["vehicle_no", "is_active"]
 
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "vehicles"

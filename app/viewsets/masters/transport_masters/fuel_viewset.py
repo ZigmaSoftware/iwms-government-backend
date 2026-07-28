@@ -1,16 +1,21 @@
 from django.shortcuts import get_object_or_404
 
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 
 from app.models.masters.transport_masters.fuel import Fuel
 from app.serializers.masters.transport_masters.fuel_serializer import FuelSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class FuelViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Fuel.objects.filter(is_deleted=False)
     serializer_class = FuelSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["fuel_type", "description"]
+    ordering_fields = ["fuel_type", "is_active"]
 
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "fuels"

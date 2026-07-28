@@ -4,7 +4,7 @@ import io
 
 from django.db.models import Q, Count
 from django.db.models.functions import Upper
-from rest_framework import status
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -19,6 +19,7 @@ from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.masters.customer_masters.customercreation_serializer import CustomerCreationSerializer
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 from app.utils.customer_qr import generate_customer_qr_content, generate_apartment_qr_data
 
@@ -121,6 +122,11 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # calls for their OWN account (it never touches another customer's row),
     # so it's exempt from the admin module-permission check.
     permission_exempt_actions = ["register_fcm_token"]
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["customer_name", "contact_no", "apartment_name", "flat_no"]
+    ordering_fields = ["customer_name", "is_active"]
 
     AUDIT_MODULE = "customer-masters"
     AUDIT_ENDPOINT = "customercreations"

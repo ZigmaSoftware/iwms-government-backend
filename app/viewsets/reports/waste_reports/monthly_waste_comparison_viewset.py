@@ -294,14 +294,45 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
 
         location_rows = self._build_location_rows(location_qs)
 
+        # Aggregates (trends/comparison/breakdown/kpis) are always computed
+        # over the FULL filtered result set, never the paginated page — only
+        # the "results" detail table itself is sliced for pagination.
+        monthly_trends = self._build_monthly_trends(location_rows)
+        location_comparison = self._build_location_comparison(location_rows)
+        waste_type_breakdown = self._build_waste_type_breakdown(rows)
+        kpis = self._build_totals(location_rows, rows)
+
+        offset, limit = self._pagination_params(request)
+        page_rows = rows[offset:offset + limit] if limit is not None else rows
+
         return Response({
             "source": source,
-            "results": rows,
-            "monthly_trends": self._build_monthly_trends(location_rows),
-            "location_comparison": self._build_location_comparison(location_rows),
-            "waste_type_breakdown": self._build_waste_type_breakdown(rows),
-            "kpis": self._build_totals(location_rows, rows),
+            "count": len(rows),
+            "results": page_rows,
+            "monthly_trends": monthly_trends,
+            "location_comparison": location_comparison,
+            "waste_type_breakdown": waste_type_breakdown,
+            "kpis": kpis,
         })
+
+    @staticmethod
+    def _pagination_params(request):
+        """Optional page/limit for the "results" table. Omit both query params
+        to get every row (back-compat for callers that want the full detail
+        list, e.g. the Excel/PDF export)."""
+        page_param = request.query_params.get("page")
+        limit_param = request.query_params.get("limit")
+        if page_param is None and limit_param is None:
+            return 0, None
+        try:
+            page = max(int(page_param or 1), 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            limit = max(1, min(int(limit_param or 20), 500))
+        except (TypeError, ValueError):
+            limit = 20
+        return (page - 1) * limit, limit
 
     def _build_location_rows(self, location_qs):
         """Trip-log-level rows (month, local body) — one row per group,

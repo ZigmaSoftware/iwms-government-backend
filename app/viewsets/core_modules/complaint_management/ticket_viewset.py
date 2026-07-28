@@ -15,13 +15,14 @@ def _actor_user(request):
     user = getattr(request, "user", None)
     return user if isinstance(user, User) else None
 
-from rest_framework import status as http_status, viewsets
+from rest_framework import filters, status as http_status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_escalation
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.pagination import LimitOffsetWithPage
 from app.utils.roles import is_admin_role, is_supervisor_role
 from app.services import notification_service
 from app.services.push_notification_service import send_push_to_customer
@@ -123,6 +124,10 @@ def _staff_ticket_scope(user):
 class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ComplaintTicketSerializer
     lookup_field = "unique_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["ticket_no", "wa_phone", "profile_name", "title", "description", "customer__customer_name"]
+    ordering_fields = ["created", "updated", "sla_due_at", "ticket_no"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "tickets"
 
@@ -152,9 +157,11 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # ?district=/?city= to scope the STAFF list, not the ticket being
         # fetched. Applying these here unconditionally would filter the
         # very ticket a detail action is trying to load right out of the
-        # queryset, so they only run for the list action.
+        # queryset, so they only run for the list action (and the "counts"
+        # aggregate action below, which needs the exact same scoping so its
+        # tab counts match what the list itself would show).
         # ----------------------------------------------------------
-        if self.action == "list":
+        if self.action in ("list", "counts"):
             customer = params.get("customer") or params.get("customer_id")
             if customer:
                 qs = qs.filter(customer_id=customer)
@@ -187,6 +194,15 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     qs = qs.filter(q)
                 else:
                     qs = qs.filter(status__status_code=status_code)
+            # Source tab filter (All / Public Grievance / Internal) — only
+            # applied for "list" itself; "counts" always computes all three
+            # tab totals in one pass regardless of which tab is selected.
+            if self.action == "list":
+                source_filter = (params.get("source") or "").strip().lower()
+                if source_filter == "public":
+                    qs = qs.filter(source__source_code="PUBLIC_GRIEVANCE")
+                elif source_filter == "internal":
+                    qs = qs.exclude(source__source_code="PUBLIC_GRIEVANCE")
 
         # ----------------------------------------------------------
         # Per-staff scoping: a staff member only sees the tickets that
@@ -213,6 +229,23 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 # Regular staff still see only tickets that belong to them.
                 qs = qs.filter(_staff_ticket_scope(user))
         return qs
+
+    # ----------------------------------------------------------
+    # GET /tickets/counts/ — All / Public Grievance / Internal tab totals,
+    # scoped by the same hierarchy/status filters as the list (but NOT by
+    # source itself), so the UI can show all three tab counts at once
+    # without fetching every ticket to count them client-side.
+    # ----------------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="counts")
+    def counts(self, request):
+        qs = self.get_queryset()
+        total = qs.count()
+        public = qs.filter(source__source_code="PUBLIC_GRIEVANCE").count()
+        return Response({
+            "all": total,
+            "public": public,
+            "internal": total - public,
+        })
 
     # ----------------------------------------------------------
     # CREATE - derive routing + SLA after the base create

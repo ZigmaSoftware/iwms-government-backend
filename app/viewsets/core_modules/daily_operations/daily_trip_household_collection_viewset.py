@@ -1,5 +1,5 @@
 from django.db.models import Q
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 
 from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
@@ -10,12 +10,20 @@ from app.serializers.core_modules.daily_operations.daily_trip_household_collecti
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DailyTripHouseholdCollectionSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripHouseholdCollection"
+    # No SearchFilter — get_queryset() already implements its own broader
+    # ?search= OR-filter (customer_name/trip_assignment); adding DRF's
+    # SearchFilter on top would AND a narrower condition against that and
+    # silently drop legitimate matches.
+    filter_backends = [filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    ordering_fields = ["sequence", "status", "collected_at"]
 
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "daily-trip-household-collection"

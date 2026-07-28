@@ -15,13 +15,20 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_queryset_by_requester_scope,
 )
-from rest_framework import viewsets
+from app.utils.pagination import LimitOffsetWithPage
+from rest_framework import filters, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 
 class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
     permission_resource = "BinCollectionEvent"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["unique_id", "bin_id__bin_name"]
+    ordering_fields = ["collection_date", "status"]
 
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "bin-collection-event"
@@ -92,6 +99,28 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
+
+    # -------------------------------------------------
+    # SUMMARY TOTALS — daily/overall collected weight + record count,
+    # scoped by the same filters (hierarchy/date/search) as the paginated
+    # list, so KPI pills stay correct once the list itself is paginated.
+    # -------------------------------------------------
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        today = timezone.localdate()
+
+        overall_weight = queryset.aggregate(total=Sum("collected_weight_kg"))["total"] or 0
+        daily_weight = queryset.filter(collection_date=today).aggregate(
+            total=Sum("collected_weight_kg")
+        )["total"] or 0
+
+        return Response({
+            "overall_weight": str(overall_weight),
+            "daily_weight": str(daily_weight),
+            "count": queryset.count(),
+        })
 
     # -------------------------------------------------
     # DAILY TRIP COLLECTION POINT SYNC

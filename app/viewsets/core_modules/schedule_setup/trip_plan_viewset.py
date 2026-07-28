@@ -1,5 +1,5 @@
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.response import Response
 
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
@@ -11,6 +11,7 @@ from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
+from app.utils.pagination import LimitOffsetWithPage
 
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -34,6 +35,10 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
     swagger_tags = ["Desktop / Operations / Trip Plan"]
     permission_resource = "TripPlan"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = LimitOffsetWithPage
+    search_fields = ["display_code"]
+    ordering_fields = ["display_code", "status", "approval_status"]
     AUDIT_MODULE = "transport-masters"
     AUDIT_ENDPOINT = "trip-plans"
 
