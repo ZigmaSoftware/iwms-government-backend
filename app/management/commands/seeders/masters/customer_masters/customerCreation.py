@@ -3,6 +3,7 @@ from django.contrib.auth.hashers import make_password
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.masters.waste_masters.property import Property
 from app.models.masters.waste_masters.subproperty import SubProperty
 
@@ -63,6 +64,14 @@ class CustomerCreationSeeder(BaseSeeder):
                 self.log(f"No panchayat '{panchayat_name}' for {cust_name} — run geo seeders first. Skipping.")
                 continue
 
+            # Same ward every customer in this panchayat resolves to (Ward 1,
+            # ordered by name) — mirrors DriverUserSeeder._pick_ward so its
+            # ward-scoped trip plan/collection points fan out to these
+            # customers instead of filtering them all out.
+            ward = Ward.objects.filter(
+                panchayat=panchayat, is_deleted=False, is_active=True
+            ).order_by("ward_name").first()
+
             _, created = CustomerCreation.objects.update_or_create(
                 id_no=id_no,
                 defaults={
@@ -77,6 +86,7 @@ class CustomerCreationSeeder(BaseSeeder):
                     "district": panchayat.district_id,
                     "area_type": panchayat.area_type_id,
                     "panchayat": panchayat,
+                    "ward": ward,
                     "pincode": pincode,
                     "latitude": lat,
                     "longitude": lon,

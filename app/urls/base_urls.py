@@ -103,6 +103,7 @@ from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintReopenHistoryViewSet,
 )
 from ..viewsets.core_modules.complaint_management.notification_viewset import ComplaintNotificationViewSet
+from ..viewsets.core_modules.notifications.staff_notification_viewset import StaffNotificationViewSet
 
 # Transport masters
 from ..viewsets.masters.transport_masters.vehicletypecreation_viewset import VehicleTypeCreationViewSet
@@ -307,6 +308,7 @@ router.register_group("schedule-operations", "daily-trip-household-collections",
 router.register_group("schedule-operations", "bin-collection-events", BinCollectionEventViewSet)
 router.register_group("schedule-operations", "vehicle-breakdowns", VehicleBreakdownViewSet)
 router.register_group("schedule-operations", "daily-trip-logs", DailyTripLogViewSet)
+router.register_group("schedule-operations", "staff-notifications", StaffNotificationViewSet, basename="staff-notifications")
 
 # ============================================================
 # GROUP: SCHEDULE MASTERS (Waste Reports — intentionally reuses this

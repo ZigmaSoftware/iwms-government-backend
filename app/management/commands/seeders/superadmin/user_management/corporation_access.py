@@ -112,6 +112,7 @@ class CorporationAccessSeeder(BaseSeeder):
             scope.town_panchayats.clear()
             scope.panchayat_unions.clear()
             scope.panchayats.clear()
+            scope.wards.clear()
 
         self.log(
             f"---Corporation access seeded ({created} created, {updated} updated); "

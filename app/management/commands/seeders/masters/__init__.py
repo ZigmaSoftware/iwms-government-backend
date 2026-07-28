@@ -6,6 +6,7 @@ from .hierarchy import AdministrativeHierarchySeeder
 from .panchayat import PanchayatSeeder
 from .panchayat_union import PanchayatUnionSeeder
 from .town_panchayat import TownPanchayatSeeder
+from .ward import WardSeeder
 
 MASTER_SEEDERS = [
     DistrictSeeder,
@@ -16,4 +17,5 @@ MASTER_SEEDERS = [
     PanchayatUnionSeeder,
     AdministrativeHierarchySeeder,
     PanchayatSeeder,
+    WardSeeder,
 ]

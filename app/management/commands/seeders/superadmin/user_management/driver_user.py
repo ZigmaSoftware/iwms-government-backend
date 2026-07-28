@@ -15,6 +15,7 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
@@ -117,6 +118,7 @@ class DriverUserSeeder(BaseSeeder):
         if not panchayat:
             self.log("No panchayat available — skipping.")
             return
+        ward = self._pick_ward(panchayat)
 
         # 1. Logins ----------------------------------------------------
         driver = self._upsert_staff(
@@ -167,16 +169,16 @@ class DriverUserSeeder(BaseSeeder):
         self._detach_from_foreign_templates(driver, operator, keep=template)
 
         # 3. Organic bins + collection points inside the demo panchayat -
-        bins = self._ensure_bins(panchayat, wet_waste)
+        bins = self._ensure_bins(panchayat, wet_waste, ward)
 
         # 4. Trip plans (bin + household) sharing the template ----------
         bin_plan = self._get_or_create_plan(
-            TripPlan.COLLECTION_TYPE_BIN, template, vehicle, panchayat, wet_waste
+            TripPlan.COLLECTION_TYPE_BIN, template, vehicle, panchayat, wet_waste, ward
         )
         self._sync_bin_stops(bin_plan, bins)
 
         household_plan = self._get_or_create_plan(
-            TripPlan.COLLECTION_TYPE_HOUSEHOLD, template, vehicle, panchayat, wet_waste
+            TripPlan.COLLECTION_TYPE_HOUSEHOLD, template, vehicle, panchayat, wet_waste, ward
         )
         self._sync_household_stop(household_plan)
 
@@ -320,6 +322,14 @@ class DriverUserSeeder(BaseSeeder):
         return Panchayat.objects.filter(
             is_deleted=False, is_active=True
         ).order_by("unique_id").first()
+
+    def _pick_ward(self, panchayat):
+        """Best-effort ward under the demo panchayat — wards are optional on
+        every model that references them, so a missing WardSeeder run should
+        never block the rest of this seeder."""
+        return Ward.objects.filter(
+            panchayat=panchayat, is_deleted=False, is_active=True
+        ).order_by("ward_name").first()
 
     def _get_or_create_template(self, driver, operator, panchayat):
         template = StaffTemplate.objects.filter(
@@ -474,7 +484,7 @@ class DriverUserSeeder(BaseSeeder):
             assignment.status = DailyTripAssignment.STATUS_CANCELLED
             assignment.save(update_fields=["status", "updated_at"])
 
-    def _ensure_bins(self, panchayat, wet_waste):
+    def _ensure_bins(self, panchayat, wet_waste, ward):
         """Create/refresh NUM_COLLECTION_POINTS Organic bins in the panchayat.
         Idempotent: reuses collection points/bins by name across re-runs (they
         are PROTECT-referenced by trip stops, so never deleted)."""
@@ -514,6 +524,8 @@ class DriverUserSeeder(BaseSeeder):
                 cp.save(update_fields=[
                     "latitude", "longitude", "is_active", "is_deleted", "updated_at"
                 ])
+            if ward:
+                cp.wards.set([ward])
 
             bin_obj = Bins.objects.filter(
                 collection_point_id=cp, wastetype_id=wet_waste
@@ -522,6 +534,7 @@ class DriverUserSeeder(BaseSeeder):
                 bin_obj = Bins.objects.create(
                     collection_point_id=cp,
                     wastetype_id=wet_waste,
+                    ward=ward,
                     bin_name=f"Wet Waste Bin {seq} (driver_user)",
                     bin_capacity=120,
                     bin_type="large",
@@ -530,13 +543,14 @@ class DriverUserSeeder(BaseSeeder):
                     is_deleted=False,
                 )
             else:
+                bin_obj.ward = ward
                 bin_obj.is_active = True
                 bin_obj.is_deleted = False
-                bin_obj.save(update_fields=["is_active", "is_deleted", "updated_at"])
+                bin_obj.save(update_fields=["ward", "is_active", "is_deleted", "updated_at"])
             bins.append((cp, bin_obj))
         return bins
 
-    def _get_or_create_plan(self, collection_type, template, vehicle, panchayat, wet_waste):
+    def _get_or_create_plan(self, collection_type, template, vehicle, panchayat, wet_waste, ward):
         plan, _ = TripPlan.objects.update_or_create(
             staff_template_id=template,
             collection_type=collection_type,
@@ -559,6 +573,8 @@ class DriverUserSeeder(BaseSeeder):
             },
         )
         plan.waste_types.set([wet_waste])
+        if ward:
+            plan.wards.set([ward])
         return plan
 
     def _retire_stale_plans(self, template, keep):

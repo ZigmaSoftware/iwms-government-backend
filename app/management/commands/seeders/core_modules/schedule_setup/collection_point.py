@@ -10,6 +10,7 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.ward import Ward
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 
 
@@ -77,7 +78,7 @@ class CollectionPointSeeder(BaseSeeder):
                 self.log(f"Area type for '{local_body_name}' not found — run AreaTypeSeeder first. Skipping.")
                 continue
 
-            _, created = Collection_point.objects.update_or_create(
+            cp, created = Collection_point.objects.update_or_create(
                 cp_name=cp_name,
                 defaults={
                     "state": tamil_nadu,
@@ -98,5 +99,11 @@ class CollectionPointSeeder(BaseSeeder):
             )
             if created:
                 count += 1
+
+            ward = Ward.objects.filter(
+                **{local_body_field: local_body}, is_deleted=False, is_active=True
+            ).order_by("ward_name").first()
+            if ward:
+                cp.wards.set([ward])
 
         self.log(f"---Collection points seeded ({count} created)---")

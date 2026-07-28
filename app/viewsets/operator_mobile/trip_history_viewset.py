@@ -34,6 +34,7 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
         (c.collected_weight_kg or Decimal("0")) for c in children
     )
     panchayat = assignment.panchayat
+    ward = assignment.wards.first()
     return {
         "assignment_unique_id": assignment.unique_id,
         "trip_date": assignment.trip_date.isoformat(),
@@ -44,6 +45,11 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
             "unique_id": panchayat.unique_id,
             "name": panchayat.panchayat_name,
         } if panchayat else None,
+        # ward narrows the panchayat/local-body scope for this trip, when set.
+        "ward": {
+            "unique_id": ward.unique_id,
+            "name": ward.ward_name,
+        } if ward else None,
         "waste_types": [
             {"unique_id": wt.unique_id, "name": wt.waste_type_name}
             for wt in assignment.waste_types.all()
@@ -129,7 +135,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
                 "vehicle_id",
                 "alt_staff_template_id",
             )
-            .prefetch_related("trip_collection_points", "waste_types")
+            .prefetch_related("trip_collection_points", "waste_types", "wards")
             .order_by("-trip_date", "-scheduled_time")
         )
 

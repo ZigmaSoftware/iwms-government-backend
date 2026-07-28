@@ -27,6 +27,11 @@ class _PanchayatBriefSerializer(serializers.Serializer):
         return None
 
 
+class _WardBriefSerializer(serializers.Serializer):
+    unique_id = serializers.CharField()
+    name = serializers.CharField(source="ward_name")
+
+
 class _WasteTypeBriefSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
     name = serializers.CharField(source="waste_type_name")
@@ -92,6 +97,9 @@ class MyTripTodaySerializer(serializers.Serializer):
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
     panchayat = _PanchayatBriefSerializer()
+    # Narrows the panchayat/local-body scope for this trip, when the trip
+    # plan (or its per-trip override) has one assigned.
+    ward = serializers.SerializerMethodField()
     waste_types = _WasteTypeBriefSerializer(many=True)
     vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
     progress = serializers.SerializerMethodField()
@@ -112,6 +120,12 @@ class MyTripTodaySerializer(serializers.Serializer):
     def get_collection_type(self, obj):
         plan = getattr(obj, "trip_plan_id", None)
         return getattr(plan, "collection_type", None)
+
+    def get_ward(self, obj):
+        ward = obj.wards.first()
+        if not ward:
+            return None
+        return _WardBriefSerializer(ward, context=self.context).data
 
     def get_crew(self, obj):
         presence_cache = getattr(self, "_presence_cache", None)

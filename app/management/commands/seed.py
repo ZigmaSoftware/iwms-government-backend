@@ -210,11 +210,15 @@ REPORTS_SEEDERS = [
 ]
 
 # Mobile demo logins — must run last (need today's assignments + customers).
+# NOTE: SupervisorMonthDataSeeder (fabricated month of trips+logs purely to
+# populate the supervisor waste graph with demo data) is deliberately NOT in
+# this default list anymore — it was showing up as fake history in the graph.
+# Run it explicitly via `./manage.sh seed supervisor-graph` if demo data is
+# ever wanted again.
 DRIVER_DEMO_SEEDERS = [
     DriverUserSeeder,
     SupervisorUserSeeder,
     SupervisorHierarchyDemoSeeder,  # extra staff/templates/alt-template under supervisor_user's own hierarchy
-    SupervisorMonthDataSeeder,  # a month of trips + logs for the supervisor graph
     CustomerUserSeeder,
 ]
 

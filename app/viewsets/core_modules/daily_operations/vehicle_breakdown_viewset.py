@@ -16,7 +16,8 @@ from app.serializers.core_modules.daily_operations.vehicle_breakdown_serializer 
     VehicleBreakdownVerifySerializer,
     VehicleBreakdownRejectSerializer,
 )
-from app.services.push_notification_service import send_push_to_staff
+from app.models.core_modules.notifications.staff_notification import StaffNotification
+from app.services.staff_notification_service import notify_staff
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.base_models import Account
 from app.utils.hierarchy import (
@@ -182,15 +183,15 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         driver = instance.replacement_driver_id
         if driver is not None:
-            send_push_to_staff(
+            notify_staff(
                 driver,
+                StaffNotification.TYPE_VEHICLE_REPLACEMENT_APPROVED,
                 title="Vehicle replaced",
                 body=(
                     f"Your vehicle on trip {instance.trip_assignment_id.unique_id} "
                     f"has been replaced with {getattr(instance.replacement_vehicle_id, 'vehicle_no', 'a new vehicle')}."
                 ),
                 data={
-                    "type": "vehicle_breakdown_approved",
                     "vehicle_breakdown_id": instance.unique_id,
                     "trip_assignment_id": instance.trip_assignment_id.unique_id,
                 },
@@ -224,6 +225,28 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=previous_data,
             new_data=self._serialize_instance(instance),
         )
+
+        # Notify the assignment's current driver — the replacement request
+        # never went through, so the original vehicle/crew stands.
+        template = instance.trip_assignment_id.alt_staff_template_id or (
+            instance.trip_assignment_id.staff_template_id
+        )
+        driver = getattr(template, "driver_id", None)
+        if driver is not None:
+            notify_staff(
+                driver,
+                StaffNotification.TYPE_VEHICLE_REPLACEMENT_REJECTED,
+                title="Vehicle replacement rejected",
+                body=(
+                    f"Your vehicle replacement request on trip "
+                    f"{instance.trip_assignment_id.unique_id} was rejected"
+                    f"{': ' + instance.rejection_remarks if instance.rejection_remarks else '.'}"
+                ),
+                data={
+                    "vehicle_breakdown_id": instance.unique_id,
+                    "trip_assignment_id": instance.trip_assignment_id.unique_id,
+                },
+            )
 
         return Response(
             VehicleBreakdownSerializer(instance, context={"request": request}).data,
@@ -371,12 +394,12 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         supervisor = getattr(trip_plan, "supervisor_id", None)
         if supervisor is not None:
             vehicle_no = getattr(instance.breakdown_vehicle_id, "vehicle_no", "A vehicle")
-            send_push_to_staff(
+            notify_staff(
                 supervisor,
+                StaffNotification.TYPE_VEHICLE_BREAKDOWN_REPORTED,
                 title="Vehicle breakdown reported",
                 body=f"{vehicle_no} broke down on trip {assignment.unique_id}.",
                 data={
-                    "type": "vehicle_breakdown_reported",
                     "vehicle_breakdown_id": instance.unique_id,
                     "trip_assignment_id": assignment.unique_id,
                     "latitude": str(instance.breakdown_lat or ""),
