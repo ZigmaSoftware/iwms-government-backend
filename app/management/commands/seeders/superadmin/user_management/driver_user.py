@@ -1,5 +1,5 @@
 import math
-from datetime import time
+from datetime import date, time
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
@@ -7,6 +7,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
 from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
@@ -14,6 +15,7 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
@@ -33,6 +35,7 @@ from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.user_management.staffcreation import (
     Staffcreation,
     StaffcreationOfficeDetails,
+    StaffPersonalDetails,
 )
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
@@ -118,14 +121,46 @@ class DriverUserSeeder(BaseSeeder):
         if not panchayat:
             self.log("No panchayat available — skipping.")
             return
+        ward = self._pick_ward(panchayat)
 
         # 1. Logins ----------------------------------------------------
         driver = self._upsert_staff(
-            self.USERNAME, "Driver User", self.PASSWORD, user_type, driver_role
+            self.USERNAME, "Driver User", self.PASSWORD, user_type, driver_role,
+            department="Transport",
+            designation="Senior Driver",
+            doj=date(2023, 1, 15),
+            driving_licence_no="TN33 20230012345",
+            driving_licence_expiry_date=date(2028, 6, 30),
+            driving_experience_years=8,
         )
         operator = self._upsert_staff(
             self.OPERATOR_USERNAME, "Operator User", self.OPERATOR_PASSWORD,
             user_type, operator_role,
+            department="Sanitation",
+            designation="Field Operator",
+            doj=date(2023, 3, 1),
+        )
+        self._upsert_personal_details(
+            driver,
+            dob=date(1988, 4, 12),
+            blood_group="O+",
+            gender="Male",
+            marital_status="Married",
+            present_address="12, Gandhi Street, Anthiyur, Erode, Tamil Nadu - 638501",
+            permanent_address="12, Gandhi Street, Anthiyur, Erode, Tamil Nadu - 638501",
+            contact_mobile="9876543210",
+            contact_email="driver.user@zigma.in",
+        )
+        self._upsert_personal_details(
+            operator,
+            dob=date(1992, 9, 5),
+            blood_group="B+",
+            gender="Male",
+            marital_status="Single",
+            present_address="45, Bharathi Nagar, Anthiyur, Erode, Tamil Nadu - 638501",
+            permanent_address="7, Market Street, Bhavani, Erode, Tamil Nadu - 638301",
+            contact_mobile="9876500001",
+            contact_email="operator.user@zigma.in",
         )
 
         # 2. Dedicated staff template (driver_user + operator_user) -----
@@ -146,16 +181,26 @@ class DriverUserSeeder(BaseSeeder):
             return
 
         # 3. Organic bins + collection points inside the demo panchayat -
-        bins = self._ensure_bins(panchayat, wet_waste)
+        bins = self._ensure_bins(panchayat, wet_waste, ward)
 
         # 4. Trip plans (bin + household) sharing the template ----------
         bin_plan = self._get_or_create_plan(
-            TripPlan.COLLECTION_TYPE_BIN, template, vehicle, panchayat, [wet_waste]
+            TripPlan.COLLECTION_TYPE_BIN,
+            template,
+            vehicle,
+            panchayat,
+            [wet_waste],
+            ward=ward,
         )
         self._sync_bin_stops(bin_plan, bins)
 
         household_plan = self._get_or_create_plan(
-            TripPlan.COLLECTION_TYPE_HOUSEHOLD, template, vehicle, panchayat, household_waste_types
+            TripPlan.COLLECTION_TYPE_HOUSEHOLD,
+            template,
+            vehicle,
+            panchayat,
+            household_waste_types,
+            ward=ward,
         )
         self._sync_household_stop(household_plan)
 
@@ -210,7 +255,20 @@ class DriverUserSeeder(BaseSeeder):
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
-    def _upsert_staff(self, username, name, password, user_type, role):
+    def _upsert_staff(
+        self, username, name, password, user_type, role, *,
+        department=None, designation=None, doj=None,
+        driving_licence_no=None, driving_licence_expiry_date=None,
+        driving_experience_years=None,
+    ):
+        profile_fields = {
+            "department": department,
+            "designation": designation,
+            "doj": doj,
+            "driving_licence_no": driving_licence_no,
+            "driving_licence_expiry_date": driving_licence_expiry_date,
+            "driving_experience_years": driving_experience_years,
+        }
         staff, created = Staffcreation.objects.get_or_create(
             username=username,
             defaults={
@@ -222,6 +280,7 @@ class DriverUserSeeder(BaseSeeder):
                 "is_deleted": False,
                 "is_superuser": False,
                 "login_enabled": True,
+                **profile_fields,
             },
         )
         if not created:
@@ -234,11 +293,34 @@ class DriverUserSeeder(BaseSeeder):
             staff.is_deleted = False
             staff.is_superuser = False
             staff.login_enabled = True
+            for field, value in profile_fields.items():
+                setattr(staff, field, value)
             staff.save()
         self.log(
             f"{'Created' if created else 'Updated'} login: {username} / {password}"
         )
         return staff
+
+    def _upsert_personal_details(
+        self, staff, *, dob, blood_group, gender, marital_status,
+        present_address, permanent_address, contact_mobile, contact_email,
+    ):
+        StaffPersonalDetails.objects.update_or_create(
+            staff=staff,
+            defaults={
+                "staff_unique_id": staff.staff_unique_id,
+                "dob": dob,
+                "blood_group": blood_group,
+                "gender": gender,
+                "marital_status": marital_status,
+                # JSONField: a plain string is valid JSON, and keeps the mobile
+                # app's display simple (no address-object formatting needed).
+                "present_address": present_address,
+                "permanent_address": permanent_address,
+                "contact_mobile": contact_mobile,
+                "contact_email": contact_email,
+            },
+        )
 
     def _pick_demo_panchayat(self):
         """Prefer a panchayat that actually has active customers so the
@@ -262,6 +344,14 @@ class DriverUserSeeder(BaseSeeder):
         return Panchayat.objects.filter(
             is_deleted=False, is_active=True
         ).order_by("unique_id").first()
+
+    def _pick_ward(self, panchayat):
+        """Best-effort ward under the demo panchayat — wards are optional on
+        every model that references them, so a missing WardSeeder run should
+        never block the rest of this seeder."""
+        return Ward.objects.filter(
+            panchayat=panchayat, is_deleted=False, is_active=True
+        ).order_by("ward_name").first()
 
     def _get_or_create_template(self, driver, operator, panchayat):
         template = StaffTemplate.objects.filter(
@@ -416,7 +506,7 @@ class DriverUserSeeder(BaseSeeder):
             assignment.status = DailyTripAssignment.STATUS_CANCELLED
             assignment.save(update_fields=["status", "updated_at"])
 
-    def _ensure_bins(self, panchayat, wet_waste):
+    def _ensure_bins(self, panchayat, wet_waste, ward):
         """Create/refresh NUM_COLLECTION_POINTS Organic bins in the panchayat.
         Idempotent: reuses collection points/bins by name across re-runs (they
         are PROTECT-referenced by trip stops, so never deleted)."""
@@ -456,6 +546,8 @@ class DriverUserSeeder(BaseSeeder):
                 cp.save(update_fields=[
                     "latitude", "longitude", "is_active", "is_deleted", "updated_at"
                 ])
+            if ward:
+                cp.wards.set([ward])
 
             bin_obj = Bins.objects.filter(
                 collection_point_id=cp, wastetype_id=wet_waste
@@ -464,6 +556,7 @@ class DriverUserSeeder(BaseSeeder):
                 bin_obj = Bins.objects.create(
                     collection_point_id=cp,
                     wastetype_id=wet_waste,
+                    ward=ward,
                     bin_name=f"Wet Waste Bin {seq} (driver_user)",
                     bin_capacity=120,
                     bin_type="large",
@@ -472,9 +565,10 @@ class DriverUserSeeder(BaseSeeder):
                     is_deleted=False,
                 )
             else:
+                bin_obj.ward = ward
                 bin_obj.is_active = True
                 bin_obj.is_deleted = False
-                bin_obj.save(update_fields=["is_active", "is_deleted", "updated_at"])
+                bin_obj.save(update_fields=["ward", "is_active", "is_deleted", "updated_at"])
             bins.append((cp, bin_obj))
         return bins
 
@@ -500,7 +594,15 @@ class DriverUserSeeder(BaseSeeder):
             .first()
         )
 
-    def _get_or_create_plan(self, collection_type, template, vehicle, panchayat, waste_types):
+    def _get_or_create_plan(
+        self,
+        collection_type,
+        template,
+        vehicle,
+        panchayat,
+        waste_types,
+        ward=None,
+    ):
         plan, _ = TripPlan.objects.update_or_create(
             staff_template_id=template,
             collection_type=collection_type,
@@ -523,6 +625,8 @@ class DriverUserSeeder(BaseSeeder):
             },
         )
         plan.waste_types.set(waste_types)
+        if ward:
+            plan.wards.set([ward])
         return plan
 
     def _retire_stale_plans(self, template, keep):
@@ -560,18 +664,32 @@ class DriverUserSeeder(BaseSeeder):
             )
 
     def _sync_bin_stops(self, plan, bins):
+        # Keyed by (trip_plan, collection_type, sequence) — the actual
+        # unique-constrained columns — not by collection_point_id. If a prior
+        # run's `Collection_point.objects.filter(...).first()` resolved a
+        # different (but same-named) row, keying by collection_point_id would
+        # miss the existing sequence row and try to INSERT a duplicate,
+        # colliding with the DB's uniq_sequence_per_trip_plan constraint.
         for seq, (cp, bin_obj) in enumerate(bins, start=1):
             TripPlanCollectionPoint.objects.update_or_create(
                 trip_plan_id=plan,
                 collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
-                collection_point_id=cp,
+                sequence=seq,
                 defaults={
+                    "collection_point_id": cp,
                     "bin_id": bin_obj,
-                    "sequence": seq,
                     "is_active": True,
                     "is_deleted": False,
                 },
             )
+        # Clean up stale stops beyond the current bin count (e.g. left over
+        # from a run with a different NUM_COLLECTION_POINTS or duplicate
+        # underlying collection points), so they don't pile up or collide.
+        TripPlanCollectionPoint.objects.filter(
+            trip_plan_id=plan,
+            collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+            sequence__gt=len(bins),
+        ).update(is_active=False, is_deleted=True)
 
     def _sync_household_stop(self, plan):
         # Area-scoped household stop (customer_id=None) — the assignment signal
@@ -624,6 +742,25 @@ class DriverUserSeeder(BaseSeeder):
             collected_at=None,
             collected_weight_kg=None,
         )
+        # Reconcile: the daily mirror (populated by a post_save signal on
+        # assignment creation) only ever ADDS stops, so bins from a stale/
+        # duplicate plan stop (e.g. from a run before _sync_bin_stops'
+        # dedup) can persist on an already-existing daily assignment even
+        # after the plan side is cleaned up. Drop anything that isn't one of
+        # the plan's current active bins, then backfill any that are missing.
+        valid_cp_ids = set(
+            TripPlanCollectionPoint.objects.filter(
+                trip_plan_id=assignment.trip_plan_id,
+                collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
+                is_active=True,
+                is_deleted=False,
+            ).values_list("collection_point_id", flat=True)
+        )
+        DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id=assignment
+        ).exclude(collection_point_id__in=valid_cp_ids).delete()
+        sync_daily_assignment_stops_from_plan(assignment)
+
         assignment.status = DailyTripAssignment.STATUS_SCHEDULED
         assignment.approval_status = DailyTripAssignment.APPROVAL_APPROVED
         assignment.actual_start_time = None

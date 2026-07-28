@@ -439,6 +439,8 @@ def sync_staff_data_scope(staff, source):
     for _, source_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
         value = getattr(source, source_field, None)
         getattr(scope, m2m_field).set([value] if value else [])
+    source_wards = getattr(source, "wards", None)
+    scope.wards.set(source_wards.all() if source_wards is not None else [])
     return scope, created
 
 

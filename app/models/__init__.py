@@ -132,6 +132,12 @@ from .core_modules.complaint_management.notification import ComplaintNotificatio
 
 
 # ============================================================
+# GROUP: STAFF NOTIFICATIONS (driver / operator / supervisor apps)
+# ============================================================
+from .core_modules.notifications.staff_notification import StaffNotification
+
+
+# ============================================================
 # GROUP: BLUETOOTH / MOBILE WASTE COLLECTION
 # ============================================================
 from .waste_collection_bluetooth.waste_collection_bluetooth import (

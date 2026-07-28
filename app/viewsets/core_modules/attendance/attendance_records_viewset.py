@@ -65,6 +65,11 @@ class AttendanceRecordsViewSet(ViewSet):
 
         visible_staff = filter_staff_queryset_by_requester_scope(
             Staffcreation.objects.filter(is_deleted=False), request.user
+        ).select_related(
+            "designation_id",
+            "department_id",
+            "staffusertype_id",
+            "personal_details",
         )
         base_qs = DailyAttendanceReg.objects.filter(
             staff__in=visible_staff,

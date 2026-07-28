@@ -12,6 +12,7 @@ from app.models.masters.leader_management.district_leader_login import DistrictL
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 
 from app.utils.permission_response import (
+    apply_role_default_permissions,
     finalize_permission_payload,
     resolve_intersected_permission_payload,
     resolve_permission_payload,
@@ -121,46 +122,7 @@ class LoginSerializer(serializers.Serializer):
         return payload["permissions"]
 
     def _apply_role_defaults(self, permissions, role_name):
-        if not role_name:
-            return permissions
-
-        defaults = {
-            "driver": {
-                "customers": {
-                    "customercreations": ["view"],
-                },
-                "process": {
-                    
-                },
-                "user-creations": {
-                    "alternative-stafftemplate": ["view"],
-                },
-            },
-            "operator": {
-                "customers": {
-                    "customercreations": ["view"],
-                },
-                "process": {
-                    
-                },
-                "user-creations": {
-                    "alternative-stafftemplate": ["view"],
-                },
-            },
-        }
-
-        role_defaults = defaults.get(role_name.lower())
-        if not role_defaults:
-            return permissions
-
-        for module_name, screens in role_defaults.items():
-            module_perms = permissions.setdefault(module_name, {})
-            for screen_name, actions in screens.items():
-                existing = set(module_perms.get(screen_name, []))
-                merged = existing.union(actions)
-                module_perms[screen_name] = list(merged)
-
-        return permissions
+        return apply_role_default_permissions(permissions, role_name)
 
     def _build_staff_payload(self, staff_record, login_user=None):
         login_user = login_user or staff_record

@@ -14,6 +14,7 @@ from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
 )
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.utils.audit_mixin import serialize_instance_for_audit, log_common_audit
 
 
 
@@ -260,7 +261,20 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
     # ----------------- GET SAVED WASTE TYPES -----------------
     @action(detail=False, methods=["get"], url_path="get-waste-types")
     def get_saved_waste(self, request):
-        rows = WasteType.objects.filter(is_deleted=False).order_by("waste_type_name")
+        customer_id = request.query_params.get("customer_id")
+        if customer_id:
+            customer = (
+                CustomerCreation.objects
+                .filter(unique_id=customer_id, is_deleted=False)
+                .first()
+            )
+            if customer is not None:
+                rows = customer.waste_types.filter(is_deleted=False)
+            else:
+                rows = WasteType.objects.none()
+        else:
+            rows = WasteType.objects.filter(is_deleted=False)
+        rows = rows.order_by("waste_type_name")
 
         # Show the primary segregated household streams first — Wet, then Dry —
         # followed by every other type alphabetically. Uses a stable key so the
@@ -495,7 +509,9 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         ).first()
 
         if waste_collection is None:
-            waste_collection = WasteCollection(customer=customer)
+            waste_collection = WasteCollection(
+                customer=customer, collection_date=timezone.localdate()
+            )
         waste_collection.trip_assignment_id = trip_assignment
         waste_collection.wet_waste = wet
         waste_collection.dry_waste = dry
