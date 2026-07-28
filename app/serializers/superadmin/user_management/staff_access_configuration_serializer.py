@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import serializers
 
 from app.models.superadmin.common_masters.state import State
@@ -18,10 +19,12 @@ from app.models.superadmin.screen_management.companyuserscreenpermission import 
 from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
 from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
 from app.serializers.superadmin.user_management.staffcreation_serializer import StaffcreationSerializer
+from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 
 
 class DashboardPermissionInputSerializer(serializers.Serializer):
@@ -101,6 +104,20 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
     def _save_configuration(self, validated_data, instance=None):
         login_config = validated_data.get("loginConfig") or {}
         staff_payload = dict(validated_data.get("basicInfo") or {})
+        data_scope_payload = validated_data.get("dataScope") or {}
+        scope_admin = self._resolve_scope_admin(
+            staff_payload.pop("staff_head_id", None),
+            instance=instance,
+        )
+        if scope_admin:
+            staff_payload["staff_head_id"] = scope_admin.staff_unique_id
+            staff_payload["staff_head"] = scope_admin.employee_name
+            self._validate_role_under_admin(
+                scope_admin,
+                login_config.get("governmentUserTypeId"),
+            )
+            self._validate_scope_under_admin(scope_admin, data_scope_payload)
+        self._copy_scope_to_staff_payload(staff_payload, data_scope_payload)
         self._apply_login_config(staff_payload, login_config)
 
         if instance is None:
@@ -120,7 +137,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
 
         data_scope = self._save_data_scope(
             staff,
-            validated_data.get("dataScope") or {},
+            data_scope_payload,
         )
         access_scope = self._access_scope_payload(data_scope)
         permission_results = self._save_permissions(
@@ -140,6 +157,185 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "dashboard_permissions": dashboard_permissions,
             "data_scope": data_scope,
         }
+
+    def _resolve_scope_admin(self, staff_head_id, instance=None):
+        """Resolve and authorize the admin whose hierarchy caps this account."""
+        if not staff_head_id:
+            return None
+
+        queryset = Staffcreation.objects.select_related("governmentusertype_id").filter(
+            staff_unique_id=staff_head_id,
+            active_status=True,
+            login_enabled=True,
+            is_deleted=False,
+            governmentusertype_id__name__endswith="_admin",
+        )
+        request = self.context.get("request")
+        requester = getattr(request, "user", None)
+        if requester is not None and not getattr(requester, "is_superuser", False):
+            requester_id = getattr(requester, "staff_unique_id", None)
+            if staff_head_id != requester_id:
+                queryset = filter_staff_queryset_by_requester_scope(queryset, requester)
+
+        scope_admin = queryset.first()
+        if not scope_admin:
+            raise serializers.ValidationError({
+                "basicInfo": {
+                    "staff_head_id": "Select an active admin within your own hierarchy."
+                }
+            })
+        if instance and scope_admin.staff_unique_id == instance.staff_unique_id:
+            raise serializers.ValidationError({
+                "basicInfo": {"staff_head_id": "A staff member cannot be their own scope admin."}
+            })
+        if instance:
+            ancestor = scope_admin
+            visited = set()
+            while ancestor and ancestor.staff_unique_id not in visited:
+                if ancestor.staff_unique_id == instance.staff_unique_id:
+                    raise serializers.ValidationError({
+                        "basicInfo": {
+                            "staff_head_id": "This selection would create a circular admin hierarchy."
+                        }
+                    })
+                visited.add(ancestor.staff_unique_id)
+                ancestor = Staffcreation.objects.filter(
+                    staff_unique_id=ancestor.staff_head_id,
+                    is_deleted=False,
+                ).first() if ancestor.staff_head_id else None
+        return scope_admin
+
+    def _validate_role_under_admin(self, scope_admin, government_user_type_id):
+        role = GovernmentStaffUserType.objects.filter(
+            unique_id=government_user_type_id,
+            is_active=True,
+            is_deleted=False,
+        ).first()
+        if not role:
+            return
+        rank = {
+            "state": 0,
+            "district": 1,
+            "corporation": 2,
+            "municipality": 2,
+            "town_panchayat": 2,
+            "panchayat_union": 2,
+            "panchayat": 2,
+        }
+        admin_level = scope_admin.governmentusertype_id.level
+        if rank.get(role.level, 99) < rank.get(admin_level, 99):
+            raise serializers.ValidationError({
+                "loginConfig": {
+                    "governmentUserTypeId": (
+                        f"{scope_admin.employee_name} is a {admin_level.replace('_', ' ')} "
+                        "admin and cannot grant a higher government level."
+                    )
+                }
+            })
+
+    def _validate_scope_under_admin(self, scope_admin, child):
+        parent = (
+            StaffDataScope.objects.filter(
+                staff=scope_admin,
+                is_active=True,
+                is_deleted=False,
+            )
+            .prefetch_related(
+                "location_nodes",
+                "corporations",
+                "municipalities",
+                "town_panchayats",
+                "panchayat_unions",
+                "panchayats",
+                "wards",
+            )
+            .first()
+        )
+        if not parent:
+            raise serializers.ValidationError({
+                "basicInfo": {
+                    "staff_head_id": "The selected admin does not have an active data scope."
+                }
+            })
+
+        errors = {}
+        for child_key, parent_value, label in (
+            ("stateId", parent.state_id, "state"),
+            ("districtId", parent.district_id, "district"),
+            ("areaTypeId", parent.area_type_id, "area type"),
+        ):
+            if parent_value and child.get(child_key) != parent_value:
+                errors[child_key] = (
+                    f"The selected {label} must match scope admin {scope_admin.employee_name}."
+                )
+
+        m2m_fields = (
+            ("corporationIds", "corporations", "corporation"),
+            ("municipalityIds", "municipalities", "municipality"),
+            ("townPanchayatIds", "town_panchayats", "town panchayat"),
+            ("panchayatUnionIds", "panchayat_unions", "panchayat union"),
+            ("panchayatIds", "panchayats", "panchayat"),
+        )
+        parent_has_local_body_scope = any(getattr(parent, field).exists() for _, field, _ in m2m_fields)
+        child_has_local_body_scope = any(child.get(key) for key, _, _ in m2m_fields)
+        if parent_has_local_body_scope and not child_has_local_body_scope:
+            errors["localBodies"] = (
+                "A local body is required because the selected admin is restricted to local bodies."
+            )
+        for child_key, parent_field, label in m2m_fields:
+            allowed = set(getattr(parent, parent_field).values_list("unique_id", flat=True))
+            selected = set(child.get(child_key) or [])
+            if parent_has_local_body_scope and selected - allowed:
+                errors[child_key] = (
+                    f"Selected {label} is outside scope admin {scope_admin.employee_name}'s hierarchy."
+                )
+
+        parent_wards = set(parent.wards.values_list("unique_id", flat=True))
+        child_wards = set(child.get("wardIds") or [])
+        if parent_wards and not child_wards:
+            errors["wardIds"] = (
+                "At least one ward is required because the selected admin is ward-restricted."
+            )
+        if parent_wards and child_wards - parent_wards:
+            errors["wardIds"] = (
+                f"Selected ward is outside scope admin {scope_admin.employee_name}'s hierarchy."
+            )
+        parent_nodes = set(parent.location_nodes.values_list("unique_id", flat=True))
+        child_nodes = set(child.get("locationNodes") or [])
+        if parent_nodes and child_nodes - parent_nodes:
+            errors["locationNodes"] = "Selected hierarchy node is outside the scope admin's hierarchy."
+
+        if errors:
+            raise serializers.ValidationError({"dataScope": errors})
+
+    def _copy_scope_to_staff_payload(self, staff_payload, data_scope):
+        """Keep the staff row's flat geo columns aligned with StaffDataScope."""
+        if not data_scope:
+            return
+        staff_payload.update({
+            "state_id": data_scope.get("stateId") or None,
+            "district_id": data_scope.get("districtId") or None,
+            "area_type_id": data_scope.get("areaTypeId") or None,
+            "corporation_id": None,
+            "municipality_id": None,
+            "town_panchayat_id": None,
+            "panchayat_union_id": None,
+            "panchayat_id": None,
+        })
+        candidates = [
+            (field, ids[0])
+            for field, ids in (
+                ("corporation_id", data_scope.get("corporationIds") or []),
+                ("municipality_id", data_scope.get("municipalityIds") or []),
+                ("town_panchayat_id", data_scope.get("townPanchayatIds") or []),
+                ("panchayat_union_id", data_scope.get("panchayatUnionIds") or []),
+                ("panchayat_id", data_scope.get("panchayatIds") or []),
+            )
+            if len(ids) == 1
+        ]
+        if len(candidates) == 1:
+            field, value = candidates[0]
+            staff_payload[field] = value
 
     LOCAL_BODY_M2M_LEVELS = (
         ("corporation", "corporations"),
@@ -277,11 +473,25 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             if value and not model.objects.filter(unique_id=value, is_deleted=False).exists():
                 raise serializers.ValidationError({"dataScope": {field_name: f"Invalid {field_name}."}})
 
-        def _validate_many(model, values, field_name):
-            valid_ids = set(
-                model.objects.filter(unique_id__in=values, is_deleted=False)
-                .values_list("unique_id", flat=True)
-            )
+        def _validate_many(model, values, field_name, enforce_geo=True):
+            queryset = model.objects.filter(unique_id__in=values, is_deleted=False)
+            if enforce_geo:
+                for candidate, selected_id in (
+                    ("state_id", state_id),
+                    ("district_id", district_id),
+                    ("area_type_id", area_type_id),
+                ):
+                    if not selected_id:
+                        continue
+                    try:
+                        model_field = model._meta.get_field(candidate)
+                    except Exception:
+                        try:
+                            model_field = model._meta.get_field(candidate.removesuffix("_id"))
+                        except Exception:
+                            continue
+                    queryset = queryset.filter(**{model_field.attname: selected_id})
+            valid_ids = set(queryset.values_list("unique_id", flat=True))
             invalid_ids = set(values) - valid_ids
             if invalid_ids:
                 raise serializers.ValidationError({
@@ -294,6 +504,37 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         for model, values, field_name in local_body_ids_by_model:
             _validate_many(model, values, field_name)
         _validate_many(Ward, ward_ids, "wardIds")
+
+        if ward_ids:
+            selected_body_filter = Q()
+            for ward_field, (_, values, _) in zip(
+                (
+                    "corporation_id",
+                    "municipality_id",
+                    "town_panchayat_id",
+                    "panchayat_union_id",
+                    "panchayat_id",
+                ),
+                local_body_ids_by_model,
+            ):
+                if values:
+                    selected_body_filter |= Q(**{f"{ward_field}__in": values})
+            matching_ward_ids = set(
+                Ward.objects.filter(
+                    selected_body_filter,
+                    unique_id__in=ward_ids,
+                    is_deleted=False,
+                ).values_list("unique_id", flat=True)
+            ) if selected_body_filter else set()
+            invalid_ward_ids = set(ward_ids) - matching_ward_ids
+            if invalid_ward_ids:
+                raise serializers.ValidationError({
+                    "dataScope": {
+                        "wardIds": (
+                            "Selected wards must belong to one of the selected local bodies."
+                        )
+                    }
+                })
 
         valid_node_ids = set(
             HierarchyNode.objects.filter(
@@ -578,6 +819,8 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "designation": staff_payload.get("designation") or "",
                 "doj": staff_payload.get("doj") or "",
                 "activeStatus": staff_payload.get("active_status", True),
+                "scopeAdminId": staff_payload.get("staff_head_id") or "",
+                "scopeAdminName": staff_payload.get("staff_head") or "",
             },
             "loginConfig": {
                 "username": staff_payload.get("username") or "",
