@@ -34,6 +34,7 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
         (c.collected_weight_kg or Decimal("0")) for c in children
     )
     panchayat = assignment.panchayat
+    ward = assignment.wards.first()
     return {
         "assignment_unique_id": assignment.unique_id,
         "trip_date": assignment.trip_date.isoformat(),
@@ -44,6 +45,11 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
             "unique_id": panchayat.unique_id,
             "name": panchayat.panchayat_name,
         } if panchayat else None,
+        # ward narrows the panchayat/local-body scope for this trip, when set.
+        "ward": {
+            "unique_id": ward.unique_id,
+            "name": ward.ward_name,
+        } if ward else None,
         "waste_types": [
             {"unique_id": wt.unique_id, "name": wt.waste_type_name}
             for wt in assignment.waste_types.all()
@@ -107,22 +113,29 @@ class TripHistoryViewSet(viewsets.ViewSet):
     lookup_field = "unique_id"
 
     def _base_queryset(self, operator):
-        # Primary path: assignments where the operator is the template's main operator.
-        # We omit the extra_operator_id JSON membership query here because it isn't
-        # supported on SQLite (used in tests); extras are uncommon and can be added
-        # later as a Python-side filter when needed.
+        # Primary path: assignments where the operator is the EFFECTIVE template's
+        # main operator/driver — i.e. the alt template's crew when a substitution
+        # (`alt_staff_template_id`) is active on that assignment, else the base
+        # template's crew. This keeps history consistent with "my trips today":
+        # a substituted-out driver stops seeing the trip, the substituted-in one
+        # does. We omit the extra_operator_id JSON membership query here because
+        # it isn't supported on SQLite (used in tests); extras are uncommon and
+        # can be added later as a Python-side filter when needed.
         return (
             DailyTripAssignment.objects
             .filter(is_deleted=False)
             .filter(
-                Q(staff_template_id__operator_id=operator)
-                | Q(staff_template_id__driver_id=operator)
+                Q(alt_staff_template_id__isnull=False, alt_staff_template_id__operator_id=operator)
+                | Q(alt_staff_template_id__isnull=False, alt_staff_template_id__driver_id=operator)
+                | Q(alt_staff_template_id__isnull=True, staff_template_id__operator_id=operator)
+                | Q(alt_staff_template_id__isnull=True, staff_template_id__driver_id=operator)
             )
             .select_related(
                 "panchayat",
                 "vehicle_id",
+                "alt_staff_template_id",
             )
-            .prefetch_related("trip_collection_points", "waste_types")
+            .prefetch_related("trip_collection_points", "waste_types", "wards")
             .order_by("-trip_date", "-scheduled_time")
         )
 

@@ -41,6 +41,76 @@ def base_action_map():
     return {action: False for action in ACTION_KEYS}
 
 
+def merge_permission_maps(base, extra):
+    merged = {
+        module: {
+            screen: list(actions)
+            for screen, actions in screens.items()
+        }
+        for module, screens in (base or {}).items()
+    }
+    for module_name, screens in (extra or {}).items():
+        module_perms = merged.setdefault(module_name, {})
+        for screen_name, actions in screens.items():
+            existing = set(module_perms.get(screen_name, []))
+            module_perms[screen_name] = sorted(existing.union(actions))
+    return merged
+
+
+def role_default_permissions(role_name):
+    normalized = normalize_permission_key(role_name)
+    if not normalized:
+        return {}
+
+    if normalized.endswith("driver") or normalized.endswith("operator"):
+        return {
+            "transport-masters": {
+                "vehicle-creation": ["view"],
+            },
+            "customers": {
+                "customercreations": ["view"],
+            },
+            "schedule-operations": {
+                "daily-trip-assignments": ["view"],
+                "vehicle-breakdowns": ["view", "add", "edit"],
+                "daily-trip-logs": ["view"],
+            },
+        }
+
+    if normalized.endswith("supervisor"):
+        return {
+            "transport-masters": {
+                "vehicle-creation": ["view"],
+            },
+            "user-creations": {
+                "staffcreation": ["view"],
+            },
+            "customers": {
+                "customercreations": ["view"],
+            },
+            "schedule-setup": {
+                "staff-templates": ["view", "add", "edit"],
+                "alternative-staff-templates": ["view", "add", "edit"],
+                "collection-points": ["view"],
+                "trip-plans": ["view"],
+            },
+            "schedule-operations": {
+                "daily-trip-assignments": ["view", "edit"],
+                "daily-trip-collection-points": ["view"],
+                "householdcollection-events": ["view"],
+                "secondary-bin-collection-events": ["view"],
+                "vehicle-breakdowns": ["view", "edit"],
+                "daily-trip-logs": ["view"],
+            },
+        }
+
+    return {}
+
+
+def apply_role_default_permissions(permissions, role_name):
+    return merge_permission_maps(permissions or {}, role_default_permissions(role_name))
+
+
 def normalize_permission_key(value):
     text = (value or "").strip().lower()
     if not text:
@@ -599,11 +669,16 @@ def permission_querysets(
 
 def resolve_permission_payload(**filters):
     action_queryset, column_queryset, dashboard_queryset = permission_querysets(**filters)
+    permissions = build_action_permissions(action_queryset)
+    permissions = apply_role_default_permissions(
+        permissions,
+        filters.get("role_name"),
+    )
     payload = {
-        "permissions": build_action_permissions(action_queryset),
+        "permissions": permissions,
         "permission_details": build_permission_details(action_queryset, column_queryset),
         "column_permissions": build_column_permissions(column_queryset),
-        "module_access": build_module_access(action_queryset, column_queryset),
+        "module_access": build_fallback_module_access(permissions),
         "dashboard_permissions": build_dashboard_permissions(dashboard_queryset),
     }
     return finalize_permission_payload(
@@ -681,6 +756,7 @@ def resolve_intersected_permission_payload(
     super_admin_permissions = build_action_permissions(super_admin_action_qs)
     staff_permissions = build_action_permissions(staff_action_qs)
     final_permissions = _intersect_action_permissions(super_admin_permissions, staff_permissions)
+    final_permissions = apply_role_default_permissions(final_permissions, role_name)
 
     super_admin_dashboard = build_dashboard_permissions(super_admin_dashboard_qs)
     staff_dashboard = build_dashboard_permissions(staff_dashboard_qs)
