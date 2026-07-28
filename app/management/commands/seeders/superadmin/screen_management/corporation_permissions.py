@@ -2,13 +2,14 @@
 CorporationPermissionSeeder
 ===========================
 
-Seeds scoped UserScreenPermission rows for the two demo corporation users
-created by ``CorporationAccessSeeder`` (Erode Corporation admin + supervisor).
+Seeds scoped UserScreenPermission rows for the corporation admin/supervisor
+users created by ``CorporationAccessSeeder`` for each of the three
+operational districts (Erode/Coimbatore/Salem Corporation).
 
 Login resolves a local-body-scoped staff's permissions as the INTERSECTION of
 a ``super_admin`` baseline and the staff's own rows for that local body
 (see app/utils/permission_response.py::resolve_intersected_permission_payload),
-so this seeder writes, for the Erode-Corporation local body:
+so this seeder writes, for each Corporation's local body:
 
   1. a ``super_admin`` baseline row for every screen × {view,add,edit,delete}
      — the ceiling,
@@ -22,6 +23,7 @@ must match ``AppSidebar.tsx``.
 """
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.masters.corporation import Corporation
 from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.userscreen import UserScreen
@@ -46,37 +48,12 @@ class CorporationPermissionSeeder(BaseSeeder):
     name = "CorporationPermissionSeeder"
 
     def run(self):
-        corporation = Corporation.objects.filter(
-            corporation_name="Erode Corporation", is_deleted=False
-        ).first()
-        if not corporation:
-            self.log("Corporation 'Erode Corporation' not found — skipping corporation permissions.")
-            return
-
-        admin = StaffcreationOfficeDetails.objects.filter(
-            username="erode.corp.admin", is_deleted=False
-        ).first()
-        supervisor = StaffcreationOfficeDetails.objects.filter(
-            username="erode.corp.supervisor", is_deleted=False
-        ).first()
-        if not admin or not supervisor:
-            self.log("Corporation staff not found — run CorporationAccessSeeder first. Skipping.")
-            return
-
         actions = {
             name: UserScreenAction.objects.get_or_create(
                 action_name=name,
                 defaults={"variable_name": name, "is_active": True, "is_deleted": False},
             )[0]
             for name in ACTIONS
-        }
-
-        scope = {
-            "state_id_id": corporation.state_id_id,
-            "district_id_id": corporation.district_id_id,
-            "area_type_id_id": corporation.area_type_id_id,
-            "local_body_type": "corporation",
-            "local_body_id": corporation.unique_id,
         }
 
         screens = list(
@@ -91,27 +68,54 @@ class CorporationPermissionSeeder(BaseSeeder):
         )
 
         baseline_rows = admin_rows = supervisor_rows = 0
-        for screen in screens:
-            is_schedule_write = screen.userscreen_name in SCHEDULE_WRITE_SCREENS
-            for action_name in ACTIONS:
-                action = actions[action_name]
+        for district_name, geo in DISTRICTS.items():
+            corporation = Corporation.objects.filter(
+                corporation_name=geo["corporation_name"], is_deleted=False
+            ).first()
+            if not corporation:
+                self.log(f"Corporation '{geo['corporation_name']}' not found — skipping.")
+                continue
 
-                # 1) super_admin baseline — the ceiling (full CRUD on everything)
-                self._upsert(scope, "super_admin", None, screen, action)
-                baseline_rows += 1
+            code = geo["code"].lower()
+            admin = StaffcreationOfficeDetails.objects.filter(
+                username=f"{code}.corp.admin", is_deleted=False
+            ).first()
+            supervisor = StaffcreationOfficeDetails.objects.filter(
+                username=f"{code}.corp.supervisor", is_deleted=False
+            ).first()
+            if not admin or not supervisor:
+                self.log(f"Corporation staff for '{district_name}' not found — run CorporationAccessSeeder first. Skipping.")
+                continue
 
-                # 2) admin staff — full CRUD everywhere
-                self._upsert(scope, "staff", admin.staff_unique_id, screen, action)
-                admin_rows += 1
+            scope = {
+                "state_id_id": corporation.state_id_id,
+                "district_id_id": corporation.district_id_id,
+                "area_type_id_id": corporation.area_type_id_id,
+                "local_body_type": "corporation",
+                "local_body_id": corporation.unique_id,
+            }
 
-                # 3) supervisor staff — CRUD on schedule screens, view elsewhere
-                if is_schedule_write or action_name == "view":
-                    self._upsert(scope, "staff", supervisor.staff_unique_id, screen, action)
-                    supervisor_rows += 1
+            for screen in screens:
+                is_schedule_write = screen.userscreen_name in SCHEDULE_WRITE_SCREENS
+                for action_name in ACTIONS:
+                    action = actions[action_name]
+
+                    # 1) super_admin baseline — the ceiling (full CRUD on everything)
+                    self._upsert(scope, "super_admin", None, screen, action)
+                    baseline_rows += 1
+
+                    # 2) admin staff — full CRUD everywhere
+                    self._upsert(scope, "staff", admin.staff_unique_id, screen, action)
+                    admin_rows += 1
+
+                    # 3) supervisor staff — CRUD on schedule screens, view elsewhere
+                    if is_schedule_write or action_name == "view":
+                        self._upsert(scope, "staff", supervisor.staff_unique_id, screen, action)
+                        supervisor_rows += 1
 
         self.log(
             f"---Corporation permissions seeded (baseline={baseline_rows}, "
-            f"admin={admin_rows}, supervisor={supervisor_rows}) across {len(screens)} screens---"
+            f"admin={admin_rows}, supervisor={supervisor_rows}) across {len(screens)} screens x {len(DISTRICTS)} districts---"
         )
 
     def _upsert(self, scope, owner_kind, staff_id, screen, action):

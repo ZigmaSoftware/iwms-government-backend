@@ -15,8 +15,9 @@ Response:
 Query params:
   source  bin (default) | household | all
   month   YYYY-MM
-  waste_type_id, and any of corporation_id | municipality_id | town_panchayat_id |
-  panchayat_union_id | panchayat_id — optional filters
+  waste_type_id, and any of state_id | district_id | area_type_id |
+  corporation_id | municipality_id | town_panchayat_id |
+  panchayat_union_id | panchayat_id | ward_id — optional filters
 """
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -28,6 +29,11 @@ from rest_framework.response import Response
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.models.reports.waste_reports.monthly_weight_report import MonthlyWeightReport
 from app.serializers.reports.waste_reports.monthly_weight_report_serializer import MonthlyWeightReportSerializer
+from app.utils.hierarchy import (
+    filter_flat_geo_queryset_by_params,
+    filter_flat_geo_queryset_by_requester_scope,
+    filter_daily_trip_logs_by_ward_scope,
+)
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 
@@ -99,6 +105,13 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             ],
         )
 
+        base_qs = filter_flat_geo_queryset_by_params(base_qs, request.query_params)
+        base_qs = filter_flat_geo_queryset_by_requester_scope(
+            base_qs, request.user
+        )
+        base_qs = filter_daily_trip_logs_by_ward_scope(
+            base_qs, request.user, request.query_params.get("ward_id")
+        )
         base_qs = self.filter_queryset(base_qs)
 
         # ── month / local body / waste_type filters ──────────────────────
@@ -118,7 +131,11 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         for field in LOCAL_BODY_FIELDS:
             value = request.query_params.get(f"{field}_id")
             if value:
-                base_qs = base_qs.filter(**{f"{field}_id": value})
+                values = [item.strip() for item in value.split(",") if item.strip()]
+                base_qs = base_qs.filter(**{
+                    f"{field}_id__in" if len(values) > 1 else f"{field}_id":
+                    values if len(values) > 1 else values[0]
+                })
 
         if waste_type_param:
             base_qs = base_qs.filter(waste_types=waste_type_param)

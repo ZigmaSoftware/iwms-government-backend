@@ -5,6 +5,10 @@ from app.models.superadmin.common_masters.state import State
 
 
 class StateSeeder(BaseSeeder):
+    """Bug fix: the old seeder passed a `coordinates` kwarg that State has
+    no field for — harmless on update, but raises FieldError on a fresh
+    database's create path (see ContinentSeeder)."""
+
     name = "state"
 
     # (state_name, label)

@@ -1,116 +1,239 @@
 from django.contrib.auth.hashers import make_password
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.geo import spread_points
+from app.management.commands.seeders.tn_geo_data import (
+    DISTRICTS,
+    STREET_NAMES,
+    TAMIL_NAME_POOL,
+)
+from app.management.commands.seeders.ward_utils import (
+    geo_defaults_for_local_body,
+    wards_for_district,
+)
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.masters.panchayat import Panchayat
-from app.models.masters.ward import Ward
 from app.models.masters.waste_masters.property import Property
 from app.models.masters.waste_masters.subproperty import SubProperty
+from app.models.masters.waste_masters.wastetype import WasteType
 
+# Distinct 6-digit pincode ranges per local body type within a district's
+# 3-digit prefix (e.g. Erode "638") - plausible without inventing per-ward
+# real postal data.
+_PINCODE_BODY_OFFSET = {
+    "corporation": 0,
+    "municipality": 10,
+    "town_panchayat": 20,
+    "panchayat_union": 30,
+}
 
-# min 6 chars, 1 uppercase + 1 lowercase + 1 digit — same convention as CustomerUserSeeder
+# min 6 chars, 1 uppercase + 1 lowercase + 1 digit - same convention as
+# CustomerUserSeeder
 DEFAULT_CUSTOMER_PASSWORD = "Customer1"
+
+ID_PROOF_CYCLE = ["AADHAAR", "VOTER_ID", "PAN_CARD"]
+
+# Matches the household-collection waste-type restriction (see TripPlanSeeder) -
+# household routes only ever handle these 4 segregated streams.
+CUSTOMER_WASTE_TYPES = ["Wet Waste", "Dry Waste", "Mixed Waste", "Sanitary Waste"]
+
+# 2 Individual-House customers per seeded Ward, across every local body type.
+CUSTOMERS_PER_WARD = 2
 
 
 class CustomerCreationSeeder(BaseSeeder):
     name = "CustomerCreationSeeder"
 
-    # Individual-house demo customers. Coordinates and address labels are kept
-    # inside the same panchayat used by the schedule seeders so household routes
-    # do not display customers in an unrelated city.
-    # (customer_name, contact_no, building_no, street, area, pincode, lat, lon, id_proof_type, id_no, panchayat_name)
-    CUSTOMERS = [
-        ("Murugan Pillai",   "9876543210", "12A", "Gandhi Street",   "Anthiyur",          "638501", "11.3410", "77.5820", "AADHAAR",  "1234 5678 9012", "Anthiyur Panchayat"),
-        ("Selvi Durai",      "9876543211", "45B", "Anna Nagar",      "Bhavani",           "638301", "11.4467", "77.6875", "VOTER_ID", "TN123456789",    "Bhavani Panchayat"),
-        ("Karthikeyan R",    "9876543212", "78C", "Nehru Road",      "Gobichettipalayam", "638452", "11.4524", "77.4355", "PAN_CARD", "ABCDE1234F",     "Gobichettipalayam Panchayat"),
-        ("Vasantha Kumari",  "9876543213", "21D", "Raja Street",     "Kavundampalayam",   "638112", "11.2932", "77.6011", "AADHAAR",  "9876 5432 1098", "Kavundampalayam Panchayat"),
-        ("Periasamy S",      "9876543214", "63E", "Meenakshi Nagar", "Modakkurichi",      "638104", "11.3805", "77.7032", "VOTER_ID", "TN987654321",    "Modakkurichi Panchayat"),
-        # --- Anthiyur Panchayat household-assignment fill (driver_user demo trip) ---
-        # Lat/long clustered around the real Anthiyur Panchayat centroid (11.3410, 77.5820)
-        # used elsewhere in the seeders (see schedule_masters/collection_point.py CP-Anthiyur-PLB-01).
-        ("Chinnasamy K",     "9876543215", "5A",  "Bazaar Street",    "Anthiyur", "638501", "11.3395", "77.5808", "AADHAAR",  "AADHAAR-9001-01", "Anthiyur Panchayat"),
-        ("Lakshmi Ammal",    "9876543216", "17B", "Kovil Street",     "Anthiyur", "638501", "11.3421", "77.5834", "AADHAAR",  "AADHAAR-9001-02", "Anthiyur Panchayat"),
-        ("Rajendran P",      "9876543217", "29C", "Market Road",      "Anthiyur", "638501", "11.3403", "77.5841", "VOTER_ID", "TN900000103",      "Anthiyur Panchayat"),
-        ("Kalaivani S",      "9876543218", "8D",  "Perumal Kovil St", "Anthiyur", "638501", "11.3432", "77.5812", "AADHAAR",  "AADHAAR-9001-04", "Anthiyur Panchayat"),
-        ("Muthusamy V",      "9876543219", "41E", "Mill Road",        "Anthiyur", "638501", "11.3388", "77.5825", "AADHAAR",  "AADHAAR-9001-05", "Anthiyur Panchayat"),
-        ("Ponnammal R",      "9876543220", "3F",  "Cauvery Street",   "Anthiyur", "638501", "11.3417", "77.5798", "VOTER_ID", "TN900000106",      "Anthiyur Panchayat"),
-        ("Dhandapani M",     "9876543221", "22G", "New Bus Stand Rd", "Anthiyur", "638501", "11.3409", "77.5847", "AADHAAR",  "AADHAAR-9001-07", "Anthiyur Panchayat"),
-        ("Shanthi K",        "9876543222", "14H", "Agraharam Street", "Anthiyur", "638501", "11.3440", "77.5820", "AADHAAR",  "AADHAAR-9001-08", "Anthiyur Panchayat"),
-        ("Govindasamy N",    "9876543223", "36I", "Vellode Road",     "Anthiyur", "638501", "11.3381", "77.5809", "PAN_CARD", "ANTHI9001I",       "Anthiyur Panchayat"),
-        ("Meenakshi P",      "9876543224", "9J",  "Railway Feeder Rd","Anthiyur", "638501", "11.3424", "77.5788", "AADHAAR",  "AADHAAR-9001-10", "Anthiyur Panchayat"),
-    ]
-
     def run(self):
-        property_obj = Property.objects.filter(property_name="Residential", is_deleted=False).first()
-        sub_property = SubProperty.objects.filter(
-            property_id=property_obj, sub_property_name="Individual House", is_deleted=False
-        ).first() if property_obj else None
-
+        property_obj = Property.objects.filter(
+            property_name="Residential",
+            is_deleted=False,
+        ).first()
+        sub_property = (
+            SubProperty.objects.filter(
+                property_id=property_obj,
+                sub_property_name="Individual House",
+                is_deleted=False,
+            ).first()
+            if property_obj
+            else None
+        )
         if not property_obj or not sub_property:
-            self.log("Property/SubProperty not found — run PropertySeeder first.")
+            self.log("Property/SubProperty not found - run PropertySeeder first.")
             return
 
-        count = 0
-        for (
-            cust_name, contact, building_no, street, area,
-            pincode, lat, lon, id_proof_type, id_no, panchayat_name
-        ) in self.CUSTOMERS:
-            panchayat = Panchayat.objects.filter(
-                panchayat_name=panchayat_name,
+        waste_types = list(
+            WasteType.objects.filter(
+                waste_type_name__in=CUSTOMER_WASTE_TYPES,
                 is_deleted=False,
-            ).select_related("district_id", "state_id", "area_type_id").first()
+            )
+        )
+        if not waste_types:
+            self.log("Waste types missing - run WasteTypeSeeder first.")
+            return
 
-            if not panchayat:
-                self.log(f"No panchayat '{panchayat_name}' for {cust_name} — run geo seeders first. Skipping.")
+        created_count = 0
+        updated_count = 0
+        global_idx = 0
+
+        for district_name, geo in DISTRICTS.items():
+            locations = self._build_locations(district_name, geo)
+            if not locations:
+                self.log(
+                    f"No wards/local bodies resolved for '{district_name}' - skipping customers."
+                )
                 continue
 
-            # Same ward every customer in this panchayat resolves to (Ward 1,
-            # ordered by name) — mirrors DriverUserSeeder._pick_ward so its
-            # ward-scoped trip plan/collection points fan out to these
-            # customers instead of filtering them all out.
-            ward = Ward.objects.filter(
-                panchayat=panchayat, is_deleted=False, is_active=True
-            ).order_by("ward_name").first()
+            for location_idx, location in enumerate(locations, start=1):
+                points = spread_points(
+                    location["center_lat"],
+                    location["center_lon"],
+                    CUSTOMERS_PER_WARD,
+                    radius_km=0.08,
+                )
 
-            _, created = CustomerCreation.objects.update_or_create(
-                id_no=id_no,
-                defaults={
-                    "customer_name": cust_name,
-                    "contact_no": contact,
-                    "username": contact,
-                    "password": make_password(DEFAULT_CUSTOMER_PASSWORD),
-                    "building_no": building_no,
-                    "street": street,
-                    "area": area,
-                    "state": panchayat.state_id,
-                    "district": panchayat.district_id,
-                    "area_type": panchayat.area_type_id,
-                    "panchayat": panchayat,
+                for point_idx, (lat, lon) in enumerate(points, start=1):
+                    name_seed = TAMIL_NAME_POOL[global_idx % len(TAMIL_NAME_POOL)]
+                    cust_name = self._customer_name(name_seed, district_name, global_idx)
+                    street = STREET_NAMES[global_idx % len(STREET_NAMES)]
+                    building_no = str((location_idx - 1) * CUSTOMERS_PER_WARD + point_idx)
+                    area = location["ward"].ward_name
+                    contact = self._contact_number(district_name, location_idx, point_idx)
+                    id_proof_type = ID_PROOF_CYCLE[global_idx % len(ID_PROOF_CYCLE)]
+                    id_no = self._id_number(district_name, location_idx, point_idx)
+
+                    defaults = {
+                        "customer_name": cust_name,
+                        "contact_no": contact,
+                        "username": contact,
+                        "password": make_password(DEFAULT_CUSTOMER_PASSWORD),
+                        "building_no": building_no,
+                        "street": street,
+                        "area": area,
+                        "ward": location["ward"],
+                        "pincode": location["pincode"],
+                        "latitude": f"{lat:.6f}",
+                        "longitude": f"{lon:.6f}",
+                        "id_proof_type": id_proof_type,
+                        "property_ref": property_obj,
+                        "sub_property": sub_property,
+                        "is_bulkwaste_generator": False,
+                        "apartment_name": None,
+                        "block_no": None,
+                        "flat_no": None,
+                        "apartment_unique_id": None,
+                        "villa_no": None,
+                        "industry_name": None,
+                        "industry_type": None,
+                        "is_active": True,
+                        "is_deleted": False,
+                        "id_no": id_no,
+                    }
+                    defaults.update(
+                        geo_defaults_for_local_body(
+                            location["parent_type"],
+                            location["parent"],
+                        )
+                    )
+
+                    customer, created = CustomerCreation.objects.update_or_create(
+                        id_no=id_no,
+                        defaults=defaults,
+                    )
+                    customer.waste_types.set(waste_types)
+
+                    if created:
+                        created_count += 1
+                        self.log(f"Created customer: {cust_name}")
+                    else:
+                        updated_count += 1
+                        self.log(f"Updated customer: {cust_name}")
+
+                    global_idx += 1
+
+        self.log(
+            f"---Customers seeded ({created_count} created, {updated_count} updated)---"
+        )
+
+    def _build_locations(self, district_name, geo):
+        locations = []
+        for entry in wards_for_district(district_name):
+            ward = entry["ward"]
+            parent_type = entry["parent_type"]
+            parent = entry["parent"]
+            center_lat, center_lon = self._center_for_ward(ward, geo)
+            locations.append(
+                {
                     "ward": ward,
-                    "pincode": pincode,
-                    "latitude": lat,
-                    "longitude": lon,
-                    "id_proof_type": id_proof_type,
-                    "property_ref": property_obj,
-                    "sub_property": sub_property,
-                    "is_bulkwaste_generator": False,
-                    # Clear fields from older apartment-flavoured demo rows when
-                    # this idempotent seeder updates an existing database.
-                    "apartment_name": None,
-                    "block_no": None,
-                    "flat_no": None,
-                    "apartment_unique_id": None,
-                    "villa_no": None,
-                    "industry_name": None,
-                    "industry_type": None,
-                    "is_active": True,
-                    "is_deleted": False,
-                },
+                    "parent_type": parent_type,
+                    "parent": parent,
+                    "center_lat": center_lat,
+                    "center_lon": center_lon,
+                    "pincode": self._pincode_for_location(
+                        district_name,
+                        geo,
+                        parent_type,
+                        parent,
+                        len(locations) + 1,
+                    ),
+                }
             )
-            if created:
-                count += 1
-                self.log(f"Created customer: {cust_name}")
-            else:
-                self.log(f"Updated customer: {cust_name}")
+        return locations
 
-        self.log(f"---Customers seeded ({count} created)---")
+    def _center_for_ward(self, ward, geo):
+        coords = ward.coordinates or []
+        if coords:
+            first = coords[0]
+            try:
+                return float(first["latitude"]), float(first["longitude"])
+            except (KeyError, TypeError, ValueError):
+                pass
+
+        if geo.get("corporation_wards"):
+            _name, lat, lon = geo["corporation_wards"][0]
+            return float(lat), float(lon)
+        if geo.get("panchayats"):
+            _name, lat, lon, _pincode = geo["panchayats"][0]
+            return float(lat), float(lon)
+        return 11.0, 77.0
+
+    def _pincode_for_location(
+        self,
+        district_name,
+        geo,
+        parent_type,
+        parent,
+        location_idx,
+    ):
+        if parent_type == "panchayat":
+            parent_name = getattr(parent, "panchayat_name", "")
+            for panchayat_name, _lat, _lon, pincode in geo.get("panchayats", []):
+                if panchayat_name == parent_name:
+                    return pincode
+
+        if parent_type == "corporation":
+            base = int(geo["corporation_pincode_base"])
+            return f"{base + location_idx:06d}"
+
+        district_prefix = {
+            "Erode": "638",
+            "Coimbatore": "641",
+            "Salem": "636",
+        }.get(district_name, "600")
+        suffix = _PINCODE_BODY_OFFSET.get(parent_type, 40) + location_idx
+        return f"{district_prefix}{suffix:03d}"
+
+    def _contact_number(self, district_name, location_idx, point_idx):
+        district_prefix = {
+            "Erode": "810",
+            "Coimbatore": "820",
+            "Salem": "830",
+        }.get(district_name, "840")
+        return f"9{district_prefix}{location_idx:03d}{point_idx:02d}"
+
+    def _id_number(self, district_name, location_idx, point_idx):
+        district_code = DISTRICTS[district_name]["code"]
+        return f"{district_code}-CUST-{location_idx:03d}{point_idx:02d}"
+
+    def _customer_name(self, seed_name, district_name, global_idx):
+        district_code = DISTRICTS[district_name]["code"]
+        return f"{seed_name} {district_code}-{global_idx + 1:02d}"

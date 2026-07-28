@@ -4,6 +4,10 @@ from app.models.superadmin.common_masters.country import Country
 
 
 class CountrySeeder(BaseSeeder):
+    """Bug fix: the old seeder passed a `coordinates` kwarg that Country has
+    no field for — harmless on update, but raises FieldError on a fresh
+    database's create path (see ContinentSeeder)."""
+
     name = "country"
 
     # (country_name, continent_name, currency, mob_code)
