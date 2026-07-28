@@ -302,27 +302,59 @@ class DashboardSummaryViewSet(ViewSet):
             # once during seeding), not the day it represents. The real
             # business date lives on the parent assignment.
             stops_qs = stops_qs.filter(trip_assignment_id__trip_date=target_date)
-        stops = stops_qs
+        # One customer can have multiple stop rows for a date after trip
+        # re-planning. Count unique households and resolve one final status
+        # per household so the coverage buckets cannot exceed the total.
+        all_customer_ids = set(
+            customers.values_list("unique_id", flat=True).distinct()
+        )
 
-        status_counts = stops.aggregate(
-            collected=Count("unique_id", filter=Q(status=DailyTripHouseholdCollection.STATUS_COLLECTED)),
-            not_available=Count("unique_id", filter=Q(status=DailyTripHouseholdCollection.STATUS_MISSED)),
-            not_collected=Count(
-                "unique_id",
-                filter=Q(
+        collected_ids = (
+            set(
+                stops_qs.filter(
+                    status=DailyTripHouseholdCollection.STATUS_COLLECTED,
+                )
+                .values_list("customer_id", flat=True)
+                .distinct()
+            )
+            & all_customer_ids
+        )
+        not_available_ids = (
+            set(
+                stops_qs.filter(
+                    status=DailyTripHouseholdCollection.STATUS_MISSED,
+                )
+                .values_list("customer_id", flat=True)
+                .distinct()
+            )
+            & all_customer_ids
+        ) - collected_ids
+        not_collected_ids = (
+            set(
+                stops_qs.filter(
                     status__in=[
                         DailyTripHouseholdCollection.STATUS_PENDING,
                         DailyTripHouseholdCollection.STATUS_NOT_COLLECTED,
+                        DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
                         DailyTripHouseholdCollection.STATUS_SKIPPED,
                     ]
-                ),
-            ),
-        )
+                )
+                .values_list("customer_id", flat=True)
+                .distinct()
+            )
+            & all_customer_ids
+        ) - collected_ids - not_available_ids
+
+        # Households without a stop for the selected date are pending/not
+        # collected, so every active household belongs to exactly one bucket.
+        accounted_ids = collected_ids | not_available_ids | not_collected_ids
+        not_collected_ids |= all_customer_ids - accounted_ids
+
         return {
-            "total_customers": customers.count(),
-            "collected": status_counts["collected"] or 0,
-            "not_available": status_counts["not_available"] or 0,
-            "not_collected": status_counts["not_collected"] or 0,
+            "total_customers": len(all_customer_ids),
+            "collected": len(collected_ids),
+            "not_available": len(not_available_ids),
+            "not_collected": len(not_collected_ids),
         }
 
     def _attendance_summary(self, params, target_date=None):

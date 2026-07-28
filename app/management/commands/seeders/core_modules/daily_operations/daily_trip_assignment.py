@@ -87,11 +87,29 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                         "approval_status": DailyTripAssignment.APPROVAL_APPROVED,
                     },
                 )
+                assignment.waste_types.set(plan.waste_types.all())
+                assignment.wards.set(plan.wards.all())
+
+                # Keep existing history aligned when the Trip Plan seeder
+                # changes a plan to a shared staff-template/vehicle pair.
+                expected_values = {
+                    "staff_template_id": template,
+                    "vehicle_id": plan.vehicle_id,
+                    **{
+                        field: getattr(plan, field, None)
+                        for field in FLAT_GEO_FIELDS
+                    },
+                    "scheduled_time": plan.scheduled_time,
+                }
+                update_fields = []
+                for field, value in expected_values.items():
+                    if getattr(assignment, field) != value:
+                        setattr(assignment, field, value)
+                        update_fields.append(field)
+
                 if created:
-                    assignment.waste_types.set(plan.waste_types.all())
                     created_count += 1
 
-                update_fields = []
                 if day_offset == 3 and alt_template and not assignment.alt_staff_template_id_id:
                     assignment.alt_staff_template_id = alt_template
                     update_fields.append("alt_staff_template_id")

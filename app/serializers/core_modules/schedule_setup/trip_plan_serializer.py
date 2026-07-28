@@ -200,18 +200,72 @@ class TripPlanSerializer(serializers.ModelSerializer):
 
         staff_template = attrs.get("staff_template_id", getattr(instance, "staff_template_id", None))
         vehicle = attrs.get("vehicle_id", getattr(instance, "vehicle_id", None))
+        collection_type = attrs.get(
+            "collection_type",
+            getattr(instance, "collection_type", TripPlan.COLLECTION_TYPE_BIN),
+        )
+        wards = attrs.get(
+            "wards",
+            list(instance.wards.all()) if instance else [],
+        )
+        target_ward_ids = {str(ward.pk) for ward in wards}
+        location_fields = (
+            "state",
+            "district",
+            "area_type",
+            "corporation",
+            "municipality",
+            "town_panchayat",
+            "panchayat_union",
+            "panchayat",
+        )
+        target_location = tuple(
+            str(value_for(field).pk) if value_for(field) else ""
+            for field in location_fields
+        )
+
+        def has_same_location(plan):
+            plan_location = tuple(
+                str(getattr(plan, f"{field}_id") or "")
+                for field in location_fields
+            )
+            if plan_location != target_location:
+                return False
+            plan_ward_ids = {
+                str(ward_id)
+                for ward_id in plan.wards.values_list("unique_id", flat=True)
+            }
+            return plan_ward_ids == target_ward_ids
+
         other_plans = TripPlan.objects.filter(is_deleted=False, status=TripPlan.Status.ACTIVE)
         if instance:
             # TripPlan uses unique_id as its primary key. Exclude explicitly
             # by that identifier so an edit of the current plan never treats
             # its own staff template or vehicle as a duplicate.
             other_plans = other_plans.exclude(unique_id=instance.unique_id)
-        staff_changed = not instance or staff_template != instance.staff_template_id
-        vehicle_changed = not instance or vehicle != instance.vehicle_id
-        if staff_template and staff_changed and other_plans.filter(staff_template_id=staff_template).exists():
-            raise serializers.ValidationError({"staff_template_id": "This staff template is already assigned to another Trip Plan."})
-        if vehicle and vehicle_changed and other_plans.filter(vehicle_id=vehicle).exists():
-            raise serializers.ValidationError({"vehicle_id": "This vehicle is already assigned to another Trip Plan."})
+        same_type_plans = other_plans.filter(
+            collection_type=collection_type,
+        ).prefetch_related("wards")
+        if staff_template and any(
+            has_same_location(plan)
+            for plan in same_type_plans.filter(staff_template_id=staff_template)
+        ):
+            raise serializers.ValidationError({
+                "staff_template_id": (
+                    "This staff template is already assigned to another active "
+                    "Trip Plan for the same location and collection type."
+                )
+            })
+        if vehicle and any(
+            has_same_location(plan)
+            for plan in same_type_plans.filter(vehicle_id=vehicle)
+        ):
+            raise serializers.ValidationError({
+                "vehicle_id": (
+                    "This vehicle is already assigned to another active Trip "
+                    "Plan for the same location and collection type."
+                )
+            })
 
         wards = attrs.get("wards")
         if wards and trip_hierarchy_field != "district":
