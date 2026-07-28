@@ -2,12 +2,16 @@ from app.models.masters.municipality import Municipality
 from app.serializers.masters.municipality_serializer import MunicipalitySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from rest_framework import filters, viewsets
 from app.utils.pagination import LimitOffsetWithPage
 
 
-class MunicipalityViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class MunicipalityViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = MunicipalitySerializer
+    lite_serializer_class = make_lite_serializer(
+        Municipality, "municipality_name", extra_fields=("state_id", "district_id", "area_type_id")
+    )
     lookup_field = "unique_id"
     permission_resource = "Municipality"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

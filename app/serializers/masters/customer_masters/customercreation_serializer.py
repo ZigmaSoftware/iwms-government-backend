@@ -217,7 +217,11 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['password'] = decrypt_password(instance.password or "")
+        view = self.context.get("view")
+        if getattr(view, "action", None) == "list":
+            data['password'] = ""
+        else:
+            data['password'] = decrypt_password(instance.password or "")
         return data
 
         # =============================
@@ -347,5 +351,5 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
                 "unique_id": waste_type.unique_id,
                 "waste_type_name": waste_type.waste_type_name,
             }
-            for waste_type in obj.waste_types.filter(is_deleted=False).order_by("waste_type_name")
+            for waste_type in obj.waste_types.all()
         ]
