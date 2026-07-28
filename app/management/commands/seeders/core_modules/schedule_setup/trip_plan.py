@@ -25,12 +25,14 @@ BIN_WASTE_TYPES = [
 
 class TripPlanSeeder(BaseSeeder):
     """One bin_collection + one household_collection TripPlan per Ward.
-    Each ward's pair draws its own never-reused staff template and vehicle
-    from its parent local body's dedicated pool (StaffTemplateSeeder /
-    VehicleCreationSeeder create exactly ward_count x 2 of each per local
-    body, in the same order consumed here) — mirroring real dispatch, where
-    a local body owns a fleet/crew roster and assigns one crew + one
-    vehicle per route, never double-booking either onto a second route."""
+    The same staff-template/vehicle pair is intentionally reused:
+
+    * for Bin and Household plans in the same Ward (different collection type);
+    * across each pair of Wards (different location).
+
+    This keeps the seeded data aligned with TripPlan validation, where a
+    resource conflict exists only when location and collection type are both
+    the same."""
 
     name = "TripPlanSeeder"
 
@@ -64,11 +66,13 @@ class TripPlanSeeder(BaseSeeder):
         vehicles = list(
             VehicleCreation.objects.filter(**{parent_type: parent}, is_deleted=False).order_by("created_at")
         )
-        needed = len(wards) * 2
+        # One pair serves two wards, and both collection types within each
+        # ward. This deliberately exercises both supported reuse conditions.
+        needed = (len(wards) + 1) // 2
         if len(templates) < needed or len(vehicles) < needed:
             self.log(
                 f"'{parent}': only {len(templates)} templates / {len(vehicles)} vehicles "
-                f"for {needed} ward slots — some wards will be skipped."
+                f"for {needed} shared route pairs — some wards will be skipped."
             )
 
         supervisor = StaffcreationOfficeDetails.objects.filter(
@@ -78,40 +82,67 @@ class TripPlanSeeder(BaseSeeder):
         geo_fields = geo_defaults_for_local_body(parent_type, parent)
 
         created_count = 0
-        slot = 0
         for ward_idx, ward in enumerate(wards):
+            # Ward 0/1 share pair 0, ward 2/3 share pair 1, etc.
+            resource_slot = ward_idx // 2
+            if resource_slot >= len(templates) or resource_slot >= len(vehicles):
+                continue
+            template = templates[resource_slot]
+            vehicle = vehicles[resource_slot]
+
             for collection_type, waste_types, sched_hour in (
                 (TripPlan.COLLECTION_TYPE_BIN, bin_types, 6),
                 (TripPlan.COLLECTION_TYPE_HOUSEHOLD, household_types, 8),
             ):
-                if slot >= len(templates) or slot >= len(vehicles):
-                    slot += 1
-                    continue
-                template = templates[slot]
-                vehicle = vehicles[slot]
-                slot += 1
-
                 sched_time = time(sched_hour, (ward_idx * 15) % 60)
                 max_kg = int(vehicle.capacity or 1500)
+                defaults = {
+                    **geo_fields,
+                    "collection_type": collection_type,
+                    "staff_template_id": template,
+                    "vehicle_id": vehicle,
+                    "supervisor_id": supervisor,
+                    "scheduled_time": sched_time,
+                    "trip_trigger_weight_kg": max(50, max_kg // 4),
+                    "max_vehicle_capacity_kg": max_kg,
+                    "approval_status": TripPlan.ApprovalStatus.APPROVED,
+                    "status": TripPlan.Status.ACTIVE,
+                    "is_active": True,
+                    "is_deleted": False,
+                    "is_auto_assign": True,
+                    "repeat_days": [0, 1, 2, 3, 4, 5, 6],
+                }
 
-                plan, created = TripPlan.objects.update_or_create(
-                    staff_template_id=template,
-                    vehicle_id=vehicle,
-                    collection_type=collection_type,
-                    is_deleted=False,
-                    defaults={
+                # Wards are many-to-many and cannot be part of
+                # update_or_create's lookup. Resolve the existing seeded plan
+                # by its exact ward set + collection type, then update it.
+                candidates = (
+                    TripPlan.objects.filter(
+                        collection_type=collection_type,
+                        is_deleted=False,
                         **geo_fields,
-                        "supervisor_id": supervisor,
-                        "scheduled_time": sched_time,
-                        "trip_trigger_weight_kg": max(50, max_kg // 4),
-                        "max_vehicle_capacity_kg": max_kg,
-                        "approval_status": TripPlan.ApprovalStatus.APPROVED,
-                        "status": TripPlan.Status.ACTIVE,
-                        "is_active": True,
-                        "is_auto_assign": True,
-                        "repeat_days": [0, 1, 2, 3, 4, 5, 6],
-                    },
+                    )
+                    .prefetch_related("wards")
+                    .order_by("created_at")
                 )
+                plan = next(
+                    (
+                        candidate
+                        for candidate in candidates
+                        if set(
+                            candidate.wards.values_list("unique_id", flat=True)
+                        ) == {ward.unique_id}
+                    ),
+                    None,
+                )
+                created = plan is None
+                if created:
+                    plan = TripPlan.objects.create(**defaults)
+                else:
+                    for field, value in defaults.items():
+                        setattr(plan, field, value)
+                    plan.save(update_fields=[*defaults.keys(), "updated_at"])
+
                 plan.waste_types.set(waste_types)
                 plan.wards.set([ward])
                 if created:
