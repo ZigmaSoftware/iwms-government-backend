@@ -68,6 +68,7 @@ ALLOWED_HOSTS = [
     '192.168.3.112',
     '192.168.5.240', #sathya ip addr
     '10.245.75.197',
+    '10.255.70.197',
     "aura-haustorial-elayne.ngrok-free.dev",
 ]
 
@@ -237,7 +238,8 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://192\.168\.3\.120(:\d+)?$",
     r"^http://10\.152\.141\.197(:\d+)?$",
     r"^http://192\.168\.3\.112(:\d+)?$", 
-    r"^http://10\.245\.75\.197(:\d+)?$", 
+    r"^http://10\.245\.75\.197(:\d+)?$",
+    r"^http://10\.255\.70\.197(:\d+)?$",
     "https://aura-haustorial-elayne.ngrok-free.dev",
 ]
 

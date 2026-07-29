@@ -37,6 +37,7 @@ from app.management.commands.seeders.superadmin.user_management.driver_user impo
 from app.management.commands.seeders.superadmin.user_management.supervisor_user import SupervisorUserSeeder
 from app.management.commands.seeders.superadmin.user_management.supervisor_hierarchy_demo import SupervisorHierarchyDemoSeeder
 from app.management.commands.seeders.masters.customer_masters.customer_user import CustomerUserSeeder
+from app.management.commands.seeders.masters.customer_masters.driver_household_customers import DriverHouseholdCustomerSeeder
 from app.management.commands.seeders.superadmin.user_management.staff_office import StaffOfficeSeeder
 from app.management.commands.seeders.superadmin.user_management.staff_personal import StaffPersonalSeeder
 from app.management.commands.seeders.superadmin.user_management.corporation_access import CorporationAccessSeeder
@@ -214,6 +215,7 @@ DRIVER_DEMO_SEEDERS = [
     SupervisorUserSeeder,
     SupervisorHierarchyDemoSeeder,  # extra staff/templates/alt-template under supervisor_user's own hierarchy
     CustomerUserSeeder,
+    DriverHouseholdCustomerSeeder,  # extra households on driver_user's own household trip
 ]
 
 # ============================================================
@@ -270,6 +272,7 @@ SEED_GROUPS = {
     "waste-collections": [WasteCollectionSeeder],
     "vehicle-breakdowns": [VehicleBreakdownSeeder],
     "blue-planet":        [BluePlanetSeeder],
+    "driver-households":  [DriverHouseholdCustomerSeeder],  # top up driver_user's household trip
 }
 
 # ============================================================
