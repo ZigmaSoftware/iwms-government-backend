@@ -20,8 +20,8 @@ from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.screen_management.companyuserscreenpermission import (
     UserScreenPermission,
 )
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
-from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_requester_scope,
     filter_staff_queryset_by_requester_scope,

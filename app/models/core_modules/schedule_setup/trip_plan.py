@@ -7,7 +7,7 @@ from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.superadmin.common_masters.state import State

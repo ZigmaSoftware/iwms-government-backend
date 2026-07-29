@@ -1,8 +1,8 @@
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from app.models.superadmin.user_management.attendance import Employee
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.attendance import Employee
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 
 
 def _image(name="selfie.jpg"):

@@ -23,7 +23,7 @@ from app.serializers.core_modules.schedule_setup.alternative_staff_template_seri
     AlternativeStaffTemplateSerializer,
 )
 from app.serializers.core_modules.schedule_setup.staff_template_serializer import StaffTemplateSerializer
-from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.serializers.masters.waste_masters.wastetype_serializer import (
     WasteTypeSerializer,
 )

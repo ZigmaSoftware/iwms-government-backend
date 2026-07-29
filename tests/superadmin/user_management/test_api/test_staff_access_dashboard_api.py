@@ -10,8 +10,8 @@ from app.models.superadmin.common_masters.state import State
 from app.models.superadmin_masters.auth_user import User
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
-from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 
 class StaffAccessDashboardAPITest(APITestCase):

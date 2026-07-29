@@ -16,9 +16,9 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.waste_masters.wastetype import WasteType
-from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 
 
 class TripPlanStopInputSerializer(serializers.Serializer):

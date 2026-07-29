@@ -2,7 +2,6 @@ from rest_framework import serializers
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.superadmin.role_management.contractorUserType import ContractorUserType
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.models.masters.department import Department
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -12,7 +11,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 
-from app.models.superadmin.user_management.staffcreation import Staffcreation, StaffPersonalDetails
+from app.models.superadmin.staff_management.staffcreation import Staffcreation, StaffPersonalDetails
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
 from app.utils.file_validators import validate_pdf_upload
@@ -55,6 +54,12 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     governmentusertype_name = serializers.CharField(
+        source="governmentusertype_id.name",
+        read_only=True,
+    )
+    # Staff-named response aliases. Keep the legacy ``*usertype*`` fields
+    # during the API transition so existing mobile/web clients remain valid.
+    government_staff_type_name = serializers.CharField(
         source="governmentusertype_id.name",
         read_only=True,
     )
@@ -133,23 +138,6 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     panchayat_name = serializers.CharField(source="panchayat.name", read_only=True)
-    department_id = serializers.PrimaryKeyRelatedField(
-        queryset=Department.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
-    department_name = serializers.CharField(
-        source="department_id.department_name",
-        read_only=True,
-    )
-    department_code = serializers.CharField(
-        source="department_id.department_code",
-        read_only=True,
-    )
-    # Designation is captured as free text (`designation`), not an FK master —
-    # government designations vary too widely across states/districts to
-    # enumerate. The former FK (`designation_id`) is no longer exposed.
-
     # --------------------------------------------------
     #  Office-level: Driving licence
     # --------------------------------------------------
@@ -182,6 +170,13 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         source="personal_details.dob",
         required=False,
         allow_null=True,
+    )
+    age = serializers.IntegerField(
+        source="personal_details.age",
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=120,
     )
     blood_group = serializers.CharField(
         source="personal_details.blood_group",
@@ -248,6 +243,10 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         source="user_type_id.name",
         read_only=True,
     )
+    staff_type_name = serializers.CharField(
+        source="user_type_id.name",
+        read_only=True,
+    )
 
     
 
@@ -257,6 +256,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
     personal_field_names = [
         "marital_status",
         "dob",
+        "age",
         "blood_group",
         "gender",
         "physically_challenged",
@@ -272,6 +272,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "unique_id",
             "emp_id",
             "username",
+            "office_email",
             "password",
             "qr_code",
 
@@ -279,11 +280,6 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "employee_name",
             "staff_config_name",
             "doj",
-            "department",
-            "designation",
-            "department_id",
-            "department_name",
-            "department_code",
             "staff_head_id",
             "staff_head",
             "photo",
@@ -300,6 +296,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             # Personal details (flattened)
             "marital_status",
             "dob",
+            "age",
             "blood_group",
             "gender",
             "physically_challenged",
@@ -309,6 +306,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "contact_email",
             "user_type_id",
             "user_type_name",
+            "staff_type_name",
             "staffusertype_id",
             "staffusertype_name",
             "contractorusertype_id",
@@ -317,6 +315,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             # Government user type
             "governmentusertype_id",
             "governmentusertype_name",
+            "government_staff_type_name",
             "governmentusertype_level",
 
             # Geographic hierarchy for government staff

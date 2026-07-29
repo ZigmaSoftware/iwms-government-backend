@@ -76,14 +76,14 @@ from .superadmin.screen_management.dashboardwidgetpermission import DashboardWid
 # ============================================================
 # GROUP: USER CREATION & STAFF
 # ============================================================
-from .superadmin.user_management.staffcreation import (
+from .superadmin.staff_management.staffcreation import (
     StaffcreationOfficeDetails,
     StaffPersonalDetails,
 )
 from .core_modules.schedule_setup.staff_template import StaffTemplate
 from .core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
-from .superadmin.user_management.unassigned_staff_pool import UnassignedStaffPool
-from .superadmin.user_management.staff_data_scope import StaffDataScope
+from .superadmin.staff_management.unassigned_staff_pool import UnassignedStaffPool
+from .superadmin.staff_management.staff_data_scope import StaffDataScope
 
 
 # ============================================================

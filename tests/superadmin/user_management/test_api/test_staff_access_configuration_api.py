@@ -20,8 +20,8 @@ from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
 from app.models.superadmin_masters.auth_user import User
-from app.models.superadmin.user_management.staffcreation import Staffcreation
-from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 
 
 class StaffAccessConfigurationAPITest(APITestCase):
@@ -128,7 +128,7 @@ class StaffAccessConfigurationAPITest(APITestCase):
 
     def test_permission_integrity_error_rolls_back_staff_creation(self):
         with patch(
-            "app.serializers.superadmin.user_management.staff_access_configuration_serializer."
+            "app.serializers.superadmin.staff_management.staff_access_configuration_serializer."
             "UserScreenPermissionMultiScreenSerializer.save",
             side_effect=IntegrityError("permission failed"),
         ):
@@ -290,7 +290,7 @@ class StaffAccessConfigurationAPITest(APITestCase):
         }
 
         with patch(
-            "app.viewsets.superadmin.user_management."
+            "app.viewsets.superadmin.staff_management."
             "staff_access_configuration_viewset.StaffAccessConfigurationViewSet.log_audit"
         ):
             response = self.client.post(self.url, payload, format="json")
