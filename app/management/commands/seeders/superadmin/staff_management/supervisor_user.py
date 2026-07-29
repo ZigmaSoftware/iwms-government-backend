@@ -7,7 +7,7 @@ from app.models.superadmin.role_management.governmentStaffUserType import Govern
 from app.models.superadmin.role_management.userType import UserType
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.hierarchy import copy_flat_geo, sync_staff_data_scope
 
 

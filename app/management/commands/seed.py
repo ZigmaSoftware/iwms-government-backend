@@ -32,15 +32,15 @@ from app.management.commands.seeders.masters.waste_masters.bins import BinSeeder
 from app.management.commands.seeders.superadmin.role_management import ROLE_ASSIGN_SEEDERS
 
 # user-creations (router: user-creations/staffcreation, ...)
-from app.management.commands.seeders.superadmin.user_management.auth_user_seeder import AuthUserSeeder
-from app.management.commands.seeders.superadmin.user_management.driver_user import DriverUserSeeder
-from app.management.commands.seeders.superadmin.user_management.supervisor_user import SupervisorUserSeeder
-from app.management.commands.seeders.superadmin.user_management.supervisor_hierarchy_demo import SupervisorHierarchyDemoSeeder
+from app.management.commands.seeders.superadmin.staff_management.auth_user_seeder import AuthUserSeeder
+from app.management.commands.seeders.superadmin.staff_management.driver_user import DriverUserSeeder
+from app.management.commands.seeders.superadmin.staff_management.supervisor_user import SupervisorUserSeeder
+from app.management.commands.seeders.superadmin.staff_management.supervisor_hierarchy_demo import SupervisorHierarchyDemoSeeder
 from app.management.commands.seeders.masters.customer_masters.customer_user import CustomerUserSeeder
 from app.management.commands.seeders.masters.customer_masters.driver_household_customers import DriverHouseholdCustomerSeeder
-from app.management.commands.seeders.superadmin.user_management.staff_office import StaffOfficeSeeder
-from app.management.commands.seeders.superadmin.user_management.staff_personal import StaffPersonalSeeder
-from app.management.commands.seeders.superadmin.user_management.corporation_access import CorporationAccessSeeder
+from app.management.commands.seeders.superadmin.staff_management.staff_office import StaffOfficeSeeder
+from app.management.commands.seeders.superadmin.staff_management.staff_personal import StaffPersonalSeeder
+from app.management.commands.seeders.superadmin.staff_management.corporation_access import CorporationAccessSeeder
 
 # transport-masters (router: transport-masters/vehicle-type, vehicle-creation, trip-attendance, fuels)
 from app.management.commands.seeders.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreationSeeder

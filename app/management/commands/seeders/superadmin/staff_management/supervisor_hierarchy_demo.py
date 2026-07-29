@@ -15,7 +15,7 @@ from app.models.superadmin.role_management.governmentStaffUserType import (
     GovernmentStaffUserType,
 )
 from app.models.superadmin.role_management.userType import UserType
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 
 
 class SupervisorHierarchyDemoSeeder(BaseSeeder):

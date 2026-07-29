@@ -2,7 +2,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.management.commands.seeders.ward_utils import geo_defaults_for_local_body, local_bodies_for_district
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 SLOTS_PER_WARD = 2  # one template for the ward's bin route, one for its household route
 

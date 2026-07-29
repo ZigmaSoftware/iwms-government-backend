@@ -8,7 +8,7 @@ from app.models.core_modules.daily_operations.daily_trip_collection_point import
     DailyTripCollectionPoint,
 )
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District

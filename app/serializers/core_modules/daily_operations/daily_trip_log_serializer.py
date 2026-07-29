@@ -4,8 +4,8 @@ from rest_framework import serializers
 from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
-from app.models.superadmin.user_management.staffcreation import Staffcreation
-from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
 from app.utils.waste_images import capture_images_for_customer
 

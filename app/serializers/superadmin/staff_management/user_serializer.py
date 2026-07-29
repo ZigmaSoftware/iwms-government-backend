@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db.models import Q
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.userType import UserType
 
 

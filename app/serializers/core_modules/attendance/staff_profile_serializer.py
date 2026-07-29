@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from app.models.superadmin.user_management.staffcreation import StaffPersonalDetails, Staffcreation
+from app.models.superadmin.staff_management.staffcreation import StaffPersonalDetails, Staffcreation
 
 
 class StaffPersonalSerializer(serializers.ModelSerializer):

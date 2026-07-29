@@ -1,6 +1,6 @@
 from django.forms.models import model_to_dict
 from django.db.models.fields.files import FieldFile
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import Account
 from app.utils.common_audit import CommonAudit
 from app.utils.hierarchy import copy_flat_geo

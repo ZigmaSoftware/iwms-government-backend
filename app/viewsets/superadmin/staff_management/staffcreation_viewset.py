@@ -6,9 +6,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.serializers.superadmin.user_management.staffcreation_serializer import StaffcreationSerializer
+from app.serializers.superadmin.staff_management.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
@@ -18,8 +18,6 @@ from rest_framework import viewsets
 class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Staffcreation.objects.select_related(
         "personal_details",
-        "department_id",
-        "designation_id",
         "staffusertype_id",
         "contractorusertype_id",
     ).all()
@@ -36,27 +34,18 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     search_fields = [
         "employee_name",
         "staff_unique_id",
-        "department",
-        "designation",
-        "department_id__department_name",
-        "department_id__department_code",
-        "designation_id__designation_name",
-        "designation_id__designation_group",
     ]
     ordering_fields = ["staff_unique_id", "employee_name", "created_at"]
 
     def get_queryset(self):
         queryset = Staffcreation.objects.select_related(
             "personal_details",
-            "department_id",
-            "designation_id",
             "staffusertype_id",
             "contractorusertype_id",
         )
 
         employee_name = self.request.query_params.get("employee_name", None)
         active_status = self.request.query_params.get("active_status", None)
-        department_id = self.request.query_params.get("department_id", None)
         staffusertype_id = self.request.query_params.get("staffusertype_id", None)
         contractorusertype_id = self.request.query_params.get("contractorusertype_id", None)
         login_enabled = self.request.query_params.get("login_enabled", None)
@@ -74,9 +63,6 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
 
         if active_status in ["0", "1"]:
             queryset = queryset.filter(active_status=active_status == "1")
-
-        if department_id:
-            queryset = queryset.filter(department_id__unique_id=department_id)
 
         if staffusertype_id:
             queryset = queryset.filter(staffusertype_id__unique_id=staffusertype_id)

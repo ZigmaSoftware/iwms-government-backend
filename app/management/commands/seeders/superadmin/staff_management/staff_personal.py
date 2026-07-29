@@ -1,4 +1,4 @@
-from app.models.superadmin.user_management.staffcreation import Staffcreation, StaffPersonalDetails
+from app.models.superadmin.staff_management.staffcreation import Staffcreation, StaffPersonalDetails
 
 
 class StaffPersonalSeeder:

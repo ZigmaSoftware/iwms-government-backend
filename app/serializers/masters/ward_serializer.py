@@ -10,7 +10,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
-from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import normalize_flat_geo_attrs
 
 
