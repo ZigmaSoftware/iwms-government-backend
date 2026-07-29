@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.superadmin.user_management.staffcreation import Staffcreation
-from app.models.superadmin.user_management.unassigned_staff_pool import UnassignedStaffPool
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.unassigned_staff_pool import UnassignedStaffPool
 
 
 class UnassignedStaffPoolSerializer(serializers.ModelSerializer):

@@ -38,7 +38,7 @@ from app.models.masters.waste_masters.bins import Bins
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.ward import Ward
 from app.models.superadmin.common_masters.state import State
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_requester_scope,
     filter_staff_queryset_by_requester_scope,

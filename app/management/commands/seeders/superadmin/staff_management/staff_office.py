@@ -7,7 +7,7 @@ from app.models.masters.district import District
 from app.models.masters.corporation import Corporation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 # Drivers/operators must be numerous enough that DRIVERS_PER_DISTRICT *
 # OPERATORS_PER_DISTRICT unique (driver, operator) combinations comfortably

@@ -12,7 +12,7 @@ from app.models.core_modules.complaint_management.feedback import ComplaintFeedb
 from app.models.core_modules.complaint_management.reopen_history import ComplaintReopenHistory
 from app.models.core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 
 class ComplaintTicketSerializer(serializers.ModelSerializer):

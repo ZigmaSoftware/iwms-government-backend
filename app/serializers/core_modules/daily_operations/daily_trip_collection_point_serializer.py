@@ -6,8 +6,8 @@ from app.models.core_modules.daily_operations.daily_trip_assignment import Daily
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
-from app.models.superadmin.user_management.staffcreation import Staffcreation
-from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display, hierarchy_payload
 
 

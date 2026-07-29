@@ -1,6 +1,6 @@
 from django.db import models
 
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.comfun import generate_unique_id
 
 

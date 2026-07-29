@@ -4,9 +4,9 @@ from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from app.models.superadmin.user_management.staffcreation import Staffcreation
-from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
-from app.serializers.superadmin.user_management.staff_access_configuration_serializer import (
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.serializers.superadmin.staff_management.staff_access_configuration_serializer import (
     StaffAccessConfigurationSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin

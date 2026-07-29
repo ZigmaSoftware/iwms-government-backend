@@ -30,8 +30,8 @@ from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.masters.corporation import Corporation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
-from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 DEFAULT_PASSWORD = "Staff@1234"
 

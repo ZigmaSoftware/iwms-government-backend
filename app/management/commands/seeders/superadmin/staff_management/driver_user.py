@@ -32,7 +32,7 @@ from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
     TripPlanCollectionPoint,
 )
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.superadmin.user_management.staffcreation import (
+from app.models.superadmin.staff_management.staffcreation import (
     Staffcreation,
     StaffcreationOfficeDetails,
     StaffPersonalDetails,

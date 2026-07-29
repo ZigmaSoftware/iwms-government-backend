@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from app.models.superadmin.user_management.staffcreation import Staffcreation, StaffPersonalDetails
+from app.models.superadmin.staff_management.staffcreation import Staffcreation, StaffPersonalDetails
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 

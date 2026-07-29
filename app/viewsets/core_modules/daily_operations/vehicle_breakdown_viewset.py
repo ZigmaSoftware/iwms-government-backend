@@ -267,7 +267,7 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="available-staff")
     def available_staff(self, request):
-        from app.models.superadmin.user_management.staffcreation import Staffcreation
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
 
         trip_date = request.query_params.get("date")
         role = request.query_params.get("role")

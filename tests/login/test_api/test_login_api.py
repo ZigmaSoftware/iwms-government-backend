@@ -205,7 +205,7 @@ class TestLoginStaffBranch:
         user_type,
     ):
         from app.models.superadmin.role_management.staffUserType import StaffUserType
-        from app.models.superadmin.user_management.staffcreation import Staffcreation
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
         from app.utils.password_encryption import encrypt_password
 
         staff_user_type = StaffUserType.objects.create(
@@ -242,7 +242,7 @@ class TestLoginStaffBranch:
         user_type,
     ):
         from app.models.superadmin.role_management.staffUserType import StaffUserType
-        from app.models.superadmin.user_management.staffcreation import Staffcreation
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
         from app.utils.password_encryption import encrypt_password
 
         staff_user_type = StaffUserType.objects.create(
@@ -636,7 +636,7 @@ class TestResolveStaffUserUnit:
 
     def test_staffcreation_instance_returned_directly(self):
         """Line 279-280: user IS a Staffcreation → returned as-is."""
-        from app.models.superadmin.user_management.staffcreation import Staffcreation
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
         vset = self._viewset()
         mock_staff = MagicMock(spec=Staffcreation)
         result = vset._resolve_staff_user(mock_staff)
@@ -688,7 +688,7 @@ class TestResolveStaffUserUnit:
 
     def test_db_exception_in_lookup_returns_none(self):
         """Lines 300-301: exception during DB lookup → None."""
-        from app.models.superadmin.user_management.staffcreation import Staffcreation
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
         vset = self._viewset()
 
         class FakeUser:
