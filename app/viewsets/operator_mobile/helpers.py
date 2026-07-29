@@ -61,7 +61,18 @@ def _effective_extra_operator_ids(assignment: DailyTripAssignment):
     return getattr(source, "extra_operator_id", None) or []
 
 
-def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssignment:
+def find_active_assignment_for_operator(
+    staff: Staffcreation,
+    collection_type: str | None = None,
+) -> DailyTripAssignment:
+    """The trip this staff is currently working.
+
+    `collection_type` narrows the search to one kind of trip (bin / household /
+    bulk). Sequencing is per TYPE: a crew's bin trips run one after another, but
+    an open household trip must not become the answer for a bin scan. When no
+    trip of that type exists the filter is ignored, so legacy assignments
+    without a trip plan still resolve.
+    """
     today = timezone.localdate()
 
     base = (
@@ -79,30 +90,51 @@ def find_active_assignment_for_operator(staff: Staffcreation) -> DailyTripAssign
             "alt_staff_template_id__operator_id",
         )
         .prefetch_related("waste_types")
-        .order_by("unique_id")
+        .order_by("scheduled_time", "unique_id")
     )
 
-    assignment = base.filter(_effective_staff_q(staff)).first()
-    if assignment is None:
+    candidates = list(base.filter(_effective_staff_q(staff)))
+    if not candidates:
         # Extra-operator fallback: walk assignments and check JSON membership in
         # Python (avoids SQLite-incompatible JSON __contains lookups).
-        for candidate in base:
-            if staff.staff_unique_id in _effective_extra_operator_ids(candidate):
-                assignment = candidate
-                break
+        candidates = [
+            candidate for candidate in base
+            if staff.staff_unique_id in _effective_extra_operator_ids(candidate)
+        ]
 
-    if not assignment:
+    if not candidates:
         raise OperatorFlowError(
             "NO_ACTIVE_TRIP",
             "No trip is assigned to you for today.",
         )
-    return assignment
+
+    if collection_type:
+        of_type = [
+            candidate for candidate in candidates
+            if getattr(candidate.trip_plan_id, "collection_type", None)
+            == collection_type
+        ]
+        if of_type:
+            candidates = of_type
+
+    # The crew runs their trips in order, so "the active trip" is the earliest
+    # one with work left — not simply the earliest one. Without this, a driver
+    # holding a 06:30 and a 15:00 bin trip would stay pinned to the morning trip
+    # after finishing it, and the afternoon bins could never be scanned.
+    for candidate in candidates:
+        if not assignment_is_finished(candidate):
+            return candidate
+    return candidates[0]
 
 
 def find_all_active_assignments_for_operator(staff: Staffcreation):
-    """Every non-cancelled trip assigned to the operator/driver today, ordered by
-    unique_id. A driver can hold more than one (e.g. a bin trip AND a household
-    trip) — the mobile header carousel lists them all. Never raises: returns an
+    """Every non-cancelled trip assigned to the operator/driver today, in the
+    order the crew is expected to run them: scheduled_time, then unique_id.
+
+    A driver can hold more than one — a bin trip AND a household trip, or two
+    bin trips at different times (same collection type is only allowed at a
+    different time). The mobile header carousel lists them all in this order and
+    locks each same-type trip behind the previous one. Never raises: returns an
     empty list when there is no trip today."""
     today = timezone.localdate()
 
@@ -122,7 +154,7 @@ def find_all_active_assignments_for_operator(staff: Staffcreation):
             "alt_staff_template_id__operator_id",
         )
         .prefetch_related("waste_types")
-        .order_by("unique_id")
+        .order_by("scheduled_time", "unique_id")
     )
 
     assignments = list(base.filter(_effective_staff_q(staff)))
@@ -131,6 +163,49 @@ def find_all_active_assignments_for_operator(staff: Staffcreation):
             if staff.staff_unique_id in _effective_extra_operator_ids(candidate):
                 assignments.append(candidate)
     return assignments
+
+
+def assignment_is_finished(assignment: DailyTripAssignment) -> bool:
+    """True when there is no work left on this trip — every stop resolved
+    (collected or missed), or the trip explicitly marked Completed.
+
+    Used to sequence a crew's trips: the next same-type trip only becomes the
+    active one once this one is done."""
+    if assignment.status == DailyTripAssignment.STATUS_COMPLETED:
+        return True
+
+    bin_stops = list(
+        assignment.trip_collection_points.filter(is_deleted=False)
+    )
+    if bin_stops:
+        return all(
+            stop.status in {
+                DailyTripCollectionPoint.STATUS_COLLECTED,
+                DailyTripCollectionPoint.STATUS_MISSED,
+            }
+            for stop in bin_stops
+        )
+
+    from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+        DailyTripHouseholdCollection,
+    )
+
+    household_stops = list(
+        DailyTripHouseholdCollection.objects.filter(
+            trip_assignment_id=assignment, is_deleted=False
+        )
+    )
+    if household_stops:
+        return all(
+            stop.status in {
+                DailyTripHouseholdCollection.STATUS_COLLECTED,
+                DailyTripHouseholdCollection.STATUS_MISSED,
+            }
+            for stop in household_stops
+        )
+
+    # No stops at all — nothing to finish, so never block a later trip on it.
+    return True
 
 
 def _extract_bin_identifier(raw: str) -> str:
@@ -238,10 +313,54 @@ def validate_bin_against_assignment(
 
 
 def build_scan_context(bin_qr: str, operator: Staffcreation) -> ScanContext:
-    assignment = find_active_assignment_for_operator(operator)
+    from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+
+    # A bin scan belongs to a BIN trip: with a household trip open at the same
+    # time, an untyped lookup would hand the scan to the household trip and the
+    # bin would always fail its waste-type check.
+    assignment = find_active_assignment_for_operator(
+        operator, collection_type=TripPlan.COLLECTION_TYPE_BIN
+    )
     bin_obj = resolve_bin_from_qr(bin_qr)
-    trip_cp = validate_bin_against_assignment(bin_obj, assignment)
+    try:
+        trip_cp = validate_bin_against_assignment(bin_obj, assignment)
+    except OperatorFlowError as exc:
+        if exc.code == "CP_NOT_IN_TRIP":
+            # The bin may belong to a LATER trip of the same crew (e.g. the
+            # 15:00 bin run while the 06:30 one is still open). "Not part of
+            # your collection points" reads like a mis-scan; say what is
+            # actually blocking it.
+            _raise_if_bin_belongs_to_locked_trip(bin_obj, operator, assignment)
+        raise
     return ScanContext(bin=bin_obj, assignment=assignment, trip_cp=trip_cp)
+
+
+def _raise_if_bin_belongs_to_locked_trip(bin_obj, operator, active_assignment):
+    """Raise TRIP_LOCKED when `bin_obj` is a stop on another of this crew's
+    trips today that has not unlocked yet. Returns quietly otherwise, so the
+    caller can surface its original error."""
+    for candidate in find_all_active_assignments_for_operator(operator):
+        if candidate.unique_id == active_assignment.unique_id:
+            continue
+        belongs = DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id=candidate,
+            bin_id=bin_obj,
+            is_deleted=False,
+        ).exists()
+        if not belongs:
+            continue
+        active_time = active_assignment.scheduled_time
+        raise OperatorFlowError(
+            "TRIP_LOCKED",
+            (
+                f"This bin belongs to your "
+                f"{candidate.scheduled_time.strftime('%H:%M') if candidate.scheduled_time else 'next'}"
+                f" trip. Finish your "
+                f"{active_time.strftime('%H:%M') if active_time else 'current'}"
+                f" trip first."
+            ),
+            http_status=409,
+        )
 
 
 def progress_payload(assignment: DailyTripAssignment) -> dict:
