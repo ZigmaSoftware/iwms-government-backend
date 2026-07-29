@@ -79,6 +79,15 @@ class DriverUserSeeder(BaseSeeder):
     TRIP_RADIUS_KM = 1.0
     SCHEDULED_TIME = time(6, 30)
 
+    # Second bin run: SAME collection type, DIFFERENT scheduled time — the shape
+    # the domain allows for one crew (same location + same type is only legal at
+    # a different time). It gets its OWN bins: a bin belongs to exactly one trip
+    # plan, and sharing them would make a scan ambiguous between the two trips.
+    # The mobile app sequences these — the afternoon trip stays locked until the
+    # morning one is fully resolved.
+    NUM_PM_COLLECTION_POINTS = 5
+    PM_SCHEDULED_TIME = time(15, 0)
+
     # ------------------------------------------------------------------
     def run(self):
         user_type = UserType.objects.filter(name__iexact="government").first()
@@ -181,9 +190,20 @@ class DriverUserSeeder(BaseSeeder):
             return
 
         # 3. Organic bins + collection points inside the demo panchayat -
+        #    Two disjoint sets: the morning run and the afternoon run.
         bins = self._ensure_bins(panchayat, wet_waste, ward)
+        pm_bins = self._ensure_bins(
+            panchayat,
+            wet_waste,
+            ward,
+            label="PM",
+            count=self.NUM_PM_COLLECTION_POINTS,
+            # Rotate the ring so the afternoon stops don't sit on top of the
+            # morning ones on the map.
+            angle_offset=math.pi / self.NUM_PM_COLLECTION_POINTS,
+        )
 
-        # 4. Trip plans (bin + household) sharing the template ----------
+        # 4. Trip plans (bin AM + bin PM + household) sharing the template
         bin_plan = self._get_or_create_plan(
             TripPlan.COLLECTION_TYPE_BIN,
             template,
@@ -191,8 +211,20 @@ class DriverUserSeeder(BaseSeeder):
             panchayat,
             [wet_waste],
             ward=ward,
+            scheduled_time=self.SCHEDULED_TIME,
         )
         self._sync_bin_stops(bin_plan, bins)
+
+        pm_bin_plan = self._get_or_create_plan(
+            TripPlan.COLLECTION_TYPE_BIN,
+            template,
+            vehicle,
+            panchayat,
+            [wet_waste],
+            ward=ward,
+            scheduled_time=self.PM_SCHEDULED_TIME,
+        )
+        self._sync_bin_stops(pm_bin_plan, pm_bins)
 
         household_plan = self._get_or_create_plan(
             TripPlan.COLLECTION_TYPE_HOUSEHOLD,
@@ -201,6 +233,7 @@ class DriverUserSeeder(BaseSeeder):
             panchayat,
             household_waste_types,
             ward=ward,
+            scheduled_time=self.SCHEDULED_TIME,
         )
         self._sync_household_stop(household_plan)
 
@@ -208,17 +241,23 @@ class DriverUserSeeder(BaseSeeder):
         #     that picked a different panchayat). Otherwise every past panchayat
         #     leaves a bin+household pair behind and driver_user accumulates
         #     extra active assignments each day.
-        self._retire_stale_plans(template, keep={bin_plan.pk, household_plan.pk})
+        self._retire_stale_plans(
+            template,
+            keep={bin_plan.pk, pm_bin_plan.pk, household_plan.pk},
+        )
 
-        # 5. Generate today's assignments — BIN FIRST (lower unique_id so the
-        #    app resolves the bin trip for my-trip-today / scan-bin). Signals
-        #    build the daily collection points + household collections.
+        # 5. Generate today's assignments — MORNING BIN FIRST (lowest unique_id,
+        #    so it is the one the app resolves first and the one the driver has
+        #    to finish before the afternoon run unlocks). Signals build the daily
+        #    collection points + household collections.
         today = timezone.localdate()
         bin_assignment = self._generate_assignment(bin_plan, today)
+        pm_bin_assignment = self._generate_assignment(pm_bin_plan, today)
         household_assignment = self._generate_assignment(household_plan, today)
 
         # 6. Fresh demo state + data scope ------------------------------
         self._reset_bin_assignment(bin_assignment)
+        self._reset_bin_assignment(pm_bin_assignment)
         self._reset_household_assignment(household_assignment)
 
         copy_flat_geo(driver, bin_assignment)
@@ -235,11 +274,18 @@ class DriverUserSeeder(BaseSeeder):
         #    and show "this bin is X; your trip collects Organic". Heal it.
         self._ensure_clean_resolution(
             driver, operator,
-            {bin_assignment.unique_id, household_assignment.unique_id},
+            {
+                bin_assignment.unique_id,
+                pm_bin_assignment.unique_id,
+                household_assignment.unique_id,
+            },
         )
 
         bin_cp_count = DailyTripCollectionPoint.objects.filter(
             trip_assignment_id=bin_assignment, is_deleted=False
+        ).count()
+        pm_bin_cp_count = DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id=pm_bin_assignment, is_deleted=False
         ).count()
         hh_count = DailyTripHouseholdCollection.objects.filter(
             trip_assignment_id=household_assignment, is_deleted=False
@@ -248,7 +294,10 @@ class DriverUserSeeder(BaseSeeder):
             f"---driver_user wired properly | template={template.display_code} "
             f"(driver={self.USERNAME}, operator={self.OPERATOR_USERNAME}) | "
             f"panchayat={panchayat.panchayat_name} | "
-            f"bin trip={bin_assignment.unique_id} ({bin_cp_count} bins) | "
+            f"bin trip {self.SCHEDULED_TIME}={bin_assignment.unique_id} "
+            f"({bin_cp_count} bins) | "
+            f"bin trip {self.PM_SCHEDULED_TIME}={pm_bin_assignment.unique_id} "
+            f"({pm_bin_cp_count} bins) | "
             f"household trip={household_assignment.unique_id} ({hh_count} stops)---"
         )
 
@@ -506,14 +555,24 @@ class DriverUserSeeder(BaseSeeder):
             assignment.status = DailyTripAssignment.STATUS_CANCELLED
             assignment.save(update_fields=["status", "updated_at"])
 
-    def _ensure_bins(self, panchayat, wet_waste, ward):
-        """Create/refresh NUM_COLLECTION_POINTS Organic bins in the panchayat.
+    def _ensure_bins(
+        self, panchayat, wet_waste, ward, *,
+        label="", count=None, angle_offset=0.0,
+    ):
+        """Create/refresh a set of Organic bins in the panchayat.
+
+        `label` namespaces the collection-point / bin names so a second call
+        produces a DISJOINT set (the afternoon run's bins) rather than reusing
+        the morning run's — a bin may only belong to one trip plan.
+
         Idempotent: reuses collection points/bins by name across re-runs (they
         are PROTECT-referenced by trip stops, so never deleted)."""
         center_lat, center_lng = self.TRIP_CENTER
+        count = count or self.NUM_COLLECTION_POINTS
+        suffix = f" {label}" if label else ""
         bins = []
-        for seq in range(1, self.NUM_COLLECTION_POINTS + 1):
-            angle = (2 * math.pi / self.NUM_COLLECTION_POINTS) * (seq - 1)
+        for seq in range(1, count + 1):
+            angle = (2 * math.pi / count) * (seq - 1) + angle_offset
             radius_km = self.TRIP_RADIUS_KM * (0.25 + 0.75 * ((seq - 1) % 4) / 3.0)
             d_lat = (radius_km / 111.0) * math.cos(angle)
             d_lng = (
@@ -522,7 +581,7 @@ class DriverUserSeeder(BaseSeeder):
             lat = Decimal(str(round(center_lat + d_lat, 6)))
             lng = Decimal(str(round(center_lng + d_lng, 6)))
 
-            cp_name = f"Wet Waste Point {seq} (driver_user)"
+            cp_name = f"Wet Waste Point{suffix} {seq} (driver_user)"
             cp = Collection_point.objects.filter(
                 cp_name=cp_name, panchayat=panchayat
             ).first()
@@ -557,7 +616,7 @@ class DriverUserSeeder(BaseSeeder):
                     collection_point_id=cp,
                     wastetype_id=wet_waste,
                     ward=ward,
-                    bin_name=f"Wet Waste Bin {seq} (driver_user)",
+                    bin_name=f"Wet Waste Bin{suffix} {seq} (driver_user)",
                     bin_capacity=120,
                     bin_type="large",
                     bin_image="",
@@ -602,18 +661,24 @@ class DriverUserSeeder(BaseSeeder):
         panchayat,
         waste_types,
         ward=None,
+        scheduled_time=None,
     ):
+        # scheduled_time is part of the LOOKUP, not just the defaults: one crew
+        # may hold two same-type plans in the same place as long as the times
+        # differ, so keying without it would make the second plan overwrite the
+        # first instead of creating it.
+        scheduled_time = scheduled_time or self.SCHEDULED_TIME
         plan, _ = TripPlan.objects.update_or_create(
             staff_template_id=template,
             collection_type=collection_type,
             panchayat=panchayat,
+            scheduled_time=scheduled_time,
             is_deleted=False,
             defaults={
                 "state": panchayat.state_id,
                 "district": panchayat.district_id,
                 "area_type": panchayat.area_type_id,
                 "vehicle_id": vehicle,
-                "scheduled_time": self.SCHEDULED_TIME,
                 "trip_trigger_weight_kg": 100,
                 "max_vehicle_capacity_kg": 5000,
                 "approval_status": TripPlan.ApprovalStatus.APPROVED,
