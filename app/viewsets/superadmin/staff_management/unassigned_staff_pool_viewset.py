@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 
-from app.models.superadmin.user_management.unassigned_staff_pool import UnassignedStaffPool
-from app.serializers.superadmin.user_management.unassigned_staff_pool_serializer import (
+from app.models.superadmin.staff_management.unassigned_staff_pool import UnassignedStaffPool
+from app.serializers.superadmin.staff_management.unassigned_staff_pool_serializer import (
     UnassignedStaffPoolSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin

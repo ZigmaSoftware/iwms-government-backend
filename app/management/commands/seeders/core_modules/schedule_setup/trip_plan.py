@@ -10,7 +10,7 @@ from app.management.commands.seeders.ward_utils import (
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.models.masters.waste_masters.wastetype import WasteType
 
 # Household collection only ever handles these 4 segregated streams.

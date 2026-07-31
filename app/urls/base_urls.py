@@ -54,11 +54,11 @@ from ..viewsets.superadmin.role_management.contractorusertype_viewset import Con
 from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
 
 # User creations
-from ..viewsets.superadmin.user_management.staff_viewset import StaffViewSet
-from ..viewsets.superadmin.user_management.staffcreation_viewset import StaffcreationViewset
-from ..viewsets.superadmin.user_management.staff_access_configuration_viewset import StaffAccessConfigurationViewSet
-from ..viewsets.superadmin.user_management.staff_access_dashboard_viewset import StaffAccessDashboardViewSet
-from ..viewsets.superadmin.user_management.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
+from ..viewsets.superadmin.staff_management.staff_viewset import StaffViewSet
+from ..viewsets.superadmin.staff_management.staffcreation_viewset import StaffcreationViewset
+from ..viewsets.superadmin.staff_management.staff_access_configuration_viewset import StaffAccessConfigurationViewSet
+from ..viewsets.superadmin.staff_management.staff_access_dashboard_viewset import StaffAccessDashboardViewSet
+from ..viewsets.superadmin.staff_management.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
 from ..viewsets.login.login_viewset import LoginViewSet as DesktopLoginViewSet

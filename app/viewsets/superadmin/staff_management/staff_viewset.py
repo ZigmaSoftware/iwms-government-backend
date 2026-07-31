@@ -2,8 +2,8 @@ from django.shortcuts import get_object_or_404
 
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from app.models.superadmin.user_management.staffcreation import Staffcreation
-from app.serializers.superadmin.user_management.user_serializer import StaffSerializer
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.serializers.superadmin.staff_management.user_serializer import StaffSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from rest_framework import viewsets
 

@@ -37,7 +37,7 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.masters.waste_masters.property import Property
 from app.models.masters.waste_masters.subproperty import SubProperty
 from app.models.masters.waste_masters.wastetype import WasteType
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
 
 # Same 4 segregated streams every household route handles project-wide

@@ -17,7 +17,7 @@ from app.models.masters.ward import Ward
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
-from app.serializers.superadmin.user_management.user_serializer import UniqueIdOrPkField
+from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import normalize_flat_geo_attrs, validate_wards_for_flat_geo
 
 

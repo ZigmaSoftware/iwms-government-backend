@@ -17,13 +17,13 @@ from app.models.superadmin.screen_management.companyuserscreencolumnpermission i
 )
 from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
-from app.models.superadmin.user_management.staff_data_scope import StaffDataScope
-from app.models.superadmin.user_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
-from app.serializers.superadmin.user_management.staffcreation_serializer import StaffcreationSerializer
+from app.serializers.superadmin.staff_management.staffcreation_serializer import StaffcreationSerializer
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 
 

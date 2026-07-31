@@ -30,7 +30,7 @@ from app.models.masters.corporation import Corporation
 from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 ACTIONS = ["view", "add", "edit", "delete"]
 

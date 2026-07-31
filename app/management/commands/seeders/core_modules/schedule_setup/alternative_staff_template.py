@@ -6,7 +6,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.ward_utils import FLAT_GEO_FIELDS
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
-from app.models.superadmin.user_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 REASONS = ["Sick leave", "Annual leave", "Emergency replacement", "Training duty", "Vehicle change"]
 REMARKS = [
