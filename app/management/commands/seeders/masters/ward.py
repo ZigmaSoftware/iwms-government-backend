@@ -1,5 +1,5 @@
 from app.management.commands.seeders.base import BaseSeeder
-from app.management.commands.seeders.geo import coordinates, spread_points
+from app.management.commands.seeders.geo import coordinates, spread_points, generate_ward_geofence
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.management.commands.seeders.ward_utils import (
     WARDS_PER_LOCAL_BODY,
@@ -38,18 +38,19 @@ class WardSeeder(BaseSeeder):
         geo = DISTRICTS[district_name]
         created_count = 0
         for ward_name, lat, lon in geo["corporation_wards"][:WARDS_PER_LOCAL_BODY["corporation"]]:
+            full_ward_name = f"{ward_name}{ward_type_tag('corporation')}"
             _, created = Ward.objects.update_or_create(
                 corporation=corporation,
                 municipality=None,
                 town_panchayat=None,
                 panchayat_union=None,
                 panchayat=None,
-                ward_name=f"{ward_name}{ward_type_tag('corporation')}",
+                ward_name=full_ward_name,
                 defaults={
                     "state": corporation.state_id,
                     "district": corporation.district_id,
                     "area_type": corporation.area_type_id,
-                    "coordinates": coordinates((lat, lon)),
+                    "coordinates": generate_ward_geofence(lat, lon, full_ward_name, corporation.corporation_name),
                     "is_active": True,
                     "is_deleted": False,
                 },
@@ -83,14 +84,15 @@ class WardSeeder(BaseSeeder):
         base_filter[parent_type] = parent
 
         for i, (w_lat, w_lon) in enumerate(points, start=1):
+            ward_name = local_body_ward_name(parent_name, i, parent_type)
             _, created = Ward.objects.update_or_create(
-                ward_name=local_body_ward_name(parent_name, i, parent_type),
+                ward_name=ward_name,
                 **base_filter,
                 defaults={
                     "state": parent.state_id,
                     "district": parent.district_id,
                     "area_type": parent.area_type_id,
-                    "coordinates": coordinates((w_lat, w_lon)),
+                    "coordinates": generate_ward_geofence(w_lat, w_lon, ward_name, parent_name),
                     "is_active": True,
                     "is_deleted": False,
                 },
