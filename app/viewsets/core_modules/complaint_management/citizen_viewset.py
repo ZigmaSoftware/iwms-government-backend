@@ -30,6 +30,7 @@ from app.models.core_modules.complaint_management.status_master import Complaint
 from app.models.core_modules.complaint_management.source_master import ComplaintSource
 from app.models.core_modules.complaint_management.status_history import ComplaintStatusHistory
 from app.models.core_modules.complaint_management.ticket_attachment import ComplaintAttachment
+from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.corporation import Corporation
@@ -41,6 +42,7 @@ from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.core_modules.complaint_management.transaction_serializers import (
     ComplaintTicketSerializer,
     ComplaintTicketDetailSerializer,
+    ComplaintFeedbackSerializer,
 )
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, _add_business_minutes
 from app.utils.email_utils import send_grievance_confirmation_email
@@ -216,6 +218,40 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             ComplaintTicketDetailSerializer(ticket).data,
             status=http_status.HTTP_201_CREATED,
         )
+
+    # ---- POST /citizen/complaint-tickets/{id}/feedback/ ----
+    @action(detail=True, methods=["post"])
+    def feedback(self, request, pk=None):
+        """Citizen rates a resolved/closed ticket. One feedback per ticket —
+        resubmitting updates it rather than erroring, so the app can let the
+        citizen revise their rating.
+        """
+        customer = _as_customer(request)
+        ticket = self._scoped_qs(customer).filter(unique_id=pk).first() if customer else None
+        if not ticket:
+            return Response({"detail": "Ticket not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        # Matches the app's own `GrievanceTicket.isFinal` and the admin
+        # ticket_viewset's status-bucket split — RESOLVED counts as final here
+        # too (a citizen should be able to rate it right away, not only after
+        # staff separately mark it CLOSED). `ComplaintStatus.is_final` is a
+        # narrower, differently-scoped flag (only CLOSED) and isn't the right
+        # gate for this.
+        status_code = getattr(ticket.status, "status_code", None)
+        if status_code not in {"RESOLVED", "CLOSED", "REJECTED", "CANCELLED"}:
+            return Response(
+                {"detail": "Feedback can only be submitted once the ticket is resolved or closed."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        feedback, _ = ComplaintFeedback.objects.update_or_create(
+            ticket=ticket,
+            defaults={
+                "customer": customer,
+                "rating": request.data.get("rating"),
+                "feedback_text": request.data.get("feedback_text"),
+                "is_issue_solved": bool(request.data.get("is_issue_solved", False)),
+            },
+        )
+        return Response(ComplaintFeedbackSerializer(feedback).data, status=http_status.HTTP_201_CREATED)
 
     # ---- GET /citizen/complaint-tickets/meta/ ----
     @action(detail=False, methods=["get"])
