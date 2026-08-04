@@ -45,12 +45,14 @@ class DailyTripHouseholdCollectionSerializer(
             "collected_weight_kg",
             "status",
             "status_reason",
+            "carried_to_assignment",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "unique_id",
             "waste_collection_id",
+            "carried_to_assignment",
             "created_at",
             "updated_at",
         ]

@@ -61,6 +61,7 @@ class DailyTripCollectionPointSerializer(
             "status_reason",
             "status_latitude",
             "status_longitude",
+            "carried_to_assignment",
             "created_by",
             "updated_by",
             "is_active",
@@ -70,6 +71,7 @@ class DailyTripCollectionPointSerializer(
         ]
         read_only_fields = [
             "unique_id",
+            "carried_to_assignment",
             "created_at",
             "updated_at",
         ]

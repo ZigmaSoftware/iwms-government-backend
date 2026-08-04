@@ -168,6 +168,34 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             }
         return result
 
+    def _retrip_remarks_by_new_assignment(self, assignment):
+        """new_assignment_id -> why the stops that carried over there did so.
+
+        Remarks are mandatory when a trip proceeds to a next trip (see
+        DailyTripAssignmentViewSet.proceed_next_trip / retrip_service), but
+        `carried_to_assignment` alone is just an id — this is what lets the
+        Trip Log report/verify screens show the actual reason next to it.
+        Prefers the supervisor's review remarks (what closed the trip) over
+        the original driver-raised reason, falling back to it when blank —
+        in the one-step web flow the two are identical anyway.
+        """
+        from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
+
+        # `new_assignment` has no `to_field="unique_id"` (unlike
+        # `carried_to_assignment` below), so its plain `_id` attribute is the
+        # integer PK, not the unique_id string every stop's
+        # `carried_to_assignment_id` actually holds — go through the relation
+        # (`new_assignment__unique_id`) to key this map the same way.
+        rows = TripRetripRequest.objects.filter(
+            assignment=assignment,
+            status=TripRetripRequest.STATUS_APPROVED,
+            new_assignment__isnull=False,
+        ).values("new_assignment__unique_id", "review_remarks", "reason")
+        return {
+            row["new_assignment__unique_id"]: (row["review_remarks"] or row["reason"] or "")
+            for row in rows
+        }
+
     def get_collection_points(self, obj):
         from django.db.models import Sum
         from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
@@ -175,6 +203,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         assignment = obj.trip_assignment_id
         if not assignment:
             return []
+        retrip_remarks = self._retrip_remarks_by_new_assignment(assignment)
         cps = (
             assignment.trip_collection_points
             .filter(is_deleted=False)
@@ -204,6 +233,13 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         return [
             {
                 "unique_id": tcp.collection_point_id.unique_id,
+                # The DailyTripCollectionPoint (stop) id — distinct from
+                # "unique_id" above, which is the Collection_point MASTER's
+                # id. `proceed-next-trip`'s `collection_point_ids` expects
+                # this one (it matches against DailyTripCollectionPoint rows,
+                # see retrip_service.approve_retrip), so the web UI's carry-
+                # over checkbox must key off this field, not "unique_id".
+                "trip_collection_point_id": tcp.unique_id,
                 "cp_name": tcp.collection_point_id.cp_name,
                 "sequence": tcp.sequence,
                 "is_collected": tcp.is_collected,
@@ -216,6 +252,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 ),
                 "waste_type_name": getattr(getattr(tcp.bin_id, "wastetype_id", None), "waste_type_name", None),
                 "waste_type_breakdown": breakdown_by_cp.get(tcp.unique_id, []),
+                "carried_to_assignment": tcp.carried_to_assignment_id,
+                "carried_to_assignment_remarks": retrip_remarks.get(tcp.carried_to_assignment_id),
             }
             for tcp in cps
             if tcp.collection_point_id
@@ -228,6 +266,16 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         assignment = obj.trip_assignment_id
         if not assignment:
             return "Not Started"
+
+        # The assignment's own status is authoritative once the trip has
+        # actually ended — including via a Re-Trip (`mark_ended()` on the
+        # source trip when its leftover stops are carried to a continuation).
+        # Falling back to a stop-count tally in that case would show "In
+        # Progress" forever, since carried-over stops are deliberately left
+        # Pending rather than force-resolved (see retrip_service.approve_retrip).
+        if assignment.status == DailyTripAssignment.STATUS_COMPLETED:
+            return "Completed"
+
         bin_stops = [cp for cp in assignment.trip_collection_points.all() if not cp.is_deleted]
         hh_stops = list(
             DailyTripHouseholdCollection.objects.filter(
@@ -256,6 +304,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         assignment = obj.trip_assignment_id
         if not assignment:
             return []
+        retrip_remarks = self._retrip_remarks_by_new_assignment(assignment)
         hh_list = (
             DailyTripHouseholdCollection.objects
             .filter(trip_assignment_id=assignment, is_deleted=False)
@@ -294,6 +343,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "waste_type_breakdown": waste_type_breakdown,
                 "collected_at": hh.collected_at.isoformat() if hh.collected_at else None,
                 "status": hh.status,
+                "carried_to_assignment": hh.carried_to_assignment_id,
+                "carried_to_assignment_remarks": retrip_remarks.get(hh.carried_to_assignment_id),
             })
         return result
 

@@ -1,4 +1,4 @@
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 
 from django.utils import timezone
 
@@ -27,14 +27,15 @@ FLAT_GEO_FIELDS = (
 DEMO_STAFF_USERNAMES = {"driver_user", "operator_user"}
 
 
-def _deterministic_times(scheduled_time, day_offset):
-    """Index-derived (not random) actual start/end times so history stays
-    byte-identical across re-runs."""
+def _deterministic_start_and_duration(scheduled_time, day_offset):
+    """Index-derived (not random) start offset + duration so history stays
+    byte-identical across re-runs. Duration (rather than a second absolute
+    time-of-day) is what actually gets added to the start timestamp, so the
+    end is always after the start even when the start wraps past midnight."""
     start_minutes = scheduled_time.hour * 60 + scheduled_time.minute + 5 + (day_offset % 4) * 3
-    end_minutes = start_minutes + 180 + (day_offset % 5) * 7
+    duration_minutes = 180 + (day_offset % 5) * 7
     start = time((start_minutes // 60) % 24, start_minutes % 60)
-    end = time((end_minutes // 60) % 24, end_minutes % 60)
-    return start, end
+    return start, duration_minutes
 
 
 class DailyTripAssignmentSeeder(BaseSeeder):
@@ -114,13 +115,26 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                     assignment.alt_staff_template_id = alt_template
                     update_fields.append("alt_staff_template_id")
 
-                start, end = _deterministic_times(plan.scheduled_time, day_offset)
-                if assignment.actual_start_time != start:
-                    assignment.actual_start_time = start
-                    update_fields.append("actual_start_time")
-                if assignment.actual_end_time != end:
-                    assignment.actual_end_time = end
-                    update_fields.append("actual_end_time")
+                # Deliberately NOT mark_started()/mark_ended(): those guard
+                # against acting on an already-Completed trip (correct for a
+                # live transition, wrong here) — a row a previous run of this
+                # seeder already force-set to Completed via raw field
+                # assignment would then have mark_started() no-op forever,
+                # permanently stuck with a null actual_start_at/actual_end_at.
+                # A seeder needs "ensure this state", so stamp both the
+                # authoritative `_at` fields and their legacy TimeField
+                # mirrors directly whenever they don't already match.
+                start_time, duration_minutes = _deterministic_start_and_duration(plan.scheduled_time, day_offset)
+                started_at = timezone.make_aware(datetime.combine(trip_date, start_time))
+                ended_at = started_at + timedelta(minutes=duration_minutes)
+                if assignment.actual_start_at != started_at:
+                    assignment.actual_start_at = started_at
+                    assignment.actual_start_time = timezone.localtime(started_at).time()
+                    update_fields += ["actual_start_at", "actual_start_time"]
+                if assignment.actual_end_at != ended_at:
+                    assignment.actual_end_at = ended_at
+                    assignment.actual_end_time = timezone.localtime(ended_at).time()
+                    update_fields += ["actual_end_at", "actual_end_time"]
                 if assignment.status == DailyTripAssignment.STATUS_SCHEDULED:
                     assignment.status = DailyTripAssignment.STATUS_COMPLETED
                     update_fields.append("status")

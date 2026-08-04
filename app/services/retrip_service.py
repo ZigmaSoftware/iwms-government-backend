@@ -196,6 +196,17 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
     else:
         cloned_households.delete()
 
+    # Point the SOURCE stops that carried over at the continuation, so the
+    # Daily Trip Plan / Daily Trip Log screens can show "Assigned to Next
+    # Trip" instead of a bare Pending with no explanation. Bulk `.update()` —
+    # not `.save()` per instance — so it doesn't touch `status`/`updated_at`.
+    DailyTripCollectionPoint.objects.filter(
+        unique_id__in=[stop.unique_id for stop in pending_bins]
+    ).update(carried_to_assignment=continuation)
+    DailyTripHouseholdCollection.objects.filter(
+        unique_id__in=[stop.unique_id for stop in pending_households]
+    ).update(carried_to_assignment=continuation)
+
     # The original trip is done. Its stops are deliberately left exactly as
     # they are — most stay Pending, since a carried-over stop was genuinely
     # neither collected nor missed today, it moved to the continuation. Do NOT
@@ -206,6 +217,17 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
     # driver's home page entirely (see
     # `find_all_active_assignments_for_operator`), not that its numbers lie.
     source.mark_ended()
+
+    # If a DailyTripLog already exists for the source (created while the trip
+    # was still open), refresh it so its own actual_start_time/actual_end_time
+    # pick up what mark_ended() just stamped on the assignment.
+    # autofill_from_assignment() only fills those fields when they're still
+    # empty, so nothing re-saving here would leave the log's end time stuck at
+    # null forever — the Trip Log report would show a Completed-looking trip
+    # with a blank End Time.
+    source_log = getattr(source, "daily_trip_log", None)
+    if source_log is not None:
+        source_log.save()
 
     request.mark_reviewed(
         status=TripRetripRequest.STATUS_APPROVED,
@@ -233,6 +255,32 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
         )
 
     return continuation
+
+
+@transaction.atomic
+def proceed_to_next_trip(assignment, *, actor, collection_point_ids=None, remarks):
+    """Web one-step version: a supervisor/admin closes `assignment` and opens
+    the continuation directly, instead of a driver requesting and a
+    supervisor approving separately.
+
+    Reuses `request_retrip`/`approve_retrip` so the audit trail (a Pending
+    TripRetripRequest, immediately Approved) and the carry-over rules stay in
+    exactly one place. Returns (request, continuation_assignment).
+    """
+    if assignment.status in (
+        DailyTripAssignment.STATUS_COMPLETED,
+        DailyTripAssignment.STATUS_CANCELLED,
+    ):
+        raise ValueError("This trip is already closed.")
+
+    request = request_retrip(assignment, requested_by=actor, reason=remarks)
+    continuation = approve_retrip(
+        request,
+        reviewed_by=actor,
+        collection_point_ids=collection_point_ids,
+        remarks=remarks,
+    )
+    return request, continuation
 
 
 @transaction.atomic
