@@ -390,10 +390,9 @@ class DailyTripLog(BaseMaster):
         if self.log_status in {self.LOG_STATUS_SUBMITTED, self.LOG_STATUS_VERIFIED}:
             assignment = self.trip_assignment_id
             if assignment.status != DailyTripAssignment.STATUS_COMPLETED:
-                now_time = timezone.localtime().time()
-                update_fields = ["status", "updated_at"]
-                assignment.status = DailyTripAssignment.STATUS_COMPLETED
-                if not assignment.actual_end_time:
-                    assignment.actual_end_time = self.actual_end_time or now_time
-                    update_fields.append("actual_end_time")
-                assignment.save(update_fields=update_fields)
+                # Route through the model so this path stamps `actual_end_at`
+                # too — writing only the wall-clock `actual_end_time` here left
+                # log-completed trips with a null authoritative timestamp, and
+                # the app computes elapsed time from `actual_end_at`.
+                # mark_ended() saves itself.
+                assignment.mark_ended()

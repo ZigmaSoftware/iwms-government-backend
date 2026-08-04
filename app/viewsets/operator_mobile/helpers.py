@@ -127,21 +127,48 @@ def find_active_assignment_for_operator(
     return candidates[0]
 
 
+def require_trip_started(assignment: DailyTripAssignment) -> None:
+    """Gate every collection write (bin scan, household skip/missed, household
+    collect) on the driver having explicitly pressed Start.
+
+    Before this, a scan silently started the trip as a side effect
+    (`scan_bin_viewset._ensure_assignment_in_progress`), so there was nothing
+    to actually lock — the "Start Trip" button was optional. Raises
+    `OperatorFlowError` (`TRIP_NOT_STARTED`, 409) when the assignment has no
+    `actual_start_at` yet. A Completed/Cancelled trip is not this guard's
+    concern — those are rejected earlier with their own specific codes
+    (`ALREADY_ENDED` / `TRIP_CANCELLED`) by the callers that already check
+    status before reaching here.
+    """
+    if not assignment.actual_start_at:
+        raise OperatorFlowError(
+            "TRIP_NOT_STARTED",
+            "Start the trip before collecting. Press \"Start Trip\" first.",
+            http_status=409,
+        )
+
+
 def find_all_active_assignments_for_operator(staff: Staffcreation):
-    """Every non-cancelled trip assigned to the operator/driver today, in the
-    order the crew is expected to run them: scheduled_time, then unique_id.
+    """Every OPEN trip assigned to the operator/driver today (not Cancelled,
+    not Completed), in the order the crew is expected to run them:
+    scheduled_time, then unique_id.
 
     A driver can hold more than one — a bin trip AND a household trip, or two
     bin trips at different times (same collection type is only allowed at a
     different time). The mobile header carousel lists them all in this order and
-    locks each same-type trip behind the previous one. Never raises: returns an
-    empty list when there is no trip today."""
+    locks each same-type trip behind the previous one. A trip that reaches
+    Completed drops off this list entirely — the driver's home page is a
+    worklist, not a log, and Trip History is where finished trips belong.
+    Never raises: returns an empty list when there is no trip today."""
     today = timezone.localdate()
 
     base = (
         DailyTripAssignment.objects
         .filter(trip_date=today, is_deleted=False)
-        .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
+        .exclude(status__in=(
+            DailyTripAssignment.STATUS_CANCELLED,
+            DailyTripAssignment.STATUS_COMPLETED,
+        ))
         .select_related(
             "panchayat",
             "vehicle_id",

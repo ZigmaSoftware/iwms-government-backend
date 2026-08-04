@@ -9,6 +9,9 @@ from app.models.core_modules.daily_operations.daily_trip_assignment import Daily
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
+from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+    DailyTripHouseholdCollection,
+)
 from app.permissions.operator_permission import IsOperatorRole
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
@@ -30,15 +33,40 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
             DailyTripCollectionPoint.STATUS_MISSED,
         }
     )
+    # Bin weight only — household/bulk trips have no rows here at all, so this
+    # silently read 0 for them until the sum below added their own stops.
     total_weight = sum(
         (c.collected_weight_kg or Decimal("0")) for c in children
     )
+    household_children = list(
+        DailyTripHouseholdCollection.objects.filter(
+            trip_assignment_id=assignment, is_deleted=False,
+        )
+    )
+    total_weight += sum(
+        (h.collected_weight_kg or Decimal("0")) for h in household_children
+    )
     panchayat = assignment.panchayat
     ward = assignment.wards.first()
+    duration = assignment.total_trip_time
     return {
         "assignment_unique_id": assignment.unique_id,
         "trip_date": assignment.trip_date.isoformat(),
         "status": assignment.status,
+        # Without these the app cannot show how long a past trip actually took.
+        "scheduled_time": (
+            assignment.scheduled_time.isoformat() if assignment.scheduled_time else None
+        ),
+        "actual_start_at": (
+            assignment.actual_start_at.isoformat() if assignment.actual_start_at else None
+        ),
+        "actual_end_at": (
+            assignment.actual_end_at.isoformat() if assignment.actual_end_at else None
+        ),
+        "total_trip_time_seconds": (
+            int(duration.total_seconds()) if duration is not None else None
+        ),
+        "trip_count": assignment.trip_count(),
         # panchayat is a nullable FK — a household-only / higher-level trip may
         # have none, so guard it instead of crashing the whole history list.
         "panchayat": {

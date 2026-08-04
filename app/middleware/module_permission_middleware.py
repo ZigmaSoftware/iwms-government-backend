@@ -49,6 +49,7 @@ AUTH_ONLY_SUFFIXES = (
     "employee/",
     "staff-profile/",
     "schedule-operations/staff-notifications/",
+    "schedule-operations/retrip-requests/",
     "waste/",
     "attendance-list/",
     "localbody/",        # panchayat leader portal — auth only, no module permission check

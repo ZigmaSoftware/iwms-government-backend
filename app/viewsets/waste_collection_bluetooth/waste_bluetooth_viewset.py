@@ -101,6 +101,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             DailyTripAssignment,
         )
 
+        from app.viewsets.operator_mobile.helpers import require_trip_started
+
         try:
             staff = resolve_operator_staff(request.user)
             # The app sends the specific trip the household belongs to (a driver
@@ -115,6 +117,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 ).first()
             if assignment is None:
                 assignment = find_active_assignment_for_operator(staff)
+            require_trip_started(assignment)
         except OperatorFlowError as exc:
             return Response(
                 {"status": "error", "code": exc.code, "message": exc.message},
@@ -340,6 +343,32 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
         if not screen_id or not customer_id:
             return Response({"status": "error", "message": "Missing parameters"}, status=400)
+
+        # Gate BEFORE any write: a not-started trip must reject cleanly with
+        # nothing committed, not silently finalize weight capture and then only
+        # fail on the best-effort mirror below (which the app already treats as
+        # non-fatal and would ignore).
+        assignment_id = str(request.data.get("assignment_id") or "").strip()
+        customer = CustomerCreation.objects.filter(
+            unique_id=customer_id, is_deleted=False
+        ).first()
+        if customer is not None:
+            from app.viewsets.operator_mobile.helpers import (
+                OperatorFlowError,
+                require_trip_started,
+            )
+
+            trip_assignment = self._resolve_trip_assignment(
+                customer, request, assignment_id=assignment_id
+            )
+            if trip_assignment is not None:
+                try:
+                    require_trip_started(trip_assignment)
+                except OperatorFlowError as exc:
+                    return Response(
+                        {"status": "error", "code": exc.code, "message": exc.message},
+                        status=exc.http_status,
+                    )
 
         collection_rows = WasteCollectionSub.objects.filter(
             screen_unique_id=screen_id,
