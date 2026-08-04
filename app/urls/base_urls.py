@@ -122,6 +122,7 @@ from ..viewsets.core_modules.daily_operations.daily_trip_collection_point_viewse
 from ..viewsets.core_modules.daily_operations.daily_trip_household_collection_viewset import DailyTripHouseholdCollectionViewSet
 from ..viewsets.core_modules.daily_operations.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
 from ..viewsets.core_modules.daily_operations.vehicle_breakdown_viewset import VehicleBreakdownViewSet
+from ..viewsets.core_modules.daily_operations.trip_retrip_viewset import TripRetripRequestViewSet
 from ..viewsets.core_modules.daily_operations.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.reports.waste_reports.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet
 from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import DailyWasteComparisonViewSet
@@ -153,6 +154,7 @@ from ..viewsets.operator_mobile.my_trip_today_viewset import (
 from ..viewsets.operator_mobile.validate_bin_qr_viewset import ValidateBinQrViewSet
 from ..viewsets.operator_mobile.scan_bin_viewset import ScanBinViewSet
 from ..viewsets.operator_mobile.trip_history_viewset import TripHistoryViewSet
+from ..viewsets.operator_mobile.trip_lifecycle_viewset import TripLifecycleViewSet
 
 # Waste bluetooth
 from ..viewsets.waste_collection_bluetooth.waste_bluetooth_viewset import WasteCollectionBluetoothViewSet
@@ -315,6 +317,12 @@ router.register_group("schedule-operations", "daily-trip-collection-points", Dai
 router.register_group("schedule-operations", "daily-trip-household-collections", DailyTripHouseholdCollectionViewSet)
 router.register_group("schedule-operations", "bin-collection-events", BinCollectionEventViewSet)
 router.register_group("schedule-operations", "vehicle-breakdowns", VehicleBreakdownViewSet)
+router.register_group(
+    "schedule-operations",
+    "retrip-requests",
+    TripRetripRequestViewSet,
+    basename="retrip-requests",
+)
 router.register_group("schedule-operations", "daily-trip-logs", DailyTripLogViewSet)
 router.register_group("schedule-operations", "staff-notifications", StaffNotificationViewSet, basename="staff-notifications")
 
@@ -392,6 +400,12 @@ router.register_group(
     "trip-history",
     TripHistoryViewSet,
     basename="operator-mobile-trip-history",
+)
+router.register_group(
+    "operator-mobile",
+    "trip-lifecycle",
+    TripLifecycleViewSet,
+    basename="operator-mobile-trip-lifecycle",
 )
 
 # ============================================================

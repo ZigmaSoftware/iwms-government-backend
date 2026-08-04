@@ -96,6 +96,20 @@ class MyTripTodaySerializer(serializers.Serializer):
     scheduled_time = serializers.TimeField()
     actual_start_time = serializers.TimeField(allow_null=True)
     actual_end_time = serializers.TimeField(allow_null=True)
+    # Authoritative timestamps — the app computes elapsed time from these; the
+    # TimeFields above cannot (no date, and historically two timezones).
+    actual_start_at = serializers.DateTimeField(allow_null=True)
+    actual_end_at = serializers.DateTimeField(allow_null=True)
+    # Present while a Re-Trip request awaits a supervisor, so the app can show
+    # "awaiting approval" instead of offering the end control again.
+    retrip_request = serializers.SerializerMethodField()
+    # Total time on the trip (actual_start_at -> actual_end_at, or -> now while
+    # In Progress), whole seconds. NOT the same as `duration_seconds` below,
+    # which is the ORS routing ETA — this is wall-clock time actually spent.
+    total_trip_time_seconds = serializers.SerializerMethodField()
+    # This assignment's 1-based position among today's assignments for the
+    # same trip plan — 1 normally, 2+ for a Re-Trip continuation.
+    trip_count = serializers.SerializerMethodField()
     panchayat = _PanchayatBriefSerializer()
     # Narrows the panchayat/local-body scope for this trip, when the trip
     # plan (or its per-trip override) has one assigned.
@@ -120,6 +134,34 @@ class MyTripTodaySerializer(serializers.Serializer):
     def get_collection_type(self, obj):
         plan = getattr(obj, "trip_plan_id", None)
         return getattr(plan, "collection_type", None)
+
+    def get_retrip_request(self, obj):
+        from app.models.core_modules.daily_operations.trip_retrip_request import (
+            TripRetripRequest,
+        )
+
+        retrip = (
+            obj.retrip_requests.filter(status=TripRetripRequest.STATUS_PENDING)
+            .order_by("-created_at")
+            .first()
+        )
+        if retrip is None:
+            return None
+        return {
+            "unique_id": retrip.unique_id,
+            "status": retrip.status,
+            "reason": retrip.reason,
+            "pending_bin_count": retrip.pending_bin_count,
+            "pending_household_count": retrip.pending_household_count,
+            "created_at": retrip.created_at.isoformat() if retrip.created_at else None,
+        }
+
+    def get_total_trip_time_seconds(self, obj):
+        duration = obj.total_trip_time
+        return int(duration.total_seconds()) if duration is not None else None
+
+    def get_trip_count(self, obj):
+        return obj.trip_count()
 
     def get_ward(self, obj):
         ward = obj.wards.first()

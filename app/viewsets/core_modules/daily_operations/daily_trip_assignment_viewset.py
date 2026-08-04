@@ -194,15 +194,17 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         new_status = serializer.validated_data["status"]
         previous_data = self._serialize_instance(instance)
 
-        now = timezone.now().time()
-
+        # Route the two lifecycle transitions through the model so the admin
+        # path stamps the same columns, in the same timezone, as the driver app
+        # and the scan path. This previously wrote `timezone.now().time()` —
+        # UTC — into a column every other caller filled with IST.
         if new_status == DailyTripAssignment.STATUS_IN_PROGRESS:
-            instance.actual_start_time = now
+            instance.mark_started()
         elif new_status == DailyTripAssignment.STATUS_COMPLETED:
-            instance.actual_end_time = now
-
-        instance.status = new_status
-        instance.save()
+            instance.mark_ended()
+        else:
+            instance.status = new_status
+            instance.save()
 
         self.log_audit(
             request,

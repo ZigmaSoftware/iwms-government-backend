@@ -24,6 +24,10 @@ class StaffNotification(BaseMaster):
     TYPE_VEHICLE_REPLACEMENT_REJECTED = "VEHICLE_REPLACEMENT_REJECTED"
     TYPE_TEAM_CHANGED = "TEAM_CHANGED"
     TYPE_TEAM_SUBSTITUTED = "TEAM_SUBSTITUTED"
+    # Re-Trip: driver asks to close a trip with stops left; supervisor decides.
+    TYPE_RETRIP_REQUESTED = "RETRIP_REQUESTED"
+    TYPE_RETRIP_APPROVED = "RETRIP_APPROVED"
+    TYPE_RETRIP_REJECTED = "RETRIP_REJECTED"
 
     TYPE_CHOICES = [
         (TYPE_VEHICLE_BREAKDOWN_REPORTED, "Vehicle Breakdown Reported"),
@@ -31,6 +35,9 @@ class StaffNotification(BaseMaster):
         (TYPE_VEHICLE_REPLACEMENT_REJECTED, "Vehicle Replacement Rejected"),
         (TYPE_TEAM_CHANGED, "Team Changed"),
         (TYPE_TEAM_SUBSTITUTED, "Team Substituted"),
+        (TYPE_RETRIP_REQUESTED, "Re-Trip Requested"),
+        (TYPE_RETRIP_APPROVED, "Re-Trip Approved"),
+        (TYPE_RETRIP_REJECTED, "Re-Trip Rejected"),
     ]
 
     unique_id = models.CharField(

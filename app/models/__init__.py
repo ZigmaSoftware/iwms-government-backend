@@ -168,6 +168,7 @@ from .core_modules.daily_operations.daily_trip_household_collection import Daily
 from .core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from .core_modules.daily_operations.scheduler_config import SchedulerConfig
 from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
+from .core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 
 
 # ============================================================
