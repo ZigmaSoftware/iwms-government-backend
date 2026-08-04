@@ -63,6 +63,11 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     collection_points = serializers.SerializerMethodField(read_only=True)
     household_collection_points = serializers.SerializerMethodField(read_only=True)
     breakdown_info = serializers.SerializerMethodField(read_only=True)
+    # A vehicle breakdown and a Re-Trip are unrelated events — a breakdown
+    # swaps the vehicle/crew mid-trip, a Re-Trip closes the trip early and
+    # carries leftover stops to a continuation — so this is deliberately its
+    # own field/column, not folded into breakdown_info.
+    retrip_info = serializers.SerializerMethodField(read_only=True)
     state = serializers.SerializerMethodField(read_only=True)
     district = serializers.SerializerMethodField(read_only=True)
     area_type = serializers.SerializerMethodField(read_only=True)
@@ -98,7 +103,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "vehicle_id", "alt_staff_template_id", "collection_points_input", "trip_plan", "staff_template",
             "effective_staff", "crew", "state", "district", "area_type", "corporation", "municipality",
             "town_panchayat", "panchayat_union", "panchayat", "vehicle", "collection_types",
-            "collection_points", "household_collection_points", "breakdown_info",
+            "collection_points", "household_collection_points", "breakdown_info", "retrip_info",
             "trip_date", "scheduled_time", "actual_start_time", "actual_end_time",
             "total_trip_time_seconds", "trip_count",
             "status", "approval_status", "remarks", "created_at", "updated_at",
@@ -299,6 +304,20 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "replacement_vehicle_no": getattr(bd.replacement_vehicle_id, "vehicle_no", None),
             "replacement_driver": getattr(bd.replacement_driver_id, "employee_name", None),
             "replacement_operator": getattr(bd.replacement_operator_id, "employee_name", None),
+        }
+
+    def get_retrip_info(self, obj):
+        retrip = obj.retrip_requests.filter(is_deleted=False).order_by("-created_at").first()
+        if not retrip:
+            return None
+        return {
+            "unique_id": retrip.unique_id,
+            "status": retrip.status,
+            "reason": retrip.reason,
+            "review_remarks": retrip.review_remarks,
+            "new_assignment_id": getattr(retrip.new_assignment, "unique_id", None),
+            "pending_bin_count": retrip.pending_bin_count,
+            "pending_household_count": retrip.pending_household_count,
         }
 
     def _sync_collection_points(self, assignment, points):
