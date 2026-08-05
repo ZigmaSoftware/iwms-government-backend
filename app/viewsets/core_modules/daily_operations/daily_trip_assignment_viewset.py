@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from app.management.commands.generate_daily_trips import run_for_date
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.scheduler_config import SchedulerConfig
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.services import retrip_service
 from app.services.daily_trip_scheduler import (
     notify_scheduler_config_changed,
     run_daily_trip_job,
@@ -194,15 +196,17 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         new_status = serializer.validated_data["status"]
         previous_data = self._serialize_instance(instance)
 
-        now = timezone.now().time()
-
+        # Route the two lifecycle transitions through the model so the admin
+        # path stamps the same columns, in the same timezone, as the driver app
+        # and the scan path. This previously wrote `timezone.now().time()` —
+        # UTC — into a column every other caller filled with IST.
         if new_status == DailyTripAssignment.STATUS_IN_PROGRESS:
-            instance.actual_start_time = now
+            instance.mark_started()
         elif new_status == DailyTripAssignment.STATUS_COMPLETED:
-            instance.actual_end_time = now
-
-        instance.status = new_status
-        instance.save()
+            instance.mark_ended()
+        else:
+            instance.status = new_status
+            instance.save()
 
         self.log_audit(
             request,
@@ -250,6 +254,76 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         return Response(
             DailyTripAssignmentSerializer(instance, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ----------------------------------------------------------
+    # ACTION: PROCEED WITH NEXT TRIP (web Re-Trip, one step)
+    # POST /trip-assignments/{unique_id}/proceed-next-trip/
+    # body: { collection_point_ids?: string[], remarks: string }
+    # ----------------------------------------------------------
+
+    @action(detail=True, methods=["post"], url_path="proceed-next-trip")
+    def proceed_next_trip(self, request, unique_id=None):
+        """Supervisor/admin closes this trip from the web and opens a
+        continuation for the leftover stops — e.g. the truck is full and
+        going for weighment. One-step web equivalent of the driver-raises /
+        supervisor-approves Re-Trip flow (see
+        retrip_service.proceed_to_next_trip).
+        """
+        if not self._has_approval_role(request):
+            return Response(
+                {"detail": "Only supervisors and admins can proceed to a next trip."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        instance = self.get_object()
+
+        remarks = (request.data.get("remarks") or "").strip()
+        if not remarks:
+            return Response(
+                {"remarks": "Remarks are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_ids = request.data.get("collection_point_ids")
+        collection_point_ids = None
+        if raw_ids is not None:
+            if not isinstance(raw_ids, (list, tuple)):
+                return Response(
+                    {"collection_point_ids": "Expected a list of stop ids."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            collection_point_ids = [str(value) for value in raw_ids]
+
+        # A trip is either a bin trip or a household trip (never both) — the
+        # presence of any CP rows is how the rest of the codebase tells them
+        # apart (e.g. DailyTripLogReportPage's `isHousehold` check). Bin trips
+        # require an explicit pick; household trips always carry everything.
+        is_bin_trip = instance.trip_collection_points.exists()
+        if is_bin_trip and not collection_point_ids:
+            return Response(
+                {"collection_point_ids": "Select at least one collection point to carry over."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        actor = request.user if isinstance(request.user, Staffcreation) else None
+
+        try:
+            retrip_request, continuation = retrip_service.proceed_to_next_trip(
+                instance,
+                actor=actor,
+                collection_point_ids=collection_point_ids,
+                remarks=remarks,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+        return Response(
+            {
+                "new_assignment_id": continuation.unique_id,
+                "retrip_request_id": retrip_request.unique_id,
+            },
             status=status.HTTP_200_OK,
         )
 

@@ -21,6 +21,7 @@ from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
     build_scan_context,
     progress_payload,
+    require_trip_started,
     resolve_operator_staff,
     serialize_assignment_brief,
     serialize_bin_brief,
@@ -70,7 +71,7 @@ class ScanBinViewSet(viewsets.ViewSet):
 
         try:
             with transaction.atomic():
-                self._ensure_assignment_in_progress(ctx.assignment)
+                require_trip_started(ctx.assignment)
 
                 if action == ScanBinRequestSerializer.ACTION_COLLECT:
                     ctx.trip_cp.mark_collected(
@@ -180,18 +181,6 @@ class ScanBinViewSet(viewsets.ViewSet):
             driver_longitude=longitude,
             notes=event_notes,
         )
-
-    def _ensure_assignment_in_progress(self, assignment: DailyTripAssignment):
-        if assignment.status in (
-            DailyTripAssignment.STATUS_SCHEDULED,
-        ):
-            now = timezone.localtime().time()
-            assignment.status = DailyTripAssignment.STATUS_IN_PROGRESS
-            update_fields = ["status", "updated_at"]
-            if not assignment.actual_start_time:
-                assignment.actual_start_time = now
-                update_fields.append("actual_start_time")
-            assignment.save(update_fields=update_fields)
 
     def _upsert_trip_log(self, assignment: DailyTripAssignment, operator):
         children = assignment.trip_collection_points.filter(is_deleted=False)

@@ -63,6 +63,11 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     collection_points = serializers.SerializerMethodField(read_only=True)
     household_collection_points = serializers.SerializerMethodField(read_only=True)
     breakdown_info = serializers.SerializerMethodField(read_only=True)
+    # A vehicle breakdown and a Re-Trip are unrelated events — a breakdown
+    # swaps the vehicle/crew mid-trip, a Re-Trip closes the trip early and
+    # carries leftover stops to a continuation — so this is deliberately its
+    # own field/column, not folded into breakdown_info.
+    retrip_info = serializers.SerializerMethodField(read_only=True)
     state = serializers.SerializerMethodField(read_only=True)
     district = serializers.SerializerMethodField(read_only=True)
     area_type = serializers.SerializerMethodField(read_only=True)
@@ -78,6 +83,15 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     # without a second request. Same shape/source as the mobile "Your crew".
     crew = serializers.SerializerMethodField(read_only=True)
 
+    # Total time on the trip (actual_start_at -> actual_end_at, or -> now while
+    # In Progress), in whole seconds — the client formats it however it needs
+    # (web table cell vs. app card). Null until the trip has been started.
+    total_trip_time_seconds = serializers.SerializerMethodField(read_only=True)
+    # This assignment's 1-based position among today's assignments for the
+    # same trip plan: 1 for the ordinary run, 2+ for a Re-Trip continuation
+    # (and any further same-day re-trips of that continuation).
+    trip_count = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = DailyTripAssignment
         fields = [
@@ -89,11 +103,19 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "vehicle_id", "alt_staff_template_id", "collection_points_input", "trip_plan", "staff_template",
             "effective_staff", "crew", "state", "district", "area_type", "corporation", "municipality",
             "town_panchayat", "panchayat_union", "panchayat", "vehicle", "collection_types",
-            "collection_points", "household_collection_points", "breakdown_info",
+            "collection_points", "household_collection_points", "breakdown_info", "retrip_info",
             "trip_date", "scheduled_time", "actual_start_time", "actual_end_time",
+            "total_trip_time_seconds", "trip_count",
             "status", "approval_status", "remarks", "created_at", "updated_at",
         ]
         read_only_fields = ["unique_id", "actual_start_time", "actual_end_time", "approval_status", "created_at", "updated_at"]
+
+    def get_total_trip_time_seconds(self, obj):
+        duration = obj.total_trip_time
+        return int(duration.total_seconds()) if duration is not None else None
+
+    def get_trip_count(self, obj):
+        return obj.trip_count()
 
     def get_trip_plan(self, obj):
         from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
@@ -282,6 +304,20 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "replacement_vehicle_no": getattr(bd.replacement_vehicle_id, "vehicle_no", None),
             "replacement_driver": getattr(bd.replacement_driver_id, "employee_name", None),
             "replacement_operator": getattr(bd.replacement_operator_id, "employee_name", None),
+        }
+
+    def get_retrip_info(self, obj):
+        retrip = obj.retrip_requests.filter(is_deleted=False).order_by("-created_at").first()
+        if not retrip:
+            return None
+        return {
+            "unique_id": retrip.unique_id,
+            "status": retrip.status,
+            "reason": retrip.reason,
+            "review_remarks": retrip.review_remarks,
+            "new_assignment_id": getattr(retrip.new_assignment, "unique_id", None),
+            "pending_bin_count": retrip.pending_bin_count,
+            "pending_household_count": retrip.pending_household_count,
         }
 
     def _sync_collection_points(self, assignment, points):

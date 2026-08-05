@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import models
 from django.utils import timezone
 
@@ -226,8 +228,21 @@ class DailyTripAssignment(BaseMaster):
 
     trip_date = models.DateField()
     scheduled_time = models.TimeField()
+
+    # Wall-clock times kept for backward compatibility — dashboards, the
+    # DailyTripLog mirror and the mobile serializer all still read these. They
+    # are DERIVED from the `_at` datetimes below; never stamp them directly,
+    # use mark_started() / mark_ended().
     actual_start_time = models.TimeField(null=True, blank=True)
     actual_end_time = models.TimeField(null=True, blank=True)
+
+    # The authoritative timestamps. TimeField alone cannot express a trip that
+    # crosses midnight (end < start reads as a negative duration) and carries no
+    # timezone, which already bit us: the scan path stamped IST via
+    # `localtime()` while the admin status endpoint stamped UTC via `now()`, so
+    # the same column held values 5h30m apart depending on the caller.
+    actual_start_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    actual_end_at = models.DateTimeField(null=True, blank=True)
 
     # ------------------------------------------------------------------
     # STATUS & APPROVAL
@@ -295,21 +310,151 @@ class DailyTripAssignment(BaseMaster):
     def __str__(self):
         return self.unique_id
 
+    # ------------------------------------------------------------------
+    # LIFECYCLE
+    # ------------------------------------------------------------------
+    # A stop is "resolved" for the day when it is Collected (done) or Missed
+    # (attempted, nothing to collect). "Skipped" / collect-later is explicitly
+    # NOT resolved — that is what a Re-Trip request carries over.
+    #
+    # The two stop models spell "missed" differently: a bin stop uses "Missed",
+    # while a household stop's STATUS_MISSED is the label "Not Available". Never
+    # share one status tuple between them — a household marked Not Available
+    # would read as pending forever and the trip could never be ended. Always
+    # resolve against each model's own constants, as
+    # `operator_mobile.helpers.assignment_is_finished` does.
+    RESOLVED_STOP_STATUSES = ("Collected", "Missed")
+
+    def pending_bin_stops(self):
+        """Bin collection points still awaiting the driver."""
+        from app.models.core_modules.daily_operations.daily_trip_collection_point import (
+            DailyTripCollectionPoint,
+        )
+
+        return self.trip_collection_points.filter(is_deleted=False).exclude(
+            status__in=(
+                DailyTripCollectionPoint.STATUS_COLLECTED,
+                DailyTripCollectionPoint.STATUS_MISSED,
+            )
+        )
+
+    def pending_household_stops(self):
+        """Household stops still awaiting the driver."""
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+            DailyTripHouseholdCollection,
+        )
+
+        return DailyTripHouseholdCollection.objects.filter(
+            trip_assignment_id=self, is_deleted=False
+        ).exclude(
+            status__in=(
+                DailyTripHouseholdCollection.STATUS_COLLECTED,
+                DailyTripHouseholdCollection.STATUS_MISSED,
+            )
+        )
+
+    def has_pending_stops(self):
+        return self.pending_bin_stops().exists() or self.pending_household_stops().exists()
+
+    def mark_started(self, at=None):
+        """Put the trip In Progress and stamp the start timestamps.
+
+        Idempotent: calling it on an already-started trip is a no-op, so the
+        explicit driver action and the implicit first-scan path can both call
+        it without fighting over the timestamp. Also backfills a start time for
+        a trip that was forced In Progress without one (the vehicle-breakdown
+        approval path does exactly that).
+        """
+        if self.status in (self.STATUS_COMPLETED, self.STATUS_CANCELLED):
+            return False
+
+        started_at = at or timezone.now()
+        update_fields = ["updated_at"]
+
+        if self.status != self.STATUS_IN_PROGRESS:
+            self.status = self.STATUS_IN_PROGRESS
+            update_fields.append("status")
+
+        if not self.actual_start_at:
+            self.actual_start_at = started_at
+            self.actual_start_time = timezone.localtime(started_at).time()
+            update_fields += ["actual_start_at", "actual_start_time"]
+
+        if len(update_fields) == 1:  # nothing but updated_at — already started
+            return False
+
+        self.save(update_fields=update_fields)
+        return True
+
+    def mark_ended(self, at=None):
+        """Close the trip and stamp the end timestamps. Idempotent."""
+        if self.status == self.STATUS_COMPLETED:
+            return False
+
+        ended_at = at or timezone.now()
+        update_fields = ["status", "updated_at"]
+        self.status = self.STATUS_COMPLETED
+
+        if not self.actual_end_at:
+            self.actual_end_at = ended_at
+            self.actual_end_time = timezone.localtime(ended_at).time()
+            update_fields += ["actual_end_at", "actual_end_time"]
+
+        # A trip can be completed without ever having been explicitly started
+        # (all work done through scans before this feature existed). Backfill so
+        # duration math never sees a null start against a real end.
+        if not self.actual_start_at:
+            self.actual_start_at = ended_at
+            self.actual_start_time = timezone.localtime(ended_at).time()
+            update_fields += ["actual_start_at", "actual_start_time"]
+
+        self.save(update_fields=update_fields)
+        return True
+
+    @property
+    def total_trip_time(self):
+        """Wall-clock duration from `actual_start_at` to `actual_end_at`, or to
+        now while still In Progress. `None` until the trip has been started —
+        never derived from the legacy `actual_start_time`/`actual_end_time`
+        TimeFields, which carry no date and (historically) mixed timezones.
+        """
+        if not self.actual_start_at:
+            return None
+        end = self.actual_end_at or timezone.now()
+        diff = end - self.actual_start_at
+        return diff if diff.total_seconds() >= 0 else timedelta(0)
+
+    def trip_count(self):
+        """This assignment's 1-based position among all assignments made today
+        for the same trip plan — the ordinary run is `1`; a Re-Trip
+        continuation (`app/services/retrip_service.py`, same `trip_plan_id`
+        and `trip_date`, a fresh row with no direct FK back to its source) is
+        `2`, and so on for a chain of same-day re-trips. Ordered by
+        `created_at` so the count reflects the order the shifts actually
+        happened in, not unique_id string order.
+        """
+        siblings = list(
+            DailyTripAssignment.objects.filter(
+                trip_plan_id=self.trip_plan_id, trip_date=self.trip_date,
+                is_deleted=False,
+            ).order_by("created_at", "unique_id").values_list("unique_id", flat=True)
+        )
+        try:
+            return siblings.index(self.unique_id) + 1
+        except ValueError:
+            # Not persisted yet (unsaved instance) — it would be the next one.
+            return len(siblings) + 1
+
     def mark_completed_if_all_cps_collected(self):
         children = self.trip_collection_points.filter(is_deleted=False)
         if not children.exists():
             return False
         # A missed stop is operationally resolved for the day but contributes
         # zero weight. "Skipped" / collect-later remains unresolved.
-        if children.exclude(status__in=["Collected", "Missed"]).exists():
+        if children.exclude(status__in=self.RESOLVED_STOP_STATUSES).exists():
             return False
         if self.status == self.STATUS_COMPLETED:
             return True
 
-        update_fields = ["status", "updated_at"]
-        self.status = self.STATUS_COMPLETED
-        if not self.actual_end_time:
-            self.actual_end_time = timezone.localtime().time()
-            update_fields.append("actual_end_time")
-        self.save(update_fields=update_fields)
+        self.mark_ended()
         return True

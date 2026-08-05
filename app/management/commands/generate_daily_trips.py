@@ -19,9 +19,13 @@ def run_for_date(target_date=None, logger=None, force=False):
     manual-run API action (DailyTripAssignmentViewSet.generate_daily) call this,
     so the behaviour is identical no matter how it is triggered.
 
-    Idempotent: re-running for the same date never creates duplicates because
-    every insert is a get_or_create keyed on (trip_plan, trip_date) and
-    (trip_assignment, collection_point / customer).
+    Idempotent: re-running for the same date never creates a second
+    scheduler-generated assignment — it checks for ANY existing assignment on
+    (trip_plan, trip_date) first (not a plain get_or_create, which assumed at
+    most one row could exist; a Re-Trip approval can create a second one — see
+    `app/services/retrip_service.py` — so `.get()` there could raise
+    MultipleObjectsReturned). Child rows use get_or_create keyed on
+    (trip_assignment, collection_point / customer), which is unaffected.
 
     Args:
         target_date: a `date` to generate for. Defaults to today (local).
@@ -79,16 +83,30 @@ def run_for_date(target_date=None, logger=None, force=False):
             defaults[f"{field}_id"] = getattr(plan, f"{field}_id", None)
 
         with transaction.atomic():
-            assignment, created = DailyTripAssignment.objects.get_or_create(
-                trip_plan_id=plan,
-                trip_date=today,
-                defaults=defaults,
+            # NOT a plain get_or_create: a Re-Trip approval
+            # (`app/services/retrip_service.approve_retrip`) can already have
+            # created a SECOND assignment on this same (trip_plan, trip_date) —
+            # the continuation trip that carries a cut-short shift's leftover
+            # stops. `get()` would then raise MultipleObjectsReturned and take
+            # the whole nightly job down. The scheduler's job is just "make
+            # sure today has an assignment for this plan" — if a Re-Trip
+            # continuation already covers today, that satisfies it; don't
+            # create a competing second one.
+            existing = (
+                DailyTripAssignment.objects
+                .filter(trip_plan_id=plan, trip_date=today)
+                .order_by("created_at")
+                .first()
             )
-
-            if not created:
-                # Duplicate prevention: assignment already exists for this plan+date.
+            if existing is not None:
                 log(f"Assignment already exists for plan {plan.unique_id} on {today}")
                 continue
+
+            assignment = DailyTripAssignment.objects.create(
+                trip_plan_id=plan,
+                trip_date=today,
+                **defaults,
+            )
 
             if not assignment.waste_types.exists():
                 assignment.waste_types.set(plan.waste_types.all())

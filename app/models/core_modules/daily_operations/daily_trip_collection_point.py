@@ -181,6 +181,20 @@ class DailyTripCollectionPoint(BaseMaster):
         blank=True,
     )
 
+    # Set by retrip_service.approve_retrip() on the SOURCE stop when it is
+    # carried over to a continuation trip. Deliberately does not affect
+    # `status` (still Pending/etc.) — see the comment in approve_retrip for
+    # why the completion-percentage math depends on that.
+    carried_to_assignment = models.ForeignKey(
+        DailyTripAssignment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        to_field="unique_id",
+        db_column="carried_to_assignment_id",
+        related_name="carried_over_collection_points",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
