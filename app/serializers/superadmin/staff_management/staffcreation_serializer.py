@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.superadmin.role_management.contractorUserType import ContractorUserType
@@ -175,7 +177,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         source="personal_details.age",
         required=False,
         allow_null=True,
-        min_value=0,
+        min_value=18,
         max_value=120,
     )
     blood_group = serializers.CharField(
@@ -234,7 +236,21 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError("A staff member with this username already exists.")
         return value
-    
+
+    def _validate_address_pincode(self, value):
+        if not value:
+            return value
+        pincode = value.get("pincode") if isinstance(value, dict) else None
+        if pincode not in (None, "") and not re.match(r"^\d{6}$", str(pincode)):
+            raise serializers.ValidationError({"pincode": "Enter a valid 6-digit pincode."})
+        return value
+
+    def validate_present_address(self, value):
+        return self._validate_address_pincode(value)
+
+    def validate_permanent_address(self, value):
+        return self._validate_address_pincode(value)
+
     user_type_id = serializers.CharField(
     source="staffusertype_id.usertype_id.unique_id",read_only=True)
 
