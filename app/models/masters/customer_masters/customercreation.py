@@ -1,3 +1,4 @@
+from django.core.validators import RegexValidator
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.models.masters.waste_masters.property import Property
@@ -191,7 +192,10 @@ class CustomerCreation(BaseMaster):
         db_column="ward_id",
     )
 
-    pincode = models.CharField(max_length=10)
+    pincode = models.CharField(
+        max_length=6,
+        validators=[RegexValidator(r"^\d{6}$", "Enter a valid 6-digit pincode.")],
+    )
     latitude = models.CharField(max_length=100)
     longitude = models.CharField(max_length=100)
 
