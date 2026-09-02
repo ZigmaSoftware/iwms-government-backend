@@ -258,8 +258,55 @@ class MyTripTodaySerializer(serializers.Serializer):
                     if hh.collected_weight_kg is not None else None
                 ),
                 "customer": self._customer_brief(customer),
+                # Per-waste-type split of what was collected — the "eye"
+                # button on the app's household tile opens a floating list
+                # built from this, so the driver can see "Wet Waste 3.5 kg /
+                # Dry Waste 1.2 kg" instead of only the single combined
+                # collected_weight_kg total.
+                "waste_breakdown": self._waste_breakdown(hh),
             })
         return result
+
+    @staticmethod
+    def _waste_breakdown(hh):
+        if not hh.is_collected or not hh.trip_assignment_id_id or not hh.customer_id_id:
+            return []
+
+        from app.models.core_modules.daily_operations.waste_collection import (
+            WasteCollection,
+        )
+
+        # A household can be re-collected (edit + re-finalize from the app),
+        # and WasteCollection rows are inserted fresh each time rather than
+        # updated in place — so there can be more than one row for this
+        # (customer, trip_assignment) pair. The latest one is what the
+        # driver's card actually reflects.
+        record = (
+            WasteCollection.objects
+            .filter(
+                trip_assignment_id_id=hh.trip_assignment_id_id,
+                customer_id=hh.customer_id_id,
+                is_deleted=False,
+            )
+            # collection_time is auto_now_add — the closest thing this model
+            # has to a "row created at" timestamp.
+            .order_by("-collection_date", "-collection_time")
+            .first()
+        )
+        if record is None:
+            return []
+
+        buckets = (
+            ("Wet Waste", record.wet_waste),
+            ("Dry Waste", record.dry_waste),
+            ("Mixed Waste", record.mixed_waste),
+            ("Sanitary Waste", record.sanitary_waste),
+        )
+        return [
+            {"waste_type": name, "weight_kg": weight}
+            for name, weight in buckets
+            if weight and weight > 0
+        ]
 
     @staticmethod
     def _customer_brief(customer):
