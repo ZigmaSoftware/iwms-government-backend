@@ -8,6 +8,7 @@ __pycache__/
 # === Django Migrations ===
 **/migrations/*
 !**/migrations/__init__.py
+!app/migrations/0002_dailytripcollectionpoint_carried_to_assignment_and_more.py
 
 
 # === Virtual Environments ===
