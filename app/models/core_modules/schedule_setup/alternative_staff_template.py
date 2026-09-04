@@ -231,12 +231,11 @@ class AlternativeStaffTemplate(models.Model):
             models.Index(fields=['display_code']),
         ]
 
-        constraints = [
-            models.UniqueConstraint(
-                fields=['staff_template'],
-                name='unique_staff_template_per_effective_date'
-            )
-        ]
+        # No longer unique per staff_template: a staff_template can accumulate
+        # multiple historical AlternativeStaffTemplate rows over time (e.g. one
+        # per vehicle-breakdown event). Overlapping-date-range validation for
+        # the schedule-setup UI is enforced in AlternativeStaffTemplateSerializer
+        # instead of at the DB level.
 
     # ------------------------------------------------------------------
     # DISPLAY CODE GENERATION
