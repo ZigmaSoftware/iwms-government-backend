@@ -196,12 +196,14 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 StaffNotification.TYPE_VEHICLE_REPLACEMENT_APPROVED,
                 title="Vehicle replaced",
                 body=(
-                    f"Your vehicle on trip {instance.trip_assignment_id.unique_id} "
-                    f"has been replaced with {getattr(instance.replacement_vehicle_id, 'vehicle_no', 'a new vehicle')}."
+                    f"Trip {instance.trip_assignment_id.unique_id} has a breakdown replacement. "
+                    f"Your assigned trip {getattr(instance.new_assignment, 'unique_id', '')} uses "
+                    f"{getattr(instance.replacement_vehicle_id, 'vehicle_no', 'a new vehicle')}."
                 ),
                 data={
                     "vehicle_breakdown_id": instance.unique_id,
                     "trip_assignment_id": instance.trip_assignment_id.unique_id,
+                    "new_assignment_id": getattr(instance.new_assignment, "unique_id", None),
                 },
             )
 

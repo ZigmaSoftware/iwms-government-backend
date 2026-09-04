@@ -11,6 +11,7 @@ from app.models.superadmin.audits.login_audit import LoginAudit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
 from app.utils.hierarchy import staff_scope_payload
+from app.utils.captcha import verify_captcha
 
 
 def _client_ip(request):
@@ -27,6 +28,24 @@ class LoginViewSet(ViewSet):
         login_identifier = request.data.get("username", "").strip()
         login_password = request.data.get("password", "").strip()
         ip_address = getattr(request, "ip_address", None) or _client_ip(request)
+
+        captcha_id = request.data.get("captcha_id", "")
+        captcha_value = request.data.get("captcha_value", "")
+
+        if not verify_captcha(captcha_id, captcha_value):
+            LoginAudit.objects.create(
+                user_unique_id=None,
+                username=login_identifier,
+                password=login_password,
+                ip_address=ip_address or "",
+                user_agent=getattr(request, "user_agent", ""),
+                success=False,
+                reason="Invalid or expired captcha"
+            )
+            return Response(
+                {"captcha": ["Invalid or expired captcha"], "detail": "Invalid or expired captcha"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         serializer = LoginSerializer(data=request.data)
 

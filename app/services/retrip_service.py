@@ -115,25 +115,32 @@ def request_retrip(assignment, *, requested_by, reason):
     return request
 
 
-def _create_continuation_assignment(source):
+def _create_continuation_assignment(
+    source, *, vehicle_id=None, alt_staff_template_id=None, remarks=None
+):
     """A fresh assignment on the SAME trip plan, carrying the leftover work.
 
     `DailyTripAssignment.save()` clones every plan stop on create (and fans a
     household plan out to every customer in the ward), so the caller prunes
     down to the carried-over set afterwards — that is far safer than
     special-casing the post_save signal.
+
+    `vehicle_id`/`alt_staff_template_id` let a caller swap in a replacement
+    vehicle/crew instead of carrying the source's own (used by a vehicle
+    breakdown continuation); default to the source's when omitted (the plain
+    Re-Trip case).
     """
     continuation = DailyTripAssignment(
         trip_plan_id=source.trip_plan_id,
         staff_template_id=source.staff_template_id,
-        alt_staff_template_id=source.alt_staff_template_id,
-        vehicle_id=source.vehicle_id,
+        alt_staff_template_id=alt_staff_template_id or source.alt_staff_template_id,
+        vehicle_id=vehicle_id or source.vehicle_id,
         trip_date=source.trip_date,
         # Continuation starts now, not at the original slot.
         scheduled_time=timezone.localtime().time(),
         status=DailyTripAssignment.STATUS_SCHEDULED,
         approval_status=DailyTripAssignment.APPROVAL_APPROVED,
-        remarks=f"Re-Trip continuation of {source.unique_id}",
+        remarks=remarks or f"Re-Trip continuation of {source.unique_id}",
     )
     # Carry the SOURCE trip's waste types and wards, which may be narrower than
     # the plan's. `save()` only falls back to the plan's when these are empty,
@@ -141,6 +148,86 @@ def _create_continuation_assignment(source):
     continuation.save()
     continuation.waste_types.set(source.waste_types.all())
     continuation.wards.set(source.wards.all())
+    return continuation
+
+
+@transaction.atomic
+def create_breakdown_continuation(
+    source, *, vehicle_id, alt_staff_template_id, collection_point_ids=None
+):
+    """Vehicle-breakdown counterpart of `approve_retrip`: open a continuation
+    crewed by the replacement vehicle/driver/operator, carrying the same-day
+    leftover stops.
+
+    Carry-over rules mirror Re-Trip: household trips always carry every
+    pending stop; bin trips carry only `collection_point_ids` (required —
+    the caller, e.g. the breakdown-verify screen, must let the supervisor
+    pick which collection points move).
+    """
+    pending_bins = list(source.pending_bin_stops())
+    pending_households = list(source.pending_household_stops())
+
+    if collection_point_ids is not None:
+        selected = set(collection_point_ids)
+        pending_bin_ids = {stop.unique_id for stop in pending_bins}
+        unknown = selected - pending_bin_ids
+        if unknown:
+            raise ValueError("Selected collection point is not pending on this trip.")
+        pending_bins = [stop for stop in pending_bins if stop.unique_id in selected]
+
+    if not pending_bins and not pending_households:
+        raise ValueError("There are no pending stops to carry over.")
+
+    carry_bin_keys = {
+        (stop.collection_point_id_id, stop.bin_id_id) for stop in pending_bins
+    }
+    carry_customer_ids = {stop.customer_id_id for stop in pending_households}
+
+    continuation = _create_continuation_assignment(
+        source,
+        vehicle_id=vehicle_id,
+        alt_staff_template_id=alt_staff_template_id,
+        remarks=f"Vehicle Breakdown continuation of {source.unique_id}",
+    )
+
+    cloned_bins = DailyTripCollectionPoint.objects.filter(trip_assignment_id=continuation)
+    if carry_bin_keys:
+        keep = Q()
+        for cp_id, bin_id in carry_bin_keys:
+            keep |= Q(collection_point_id=cp_id, bin_id=bin_id)
+        cloned_bins.exclude(keep).delete()
+    else:
+        cloned_bins.delete()
+
+    cloned_households = DailyTripHouseholdCollection.objects.filter(
+        trip_assignment_id=continuation
+    )
+    if carry_customer_ids:
+        cloned_households.exclude(customer_id__in=carry_customer_ids).delete()
+    else:
+        cloned_households.delete()
+
+    DailyTripCollectionPoint.objects.filter(
+        unique_id__in=[stop.unique_id for stop in pending_bins]
+    ).update(carried_to_assignment=continuation)
+    DailyTripHouseholdCollection.objects.filter(
+        unique_id__in=[stop.unique_id for stop in pending_households]
+    ).update(carried_to_assignment=continuation)
+
+    for staff in _crew_of(source):
+        notify_staff(
+            staff,
+            StaffNotification.TYPE_RETRIP_APPROVED,
+            "Vehicle replaced — new trip assigned",
+            f"{source.unique_id} has a vehicle breakdown replacement trip "
+            f"({continuation.unique_id}) assigned.",
+            data={
+                "event": "breakdown_continuation",
+                "assignment_id": source.unique_id,
+                "new_assignment_id": continuation.unique_id,
+            },
+        )
+
     return continuation
 
 
