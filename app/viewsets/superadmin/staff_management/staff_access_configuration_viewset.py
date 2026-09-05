@@ -82,6 +82,162 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
         return Response(serializer.to_representation(result))
 
+    @action(detail=False, methods=["get"], url_path="app-modules")
+    def app_modules(self, request):
+        """The App Module master, for the tick list on this form.
+
+        Ticking a module decides whether the person may sign into that app at
+        all. What they can do inside comes from the ordinary screen
+        permissions, which are the same rows that govern web.
+        """
+        from app.models.superadmin.screen_management.app_module import AppModule
+
+        modules = AppModule.objects.filter(is_active=True, is_deleted=False)
+        return Response([
+            {
+                "uniqueId": m.unique_id,
+                "moduleKey": m.module_key,
+                "surfaceKey": m.surface_key,
+                "label": m.label,
+                "route": m.route,
+                "orderNo": m.order_no,
+                "description": m.description,
+            }
+            for m in modules
+        ])
+
+    @action(detail=False, methods=["get", "post"], url_path="staff-app-modules")
+    def staff_app_modules(self, request):
+        """Read or set the App Modules ticked for one staff member.
+
+        Kept as its own action rather than folded into this form's main save:
+        that payload is written by the existing serializer against
+        UserScreenPermission/StaffDataScope, and app-module access lives on the
+        separate StaffAccessConfiguration. Mixing them would mean rewriting a
+        working save path to carry one extra list.
+
+        GET  ?staff_id=STC-...            -> {"app_module_ids": [...]}
+        POST {"staff_id", "app_module_ids"} -> replaces the ticks
+        """
+        from django.core.cache import cache
+
+        from app.models.superadmin.screen_management.app_module import AppModule
+        from app.models.superadmin.staff_management.staff_access_configuration import (
+            StaffAccessConfiguration,
+        )
+        from app.models.superadmin.staff_management.staffcreation import (
+            StaffcreationOfficeDetails,
+        )
+
+        staff_id = (
+            request.data.get("staff_id")
+            if request.method == "POST"
+            else request.query_params.get("staff_id")
+        )
+        if not staff_id:
+            return Response(
+                {"staff_id": "This field is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        staff = StaffcreationOfficeDetails.objects.filter(
+            staff_unique_id=staff_id, is_deleted=False
+        ).first()
+        if not staff:
+            return Response(
+                {"staff_id": f"No staff member '{staff_id}'."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        config = StaffAccessConfiguration.objects.filter(
+            staff_id_id=staff_id, is_deleted=False
+        ).first()
+
+        if request.method == "GET":
+            return Response({
+                "staff_id": staff_id,
+                "app_module_ids": (
+                    [m.unique_id for m in config.app_modules.filter(is_deleted=False)]
+                    if config else []
+                ),
+                "app_module": staff.app_module,
+            })
+
+        module_ids = request.data.get("app_module_ids") or []
+        if config is None:
+            config = StaffAccessConfiguration.objects.create(staff_id=staff)
+        config.app_modules.set(
+            AppModule.objects.filter(unique_id__in=module_ids, is_deleted=False)
+        )
+
+        # Keep the landing app in step: if the person was given exactly one
+        # module and has no landing set, that module is unambiguously it.
+        surfaces = list(
+            config.app_modules.filter(is_deleted=False).values_list(
+                "surface_key", flat=True
+            )
+        )
+        if len(surfaces) == 1 and not staff.app_module:
+            StaffcreationOfficeDetails.objects.filter(pk=staff.pk).update(
+                app_module=surfaces[0]
+            )
+
+        cache.clear()
+        return Response({"staff_id": staff_id, "app_module_ids": module_ids})
+
+    @action(detail=False, methods=["get"], url_path="role-template")
+    def role_template(self, request):
+        """The screens a given app role actually calls.
+
+        Backs the "Apply defaults" button. Every one of these is an ordinary
+        screen permission an admin could tick by hand — this only saves them
+        knowing which ones the Driver app happens to read.
+        """
+        from app.models.superadmin.screen_management.userscreen import UserScreen
+        from app.models.superadmin.screen_management.userscreenaction import (
+            UserScreenAction,
+        )
+        from app.utils.app_feature_grants import ROLE_SCREEN_TEMPLATES
+
+        role = (request.query_params.get("role") or "").strip().lower()
+        template = ROLE_SCREEN_TEMPLATES.get(role)
+        if template is None:
+            return Response(
+                {
+                    "detail": f"No template for '{role}'.",
+                    "available": sorted(ROLE_SCREEN_TEMPLATES),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        wanted = {}
+        for screens in template.values():
+            for name, actions in screens.items():
+                wanted.setdefault(name, set()).update(actions)
+
+        action_rows = {
+            (row.variable_name or row.action_name or "").lower(): row
+            for row in UserScreenAction.objects.filter(is_deleted=False)
+        }
+
+        screens = []
+        for row in UserScreen.objects.filter(
+            userscreen_name__in=wanted, is_deleted=False
+        ).select_related("mainscreen_id"):
+            screens.append({
+                "userScreenId": row.unique_id,
+                "userScreenName": row.userscreen_name,
+                "mainScreenId": row.mainscreen_id_id,
+                "mainScreenName": row.mainscreen_id.mainscreen_name,
+                "actions": [
+                    {"actionId": action_rows[a].unique_id, "actionName": a}
+                    for a in sorted(wanted[row.userscreen_name])
+                    if a in action_rows
+                ],
+            })
+
+        return Response({"role": role, "screens": screens})
+
     @action(detail=False, methods=["get"], url_path="scope-admins")
     def scope_admins(self, request):
         """Admins the caller may place above a new staff account."""

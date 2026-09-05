@@ -17,6 +17,7 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.utils.customer_qr import generate_customer_qr_content
 from app.utils.file_validators import validate_pdf_upload
+from app.utils.app_feature_grants import APP_MODULE_CHOICES
 
 
 def generate_staff_unique_id():
@@ -150,6 +151,19 @@ class StaffcreationOfficeDetails(BaseMaster):
     fcm_token = models.CharField(max_length=255, null=True, blank=True)
 
     # Type Links
+    # Which mobile app this staff member lands in. Set explicitly rather than
+    # guessed from the role name, so an unrelated web permission can never add
+    # a surface the person has no screens for. Which apps they may actually
+    # sign into is ticked on their StaffAccessConfiguration.
+    app_module = models.CharField(
+        max_length=20,
+        choices=APP_MODULE_CHOICES,
+        null=True,
+        blank=True,
+        db_column="app_module",
+        help_text="Mobile app this user lands in. Leave blank for web-only staff.",
+    )
+
     user_type_id = models.ForeignKey(
         UserType,
         on_delete=models.SET_NULL,

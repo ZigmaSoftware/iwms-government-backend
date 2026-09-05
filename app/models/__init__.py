@@ -63,6 +63,7 @@ from .superadmin.role_management.governmentStaffUserType import GovernmentStaffU
 from .superadmin.screen_management.mainscreentype import MainScreenType
 from .superadmin.screen_management.mainscreen import MainScreen
 from .superadmin.screen_management.userscreen import UserScreen
+from .superadmin.screen_management.app_module import AppModule
 from .superadmin.screen_management.userscreenaction import UserScreenAction
 from .superadmin.screen_management.userscreencolumn import UserScreenColumn
 from .superadmin.screen_management.companyuserscreenpermission import (
@@ -76,6 +77,10 @@ from .superadmin.screen_management.dashboardwidgetpermission import DashboardWid
 # ============================================================
 # GROUP: USER CREATION & STAFF
 # ============================================================
+from .superadmin.staff_management.staff_access_configuration import (
+    StaffAccessConfiguration,
+    StaffAccessConfigurationPermission,
+)
 from .superadmin.staff_management.staffcreation import (
     StaffcreationOfficeDetails,
     StaffPersonalDetails,
@@ -99,6 +104,9 @@ from .superadmin.audits.permission_audit import PermissionAuditLog
 # GROUP: CUSTOMER MODULES
 # ============================================================
 from .masters.customer_masters.customercreation import CustomerCreation
+from .masters.customer_masters.customer_access_configuration import (
+    CustomerAccessConfiguration,
+)
 from .core_modules.daily_operations.waste_collection import WasteCollection
 from .masters.customer_masters.feedback import FeedBack
 from .masters.customer_masters.userchargerule import UserChargeRule

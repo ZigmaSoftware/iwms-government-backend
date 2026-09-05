@@ -72,6 +72,77 @@ USER_SCREEN_MODELS = {
 class PermissionSeeder(BaseSeeder):
     name = "PermissionSeeder"
 
+    def _seed_mobile_app_catalog(self):
+        """The App Module master, and the citizen app's own screens.
+
+        Every other mobile screen is governed by the ordinary web permission it
+        maps to (see app/utils/app_feature_grants.py), so only the citizen app
+        needs rows of its own — its routes are middleware-exempt and
+        self-scoped, leaving nothing in the normal catalog to grant.
+
+        Kept under its own MainScreenType so it never appears in the web
+        sidebar and is untouched by the megamenu deactivation pass above.
+        """
+        from app.models.superadmin.screen_management.app_module import AppModule
+        from app.utils.app_feature_grants import (
+            APP_MODULE_SEED,
+            CITIZEN_APP_MAINSCREEN,
+            CITIZEN_APP_SCREENS,
+        )
+
+        for entry in APP_MODULE_SEED:
+            module, _ = AppModule.objects.get_or_create(
+                module_key=entry["module_key"],
+                defaults={
+                    "surface_key": entry["surface_key"],
+                    "label": entry["label"],
+                    "route": entry["route"],
+                    "order_no": entry["order_no"],
+                    "description": entry["description"],
+                },
+            )
+            # Never overwrite a label or ordering an admin changed in web; the
+            # read-only identity fields are kept in step with the app build.
+            changed = []
+            if module.surface_key != entry["surface_key"]:
+                module.surface_key = entry["surface_key"]
+                changed.append("surface_key")
+            if module.route != entry["route"]:
+                module.route = entry["route"]
+                changed.append("route")
+            if module.is_deleted:
+                module.is_deleted = False
+                module.is_active = True
+                changed += ["is_deleted", "is_active"]
+            if changed:
+                module.save(update_fields=changed + ["updated_at"])
+
+        mobile_type, _ = MainScreenType.objects.get_or_create(
+            type_name="mobile-app",
+            defaults={"is_active": True, "is_deleted": False},
+        )
+        citizen_main, _ = self._get_or_create_main_screen(
+            mobile_type,
+            CITIZEN_APP_MAINSCREEN,
+            1,
+            CITIZEN_APP_MAINSCREEN,
+            "Citizen app screens (mobile only)",
+        )
+        for index, screen_name in enumerate(CITIZEN_APP_SCREENS, start=1):
+            self._get_or_create_user_screen(
+                citizen_main,
+                screen_name,
+                index,
+                screen_name,
+                screen_name,
+                screen_name.replace("app-citizen-", "Citizen ").title(),
+            )
+
+        self.log(
+            f"Mobile app catalog: {AppModule.objects.filter(is_deleted=False).count()} "
+            f"modules, {len(CITIZEN_APP_SCREENS)} citizen screens."
+        )
+
     def _get_unique_value(self, model_class, field_name, preferred_value, exclude_pk=None):
         if not preferred_value:
             preferred_value = "screen"
@@ -370,6 +441,12 @@ class PermissionSeeder(BaseSeeder):
                     ("householdcollection-events", "householdcollection-events", "householdcollection-events", 4, "Household collection events"),
                     ("vehicle-breakdowns", "vehicle-breakdowns", "vehicle-breakdowns", 5, "Vehicle breakdowns"),
                     ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 6, "Daily trip logs"),
+                    # Registered in base_urls.py and called by the mobile app,
+                    # but never seeded — so no admin could grant them and every
+                    # request to them was refused.
+                    ("wastecollections", "wastecollections", "wastecollections", 7, "Waste collections"),
+                    ("retrip-requests", "retrip-requests", "retrip-requests", 8, "Re-trip requests"),
+                    ("staff-notifications", "staff-notifications", "staff-notifications", 9, "Staff notifications"),
                 ],
             },
             {
@@ -483,6 +560,8 @@ class PermissionSeeder(BaseSeeder):
                 )
                 if created:
                     created_user_screens += 1
+
+        self._seed_mobile_app_catalog()
 
         self._deactivate_removed_sidebar_screens(
             megamenu,
