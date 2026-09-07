@@ -10,8 +10,9 @@ from django.utils import timezone
 from app.models.superadmin.audits.login_audit import LoginAudit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
-from app.utils.hierarchy import staff_scope_payload
 from app.utils.captcha import verify_captcha
+from app.utils.hierarchy import staff_scope_payload
+from app.utils.request_client import is_mobile_client
 
 
 def _client_ip(request):
@@ -29,23 +30,31 @@ class LoginViewSet(ViewSet):
         login_password = request.data.get("password", "").strip()
         ip_address = getattr(request, "ip_address", None) or _client_ip(request)
 
-        captcha_id = request.data.get("captcha_id", "")
-        captcha_value = request.data.get("captcha_value", "")
+        # The captcha challenge is a browser defence (bot-driven credential
+        # stuffing against the visible web login form) and the mobile app has
+        # no captcha UI to answer it with — every mobile sign-in was failing
+        # closed with "Invalid or expired captcha" since no captcha_id/value
+        # is ever sent from the app. Skip it for the same `client: "mobile"`
+        # flag the Flutter apps already send on every login; a browser
+        # session sends no client and stays gated as before.
+        if not is_mobile_client(request.data):
+            captcha_id = request.data.get("captcha_id", "")
+            captcha_value = request.data.get("captcha_value", "")
 
-        if not verify_captcha(captcha_id, captcha_value):
-            LoginAudit.objects.create(
-                user_unique_id=None,
-                username=login_identifier,
-                password=login_password,
-                ip_address=ip_address or "",
-                user_agent=getattr(request, "user_agent", ""),
-                success=False,
-                reason="Invalid or expired captcha"
-            )
-            return Response(
-                {"captcha": ["Invalid or expired captcha"], "detail": "Invalid or expired captcha"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            if not verify_captcha(captcha_id, captcha_value):
+                LoginAudit.objects.create(
+                    user_unique_id=None,
+                    username=login_identifier,
+                    password=login_password,
+                    ip_address=ip_address or "",
+                    user_agent=getattr(request, "user_agent", ""),
+                    success=False,
+                    reason="Invalid or expired captcha"
+                )
+                return Response(
+                    {"captcha": ["Invalid or expired captcha"], "detail": "Invalid or expired captcha"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         serializer = LoginSerializer(data=request.data)
 
@@ -72,6 +81,8 @@ class LoginViewSet(ViewSet):
         column_permissions = serializer.validated_data.get("column_permissions", {})
         module_access = serializer.validated_data.get("module_access", [])
         app_surfaces = serializer.validated_data.get("app_surfaces", [])
+        app_modules = serializer.validated_data.get("app_modules", [])
+        app_screens = serializer.validated_data.get("app_screens", {})
         landing = serializer.validated_data.get("landing")
         permission_version = serializer.validated_data.get("permission_version")
         generated_at = serializer.validated_data.get("generated_at")
@@ -347,6 +358,8 @@ class LoginViewSet(ViewSet):
                 "column_permissions": column_permissions,
                 "module_access": module_access,
                 "app_surfaces": app_surfaces,
+                "app_modules": app_modules,
+                "app_screens": app_screens,
                 "landing": landing,
                 "permission_version": permission_version,
                 "generated_at": generated_at,

@@ -445,7 +445,21 @@ class DailyTripAssignment(BaseMaster):
             # Not persisted yet (unsaved instance) — it would be the next one.
             return len(siblings) + 1
 
-    def mark_completed_if_all_cps_collected(self):
+    def mark_completed_if_all_cps_collected(self, auto_end=True):
+        """Returns True once every bin stop is resolved (Collected/Missed).
+
+        [auto_end] controls whether "resolved" actually closes the trip
+        (`mark_ended()`) or just reports the fact without touching status.
+        Callers on the DRIVER APP's own write path (mark_collected/mark_status
+        on DailyTripCollectionPoint) pass `auto_end=False`: closing a trip is
+        now something the driver confirms — see `TripCompletionNudge` and
+        `TripLifecycleControl` — not something that happens invisibly the
+        moment the last stop is scanned. Admin/web CRUD
+        (secondary_bin_collection_event_viewset.py,
+        daily_trip_collection_point_viewset.py) and the backfill script keep
+        the default `True`: an admin editing a record directly has no
+        "confirm end trip" step to defer to.
+        """
         children = self.trip_collection_points.filter(is_deleted=False)
         if not children.exists():
             return False
@@ -454,6 +468,8 @@ class DailyTripAssignment(BaseMaster):
         if children.exclude(status__in=self.RESOLVED_STOP_STATUSES).exists():
             return False
         if self.status == self.STATUS_COMPLETED:
+            return True
+        if not auto_end:
             return True
 
         self.mark_ended()

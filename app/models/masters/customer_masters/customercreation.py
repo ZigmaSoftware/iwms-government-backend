@@ -14,6 +14,7 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
+from app.utils.app_feature_grants import APP_MODULE_CHOICES
 from app.utils.customer_qr import (
     QR_SUBPROPERTY_APARTMENT,
     generate_customer_qr_content,
@@ -102,6 +103,18 @@ class CustomerCreation(BaseMaster):
         primary_key=True,
         default=generate_customer_id,
         editable=False,
+    )
+
+    # Which mobile app this customer lands in. Customers only ever get the
+    # citizen app, but the field is explicit so the form reads the same as the
+    # staff form and a future surface needs no migration.
+    app_module = models.CharField(
+        max_length=20,
+        choices=APP_MODULE_CHOICES,
+        default="citizen",
+        blank=True,
+        db_column="app_module",
+        help_text="Mobile app this customer lands in.",
     )
 
     customer_name = models.CharField(max_length=100)

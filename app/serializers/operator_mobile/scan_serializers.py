@@ -49,10 +49,12 @@ class ScanBinRequestSerializer(serializers.Serializer):
         weight = attrs.get("weight_kg")
         reason = (attrs.get("status_reason") or attrs.get("notes") or "").strip()
 
-        if action == self.ACTION_COLLECT and weight is None:
-            raise serializers.ValidationError({
-                "weight_kg": "weight_kg is required when action is collect.",
-            })
+        # weight_kg is OPTIONAL on a collect: a crew without a working scale
+        # (or on a route where the weighment happens later at the plant) still
+        # has to be able to mark the bin collected. The weight columns on both
+        # DailyTripCollectionPoint and BinCollectionEvent are nullable, and the
+        # trip totals sum `collected_weight_kg or 0`, so a null simply
+        # contributes nothing rather than breaking the rollup.
         if action != self.ACTION_COLLECT and not reason:
             raise serializers.ValidationError({
                 "status_reason": "status_reason is required for this action.",

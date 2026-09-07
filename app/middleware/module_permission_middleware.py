@@ -14,6 +14,7 @@ from app.models.masters.leader_management.district_leader_login import DistrictL
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.utils.hierarchy import local_body_scope_for_staff
 from app.utils.permission_response import (
+    apply_staff_access_configuration,
     resolve_intersected_permission_payload,
     resolve_permission_payload,
 )
@@ -140,6 +141,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "companywisescreenpermissions",
         "column-permissions",
         "DashboardWidgetPermission",
+        "AppModule",
     },
     "role-assigns": {
         "UserType",
@@ -162,6 +164,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "WasteCollection",
         "FeedBack",
         "UserChargeRule",
+        "CustomerAccessConfiguration",
     },
     "complaint-ticket": {
         "ComplaintTicket",
@@ -199,6 +202,12 @@ MODULE_RESOURCE_ALLOWLIST = {
         "BinCollectionEvent",
         "VehicleBreakdown",
         "DailyTripLog",
+        # Registered in base_urls.py and called by the mobile app, but never
+        # listed here — so every request to them was refused with
+        # "Resource not allowed" regardless of what the role was granted.
+        "WasteCollection",
+        "TripRetripRequest",
+        "StaffNotification",
     },
     "schedule-masters": {
         "DailyWasteComparison",
@@ -254,6 +263,11 @@ RESOURCE_PERMISSION_ALIASES = {
     "StaffAccessConfiguration": ("staff-access-configuration",),
     "StaffAccessDashboard": ("staff-access-dashboard",),
     "CustomerCreation": ("customercreations",),
+    "WasteCollection": ("wastecollections",),
+    "TripRetripRequest": ("retrip-requests",),
+    "StaffNotification": ("staff-notifications",),
+    "AppModule": ("app-modules",),
+    "CustomerAccessConfiguration": ("customer-access-configuration",),
     "FeedBack": ("feedbacks", "feedback"),
     "ComplaintTicket": ("tickets",),
     "ComplaintModule": ("modules",),
@@ -274,8 +288,19 @@ RESOURCE_PERMISSION_ALIASES = {
     "TripPlan": ("trip-plans",),
     "DailyTripAssignment": ("daily-trip-assignments",),
     "DailyTripCollectionPoint": ("daily-trip-collection-points", "daily-trip-collection-point"),
-    "DailyTripHouseholdCollection": ("daily-trip-household-collections",),
-    "BinCollectionEvent": ("bin-collection-events", "bin-collection-event"),
+    # This catalog seeds `householdcollection-events` and
+    # `secondary-bin-collection-events`, but the routes behind them are
+    # `daily-trip-household-collections` and `bin-collection-events`. Without
+    # these pairings, ticking either screen authorizes nothing at all.
+    "DailyTripHouseholdCollection": (
+        "daily-trip-household-collections",
+        "householdcollection-events",
+    ),
+    "BinCollectionEvent": (
+        "bin-collection-events",
+        "bin-collection-event",
+        "secondary-bin-collection-events",
+    ),
     "VehicleBreakdown": ("vehicle-breakdowns",),
     "DailyTripLog": ("daily-trip-logs",),
     "DailyWasteComparison": ("daily-waste-comparisons",),
@@ -451,6 +476,20 @@ def _user_type_name(user):
 
 
 def _resolve_permissions_for_request(request):
+    """Base permissions, then the staff member's own access configuration.
+
+    The base resolution (role + geography, local-body intersection) is
+    untouched — a staff member with no StaffAccessConfiguration resolves
+    exactly as they always did. Where a configuration does exist, its grants
+    are layered on top, or replace the base entirely in strict mode.
+    """
+    permissions = _resolve_base_permissions_for_request(request)
+    return apply_staff_access_configuration(
+        permissions, getattr(request.user, "staff_unique_id", None)
+    )
+
+
+def _resolve_base_permissions_for_request(request):
     payload_permissions = getattr(request, "jwt_payload", {}).get("permissions")
     if payload_permissions:
         return payload_permissions

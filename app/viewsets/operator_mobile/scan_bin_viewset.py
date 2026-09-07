@@ -52,8 +52,12 @@ class ScanBinViewSet(viewsets.ViewSet):
         action = payload["action"]
         weight = payload.get("weight_kg")
         vehicle = ctx.assignment.vehicle_id
+        # `weight is not None` guard is load-bearing: weight_kg is optional on
+        # a collect, and Decimal(None) raises TypeError — without this the
+        # whole scan 500s the moment a driver collects without a weight.
         if (
             action == ScanBinRequestSerializer.ACTION_COLLECT
+            and weight is not None
             and vehicle
             and vehicle.capacity
             and Decimal(weight) > Decimal(vehicle.capacity)

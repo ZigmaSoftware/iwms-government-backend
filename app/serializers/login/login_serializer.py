@@ -11,11 +11,18 @@ from app.models.masters.leader_management.panchayat_leader_login import Panchaya
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 
+from app.models.masters.customer_masters.customer_access_configuration import (
+    CustomerAccessConfiguration,
+)
 from app.utils.permission_response import (
     apply_role_default_permissions,
     finalize_permission_payload,
     resolve_intersected_permission_payload,
+    apply_staff_access_configuration,
+    build_app_screens,
     resolve_permission_payload,
+    staff_access_config,
+    staff_app_modules,
 )
 from app.utils.hierarchy import local_body_scope_for_staff
 from app.utils.password_encryption import decrypt_password
@@ -39,6 +46,10 @@ class LoginSerializer(serializers.Serializer):
         default="auto",
         required=False
     )
+    # The mobile app identifies itself so the App Module gate applies to it and
+    # not to web. Absent (or "web") means a browser sign-in, which is never
+    # gated on an app module — a web-only admin has no reason to hold one.
+    client = serializers.CharField(required=False, allow_blank=True, default="web")
 
     @staticmethod
     def _password_matches(raw_password, stored_password):
@@ -208,6 +219,35 @@ class LoginSerializer(serializers.Serializer):
                 user_type=resolved_user_type,
             )
 
+        # Mobile layer. Applied here rather than inside each of the three
+        # resolution branches above so every path — local-body intersected,
+        # geo-scoped and plain role — gets the same answer. A staff member with
+        # no access configuration resolves exactly as before.
+        staff_unique_id = getattr(staff_record, "staff_unique_id", None) or getattr(
+            login_user, "staff_unique_id", None
+        )
+        access_config = staff_access_config(staff_unique_id)
+        permissions = apply_staff_access_configuration(permissions, staff_unique_id)
+        app_modules = staff_app_modules(access_config)
+        app_module = getattr(staff_record, "app_module", None)
+
+        permission_payload = finalize_permission_payload(
+            {
+                **permission_payload,
+                "permissions": permissions,
+                "app_modules": app_modules,
+                "app_screens": build_app_screens(permissions, app_modules),
+                "strict_permissions": bool(
+                    getattr(access_config, "enforce_strict_permissions", False)
+                ),
+            },
+            permissions=permissions,
+            role_name=role_name,
+            user_type=resolved_user_type,
+            app_module=app_module,
+            app_modules=app_modules,
+        )
+
         password_expired = _is_password_expired(getattr(staff_record, "password_crt_date", None))
 
         return {
@@ -217,6 +257,8 @@ class LoginSerializer(serializers.Serializer):
             # "column_permissions": permission_payload["column_permissions"],
             "module_access": permission_payload["module_access"],
             "app_surfaces": permission_payload["app_surfaces"],
+            "app_modules": permission_payload.get("app_modules", []),
+            "app_screens": permission_payload.get("app_screens", {}),
             "landing": permission_payload["landing"],
             "permission_version": permission_payload["permission_version"],
             "generated_at": permission_payload["generated_at"],
@@ -245,6 +287,49 @@ class LoginSerializer(serializers.Serializer):
         )
         permissions = permission_payload["permissions"]
 
+        # Customers are not staff, so they have no StaffAccessConfiguration to
+        # hang grants off, and no web screens to inherit — every citizen route
+        # is self-scoped. Their app access lives on their own configuration.
+        access_config = (
+            CustomerAccessConfiguration.objects
+            .filter(
+                customer_id_id=customer_record.unique_id,
+                is_deleted=False,
+                is_active=True,
+            )
+            .prefetch_related("app_modules", "app_screens")
+            .first()
+        )
+        app_modules = (
+            list(
+                access_config.app_modules.filter(is_active=True, is_deleted=False)
+                .values_list("surface_key", flat=True)
+            )
+            if access_config else []
+        )
+        citizen_screens = (
+            set(
+                access_config.app_screens.filter(is_active=True, is_deleted=False)
+                .values_list("userscreen_name", flat=True)
+            )
+            if access_config else set()
+        )
+
+        permission_payload = finalize_permission_payload(
+            {
+                **permission_payload,
+                "app_modules": app_modules,
+                "app_screens": build_app_screens(
+                    permissions, app_modules, citizen_screens=citizen_screens
+                ),
+            },
+            permissions=permissions,
+            role_name="customer",
+            user_type="customer",
+            app_module=getattr(customer_record, "app_module", None) or "citizen",
+            app_modules=app_modules,
+        )
+
         password_expired = _is_password_expired(getattr(customer_record, "password_crt_date", None))
 
         return {
@@ -254,6 +339,8 @@ class LoginSerializer(serializers.Serializer):
             # "column_permissions": permission_payload["column_permissions"],
             "module_access": permission_payload["module_access"],
             "app_surfaces": permission_payload["app_surfaces"],
+            "app_modules": permission_payload.get("app_modules", []),
+            "app_screens": permission_payload.get("app_screens", {}),
             "landing": permission_payload["landing"],
             "permission_version": permission_payload["permission_version"],
             "generated_at": permission_payload["generated_at"],
@@ -488,6 +575,26 @@ class LoginSerializer(serializers.Serializer):
 
         return self._build_state_leader_payload(leader)
 
+    @staticmethod
+    def _is_mobile_client(attrs):
+        from app.utils.request_client import is_mobile_client
+        return is_mobile_client(attrs)
+
+    def _enforce_app_module_gate(self, attrs, data):
+        """Refuse a mobile sign-in for someone with no App Module ticked.
+
+        Web sign-in is untouched: the gate is about which app a person may
+        open, and a browser is not one of them.
+        """
+        if not self._is_mobile_client(attrs):
+            return
+        if data.get("app_modules"):
+            return
+        raise serializers.ValidationError(
+            "This account has no mobile app access. Ask your administrator to "
+            "tick an App Module for you in Staff Access Configuration."
+        )
+
     def validate(self, attrs):
         username = attrs["username"].strip()
         password = attrs["password"].strip()
@@ -505,6 +612,7 @@ class LoginSerializer(serializers.Serializer):
                     first_error = exc
                 continue
             if data:
+                self._enforce_app_module_gate(attrs, data)
                 attrs.update(data)
                 return attrs
 
