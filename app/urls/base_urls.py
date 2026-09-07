@@ -38,6 +38,10 @@ from ..viewsets.superadmin.screen_management.mainscreentype_viewset import MainS
 from ..viewsets.superadmin.screen_management.mainscreen_viewset import MainScreenViewSet
 from ..viewsets.superadmin.screen_management.userscreen_viewset import UserScreenViewSet
 from ..viewsets.superadmin.screen_management.userscreenaction_viewset import UserScreenActionViewSet
+from ..viewsets.superadmin.screen_management.app_module_viewset import AppModuleViewSet
+from ..viewsets.masters.customer_masters.customer_access_configuration_viewset import (
+    CustomerAccessConfigurationViewSet,
+)
 from ..viewsets.superadmin.screen_management.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
 from ..viewsets.superadmin.screen_management.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
 from ..viewsets.superadmin.screen_management.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
@@ -61,6 +65,7 @@ from ..viewsets.superadmin.staff_management.staff_access_dashboard_viewset impor
 from ..viewsets.superadmin.staff_management.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
+from ..viewsets.login.captcha_viewset import CaptchaViewSet
 from ..viewsets.login.login_viewset import LoginViewSet as DesktopLoginViewSet
 from ..viewsets.login.captcha_viewset import CaptchaViewSet
 from ..viewsets.login.permission_viewset import PermissionViewSet
@@ -217,6 +222,7 @@ router.register_group(
 )
 router.register_group("screen-managements", "column-permissions", CompanyUserScreenColumnPermissionViewSet)
 router.register_group("screen-managements", "dashboard-widget-permissions", DashboardWidgetPermissionViewSet)
+router.register_group("screen-managements", "app-modules", AppModuleViewSet)
 
 # ============================================================
 # GROUP: USER & ROLE ASSIGNMENT 
@@ -258,6 +264,9 @@ router.register_group("customer-masters", "customercreations", CustomerCreationV
 router.register_group("schedule-operations", "wastecollections",  WasteCollectionViewSet)
 router.register_group("customer-masters", "feedbacks",         FeedBackViewSet)
 router.register_group("customer-masters", "user-charge-rules", UserChargeRuleViewSet)
+router.register_group(
+    "customer-masters", "customer-access-configuration", CustomerAccessConfigurationViewSet
+)
 
 # ============================================================
 # GROUP: COMPLAINT TICKETING

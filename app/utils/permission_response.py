@@ -514,7 +514,122 @@ def build_permission_version(permissions, column_permissions):
     return hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()[:16]
 
 
-def finalize_permission_payload(payload, *, permissions=None, role_name=None, user_type=None):
+# ============================================================
+# MOBILE APP LAYER
+# ============================================================
+# Ported from the private backend. Everything above resolves permissions from
+# role + geography exactly as before; this section only layers a staff
+# member's own access configuration on top and reports the mobile app modules
+# and screens alongside the same payload.
+
+
+def staff_access_config(staff_unique_id):
+    """The staff member's active access configuration, or None."""
+    if not staff_unique_id:
+        return None
+
+    from app.models.superadmin.staff_management.staff_access_configuration import (
+        StaffAccessConfiguration,
+    )
+
+    return (
+        StaffAccessConfiguration.objects
+        .filter(staff_id_id=staff_unique_id, is_active=True, is_deleted=False)
+        .prefetch_related("app_modules")
+        .first()
+    )
+
+
+def staff_configured_permissions(config):
+    """{module: {screen: [actions]}} from a configuration's granted rows."""
+    if config is None:
+        return {}
+
+    permissions = {}
+    rows = (
+        config.granted_permissions
+        .filter(is_active=True, is_deleted=False)
+        .select_related("mainscreen_id", "userscreen_id", "userscreenaction_id")
+    )
+    for row in rows:
+        module_name = row.mainscreen_id.mainscreen_name
+        screen_name = row.userscreen_id.userscreen_name
+        action_name = (
+            row.userscreenaction_id.variable_name
+            or row.userscreenaction_id.action_name
+            or ""
+        ).lower()
+        if not action_name:
+            continue
+        actions = permissions.setdefault(module_name, {}).setdefault(screen_name, [])
+        if action_name not in actions:
+            actions.append(action_name)
+    return permissions
+
+
+def apply_staff_access_configuration(permissions, staff_unique_id):
+    """Layer a staff member's own configuration onto their role permissions.
+
+    No configuration means no change at all — every existing login keeps
+    resolving exactly as it did. With one, its grants are merged on top; in
+    strict mode they replace the role's entirely, which is what makes
+    unticking a screen actually remove access.
+    """
+    config = staff_access_config(staff_unique_id)
+    if config is None:
+        return permissions
+
+    configured = staff_configured_permissions(config)
+    if getattr(config, "enforce_strict_permissions", False):
+        return configured
+    if not configured:
+        return permissions
+    return merge_permission_maps(permissions or {}, configured)
+
+
+def staff_app_modules(config):
+    """Surface keys ticked on a StaffAccessConfiguration."""
+    if config is None:
+        return []
+    return list(
+        config.app_modules.filter(is_active=True, is_deleted=False)
+        .values_list("surface_key", flat=True)
+    )
+
+
+def surfaces_from_app_modules(app_modules):
+    """Surfaces for the app modules ticked on an access configuration.
+
+    Deriving the mobile surfaces from grants rather than from a role name is
+    what stops an unrelated web permission handing someone an app they have no
+    screens for.
+    """
+    from app.utils.app_feature_grants import APP_SURFACE_KEYS
+
+    return [surface for surface in APP_SURFACE_KEYS if surface in (app_modules or [])]
+
+
+def build_app_screens(permissions, app_modules, citizen_screens=None):
+    """Which mobile screens to render, per granted surface."""
+    from app.utils.app_feature_grants import visible_screens
+
+    return {
+        surface: visible_screens(
+            permissions, surface, citizen_screens=citizen_screens
+        )
+        for surface in (app_modules or [])
+    }
+
+
+def finalize_permission_payload(
+    payload,
+    *,
+    permissions=None,
+    role_name=None,
+    user_type=None,
+    app_module=None,
+    app_modules=None,
+):
     effective_permissions = permissions if permissions is not None else payload.get("permissions", {})
     if permissions is not None and effective_permissions != payload.get("permissions", {}):
         module_access = build_fallback_module_access(effective_permissions)
@@ -523,12 +638,37 @@ def finalize_permission_payload(payload, *, permissions=None, role_name=None, us
             effective_permissions
         )
 
-    app_surfaces = infer_app_surfaces(
-        module_access,
-        effective_permissions,
-        role_name=role_name,
-        user_type=user_type,
+    effective_modules = (
+        app_modules if app_modules is not None else payload.get("app_modules")
     )
+
+    # App modules ticked on an access configuration are the authoritative
+    # answer for the mobile app. Only when none are ticked does this fall back
+    # to the original role/module inference, so every existing web login keeps
+    # the surfaces it had.
+    granted_surfaces = surfaces_from_app_modules(effective_modules)
+    if granted_surfaces:
+        preferred = normalize_permission_key(app_module)
+        if preferred in granted_surfaces:
+            granted_surfaces.remove(preferred)
+            granted_surfaces.insert(0, preferred)
+        app_surfaces = [
+            {
+                "key": key,
+                "label": APP_SURFACE_CONFIG[key]["label"],
+                "route": APP_SURFACE_CONFIG[key]["route"],
+                "isDefault": index == 0,
+            }
+            for index, key in enumerate(granted_surfaces)
+            if key in APP_SURFACE_CONFIG
+        ]
+    else:
+        app_surfaces = infer_app_surfaces(
+            module_access,
+            effective_permissions,
+            role_name=role_name,
+            user_type=user_type,
+        )
 
     return {
         **payload,
@@ -674,17 +814,40 @@ def resolve_permission_payload(**filters):
         permissions,
         filters.get("role_name"),
     )
+
+    # The staff member's own access configuration, layered on top of the role
+    # resolution above (or replacing it in strict mode). No configuration means
+    # no change, so nothing that worked before this port behaves differently.
+    staff_unique_id = filters.get("staff_id") or filters.get("staff_unique_id")
+    config = staff_access_config(staff_unique_id)
+    permissions = apply_staff_access_configuration(permissions, staff_unique_id)
+
+    # Which apps this person may open, and which screens to render in each.
+    app_modules = filters.get("app_modules")
+    if app_modules is None:
+        app_modules = staff_app_modules(config)
+    app_screens = build_app_screens(
+        permissions, app_modules, citizen_screens=filters.get("citizen_screens")
+    )
+
     payload = {
         "permissions": permissions,
         "permission_details": build_permission_details(action_queryset, column_queryset),
         "column_permissions": build_column_permissions(column_queryset),
         "module_access": build_fallback_module_access(permissions),
         "dashboard_permissions": build_dashboard_permissions(dashboard_queryset),
+        "app_modules": app_modules,
+        "app_screens": app_screens,
+        "strict_permissions": bool(
+            getattr(config, "enforce_strict_permissions", False)
+        ),
     }
     return finalize_permission_payload(
         payload,
         role_name=filters.get("role_name"),
         user_type=filters.get("user_type"),
+        app_module=filters.get("app_module"),
+        app_modules=app_modules,
     )
 
 
