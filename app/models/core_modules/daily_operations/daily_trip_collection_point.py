@@ -239,7 +239,12 @@ class DailyTripCollectionPoint(BaseMaster):
             "status_longitude",
             "updated_at",
         ])
-        self.trip_assignment_id.mark_completed_if_all_cps_collected()
+        # Closing the trip is now the driver's own confirmed action (see
+        # TripCompletionNudge / TripLifecycleControl on the app side) rather
+        # than something that happens invisibly the instant the last stop is
+        # scanned — this call only updates whether every stop is resolved,
+        # it no longer ends the trip itself.
+        self.trip_assignment_id.mark_completed_if_all_cps_collected(auto_end=False)
 
     def mark_status(self, status, reason, latitude=None, longitude=None):
         self.status = status
@@ -262,4 +267,4 @@ class DailyTripCollectionPoint(BaseMaster):
             "collected_weight_kg",
             "updated_at",
         ])
-        self.trip_assignment_id.mark_completed_if_all_cps_collected()
+        self.trip_assignment_id.mark_completed_if_all_cps_collected(auto_end=False)

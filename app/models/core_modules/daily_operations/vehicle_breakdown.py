@@ -134,6 +134,17 @@ class VehicleBreakdown(BaseMaster):
         blank=True,
     )
 
+    # ── Continuation trip created on verify (mirrors TripRetripRequest.new_assignment) ──
+    new_assignment = models.ForeignKey(
+        DailyTripAssignment,
+        on_delete=models.SET_NULL,
+        to_field="unique_id",
+        db_column="new_assignment_id",
+        related_name="breakdown_source",
+        null=True,
+        blank=True,
+    )
+
     # ── Breakdown Details ─────────────────────────────────────────────
     breakdown_time = models.TimeField(null=True, blank=True)
     breakdown_lat = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)

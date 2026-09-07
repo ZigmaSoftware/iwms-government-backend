@@ -47,7 +47,10 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
     replacement_operator_detail = serializers.SerializerMethodField(read_only=True)
     original_driver_detail = serializers.SerializerMethodField(read_only=True)
     original_operator_detail = serializers.SerializerMethodField(read_only=True)
+    alt_staff_template_detail = serializers.SerializerMethodField(read_only=True)
     approved_by_detail = serializers.SerializerMethodField(read_only=True)
+    new_assignment_id = serializers.SerializerMethodField(read_only=True)
+    pending_stops = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = VehicleBreakdown
@@ -66,6 +69,7 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
             "original_driver_detail",
             "original_operator_detail",
             "alt_staff_template_id",
+            "alt_staff_template_detail",
             "breakdown_time",
             "breakdown_lat",
             "breakdown_lng",
@@ -80,17 +84,22 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
             "approved_at",
             "rejection_remarks",
             "photos",
+            "new_assignment_id",
+            "pending_stops",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "unique_id",
             "alt_staff_template_id",
+            "alt_staff_template_detail",
             "status",
             "approval_status",
             "approved_by",
             "approved_at",
             "rejection_remarks",
+            "new_assignment_id",
+            "pending_stops",
             "created_at",
             "updated_at",
         ]
@@ -155,6 +164,20 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
             "capacity": str(vehicle.capacity) if vehicle.capacity else None,
         }
 
+    def _alt_staff_template_dict(self, template):
+        if not template:
+            return None
+        return {
+            "unique_id": template.unique_id,
+            "display_code": template.display_code,
+            "base_staff_template_id": getattr(template, "staff_template_id", None),
+            "driver": self._staff_dict(getattr(template, "driver_id", None)),
+            "operator": self._staff_dict(getattr(template, "operator_id", None)),
+            "change_reason": template.change_reason,
+            "change_remarks": template.change_remarks,
+            "approval_status": template.approval_status,
+        }
+
     def get_trip_assignment_detail(self, obj):
         a = obj.trip_assignment_id
         if not a:
@@ -186,7 +209,17 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
     def get_original_driver_detail(self, obj):
         try:
             assignment = obj.trip_assignment_id
-            template = assignment.alt_staff_template_id or assignment.staff_template_id
+            # The crew actually on the trip at breakdown time is whatever the
+            # assignment was running on: its own alternative staff template
+            # (if one was already substituted in) takes precedence over the
+            # assignment's/trip plan's base staff template.
+            active_alt = getattr(assignment, "alt_staff_template_id", None)
+            trip_plan = getattr(assignment, "trip_plan_id", None)
+            template = (
+                active_alt
+                or getattr(trip_plan, "staff_template_id", None)
+                or assignment.staff_template_id
+            )
             if template:
                 return self._staff_dict(template.driver_id)
         except Exception:
@@ -196,15 +229,39 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
     def get_original_operator_detail(self, obj):
         try:
             assignment = obj.trip_assignment_id
-            template = assignment.alt_staff_template_id or assignment.staff_template_id
+            active_alt = getattr(assignment, "alt_staff_template_id", None)
+            trip_plan = getattr(assignment, "trip_plan_id", None)
+            template = (
+                active_alt
+                or getattr(trip_plan, "staff_template_id", None)
+                or assignment.staff_template_id
+            )
             if template:
                 return self._staff_dict(template.operator_id)
         except Exception:
             pass
         return None
 
+    def get_alt_staff_template_detail(self, obj):
+        return self._alt_staff_template_dict(obj.alt_staff_template_id)
+
     def get_approved_by_detail(self, obj):
         return self._staff_dict(obj.approved_by)
+
+    def get_new_assignment_id(self, obj):
+        return getattr(obj.new_assignment, "unique_id", None)
+
+    def get_pending_stops(self, obj):
+        """What's still outstanding on the trip being broken down — bin
+        collection points for a bin trip (supervisor picks which carry over
+        at /verify/), or un-collected houses for a household trip (all of
+        them auto-carry). Not shown once a replacement trip already exists."""
+        assignment = obj.trip_assignment_id
+        if not assignment or obj.new_assignment_id:
+            return None
+        from app.services.retrip_service import build_pending_snapshot
+
+        return build_pending_snapshot(assignment)
 
     def get_photos(self, obj):
         request = self.context.get("request")
@@ -239,6 +296,12 @@ class VehicleBreakdownVerifySerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    # Bin trips: which pending collection points move to the continuation
+    # trip. Required for a bin trip, ignored for a household trip (every
+    # pending household stop always carries over) — mirrors Re-Trip.
+    collection_point_ids = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True
+    )
 
     def save(self):
         instance = self.context["instance"]
@@ -261,35 +324,54 @@ class VehicleBreakdownVerifySerializer(serializers.Serializer):
 
         from django.db import transaction
         from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
+        from app.services import retrip_service
+
+        assignment = instance.trip_assignment_id
+        pending_bins = list(assignment.pending_bin_stops())
+        pending_households = list(assignment.pending_household_stops())
+        is_bin_trip = assignment.trip_collection_points.exists()
+        collection_point_ids = self.validated_data.get("collection_point_ids")
+        if not pending_bins and not pending_households:
+            raise serializers.ValidationError("There are no pending stops to carry over.")
+        if is_bin_trip and pending_bins and not collection_point_ids:
+            raise serializers.ValidationError(
+                {"collection_point_ids": "Select at least one collection point to carry over to the replacement trip."}
+            )
+        if collection_point_ids:
+            pending_bin_ids = {stop.unique_id for stop in pending_bins}
+            unknown = set(collection_point_ids) - pending_bin_ids
+            if unknown:
+                raise serializers.ValidationError(
+                    {"collection_point_ids": "Selected collection point is not pending on this trip."}
+                )
 
         with transaction.atomic():
-            assignment = instance.trip_assignment_id
-            instance.replacement_vehicle_id = replacement_vehicle
-            instance.replacement_driver_id = replacement_driver
-            instance.replacement_operator_id = replacement_operator
-
-            # Create or update AlternativeStaffTemplate for replacement crew.
-            # The model has a UniqueConstraint on staff_template, so use
-            # update_or_create to handle cases where one already exists.
-            alt_template, _ = AlternativeStaffTemplate.objects.update_or_create(
+            # Always create a fresh AlternativeStaffTemplate for this
+            # breakdown's replacement crew. A staff_template can accumulate
+            # several of these over time (one per breakdown event) — reusing
+            # a prior breakdown's row here would silently overwrite its
+            # driver/operator, corrupting that earlier breakdown's history.
+            alt_template = AlternativeStaffTemplate.objects.create(
                 staff_template=assignment.staff_template_id,
-                defaults=dict(
-                    driver_id=instance.replacement_driver_id,
-                    operator_id=instance.replacement_operator_id,
-                    change_reason="Vehicle Breakdown",
-                    change_remarks=remarks or instance.breakdown_remarks or "",
-                ),
+                driver_id=replacement_driver,
+                operator_id=replacement_operator,
+                change_reason="Vehicle Breakdown",
+                change_remarks=remarks or instance.breakdown_remarks or "",
             )
 
-            # Update DailyTripAssignment: replacement vehicle, alt staff template, and
-            # advance status to In Progress (breakdown proves the trip was underway).
-            update_fields = ["vehicle_id", "alt_staff_template_id", "updated_at"]
-            assignment.vehicle_id = instance.replacement_vehicle_id
-            assignment.alt_staff_template_id = alt_template
-            if assignment.status == DailyTripAssignment.STATUS_SCHEDULED:
-                assignment.status = DailyTripAssignment.STATUS_IN_PROGRESS
-                update_fields.append("status")
-            assignment.save(update_fields=update_fields)
+            # Open a continuation crewed by the replacement
+            # vehicle/driver/operator, carrying over the pending
+            # bin/household stops (same rules as Re-Trip). The source trip is
+            # not completed here; verification only assigns the replacement.
+            try:
+                continuation = retrip_service.create_breakdown_continuation(
+                    assignment,
+                    vehicle_id=replacement_vehicle,
+                    alt_staff_template_id=alt_template,
+                    collection_point_ids=collection_point_ids,
+                )
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
 
             # Update the breakdown record
             approved_by_staff = None
@@ -306,6 +388,7 @@ class VehicleBreakdownVerifySerializer(serializers.Serializer):
                 replacement_driver_id=replacement_driver,
                 replacement_operator_id=replacement_operator,
                 alt_staff_template_id=alt_template,
+                new_assignment=continuation,
                 status=VehicleBreakdown.STATUS_REPLACEMENT_ARRANGED,
                 approval_status=VehicleBreakdown.APPROVAL_APPROVED,
                 approved_by=approved_by_staff,

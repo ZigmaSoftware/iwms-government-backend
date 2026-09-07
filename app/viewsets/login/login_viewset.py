@@ -32,11 +32,11 @@ class LoginViewSet(ViewSet):
 
         # The captcha challenge is a browser defence (bot-driven credential
         # stuffing against the visible web login form) and the mobile app has
-        # no captcha UI to answer it with — an unguarded check fails every
-        # mobile sign-in closed, for every user. Skip it for the same
-        # `client: "mobile"` flag the App Module gate already relies on (see
-        # LoginSerializer._enforce_app_module_gate); a browser session sends no
-        # client and is unaffected.
+        # no captcha UI to answer it with — every mobile sign-in was failing
+        # closed with "Invalid or expired captcha" since no captcha_id/value
+        # is ever sent from the app. Skip it for the same `client: "mobile"`
+        # flag the Flutter apps already send on every login; a browser
+        # session sends no client and stays gated as before.
         if not is_mobile_client(request.data):
             captcha_id = request.data.get("captcha_id", "")
             captcha_value = request.data.get("captcha_value", "")

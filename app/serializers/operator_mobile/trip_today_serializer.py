@@ -212,10 +212,22 @@ class MyTripTodaySerializer(serializers.Serializer):
                     DailyTripHouseholdCollection.STATUS_NOT_COLLECTED,
                 }
             )
+            # Postponed (Collect Later / Skipped) specifically, NOT lumped in
+            # with Not Available — TripCompletionNudge on the app side needs
+            # to tell "every stop truly collected" apart from "resolved, but
+            # some carried over to a follow-up trip".
+            postponed = sum(
+                1 for h in rows
+                if h.status in {
+                    DailyTripHouseholdCollection.STATUS_COLLECT_LATER,
+                    DailyTripHouseholdCollection.STATUS_SKIPPED,
+                }
+            )
             return {
                 "collected": collected,
                 "total": total,
                 "resolved": resolved,
+                "postponed": postponed,
                 "completed": total > 0 and resolved == total,
             }
 
@@ -234,10 +246,15 @@ class MyTripTodaySerializer(serializers.Serializer):
                 DailyTripCollectionPoint.STATUS_MISSED,
             }
         )
+        postponed = sum(
+            1 for c in children
+            if c.status == DailyTripCollectionPoint.STATUS_SKIPPED
+        )
         return {
             "collected": collected,
             "total": total,
             "resolved": resolved,
+            "postponed": postponed,
             "completed": total > 0 and resolved == total,
         }
 

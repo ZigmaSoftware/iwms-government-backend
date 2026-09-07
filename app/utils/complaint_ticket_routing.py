@@ -146,10 +146,28 @@ def apply_routing_and_sla(ticket, save=True):
             if routing_rule.user_id and not ticket.assigned_user_id:
                 ticket.assigned_user = routing_rule.user
                 updated_fields.append("assigned_user")
+        elif ticket.category_id and ticket.category.default_team_id:
+            # No routing rule matched — fall back to the category's default
+            # team. This is what makes ComplaintRoutingRule optional: a
+            # deployment only needs rules when a category must route to
+            # different teams by area. Configuring the team on the Complaint
+            # Type is enough for the common single-tenant case.
+            ticket.assigned_team = ticket.category.default_team
+            updated_fields.append("assigned_team")
 
-    sla_rule = (routing_rule.sla_rule if routing_rule and routing_rule.sla_rule_id else None)
-    if not sla_rule:
-        sla_rule = _best_sla_rule(ticket)
+    # Prefer the most specific SLA rule that actually matches this ticket over
+    # the one pinned on the routing rule.
+    #
+    # A routing rule's `sla_rule` is a catch-all: the seeder attaches the
+    # category-wide rule to a category-wide route. Taking it unconditionally
+    # meant a ticket whose sub-category has its own SLA (a P1 "Dead animal"
+    # under a P2 Garbage category) silently got the category's slower target —
+    # 24h instead of 4h — because the pinned rule was consulted first and
+    # `_best_sla_rule` never ran. The pinned rule is now the fallback for when
+    # nothing more specific matches.
+    sla_rule = _best_sla_rule(ticket)
+    if not sla_rule and routing_rule and routing_rule.sla_rule_id:
+        sla_rule = routing_rule.sla_rule
 
     if sla_rule:
         add_minutes = _add_business_minutes if sla_rule.working_hours_only else (

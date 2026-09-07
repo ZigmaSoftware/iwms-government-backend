@@ -27,9 +27,10 @@ static/
 db.sqlite3
 *.sqlite3
 
-# === Environment files ===
-# .env
-# .env.*
+# === Environment files (NEVER commit — see .env.example) ===
+.env
+.env.*
+!.env.example
 
 # === IDE and System files ===
 .vscode/
