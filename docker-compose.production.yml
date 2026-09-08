@@ -1,10 +1,18 @@
+# IWMS Government Backend — production compose
+#
+# network_mode: host — the container shares the host's network stack so that
+# DB_HOST=localhost reaches MySQL/MariaDB on 127.0.0.1:3306. MySQL is bound
+# to loopback only (bind-address = 127.0.0.1) and is deliberately NOT exposed
+# to the docker bridge; host networking is what makes that work unchanged.
+#
+# Consequence: no "ports:" mapping — in host mode gunicorn binds the host's
+# 0.0.0.0:9001 directly (see Dockerfile CMD).
 services:
   backend:
     image: ghcr.io/zigmasoftware/iwms-government-backend:latest
     build: .
     env_file: .env
-    ports:
-      - "9001:9001"
+    network_mode: host
     volumes:
       - ./media:/app/media
       - ./static:/app/static

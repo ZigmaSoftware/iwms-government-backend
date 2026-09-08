@@ -8,6 +8,14 @@ step-by-step instructions, including local testing before you ever touch
 the server, live in **[DEPLOYMENT.md](../DEPLOYMENT.md)** at the repo root.
 This section stays focused on the *shape* of it plus troubleshooting.
 
+> **This server was cut over on 2026-09-08 and differs from the generic steps
+> below.** The images are built **locally** (`docker compose build`), not
+> pulled from GHCR — nothing was ever pushed there, so `pull` fails. The
+> backend compose also uses `network_mode: host` and therefore has **no
+> `ports:` key**. See
+> **[09-docker-cutover-2026-09-08.md](09-docker-cutover-2026-09-08.md)** for
+> what is actually running, every command used, and the open items.
+
 ## First-time setup on a server (Docker-based)
 
 ```bash
@@ -21,12 +29,13 @@ cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
 nano .env        # real production values — never commit this file
 
 # 3. Place docker-compose.production.yml from the repo in that same folder, then:
-docker login ghcr.io -u <github-username>     # so `docker compose pull` can fetch the image
-docker compose -f docker-compose.production.yml pull
+# On THIS server the image is built locally — `pull` fails because nothing
+# was ever pushed to GHCR. See 09-docker-cutover-2026-09-08.md.
+docker compose -f docker-compose.production.yml build
 docker compose -f docker-compose.production.yml up -d
 
 # 4. Install the systemd unit so Docker restarts the container on boot/crash
-#    (kept locally in deploy/systemd/, gitignored — copy it yourself)
+#    (now tracked in deploy/systemd/ — it exists in the repo)
 sudo cp deploy/systemd/iwms-government-backend.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now iwms-government-backend.service
@@ -51,7 +60,10 @@ ENVIRONMENT = os.getenv("DJANGO_ENV", "development")
 DEBUG = ENVIRONMENT != "production"
 ```
 
-On any public server, set `DJANGO_ENV=production`. With `DEBUG=True`, Django
+On any public server, set `DJANGO_ENV=production`. **As of 2026-09-08 this
+is NOT set on this server, so `DEBUG` is `True` in production** — verified
+inside the running container. See
+[09](09-docker-cutover-2026-09-08.md#outstanding--read-this). With `DEBUG=True`, Django
 renders a full stack trace — including settings values — to anyone who
 triggers an error. It also gates seeding: `manage.py seed` refuses to run
 unless `DEBUG` is `True` (see [04](04-commands-reference.md)), so a
