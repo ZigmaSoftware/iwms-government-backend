@@ -174,6 +174,31 @@ python -m pytest tests/ --cov=app --cov-report=xml -q
 All three outputs (`htmlcov/`, `coverage.xml`, `.coverage`) are git-ignored —
 they are regenerated on every run, so never commit them.
 
+### Coverage by module (models / viewsets / serializers)
+
+A quick way to see which layer is weakest, averaged per top-level module
+instead of per file:
+
+```bash
+python -m pytest tests/ --cov=app --cov-report=term -q 2>&1 \
+  | grep "^app/" | grep -v "__init__\|__pycache__\|:[0-9]" \
+  | python3 -c "
+import sys, re
+from collections import defaultdict
+data = defaultdict(list)
+for line in sys.stdin:
+    m = re.match(r'^(app/(?:models|viewsets|serializers)/[^/]+)/', line)
+    p = re.search(r'(\d+\.\d+)%', line)
+    if m and p:
+        data[m.group(1)].append(float(p.group(1)))
+print(f'{\"MODULE\":<55} COVERAGE')
+print('-'*65)
+for k in sorted(data):
+    avg = sum(data[k])/len(data[k])
+    print(f'{k:<55} {avg:6.1f}%')
+"
+```
+
 ## What is worth testing here
 
 Highest value first:

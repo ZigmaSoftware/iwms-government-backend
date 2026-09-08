@@ -43,8 +43,10 @@ assumed.
    per-machine scripts) — including a real leak found and fixed in this
    repo, and what to still do about it.
 7. **[07-deployment-and-troubleshooting.md](07-deployment-and-troubleshooting.md)** —
-   First-time server setup, `ALLOWED_HOSTS`/CORS, the shell scripts this repo
-   actually ships (`manage.sh`, `scheduler.sh`, `server_uv_sync.sh`), and a
+   Docker-based server deployment (see also [DEPLOYMENT.md](../DEPLOYMENT.md)
+   at the repo root), `ALLOWED_HOSTS`/CORS, the shell scripts this repo
+   actually ships (`manage.sh`, `server_uv_sync.sh` — both local-dev only
+   now), the nightly trip scheduler running as container cron, and a
    troubleshooting table of real problems already hit.
 8. **[08-unit-testing-guide.md](08-unit-testing-guide.md)** — How the test
    suite is wired (pytest + SQLite in-memory), the fixtures available in
@@ -55,9 +57,12 @@ assumed.
 ```text
 iwms-government-backend/
 ├── manage.py             <- the entry point for every django command
-├── manage.sh             <- wrapper: uses .venv if present, else `uv run`
-├── scheduler.sh           <- the nightly trip-generation cron entry point
-├── server_uv_sync.sh      <- `uv sync --locked` wrapper for deploys
+├── manage.sh             <- local-dev wrapper: uses .venv if present, else `uv run`
+├── server_uv_sync.sh      <- local-dev `uv sync --locked` wrapper
+├── Dockerfile             <- production image: gunicorn + container cron
+├── docker-compose.yml     <- runs the built image on the server
+├── deploy/                <- cron schedule, container entrypoint, systemd
+│   │                          unit template (systemd/ is gitignored)
 ├── config/                <- project settings (NOT a Django app)
 │   ├── settings.py           <- database, apps, CORS, email, OTP, Firebase
 │   ├── settings_jwt.py       <- token lifetime and signing (issues BOTH

@@ -1,0 +1,10 @@
+services:
+  backend:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    env_file: .env
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+    restart: always
