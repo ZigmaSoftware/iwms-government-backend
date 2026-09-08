@@ -1,12 +1,21 @@
-# IWMS Government Backend — Deployment & Testing Guide
+# IWMS Government Backend — Deployment Guide
 
-Full flow: local setup → Docker build → server install → GitHub Actions →
-how to test each stage. Backend runs on **port 9001**.
+Full flow: local setup → Docker build → server install → GitHub Actions.
+Backend runs on **port 9001** internally.
 
 Branch policy: `sathya`/`lux`/`sameer`/`vinoth` (personal) → `dev`
 (integration, tests only) → `main` (production, tests + build + deploy).
 
-Public URL once deployed: `http://115.245.93.26:9001`
+Public URL once nginx is set up: `http://115.245.93.26/api/v1/` — no port
+needed. Until then, directly: `http://115.245.93.26:9001`.
+
+**nginx** sits in front of both this repo's container and the frontend's,
+reverse-proxying `/api/`, `/admin/` here and everything else to the
+frontend. It's configured once, from the **frontend repo** (nginx is a
+single shared host-level thing, not per-repo) — see
+[iwms-government-frontend/DEPLOYMENT.md](../iwms-government-frontend/DEPLOYMENT.md)
+§5 for the full setup (including disabling Apache, which was confirmed to
+be running only the stock default page — nothing real depends on it).
 
 ---
 
@@ -25,10 +34,10 @@ git clone https://github.com/ZigmaSoftware/iwms-government-backend.git
 cd iwms-government-backend
 git checkout main
 ```
-This is what `deploy/`, `Dockerfile`, `docker-compose.yml` etc. below refer
-to as "this repo" on the server — the same files as your local clone, just
-checked out here too so `docker compose` and the systemd unit have
-something to run from.
+This is what `deploy/`, `Dockerfile`, `docker-compose.production.yml` etc.
+below refer to as "this repo" on the server — the same files as your local
+clone, just checked out here too so `docker compose` and the systemd unit
+have something to run from.
 
 ### 0.2 Generate the GitHub Actions deploy key — ON THE SERVER
 This key is what lets GitHub Actions SSH into this machine later, in
@@ -54,49 +63,52 @@ repos, since both deploy to this one server.
 | File | Purpose |
 |---|---|
 | `Dockerfile` | Python 3.12 + gunicorn image, binds `0.0.0.0:9001` |
-| `.dockerignore` | Keeps venv/media/tests out of the image |
-| `docker-compose.yml` | Runs the built image on the server |
+| `.dockerignore` | Keeps venv/media out of the image |
+| `docker-compose.production.yml` | Runs the built image, points `backend` at the real database via `.env`. Used on the server. |
 | `.github/workflows/deploy.yml` | CI/CD: test → build & push image → deploy |
 | `deploy/systemd/iwms-government-backend.service` | Server-only unit file (gitignored, not pushed to GitHub) |
-| `deploy/cron/generate-daily-trips.cron` | Nightly trip-generation schedule, baked into the image (committed) |
-| `deploy/docker-entrypoint.sh` | Starts cron + gunicorn together as the container's main process (committed) |
 
 ---
 
-## 1a. Nightly trip scheduler — now runs INSIDE the container
+## 1a. Nightly trip scheduler — the app schedules itself, no cron needed
 
-The old `scheduler.sh` + host crontab setup is replaced. There is no more
-host-level cron for this job — it travels with the image instead.
+There is **no cron job** in this image, and none is needed. The nightly
+`generate_daily_trips` job is scheduled **inside the Django app itself**:
 
-- **What runs:** `python manage.py generate_daily_trips`, daily at 00:05,
-  same command and same Django management command as before
-  ([app/management/commands/generate_daily_trips.py](app/management/commands/generate_daily_trips.py)).
-- **Where it runs:** inside the backend container, via `cron` installed in
-  the `Dockerfile`. `deploy/docker-entrypoint.sh` starts `cron` in the
-  background, then runs gunicorn in the foreground — both share the one
-  container.
-- **Env vars:** cron does not inherit the container's `--env-file .env`
-  variables by default, so the entrypoint dumps them to
-  `/etc/container_environment.sh`, and the cron job sources that file
-  before running `manage.py`. If you add new env vars to `.env`, no extra
-  step is needed — they flow through automatically on the next container
-  start.
-- **Logs:** the cron job redirects output to the container's stdout/stderr
-  (`/proc/1/fd/1`/`2`), so it shows up in `docker compose logs backend`
-  alongside gunicorn's own logs, instead of the old
-  `logs/generate_daily_trips.log` file on the host.
-- **Manual run / testing a specific date** (same idea as before, run
-  inside the container instead of a venv):
+- **What runs it:** `app/services/daily_trip_scheduler.py` — a background
+  thread started automatically by `AppConfig.ready()`
+  ([app/apps.py](app/apps.py)) the moment Django starts. It wakes up,
+  checks the configured run time, and calls
+  `generate_daily_trips` when due.
+- **When:** `04:00` by default. Configurable two ways: a DB-backed
+  `SchedulerConfig` singleton row (if present, takes priority — can be
+  changed live, no restart needed), or the `DAILY_TRIP_SCHEDULER_TIME` env
+  var as a fallback (`HH:MM`). Disable entirely with
+  `ENABLE_DAILY_TRIP_JOB_SCHEDULER=false`.
+- **Why it's safe with 3 gunicorn workers:** each worker starts its own
+  copy of this thread, but `run_daily_trip_job` takes a MySQL
+  `GET_LOCK`/`RELEASE_LOCK` before running, keyed by date — so only one
+  worker actually executes the job even though all three "wake up" for it.
+- **Deliberately does NOT start** for management commands
+  (`migrate`, `seed`, `generate_daily_trips` itself, etc.) — only for the
+  actual running server process, so `docker compose exec backend python
+  manage.py migrate` never accidentally triggers it.
+- **Logs:** goes through the normal Python `logging` module → container
+  stdout/stderr → `docker compose logs backend`, same place as every other
+  Django/gunicorn log line.
+- **Manual run / testing a specific date** (unrelated to the scheduler
+  thread — this just calls the management command directly):
   ```bash
-  docker compose exec backend python manage.py generate_daily_trips
-  docker compose exec backend python manage.py generate_daily_trips --date 2026-06-26
+  docker compose -f docker-compose.production.yml exec backend python manage.py generate_daily_trips
+  docker compose -f docker-compose.production.yml exec backend python manage.py generate_daily_trips --date 2026-06-26
   ```
 
 ### Migration status
-`scheduler.sh` has been removed from this repo — the nightly job now lives
-entirely in the container (see above). If the **server** still has an old
-host crontab entry calling the old script path, remove it once the
-container cron job is confirmed working (see the cron test steps below):
+Both `scheduler.sh` (the old host-cron script) and a short-lived
+container-cron attempt have been removed from this repo. Neither is
+needed — the in-process scheduler above is the single, authoritative
+mechanism. If the **server** still has an old host crontab entry calling
+`scheduler.sh`, remove it:
 ```bash
 crontab -l          # remove any leftover line calling scheduler.sh, if present
 crontab -e
@@ -126,7 +138,7 @@ cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
 nano .env        # paste production values
 ```
 
-Copy this repo's `docker-compose.yml` into that same folder.
+Copy this repo's `docker-compose.production.yml` into that same folder.
 
 Allow Docker to pull from GHCR (either make the package public, or):
 ```bash
@@ -155,63 +167,7 @@ crontab -e
 
 ---
 
-## 3. Test locally BEFORE touching the server
-
-This is the important part — verify the image works on your machine first,
-so if something's broken you find out in seconds, not after an SSH deploy.
-
-### Step 1 — Build the image locally
-```bash
-cd /home/admin/iwms/government/webapp/iwms-government-backend
-docker build -t iwms-gov-backend-test .
-```
-✅ Expect: build finishes with no errors, ends with `naming to
-docker.io/library/iwms-gov-backend-test`.
-
-### Step 2 — Run it locally with your real `.env`
-```bash
-docker run --rm -p 9001:9001 --env-file .env iwms-gov-backend-test
-```
-✅ Expect: gunicorn log lines like `Listening at: http://0.0.0.0:9001`.
-
-### Step 3 — Hit it from another terminal
-```bash
-curl -i http://127.0.0.1:9001/
-```
-✅ Expect: an HTTP response (200/301/404 are all fine — anything means the
-server answered). A connection error means the container isn't listening.
-
-### Step 4 — Run the test suite the same way CI will
-```bash
-docker run --rm iwms-gov-backend-test python -m pytest tests/ -q
-```
-✅ Expect: `X passed` with no failures. Fix any failures before pushing —
-this is exactly what the GitHub Actions `test` job will run.
-
-### Step 5 — Confirm the cron job is actually installed and runs
-This is new — test it explicitly, don't assume it works:
-```bash
-# with the container from step 2 still running, in another terminal:
-docker exec -it <container_id_or_name> crontab -l
-# ✅ Expect: the generate-daily-trips line to be listed
-
-docker exec -it <container_id_or_name> ps aux | grep cron
-# ✅ Expect: a running `cron` process
-
-# force-run the job right now instead of waiting for 00:05:
-docker exec -it <container_id_or_name> bash -c \
-  ". /etc/container_environment.sh && cd /app && python manage.py generate_daily_trips"
-# ✅ Expect: it runs without a settings/DB-connection error, proving the
-# env vars reached the cron job correctly. Check `docker logs` afterwards
-# too — this is where the real nightly run's output will land.
-```
-
-### Step 6 — Stop the local container
-Press `Ctrl+C` in the terminal running `docker run` (step 2).
-
----
-
-## 4. The git branch workflow that drives deployment
+## 3. The git branch workflow that drives deployment
 
 This repo's branches form a chain, and `.github/workflows/deploy.yml` only
 reacts to two of them:
@@ -267,7 +223,7 @@ In the **Actions** tab, confirm all three jobs run in order and go green:
 ### Step 4 — Verify on the server
 ```bash
 sudo systemctl status iwms-government-backend.service
-docker compose -f /home/admin/localserver/iwmsGovernment/iwms-government-backend/docker-compose.yml logs -f backend
+docker compose -f /home/admin/localserver/iwmsGovernment/iwms-government-backend/docker-compose.production.yml logs -f backend
 curl -i http://127.0.0.1:9001/
 curl -i http://115.245.93.26:9001/     # from your own machine, over the network
 ```
@@ -276,27 +232,27 @@ both curl commands return a response.
 
 ---
 
-## 5. Manual deploy (bypassing Actions, if ever needed)
+## 4. Manual deploy (bypassing Actions, if ever needed)
 
 ```bash
 cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
-docker compose pull
-docker compose up -d
-docker compose logs -f backend
+docker compose -f docker-compose.production.yml pull
+docker compose -f docker-compose.production.yml up -d
+docker compose -f docker-compose.production.yml logs -f backend
 docker image prune -f
 ```
 
-## 6. Rollback
+## 5. Rollback
 
 ```bash
 cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
-docker compose down
+docker compose -f docker-compose.production.yml down
 docker pull ghcr.io/zigmasoftware/iwms-government-backend:<previous-commit-sha>
-# edit docker-compose.yml image tag to that sha, then:
-docker compose up -d
+# edit docker-compose.production.yml's image tag to that sha, then:
+docker compose -f docker-compose.production.yml up -d
 ```
 
-## 7. Quick troubleshooting
+## 6. Quick troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -304,4 +260,5 @@ docker compose up -d
 | Container exits immediately | `docker compose logs backend` — usually a missing `.env` value |
 | `curl` connection refused | `sudo ufw status`, `systemctl status iwms-government-backend.service` |
 | Actions `deploy` job fails at SSH step | Confirm `SERVER_SSH_KEY` public half is in server's `~/.ssh/authorized_keys` |
-| Migrations not applied | Add `docker compose exec backend python manage.py migrate` after deploy, or bake it into an entrypoint script |
+| Migrations not applied | Run `docker compose -f docker-compose.production.yml exec backend python manage.py migrate` after deploy |
+| `ModuleNotFoundError: No module named 'dotenv'` on container start | `requirements.txt` was missing `python-dotenv` (already fixed — if you see this again, check `requirements.txt` still has it) |

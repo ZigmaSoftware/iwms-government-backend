@@ -154,9 +154,11 @@ python3 manage.py generate_daily_trips       # create today's trips from plans
 ```
 
 `generate_daily_trips` is the one that matters day-to-day — in production
-it runs nightly via `cron` inside the backend's Docker container (see
-[07-deployment-and-troubleshooting.md](07-deployment-and-troubleshooting.md)),
-not a host-level cron job.
+it's called automatically every night by an in-process scheduler thread
+(`app/services/daily_trip_scheduler.py`, starts itself via
+`AppConfig.ready()` — see
+[07-deployment-and-troubleshooting.md](07-deployment-and-troubleshooting.md)).
+No cron, host-level or otherwise, is involved.
 
 ## Clearing Python caches
 

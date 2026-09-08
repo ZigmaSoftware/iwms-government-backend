@@ -200,6 +200,6 @@ from scratch — see [03-app-structure.md](03-app-structure.md).
 | Geography scoping engine | `app/utils/hierarchy.py` |
 | Background/business logic | `app/services/` |
 | Sample data | `app/management/commands/seed.py` |
-| Nightly trip generation | `app/management/commands/generate_daily_trips.py`, wired via container cron (`deploy/cron/generate-daily-trips.cron`) — see [07](07-deployment-and-troubleshooting.md) |
+| Nightly trip generation | `app/management/commands/generate_daily_trips.py`, scheduled in-process by `app/services/daily_trip_scheduler.py` (started from `AppConfig.ready()`, no cron) — see [07](07-deployment-and-troubleshooting.md) |
 
 Next: [02-database-and-env.md](02-database-and-env.md).

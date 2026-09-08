@@ -1,6 +1,7 @@
 services:
   backend:
     image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    build: .
     env_file: .env
     ports:
       - "9001:9001"

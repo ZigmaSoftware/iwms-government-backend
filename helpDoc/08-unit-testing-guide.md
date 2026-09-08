@@ -69,20 +69,21 @@ def test_something(district, state):   # both come from tests/conftest.py
 ## Fixtures in `tests/conftest.py`
 
 Available to every test without importing. Reflect this backend's actual
-scoping model — a mix of a still-present company/project pair (see the note
-below) and the geography hierarchy that drives real request scoping:
+scoping model — the geography hierarchy that drives real request scoping.
+There is **no** `company`/`project` fixture — that multi-tenant pair, and
+a separate City/Zone geography tier, were both deliberately removed from
+the app (see [01-architecture-overview.md](01-architecture-overview.md),
+"Scoping: geography, not company/project"). A batch of tests written
+against the old models (`Company`, `Project`, `City`, `Zone`, plus an
+`Employee` model and a `GeoFencingType` enum) were removed for the same
+reason — see git history around commits `ee0aafc`/`00f42ba` if you need
+the old shape for reference.
 
-- `company(db)`, `project(db, company)` — still present even though the
-  public-facing scoping model has moved to flat geography FKs (see
-  [01-architecture-overview.md](01-architecture-overview.md)). Treat these
-  as supporting internal/legacy models that still reference a company or
-  project, not as the primary scoping mechanism to test against.
 - `continent(db)`, `country(db, continent)`, `state(db, continent,
-  country)`, `district(db, continent, country, state)`, `city(db,
-  continent, country, state, district)`, `area_type(db, state, district,
-  city)`, `zone(db, state, district, city)`, `corporation(db, state,
-  district)`, `ward(db, state, district, corporation)` — the geography
-  chain. Use these to build realistic `StaffDataScope` scenarios.
+  country)`, `district(db, continent, country, state)`, `area_type(db,
+  state, district)`, `corporation(db, state, district)`, `ward(db, state,
+  district, corporation)` — the geography chain. Use these to build
+  realistic `StaffDataScope` scenarios.
 - `user_type(db)`, `superuser(db)` — auth/role basics. `superuser` bypasses
   geography scoping entirely (see 01), so use it deliberately, not as the
   default test user.
