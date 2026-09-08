@@ -59,15 +59,43 @@ jobs:
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: sudo /usr/bin/systemctl restart iwms-government-backend
 
-      - name: Run migrations and collectstatic
+      # NOTE: `migrate` is deliberately NOT run here.
+      #
+      # This project does not track migrations in git (.gitignore excludes
+      # **/migrations/*), so a CI checkout has an empty app/migrations/ and
+      # `migrate` fails with:
+      #   ValueError: Dependency on app with no migrations: app
+      #
+      # Schema changes stay a developer action, matching the team workflow in
+      # helpDoc/05: whoever changes a model runs makemigrations + migrate
+      # themselves. If a deploy needs a schema change, run it on the server
+      # BEFORE pushing:
+      #   docker compose -f docker-compose.production.yml exec backend \
+      #     python manage.py migrate
+      - name: Collect static files
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
           for i in $(seq 1 30); do
             docker compose -f docker-compose.production.yml exec -T backend true 2>/dev/null && break
             sleep 2
           done
-          docker compose -f docker-compose.production.yml exec -T backend python manage.py migrate --noinput
           docker compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
+
+      # Warn (do not fail) if the running code expects migrations the DB lacks.
+      - name: Check for unapplied migrations
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        continue-on-error: true
+        run: |
+          # grep -c exits 1 when it finds nothing, so capture the count first
+          # and normalise it - "|| echo 0" on the same line yields "0\n0".
+          PENDING=$(docker compose -f docker-compose.production.yml exec -T backend \
+            python manage.py showmigrations --plan 2>/dev/null | grep -c '^\[ \]') || true
+          PENDING=${PENDING:-0}
+          if [ "$PENDING" -gt 0 ]; then
+            echo "::warning::$PENDING unapplied migration(s) on the server - run 'manage.py migrate' there"
+          else
+            echo "no unapplied migrations"
+          fi
 
       # 401 = healthy: auth rejecting an unauthenticated request proves Django
       # ran and reached MySQL. 000 = nothing listening, 500 = database problem.

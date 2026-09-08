@@ -129,6 +129,36 @@ docker compose -f docker-compose.production.yml exec -it backend python manage.p
 `createsuperuser` is interactive and hangs without `-it`. It is also rarely
 needed — existing admin accounts live in MySQL and survive the cutover.
 
+## Why CI does not run `migrate`
+
+The first CI deploy failed at the migrate step:
+
+```
+ValueError: Dependency on app with no migrations: app
+```
+
+`.gitignore` excludes `**/migrations/*`, so migration files live only on
+developer machines and on the server — never in git. A CI checkout therefore
+has an empty `app/migrations/` (just `__init__.py`), and Django cannot resolve
+model dependencies against it.
+
+That is this project's deliberate strategy (see
+[01](01-architecture-overview.md) and [05](05-team-workflow.md)), so the
+workflow was changed to match it rather than the other way round: `migrate` is
+gone, `collectstatic` stays, and a non-fatal step warns if the server has
+unapplied migrations.
+
+**Schema changes remain a developer action.** When a deploy needs one, run it
+on the server before pushing:
+
+```bash
+cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
+docker compose -f docker-compose.production.yml exec backend python manage.py migrate
+```
+
+The failed run did no damage: the service had already restarted successfully
+and kept serving (401, 142 tables intact). Only the job went red.
+
 ## Outstanding — read this
 
 1. **`DEBUG = True` in production.** `DJANGO_ENV` is **not set** in `.env`, and
