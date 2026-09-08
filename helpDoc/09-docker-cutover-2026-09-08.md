@@ -148,6 +148,28 @@ workflow was changed to match it rather than the other way round: `migrate` is
 gone, `collectstatic` stays, and a non-fatal step warns if the server has
 unapplied migrations.
 
+### The deeper cause: CI-built images contain no migrations
+
+Running `migrate` **on the server** failed with the same error, which ruled
+out "CI's checkout is different" as the whole story. The container itself had
+an empty `/app/app/migrations/` — because the running image was built by CI
+from that migration-less checkout, so the gap is baked into the image.
+
+Fixed by mounting the host's real migrations into the container, alongside the
+existing `media/` and `static/` mounts:
+
+```yaml
+volumes:
+  - ./app/migrations:/app/app/migrations
+```
+
+`migrate` and `showmigrations` now work in any container, CI-built or local,
+without tracking migrations in git. Verified: `migrate` reports "No migrations
+to apply" and `showmigrations` lists 19 applied.
+
+Note the container's app code is otherwise complete — only migrations were
+missing, because only they are gitignored.
+
 **Schema changes remain a developer action.** When a deploy needs one, run it
 on the server before pushing:
 

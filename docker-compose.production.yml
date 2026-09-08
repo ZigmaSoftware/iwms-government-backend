@@ -16,4 +16,12 @@ services:
     volumes:
       - ./media:/app/media
       - ./static:/app/static
+      # Migrations are gitignored (**/migrations/*), so a CI build - which
+      # works from a git checkout - produces an image with an EMPTY
+      # app/migrations/. Without this mount `manage.py migrate` inside the
+      # container dies with:
+      #   ValueError: Dependency on app with no migrations: app
+      # Mounting the host's real migration files makes migrate work in any
+      # container, CI-built or locally built, without tracking them in git.
+      - ./app/migrations:/app/app/migrations
     restart: always
