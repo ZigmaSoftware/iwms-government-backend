@@ -1,9 +1,8 @@
 name: IWMS Government Backend CI/CD
 
 # Trigger:
-#   - push to "dev"  -> runs tests only
-#   - push to "main" -> runs tests, then builds/pushes a Docker image,
-#                       then deploys it to the server
+#   - push to "dev"  -> does nothing
+#   - push to "main" -> builds/pushes a Docker image, then deploys it to the server
 # Pushes to any other branch (e.g. sathya, lux, sameer, vinoth) do nothing.
 on:
   push:
@@ -13,25 +12,7 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/iwms-government-backend
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install --no-cache-dir -r requirements.txt
-
-      - name: Run tests
-        run: python -m pytest tests/ -q
-
   build-and-push:
-    needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

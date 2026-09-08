@@ -67,13 +67,15 @@ a pinned dependency, `gunicorn==23.0.0`):
 gunicorn config.wsgi:application --bind 0.0.0.0:9001 --workers 3
 ```
 
-There is **no nginx or reverse proxy in front of this** — confirmed the
-server runs Apache, not nginx, and nginx isn't installed anywhere on this
-machine. The container's port (9001) is opened directly on the firewall
-and reached at `http://115.245.93.26:9001`. If you ever want TLS or a
-proper domain in front of it, that would mean configuring Apache (already
-on the host) as a reverse proxy — a separate task, not something this repo
-sets up.
+The server runs Apache (already installed — confirmed to be just the
+stock default page before this was set up). Apache is reused as the
+reverse proxy in front of both this container and the frontend's — see
+[iwms-government-frontend/DEPLOYMENT.md](../../iwms-government-frontend/DEPLOYMENT.md)
+§5 for the vhost config and setup steps. Until that's done on a given
+server, the container's port (9001) is reachable directly at
+`http://<host>:9001`; once Apache is set up, `/api/` and `/admin/` are
+reverse-proxied there and the direct port should be closed on the
+firewall.
 
 Keep the container alive across boots/crashes with the systemd unit this
 repo now ships at `deploy/systemd/iwms-government-backend.service`
@@ -202,7 +204,8 @@ docker compose -f docker-compose.production.yml logs --since 24h backend | grep 
 ```
 
 With `DEBUG=False` Django writes tracebacks to stderr, which Docker
-captures as container logs — there's no separate nginx log to check since
-nginx isn't part of this stack.
+captures as container logs. If Apache is set up in front as a reverse
+proxy (see above), its own logs are separate:
+`/var/log/apache2/iwms-government-error.log` and `-access.log`.
 
 Next: [08-unit-testing-guide.md](08-unit-testing-guide.md).

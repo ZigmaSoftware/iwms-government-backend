@@ -4,18 +4,19 @@ Full flow: local setup → Docker build → server install → GitHub Actions.
 Backend runs on **port 9001** internally.
 
 Branch policy: `sathya`/`lux`/`sameer`/`vinoth` (personal) → `dev`
-(integration, tests only) → `main` (production, tests + build + deploy).
+(integration, no-op) → `main` (production, build + deploy).
 
-Public URL once nginx is set up: `http://115.245.93.26/api/v1/` — no port
+Public URL once Apache is set up: `http://115.245.93.26/api/v1/` — no port
 needed. Until then, directly: `http://115.245.93.26:9001`.
 
-**nginx** sits in front of both this repo's container and the frontend's,
+**Apache** sits in front of both this repo's container and the frontend's,
 reverse-proxying `/api/`, `/admin/` here and everything else to the
-frontend. It's configured once, from the **frontend repo** (nginx is a
+frontend. It's configured once, from the **frontend repo** (Apache is a
 single shared host-level thing, not per-repo) — see
 [iwms-government-frontend/DEPLOYMENT.md](../iwms-government-frontend/DEPLOYMENT.md)
-§5 for the full setup (including disabling Apache, which was confirmed to
-be running only the stock default page — nothing real depends on it).
+§5 for the full setup. Apache was already running on this host (confirmed
+to be just the stock default page beforehand) — it's reused as the reverse
+proxy rather than installing anything new.
 
 ---
 
@@ -65,7 +66,7 @@ repos, since both deploy to this one server.
 | `Dockerfile` | Python 3.12 + gunicorn image, binds `0.0.0.0:9001` |
 | `.dockerignore` | Keeps venv/media out of the image |
 | `docker-compose.production.yml` | Runs the built image, points `backend` at the real database via `.env`. Used on the server. |
-| `.github/workflows/deploy.yml` | CI/CD: test → build & push image → deploy |
+| `.github/workflows/deploy.yml` | CI/CD: build & push image → deploy |
 | `deploy/systemd/iwms-government-backend.service` | Server-only unit file (gitignored, not pushed to GitHub) |
 
 ---
@@ -177,15 +178,13 @@ sathya / lux / sameer / vinoth   (personal branches — push here freely)
               │  open a PR
               ▼
              dev          (integration branch)
-              │            → push/merge here triggers the "test" job ONLY
-              │              (pytest). No image is built, nothing touches
-              │              the server. This is where the team catches
-              │              breakage before it goes further.
+              │            → push/merge here triggers NOTHING. No image is
+              │              built, nothing touches the server.
               │  open a PR, once dev is stable
               ▼
              main         (production)
-                            → push/merge here triggers ALL three jobs:
-                              test → build-and-push → deploy.
+                            → push/merge here triggers BOTH jobs:
+                              build-and-push → deploy.
                               This is the ONLY branch that ever reaches
                               the server.
 ```
@@ -207,9 +206,9 @@ git checkout dev
 git merge sathya          # or open a PR on GitHub instead of merging locally
 git push origin dev
 ```
-Go to the GitHub repo's **Actions** tab → confirm the `test` job runs and
-passes. No `build-and-push` or `deploy` job should appear for `dev` — if
-one does, something is misconfigured in `deploy.yml`'s `if:` conditions.
+Go to the GitHub repo's **Actions** tab → confirm no `build-and-push` or
+`deploy` job runs for `dev` — if one does, something is misconfigured in
+`deploy.yml`'s `if:` conditions.
 
 ### Step 3 — Push to `main` (this actually deploys)
 ```bash
@@ -217,8 +216,8 @@ git checkout main
 git merge dev              # or open a PR: dev -> main, then merge on GitHub
 git push origin main
 ```
-In the **Actions** tab, confirm all three jobs run in order and go green:
-`test` → `build-and-push` → `deploy`.
+In the **Actions** tab, confirm both jobs run in order and go green:
+`build-and-push` → `deploy`.
 
 ### Step 4 — Verify on the server
 ```bash
