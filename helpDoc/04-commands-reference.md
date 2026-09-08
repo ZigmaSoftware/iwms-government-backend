@@ -153,10 +153,12 @@ python3 manage.py detect_sla_breaches        # complaint SLA breach detection
 python3 manage.py generate_daily_trips       # create today's trips from plans
 ```
 
-`generate_daily_trips` is the one that matters day-to-day — it is what the
-nightly scheduler (`scheduler.sh`, see
-[07-deployment-and-troubleshooting.md](07-deployment-and-troubleshooting.md))
-actually runs via cron.
+`generate_daily_trips` is the one that matters day-to-day — in production
+it's called automatically every night by an in-process scheduler thread
+(`app/services/daily_trip_scheduler.py`, starts itself via
+`AppConfig.ready()` — see
+[07-deployment-and-troubleshooting.md](07-deployment-and-troubleshooting.md)).
+No cron, host-level or otherwise, is involved.
 
 ## Clearing Python caches
 
@@ -187,7 +189,7 @@ first, see "Starting over locally" in
 ```bash
 python3 manage.py createsuperuser     # a login for /admin/
 python3 manage.py collectstatic       # gather static files into staticfiles/
-python3 manage.py check               # config sanity check, no DB needed
+python3 manage.py check               # conffig sanity check, no DB needed
 python3 manage.py shell               # interactive Django shell
 ```
 
@@ -200,6 +202,19 @@ short version:
 python -m pytest tests/ -q
 python -m pytest tests/ --cov=app --cov-report=term-missing -q
 python -m pytest tests/ --cov=app --cov-report=html -q && xdg-open htmlcov/index.html
+```
+
+## Misc reference links
+
+Carried over from the old `install.txt` scratch notes:
+
+```text
+https://api.qrserver.com/v1/create-qr-code/?data=QR-CP01-WET
+https://erode.nic.in/elected-representatives/
+https://nallosai.tn.gov.in/index.php
+https://npp.gov.in/landing-home
+https://www.nseindia.com/get-quote/derivatives/NIFTY/NIFTY-50?identifier=OPTIDXNIFTY16-06-2026PE23400.00
+https://www.nseindia.com/
 ```
 
 Next: [05-team-workflow.md](05-team-workflow.md).

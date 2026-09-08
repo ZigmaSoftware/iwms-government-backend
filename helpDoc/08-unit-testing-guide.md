@@ -69,20 +69,21 @@ def test_something(district, state):   # both come from tests/conftest.py
 ## Fixtures in `tests/conftest.py`
 
 Available to every test without importing. Reflect this backend's actual
-scoping model — a mix of a still-present company/project pair (see the note
-below) and the geography hierarchy that drives real request scoping:
+scoping model — the geography hierarchy that drives real request scoping.
+There is **no** `company`/`project` fixture — that multi-tenant pair, and
+a separate City/Zone geography tier, were both deliberately removed from
+the app (see [01-architecture-overview.md](01-architecture-overview.md),
+"Scoping: geography, not company/project"). A batch of tests written
+against the old models (`Company`, `Project`, `City`, `Zone`, plus an
+`Employee` model and a `GeoFencingType` enum) were removed for the same
+reason — see git history around commits `ee0aafc`/`00f42ba` if you need
+the old shape for reference.
 
-- `company(db)`, `project(db, company)` — still present even though the
-  public-facing scoping model has moved to flat geography FKs (see
-  [01-architecture-overview.md](01-architecture-overview.md)). Treat these
-  as supporting internal/legacy models that still reference a company or
-  project, not as the primary scoping mechanism to test against.
 - `continent(db)`, `country(db, continent)`, `state(db, continent,
-  country)`, `district(db, continent, country, state)`, `city(db,
-  continent, country, state, district)`, `area_type(db, state, district,
-  city)`, `zone(db, state, district, city)`, `corporation(db, state,
-  district)`, `ward(db, state, district, corporation)` — the geography
-  chain. Use these to build realistic `StaffDataScope` scenarios.
+  country)`, `district(db, continent, country, state)`, `area_type(db,
+  state, district)`, `corporation(db, state, district)`, `ward(db, state,
+  district, corporation)` — the geography chain. Use these to build
+  realistic `StaffDataScope` scenarios.
 - `user_type(db)`, `superuser(db)` — auth/role basics. `superuser` bypasses
   geography scoping entirely (see 01), so use it deliberately, not as the
   default test user.
@@ -173,6 +174,31 @@ python -m pytest tests/ --cov=app --cov-report=xml -q
 
 All three outputs (`htmlcov/`, `coverage.xml`, `.coverage`) are git-ignored —
 they are regenerated on every run, so never commit them.
+
+### Coverage by module (models / viewsets / serializers)
+
+A quick way to see which layer is weakest, averaged per top-level module
+instead of per file:
+
+```bash
+python -m pytest tests/ --cov=app --cov-report=term -q 2>&1 \
+  | grep "^app/" | grep -v "__init__\|__pycache__\|:[0-9]" \
+  | python3 -c "
+import sys, re
+from collections import defaultdict
+data = defaultdict(list)
+for line in sys.stdin:
+    m = re.match(r'^(app/(?:models|viewsets|serializers)/[^/]+)/', line)
+    p = re.search(r'(\d+\.\d+)%', line)
+    if m and p:
+        data[m.group(1)].append(float(p.group(1)))
+print(f'{\"MODULE\":<55} COVERAGE')
+print('-'*65)
+for k in sorted(data):
+    avg = sum(data[k])/len(data[k])
+    print(f'{k:<55} {avg:6.1f}%')
+"
+```
 
 ## What is worth testing here
 

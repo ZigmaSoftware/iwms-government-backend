@@ -1,31 +1,47 @@
 # 07 — Deployment and Troubleshooting
 
-## First-time setup on a server
+**Production deployment is now Docker-based, driven by GitHub Actions.**
+The bare-metal steps (`uv venv`/`server_uv_sync.sh`/`runserver`) still apply
+for **local development**, but the server no longer runs the app directly —
+it runs a container built and pushed by CI on every push to `main`. Full
+step-by-step instructions, including local testing before you ever touch
+the server, live in **[DEPLOYMENT.md](../DEPLOYMENT.md)** at the repo root.
+This section stays focused on the *shape* of it plus troubleshooting.
+
+## First-time setup on a server (Docker-based)
 
 ```bash
-# 1. Get the code
-git clone <repo-url> iwms-government-backend && cd iwms-government-backend
+# 1. Install Docker + Compose (see DEPLOYMENT.md §2 for the full version)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
 
-# 2. Python environment
-uv venv && source .venv/bin/activate && uv sync
-# or, on the actual deploy server:
-./server_uv_sync.sh
+# 2. Create the deploy directory and drop a production .env there
+sudo mkdir -p /home/admin/localserver/iwmsGovernment/iwms-government-backend
+cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
+nano .env        # real production values — never commit this file
 
-# 3. Settings — fill in real values, and set DJANGO_ENV=production
-#    (no .env.example exists yet — see 02 and 06 — ask a teammate for a
-#    working .env or rebuild one from the key table in 02)
-nano .env
+# 3. Place docker-compose.production.yml from the repo in that same folder, then:
+docker login ghcr.io -u <github-username>     # so `docker compose pull` can fetch the image
+docker compose -f docker-compose.production.yml pull
+docker compose -f docker-compose.production.yml up -d
 
-# 4. Database (see 02-database-and-env.md for the SQL)
-python3 manage.py makemigrations app
-python3 manage.py migrate
+# 4. Install the systemd unit so Docker restarts the container on boot/crash
+#    (kept locally in deploy/systemd/, gitignored — copy it yourself)
+sudo cp deploy/systemd/iwms-government-backend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now iwms-government-backend.service
 
-# 5. Static files and an admin login
-python3 manage.py collectstatic --noinput
-python3 manage.py createsuperuser
+# 5. Open the firewall port
+sudo ufw allow 9001/tcp && sudo ufw reload
+```
 
-# 6. Sanity check, then run
-python3 manage.py check --deploy
+Migrations, `collectstatic`, and creating a superuser now happen **inside**
+the running container, not on the host:
+
+```bash
+docker compose -f docker-compose.production.yml exec backend python manage.py migrate
+docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --noinput
+docker compose -f docker-compose.production.yml exec backend python manage.py createsuperuser
 ```
 
 ### `DJANGO_ENV` decides DEBUG
@@ -44,16 +60,29 @@ production-configured environment cannot be seeded even by accident.
 ## Running it for real
 
 `runserver` is a development server — single-threaded and explicitly not for
-production. Use gunicorn (already a pinned dependency, `gunicorn==23.0.0`):
+production. The Docker image's `CMD` already runs gunicorn for you (already
+a pinned dependency, `gunicorn==23.0.0`):
 
 ```bash
-gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+gunicorn config.wsgi:application --bind 0.0.0.0:9001 --workers 3
 ```
 
-Put nginx in front to terminate TLS and serve `/static/` and `/media/` from
-disk. Keep gunicorn alive with a systemd unit so it restarts on boot and on
-crash — this repo does not ship a systemd unit file, so that part is
-per-server configuration, not something to look for here.
+The server runs Apache (already installed — confirmed to be just the
+stock default page before this was set up). Apache is reused as the
+reverse proxy in front of both this container and the frontend's — see
+[iwms-government-frontend/DEPLOYMENT.md](../../iwms-government-frontend/DEPLOYMENT.md)
+§5 for the vhost config and setup steps. Until that's done on a given
+server, the container's port (9001) is reachable directly at
+`http://<host>:9001`; once Apache is set up, `/api/` and `/admin/` are
+reverse-proxied there and the direct port should be closed on the
+firewall.
+
+Keep the container alive across boots/crashes with the systemd unit this
+repo now ships at `deploy/systemd/iwms-government-backend.service`
+(gitignored — copy it onto the server yourself, see
+[DEPLOYMENT.md](../DEPLOYMENT.md)). Its `ExecStart` is `docker compose -f
+docker-compose.production.yml up`, not gunicorn directly — systemd
+supervises the container, Docker supervises gunicorn inside it.
 
 ## `ALLOWED_HOSTS` and CORS — the two settings that break access
 
@@ -81,45 +110,66 @@ silently.
 
 ## The shell scripts this repo actually ships
 
-Unlike the private backend, this repo has no `cron.sh` checked in (though
-`scheduler.sh`'s header comment references one existing on the deploy
-server itself). What's here instead:
-
 - **`manage.sh`** — thin wrapper around `manage.py`: uses
   `.venv/bin/python manage.py "$@"` if a venv exists, else falls back to
   `uv run python manage.py "$@"`. Use this instead of remembering whether a
-  venv is active.
-- **`scheduler.sh`** — the nightly trip-generation entry point. For every
-  active, approved, auto-assign trip plan whose repeat days include today,
-  it creates a `DailyTripAssignment` and clones every stop into daily trip
-  points / household collections. Wired into the server's crontab to run at
-  12:05 AM. It hardcodes the deploy path
-  `/home/admin/localserver/iwmsGovernment/iwms-government-backend` and logs
-  to `.../logs/generate_daily_trips.log`. Its Python-binary fallback chain
-  is worth knowing about if trips silently stop generating: it tries
-  `.venv/bin/python`, then `venv/bin/python`, then a **legacy path pointing
-  at the private backend's venv** (leftover from when this project was
-  bootstrapped alongside `iwms-backend`), then `/usr/bin/python3`. If none
-  of those actually have the right dependencies installed, the job will run
-  against the wrong interpreter without an obvious error — check the log
-  file first.
-- **`server_uv_sync.sh`** — wraps `uv sync --locked` for deploys, with a DNS
-  reachability check and a note to fall back to reusing the (legacy,
-  private-backend-named) venv if the server is offline for package
-  downloads.
+  venv is active. Local development only.
+- **`server_uv_sync.sh`** — wraps `uv sync --locked` for local/manual
+  environment setup, with a DNS reachability check and a note to fall back
+  to reusing an existing venv if offline for package downloads. Not part of
+  the deploy path anymore (Docker images install dependencies at build
+  time instead) — this is now a local convenience script only.
+
+### Nightly trip generation — the app schedules itself, no cron involved
+
+`scheduler.sh` and the old host crontab entry are **gone**, and no
+replacement cron job was added to the Docker image either — one was tried
+and then removed once it turned out to be redundant. The app already
+schedules this job **itself**, in-process:
+
+- **Runs via**: `app/services/daily_trip_scheduler.py`, a background
+  thread started automatically by `AppConfig.ready()`
+  ([app/apps.py](../app/apps.py)) the moment Django starts — no cron,
+  no external scheduler process, nothing to install in the image.
+- **When**: `04:00` by default. A DB-backed `SchedulerConfig` singleton
+  row takes priority if present (changeable live, no restart); otherwise
+  the `DAILY_TRIP_SCHEDULER_TIME` env var (`HH:MM`). Set
+  `ENABLE_DAILY_TRIP_JOB_SCHEDULER=false` to disable it entirely.
+- **Multi-worker safety**: gunicorn runs 3 workers, so 3 copies of this
+  thread start — but `run_daily_trip_job` takes a MySQL
+  `GET_LOCK`/`RELEASE_LOCK` keyed by date before running, so only one
+  worker's copy actually executes the job.
+- **Doesn't fire for management commands**: `migrate`, `seed`,
+  `generate_daily_trips` itself, etc. are excluded, so running those
+  inside the container never double-triggers the scheduler.
+- **Logs**: normal Python `logging` → container stdout/stderr →
+  `docker compose -f docker-compose.production.yml logs backend`, same as
+  everything else.
+- **Manual run** (e.g. to test, or backfill a missed night — unrelated to
+  the scheduler thread, just calls the command directly):
+  ```bash
+  docker compose -f docker-compose.production.yml exec backend python manage.py generate_daily_trips
+  docker compose -f docker-compose.production.yml exec backend python manage.py generate_daily_trips --date 2026-06-26
+  ```
+
+Full detail: [DEPLOYMENT.md](../DEPLOYMENT.md) §1a.
 
 ## Verifying a deployment
 
 ```bash
-curl -i http://<host>:8000/                       # confirms the server answers
-curl -i http://<host>:8000/api/v1/                # the grouped API index
+sudo systemctl status iwms-government-backend.service   # container supervised & up
+docker compose -f docker-compose.production.yml logs -f backend   # gunicorn output (scheduler logs interleave here too)
+
+curl -i http://127.0.0.1:9001/                     # from the server itself
+curl -i http://115.245.93.26:9001/                 # confirms the port is reachable externally
+curl -i http://115.245.93.26:9001/api/v1/          # the grouped API index
 ```
 
-Then open `http://<host>:8000/api/v1/swagger/` and try a real login through
-it. A successful login returning both an access token and a refresh token
-proves the database, settings, `SECRET_KEY` and JWT config are all working
-together — see [01](01-architecture-overview.md) for why there are two
-tokens here.
+Then open `http://115.245.93.26:9001/api/v1/swagger/` and try a real login
+through it. A successful login returning both an access token and a
+refresh token proves the database, settings, `SECRET_KEY` and JWT config
+are all working together — see [01](01-architecture-overview.md) for why
+there are two tokens here.
 
 ## Troubleshooting
 
@@ -137,24 +187,25 @@ tokens here.
 | `ImproperlyConfigured: SECRET_KEY` | `.env` missing or `SECRET_KEY` empty | Fill it in — no `.env.example` yet, see [02](02-database-and-env.md) |
 | Deleted a file, Django still imports it | Stale `__pycache__` | Clear caches — see [04](04-commands-reference.md) |
 | `makemigrations` says "no changes" but the table is wrong, or two conflicting `0002_*` files appear | Migration state out of step with models — this repo has a live example already | Locally: drop and rebuild (see [02](02-database-and-env.md)) |
-| Uploaded images 404 after deploy | `DEBUG=False`, so Django no longer serves `media/` | Serve `media/` from nginx |
+| Uploaded images 404 after deploy | `DEBUG=False`, so Django no longer serves `media/` | Check the `./media:/app/media` volume mount in `docker-compose.production.yml` is present and the path actually has the files |
 | OTP / reset mail never arrives | `EMAIL_*` wrong, or SMTP blocks the login | Verify `EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD`; Gmail needs an app password |
 | Push notifications silently never send | `FIREBASE_CREDENTIALS_PATH` unset, or `firebase-admin` not installed | Confirm the path in `.env`, and check `firebase-admin` actually installed (`pyproject.toml` is missing it even though `requirements.txt` has it — see [04](04-commands-reference.md)) |
 | Route optimisation fails | `ORS_API_KEY` missing or over quota | Check the key in `.env` |
-| No trips generated overnight | `generate_daily_trips` / `scheduler.sh` didn't run, or its Python fallback resolved to the wrong venv | Check `.../logs/generate_daily_trips.log`; run `python3 manage.py generate_daily_trips` manually |
+| No trips generated overnight | The in-process scheduler thread didn't fire — e.g. `ENABLE_DAILY_TRIP_JOB_SCHEDULER=false`, the container restarted right at the scheduled time, or all 3 gunicorn workers' threads lost the DB lock race unexpectedly | `docker compose -f docker-compose.production.yml logs backend` around the scheduled time for a traceback; run `docker compose -f docker-compose.production.yml exec backend python manage.py generate_daily_trips --date <missed-date>` to backfill (idempotent, safe to re-run) |
 | A staff member sees zero rows on a list screen they should have access to | No `StaffDataScope` row resolves for them — default-deny, not a bug | Grant them a `StaffDataScope` for the right geography level |
 | Tests fail on MySQL specifics | Tests use SQLite in-memory | Expected — see [08](08-unit-testing-guide.md) |
 
 ## Reading logs
 
 ```bash
-journalctl -u <your-gunicorn-unit> -f     # if running under systemd
-tail -f /var/log/nginx/error.log          # nginx-level failures
-tail -f .../logs/generate_daily_trips.log # the nightly scheduler job
+journalctl -u iwms-government-backend.service -f   # systemd's view of the container lifecycle
+docker compose -f docker-compose.production.yml logs -f backend   # gunicorn AND the in-process scheduler, combined
+docker compose -f docker-compose.production.yml logs --since 24h backend | grep generate_daily_trips
 ```
 
-With `DEBUG=False` Django writes tracebacks to stderr, which systemd
-captures. If you see nginx return 502, the traceback is in the gunicorn
-journal, not in nginx's log.
+With `DEBUG=False` Django writes tracebacks to stderr, which Docker
+captures as container logs. If Apache is set up in front as a reverse
+proxy (see above), its own logs are separate:
+`/var/log/apache2/iwms-government-error.log` and `-access.log`.
 
 Next: [08-unit-testing-guide.md](08-unit-testing-guide.md).
