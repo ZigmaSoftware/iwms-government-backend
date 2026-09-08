@@ -11,8 +11,9 @@ per-repo doc for depth on any step.
 - Frontend detail: `../iwms-government-frontend/DEPLOYMENT.md` (sibling repo)
 
 Server: `115.245.93.26`. Backend container on port 9001, frontend
-container on port 3000 — both internal only once nginx (Phase 6) is set
-up; public traffic goes through nginx on port 80/443 instead.
+container on port 3000 — both internal only once Apache (Phase 6) is set
+up as reverse proxy; public traffic goes through Apache on port 80/443
+instead.
 
 ---
 
@@ -24,7 +25,7 @@ up; public traffic goes through nginx on port 80/443 instead.
 | Deploy compose | `docker-compose.production.yml` | `docker-compose.yml` |
 | CI/CD | `.github/workflows/deploy.yml` | `.github/workflows/deploy.yml` |
 | systemd | `deploy/systemd/iwms-government-backend.service` | `deploy/systemd/iwms-government-frontend.service` |
-| nginx config | — | `deploy/nginx/iwms-government.conf` |
+| Apache config | — | `deploy/apache/iwms-government.conf` |
 | Nightly job | In-process scheduler thread, no cron | — |
 
 ---
@@ -86,21 +87,20 @@ crontab -l           # remove any lines calling scheduler.sh / frontend_sync.sh 
 crontab -e
 ```
 
-## Phase 6 — SERVER: nginx takes over from Apache
+## Phase 6 — SERVER: Apache becomes the reverse proxy
 
 ```bash
-# Apache confirmed to be just the stock default page — safe to disable
-sudo systemctl disable --now apache2
-
-sudo apt update && sudo apt install -y nginx
+# Apache confirmed to be just the stock default page — safe to repurpose
+sudo a2enmod proxy proxy_http headers
+sudo systemctl restart apache2
 
 cd /home/admin/localserver/iwmsGovernment/iwms-government-frontend
-sudo cp deploy/nginx/iwms-government.conf /etc/nginx/sites-available/iwms-government.conf
-sudo ln -s /etc/nginx/sites-available/iwms-government.conf /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
+sudo cp deploy/apache/iwms-government.conf /etc/apache2/sites-available/iwms-government.conf
+sudo a2ensite iwms-government.conf
+sudo a2dissite 000-default.conf
 
-sudo nginx -t && sudo systemctl reload nginx
-sudo systemctl enable nginx
+sudo apachectl configtest && sudo systemctl reload apache2
+sudo systemctl enable apache2
 
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
@@ -110,25 +110,25 @@ sudo ufw reload
 ## Phase 7 — GITHUB: push through the branch chain (per repo)
 
 ```
-sathya → PR → dev     (triggers: "test" job only)
-dev → PR → main       (triggers: test → build-and-push → deploy)
+sathya → PR → dev     (triggers: nothing)
+dev → PR → main       (triggers: build-and-push → deploy)
 ```
 
 ```bash
 git checkout dev && git merge sathya && git push origin dev
-# check Actions tab: only "test" runs
+# check Actions tab: no build-and-push/deploy job runs
 
 git checkout main && git merge dev && git push origin main
-# check Actions tab: test → build-and-push → deploy, all green
+# check Actions tab: build-and-push → deploy, both green
 ```
 
 ## Phase 8 — Verify everything end-to-end
 
 ```bash
-sudo systemctl status nginx iwms-government-backend.service iwms-government-frontend.service
+sudo systemctl status apache2 iwms-government-backend.service iwms-government-frontend.service
 
-curl -i http://115.245.93.26/              # frontend, via nginx
-curl -i http://115.245.93.26/api/v1/       # backend, via nginx
+curl -i http://115.245.93.26/              # frontend, via Apache
+curl -i http://115.245.93.26/api/v1/       # backend, via Apache
 ```
 
 ---
@@ -136,7 +136,7 @@ curl -i http://115.245.93.26/api/v1/       # backend, via nginx
 ## Note on scope
 
 This file references the sibling `iwms-government-frontend` repo (paths,
-its systemd unit, its nginx config) even though it lives in this
+its systemd unit, its Apache config) even though it lives in this
 (`iwms-government-backend`) repo — it's meant as the one combined
 checklist for standing up both services together. The frontend repo does
 not have a copy of this file; its own `DEPLOYMENT.md` stays scoped to
