@@ -37,6 +37,20 @@ jobs:
             -t ghcr.io/zigmasoftware/iwms-government-backend:latest \
             .
 
+      # The runner's checkout above only updates its own workspace. Every
+      # step below runs `docker compose` against the separate, persistent
+      # deployment clone at this fixed path (see DEPLOYMENT.md §0.1), which
+      # is never otherwise touched by this workflow. Without this step that
+      # directory can lag main - e.g. docker-compose.yml itself was added in
+      # PR #165 and this step's `docker compose up -d db` failed with
+      # "no configuration file provided: not found" because the deployment
+      # clone hadn't picked up that commit yet.
+      - name: Sync the deployment directory to this commit
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: |
+          git fetch origin main
+          git checkout --force "${{ github.sha }}"
+
       # Ensure the "db" container exists WITHOUT ever recreating or wiping an
       # existing one. `up -d db` is idempotent: if the container + named
       # volume already exist, Compose leaves them running untouched; only a
