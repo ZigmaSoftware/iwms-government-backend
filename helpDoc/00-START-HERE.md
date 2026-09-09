@@ -53,13 +53,29 @@ assumed.
    `conftest.py`, how to write a model test, and how to run coverage.
 9. **[09-docker-cutover-2026-09-08.md](09-docker-cutover-2026-09-08.md)** —
    What actually happened when this server moved from `.venv`+`runserver` to
-   Docker on 2026-09-08: why the compose file uses `network_mode: host` (and
-   therefore has no `ports:`), why `SECRET_KEY` must keep its `$$` escaping,
-   every command the cutover used, and the outstanding items — including
+   Docker on 2026-09-08: why the compose file (at the time named
+   `docker-compose.production.yml`) used `network_mode: host` (and therefore
+   had no `ports:`), why `SECRET_KEY` must keep its `$$` escaping, every
+   command the cutover used, and the outstanding items — including
    `DEBUG=True` still being live in production. Ends with a **Docker basics**
    section — start/stop/restart, kill/recreate, logs, shells, images, health
    checks — which the frontend repo mirrors at
-   `../../iwms-government-frontend/helpDoc/02-docker-basics.md`.
+   `../../iwms-government-frontend/helpDoc/02-docker-basics.md`. Some
+   filenames/commands here are now stale — see 10 below for what changed.
+10. **[10-local-docker-testing.md](10-local-docker-testing.md)** — Run all
+    three pieces (frontend, backend, **and** database) as three separate
+    local containers. Covers the renamed `docker-compose.yml` (was
+    `docker-compose.production.yml`), the new `db` service
+    (`mariadb:11.8`), every command to bring it up/verify it/tear it down,
+    and how to prove to yourself locally that `docker compose up -d db`
+    never wipes existing data before trusting that same command in
+    production.
+11. **[11-server-deploy-from-sathya.md](11-server-deploy-from-sathya.md)** —
+    The actual process to get code from a local branch (e.g. `sathya`) live
+    on the production server: push → PR → merge to `main` → what the
+    self-hosted runner does automatically, what stays manual (migrations,
+    and the one-time data migration into the new `db` container), and how
+    to confirm a deploy actually worked.
 
 ## The one-paragraph map of the whole project
 
@@ -70,7 +86,8 @@ iwms-government-backend/
 ├── server_uv_sync.sh      <- local-dev `uv sync --locked` wrapper
 ├── Dockerfile             <- production image: gunicorn (no cron — the
 │                              nightly scheduler runs in-process, see 07)
-├── docker-compose.production.yml <- runs the built image on the server
+├── docker-compose.yml     <- runs backend + db containers (renamed from
+│                              docker-compose.production.yml; see 10 and 11)
 ├── deploy/                <- systemd unit template (gitignored)
 ├── config/                <- project settings (NOT a Django app)
 │   ├── settings.py           <- database, apps, CORS, email, OTP, Firebase

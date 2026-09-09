@@ -37,13 +37,33 @@ jobs:
             -t ghcr.io/zigmasoftware/iwms-government-backend:latest \
             .
 
+      # Ensure the "db" container exists WITHOUT ever recreating or wiping an
+      # existing one. `up -d db` is idempotent: if the container + named
+      # volume already exist, Compose leaves them running untouched; only a
+      # genuinely missing container gets created. This deliberately never
+      # runs `--force-recreate`, `down`, or `down -v` — that would destroy
+      # production data. See docker-compose.yml's top comment.
+      - name: Ensure the database container exists (create if missing, reuse if present)
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: |
+          docker compose up -d db
+          echo "Waiting for db to report healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' \
+              "$(docker compose ps -q db)" 2>/dev/null || echo starting)
+            [ "$STATUS" = "healthy" ] && { echo "db healthy"; break; }
+            sleep 2
+          done
+
       # Fail before touching the running service if the new image cannot reach
-      # MySQL. network_mode: host + DB_HOST=localhost is what makes this work;
-      # a bridged container cannot reach the loopback-bound database.
+      # MySQL. backend and db share the compose network; DB_HOST=db resolves
+      # to the db container via Docker's internal DNS (see docker-compose.yml).
       - name: Smoke-test the new image against the database
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
-          docker run --rm --env-file .env --network host \
+          docker run --rm --env-file .env \
+            --network "$(docker compose ps -q db | xargs docker inspect --format='{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' | head -1)" \
+            -e DB_HOST=db -e DB_PORT=3306 \
             ghcr.io/zigmasoftware/iwms-government-backend:${{ github.sha }} \
             python -c "
           import os, django
@@ -59,36 +79,47 @@ jobs:
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: sudo /usr/bin/systemctl restart iwms-government-backend
 
-      # NOTE: `migrate` is deliberately NOT run here.
-      #
-      # This project does not track migrations in git (.gitignore excludes
-      # **/migrations/*), so a CI checkout has an empty app/migrations/ and
-      # `migrate` fails with:
+      # Migrations are gitignored (.gitignore excludes **/migrations/*), so
+      # a bare CI checkout has an empty app/migrations/ and running migrate
+      # directly against that checkout fails with:
       #   ValueError: Dependency on app with no migrations: app
+      # That is NOT what happens here: docker-compose.yml bind-mounts the
+      # server's real, persistent migration files into the container
+      # (./app/migrations:/app/app/migrations — see that file's comment), so
+      # running migrate INSIDE the container, via `docker compose exec`,
+      # uses the real migration history, not the checkout's empty one.
       #
-      # Schema changes stay a developer action, matching the team workflow in
-      # helpDoc/05: whoever changes a model runs makemigrations + migrate
-      # themselves. If a deploy needs a schema change, run it on the server
-      # BEFORE pushing:
-      #   docker compose -f docker-compose.production.yml exec backend \
-      #     python manage.py migrate
-      - name: Collect static files
+      # Safe to run on every deploy: Django's migrate is idempotent — it
+      # only applies migrations that haven't run yet and is a no-op
+      # otherwise. It does NOT run makemigrations (that stays a developer
+      # action per helpDoc/05 — CI only applies migration files that already
+      # exist on the server, it never generates new ones).
+      - name: Apply database migrations
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
           for i in $(seq 1 30); do
-            docker compose -f docker-compose.production.yml exec -T backend true 2>/dev/null && break
+            docker compose exec -T backend true 2>/dev/null && break
             sleep 2
           done
-          docker compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
+          docker compose exec -T backend python manage.py migrate --noinput
 
-      # Warn (do not fail) if the running code expects migrations the DB lacks.
+      # No wait-loop needed here — the "Apply database migrations" step
+      # above already waited for the container to accept exec.
+      - name: Collect static files
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: docker compose exec -T backend python manage.py collectstatic --noinput
+
+      # Sanity check, not a reminder anymore — migrate now runs automatically
+      # above, so this should always report 0. A non-zero count here means
+      # migrate silently didn't apply something it should have; investigate
+      # rather than ignore the warning.
       - name: Check for unapplied migrations
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         continue-on-error: true
         run: |
           # grep -c exits 1 when it finds nothing, so capture the count first
           # and normalise it - "|| echo 0" on the same line yields "0\n0".
-          PENDING=$(docker compose -f docker-compose.production.yml exec -T backend \
+          PENDING=$(docker compose exec -T backend \
             python manage.py showmigrations --plan 2>/dev/null | grep -c '^\[ \]') || true
           PENDING=${PENDING:-0}
           if [ "$PENDING" -gt 0 ]; then
