@@ -76,6 +76,14 @@ assumed.
     self-hosted runner does automatically, what stays manual (migrations,
     and the one-time data migration into the new `db` container), and how
     to confirm a deploy actually worked.
+12. **[12-permissions-and-docker-commands.md](12-permissions-and-docker-commands.md)** —
+    The two Linux accounts on the server (`admin`, who you log in as, and
+    `iwmsuser`, who the Actions runner runs as), who owns which directories
+    and how to repair them, why a command that works when you type it can
+    still fail in CI, and the fact that `deploy/systemd/` is gitignored so
+    the installed unit can silently go stale — the cause of the 2026-09-09
+    deploy failure, walked through end to end. Ends with a **Docker command
+    reference** using the current `docker-compose.yml` name (no `-f` flag).
 
 ## The one-paragraph map of the whole project
 
