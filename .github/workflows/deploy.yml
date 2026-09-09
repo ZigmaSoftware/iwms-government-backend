@@ -1,60 +1,118 @@
 name: IWMS Government Backend CI/CD
 
-# Trigger:
-#   - push to "dev"  -> does nothing
-#   - push to "main" -> builds/pushes a Docker image, then deploys it to the server
-# Pushes to any other branch (e.g. sathya, lux, sameer, vinoth) do nothing.
+# Trigger: push to "main" ONLY -> build the image on the server itself and
+# restart the service. Pushes to dev or any feature branch do nothing at all -
+# the workflow does not even start.
+#
+# WHY A SELF-HOSTED RUNNER
+# GitHub's cloud runners cannot reach this server: only ports 3000/9001/80 are
+# forwarded from the public IP (115.245.93.26 -> 192.168.1.128), and 22 is not.
+# A self-hosted runner polls GitHub *outbound* over HTTPS, so no inbound port,
+# no router change and no SSH key are needed. That also means the image is
+# built where it runs, so GHCR is not in the deploy path at all.
 on:
   push:
-    branches: [dev, main]
-
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/iwms-government-backend
+    branches: [main]
+  workflow_dispatch:        # allow a manual re-deploy from the Actions tab
 
 jobs:
-  build-and-push:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+  deploy:
+    runs-on: [self-hosted, iwms-government]
+    # Never let two deploys touch the same containers at once.
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
+      # The runner works in its own directory; the live deployment (with its
+      # .env, media/ and static/) lives here. Build from the checkout, then
+      # restart the service in the deployment directory.
       - name: Build image
         run: |
           docker build \
-            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -t ${{ env.IMAGE_NAME }}:latest \
+            -t ghcr.io/zigmasoftware/iwms-government-backend:${{ github.sha }} \
+            -t ghcr.io/zigmasoftware/iwms-government-backend:latest \
             .
 
-      - name: Push image
+      # Fail before touching the running service if the new image cannot reach
+      # MySQL. network_mode: host + DB_HOST=localhost is what makes this work;
+      # a bridged container cannot reach the loopback-bound database.
+      - name: Smoke-test the new image against the database
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.IMAGE_NAME }}:latest
+          docker run --rm --env-file .env --network host \
+            ghcr.io/zigmasoftware/iwms-government-backend:${{ github.sha }} \
+            python -c "
+          import os, django
+          os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')
+          django.setup()
+          from django.db import connection
+          with connection.cursor() as c:
+              c.execute('SELECT DATABASE()')
+              print('DB OK:', c.fetchone()[0])
+          "
 
-  deploy:
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: SSH and deploy
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            set -e
-            cd /home/admin/localserver/iwmsGovernment/iwms-government-backend
-            docker compose -f docker-compose.production.yml pull backend
-            docker compose -f docker-compose.production.yml up -d backend
-            docker image prune -f
+      - name: Restart the service
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: sudo /usr/bin/systemctl restart iwms-government-backend
+
+      # NOTE: `migrate` is deliberately NOT run here.
+      #
+      # This project does not track migrations in git (.gitignore excludes
+      # **/migrations/*), so a CI checkout has an empty app/migrations/ and
+      # `migrate` fails with:
+      #   ValueError: Dependency on app with no migrations: app
+      #
+      # Schema changes stay a developer action, matching the team workflow in
+      # helpDoc/05: whoever changes a model runs makemigrations + migrate
+      # themselves. If a deploy needs a schema change, run it on the server
+      # BEFORE pushing:
+      #   docker compose -f docker-compose.production.yml exec backend \
+      #     python manage.py migrate
+      - name: Collect static files
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: |
+          for i in $(seq 1 30); do
+            docker compose -f docker-compose.production.yml exec -T backend true 2>/dev/null && break
+            sleep 2
+          done
+          docker compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
+
+      # Warn (do not fail) if the running code expects migrations the DB lacks.
+      - name: Check for unapplied migrations
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        continue-on-error: true
+        run: |
+          # grep -c exits 1 when it finds nothing, so capture the count first
+          # and normalise it - "|| echo 0" on the same line yields "0\n0".
+          PENDING=$(docker compose -f docker-compose.production.yml exec -T backend \
+            python manage.py showmigrations --plan 2>/dev/null | grep -c '^\[ \]') || true
+          PENDING=${PENDING:-0}
+          if [ "$PENDING" -gt 0 ]; then
+            echo "::warning::$PENDING unapplied migration(s) on the server - run 'manage.py migrate' there"
+          else
+            echo "no unapplied migrations"
+          fi
+
+      # 401 = healthy: auth rejecting an unauthenticated request proves Django
+      # ran and reached MySQL. 000 = nothing listening, 500 = database problem.
+      - name: Verify the API is serving
+        run: |
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+              http://127.0.0.1:9001/api/v1/masters/districts/ || echo 000)
+            case "$CODE" in
+              200|401|403) echo "API healthy (HTTP $CODE)"; exit 0 ;;
+            esac
+            sleep 2
+          done
+          echo "::error::API did not become healthy (last HTTP $CODE)"
+          sudo /usr/bin/systemctl status iwms-government-backend --no-pager -n 30 || true
+          exit 1
+
+      - name: Prune dangling images
+        if: always()
+        run: docker image prune -f

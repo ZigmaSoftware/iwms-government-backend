@@ -51,6 +51,15 @@ assumed.
 8. **[08-unit-testing-guide.md](08-unit-testing-guide.md)** — How the test
    suite is wired (pytest + SQLite in-memory), the fixtures available in
    `conftest.py`, how to write a model test, and how to run coverage.
+9. **[09-docker-cutover-2026-09-08.md](09-docker-cutover-2026-09-08.md)** —
+   What actually happened when this server moved from `.venv`+`runserver` to
+   Docker on 2026-09-08: why the compose file uses `network_mode: host` (and
+   therefore has no `ports:`), why `SECRET_KEY` must keep its `$$` escaping,
+   every command the cutover used, and the outstanding items — including
+   `DEBUG=True` still being live in production. Ends with a **Docker basics**
+   section — start/stop/restart, kill/recreate, logs, shells, images, health
+   checks — which the frontend repo mirrors at
+   `../../iwms-government-frontend/helpDoc/02-docker-basics.md`.
 
 ## The one-paragraph map of the whole project
 

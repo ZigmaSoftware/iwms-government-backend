@@ -1,0 +1,17 @@
+# Allow the GitHub Actions self-hosted runner to restart only the two IWMS
+# Government services, without a password.
+#
+# Both admin and iwmsuser are covered so the runner service can be installed
+# as either one. Deliberately narrow: exact binary path, exact unit names, no
+# wildcards. Grants nothing else - not stop, not other units, not arbitrary
+# commands.
+User_Alias IWMS_DEPLOYERS = admin, iwmsuser
+
+Cmnd_Alias IWMS_SERVICE_CTL = /usr/bin/systemctl restart iwms-government-backend, \
+                              /usr/bin/systemctl restart iwms-government-frontend, \
+                              /usr/bin/systemctl status iwms-government-backend, \
+                              /usr/bin/systemctl status iwms-government-frontend, \
+                              /usr/bin/systemctl is-active iwms-government-backend, \
+                              /usr/bin/systemctl is-active iwms-government-frontend
+
+IWMS_DEPLOYERS ALL=(root) NOPASSWD: IWMS_SERVICE_CTL

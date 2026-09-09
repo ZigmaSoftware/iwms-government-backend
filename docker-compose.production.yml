@@ -1,11 +1,27 @@
+# IWMS Government Backend — production compose
+#
+# network_mode: host — the container shares the host's network stack so that
+# DB_HOST=localhost reaches MySQL/MariaDB on 127.0.0.1:3306. MySQL is bound
+# to loopback only (bind-address = 127.0.0.1) and is deliberately NOT exposed
+# to the docker bridge; host networking is what makes that work unchanged.
+#
+# Consequence: no "ports:" mapping — in host mode gunicorn binds the host's
+# 0.0.0.0:9001 directly (see Dockerfile CMD).
 services:
   backend:
     image: ghcr.io/zigmasoftware/iwms-government-backend:latest
     build: .
     env_file: .env
-    ports:
-      - "9001:9001"
+    network_mode: host
     volumes:
       - ./media:/app/media
       - ./static:/app/static
+      # Migrations are gitignored (**/migrations/*), so a CI build - which
+      # works from a git checkout - produces an image with an EMPTY
+      # app/migrations/. Without this mount `manage.py migrate` inside the
+      # container dies with:
+      #   ValueError: Dependency on app with no migrations: app
+      # Mounting the host's real migration files makes migrate work in any
+      # container, CI-built or locally built, without tracking them in git.
+      - ./app/migrations:/app/app/migrations
     restart: always
