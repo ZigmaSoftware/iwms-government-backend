@@ -42,6 +42,7 @@ class StaffcreationOfficeDetails(BaseMaster):
     )
     employee_name = models.CharField(max_length=200)
     staff_config_name = models.CharField(max_length=150, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
     doj = models.DateField(blank=True, null=True)
     department = models.CharField(max_length=200, blank=True, null=True)
     designation = models.CharField(max_length=200, blank=True, null=True)

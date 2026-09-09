@@ -295,6 +295,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             # Office details
             "employee_name",
             "staff_config_name",
+            "description",
             "doj",
             "staff_head_id",
             "staff_head",
