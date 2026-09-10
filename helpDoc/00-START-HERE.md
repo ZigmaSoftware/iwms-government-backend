@@ -25,11 +25,16 @@ iwms-government-backend/
 │   ├── models/, serializers/, viewsets/, urls/   <- one module per domain
 │   ├── permissions/, middleware/, services/, utils/
 │   └── migrations/                <- generated per machine, NOT in git
-├── deploy/                       <- systemd units, sudoers, Apache config
+├── deploy/                       <- systemd unit, sudoers (Apache config
+│                                    lives in the FRONTEND repo — one shared
+│                                    vhost proxies both services, see below)
 └── .env                          <- this machine's own settings, NOT in git
 ```
 
 Everything is served under `/api/v1/`; interactive docs at `/api/v1/swagger/`.
+In production, requests never reach this API directly — Apache (on the host,
+outside any container) proxies `/api/` and `/admin/` to it; see
+`../../iwms-government-frontend/helpDoc/04-cicd-flow.md#how-apache-fits-into-this`.
 
 ## Where to go next
 
