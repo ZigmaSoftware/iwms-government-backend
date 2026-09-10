@@ -299,6 +299,59 @@ OTP_MAX_REQUESTS_PER_WINDOW = int(os.getenv('OTP_MAX_REQUESTS_PER_WINDOW', 3))
 OTP_RATE_WINDOW_MINUTES = int(os.getenv('OTP_RATE_WINDOW_MINUTES', 10))
 
 # -------------------------------------------------------
+# ATTENDANCE FACE RECOGNITION
+# -------------------------------------------------------
+# Which engine verifies attendance selfies. Both are fully supported; this is
+# the only line that has to change to switch, plus a server restart. The
+# register/recognise HTTP contract is identical either way, so the mobile app
+# needs no rebuild — it can read the active provider from
+# `GET attendance/face-config/`.
+#
+#   compreface  — the hosted CompreFace API (unchanged, long-standing default)
+#   insightface — recognition running inside this server, no external API
+#
+# Left unset it stays on CompreFace, so deploying this change on its own does
+# not silently move anyone onto a different engine.
+FACE_RECOGNITION_PROVIDER = os.getenv("FACE_RECOGNITION_PROVIDER", "compreface")
+
+# --- CompreFace (hosted API) ---
+# These were hardcoded in the attendance viewsets; they live here now so the
+# host can be repointed and the key rotated without a code change.
+COMPREFACE_VERIFY_URL = os.getenv(
+    "COMPREFACE_VERIFY_URL",
+    "http://125.17.238.158:8000/api/v1/verification/verify",
+)
+COMPREFACE_API_KEY = os.getenv(
+    "COMPREFACE_API_KEY", "c4bb2855-e789-45e4-8dcd-903f03e03f2f"
+)
+COMPREFACE_TIMEOUT = int(os.getenv("COMPREFACE_TIMEOUT", "30"))
+# CompreFace's own 0-1 confidence. NOT comparable to the cosine similarity
+# InsightFace reports below — each provider carries its own cutoff.
+COMPREFACE_MATCH_THRESHOLD = float(os.getenv("COMPREFACE_MATCH_THRESHOLD", "0.95"))
+
+# --- InsightFace (in-process) ---
+# Model pack, auto-downloaded to FACE_MODEL_ROOT (~/.insightface) on first
+# use. buffalo_s is small and fast; buffalo_l is more accurate but a larger
+# download and slower on CPU.
+FACE_MODEL_NAME = os.getenv("FACE_MODEL_NAME", "buffalo_s")
+FACE_MODEL_ROOT = os.getenv("FACE_MODEL_ROOT", "")
+FACE_DET_SIZE = int(os.getenv("FACE_DET_SIZE", "640"))
+# Cosine similarity between normalised ArcFace embeddings: genuine matches sit
+# around 0.45-0.75, different people around 0.0-0.25. Tune against real punch
+# photos before trusting it — and never reuse CompreFace's 0.95 here, which
+# would reject every genuine employee.
+FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", "0.5"))
+# Caps the CPU threads one inference may take, so a shift-start burst of
+# punches cannot starve the rest of the API on a shared server.
+FACE_ONNX_THREADS = int(os.getenv("FACE_ONNX_THREADS", "2"))
+FACE_MAX_IMAGE_EDGE = int(os.getenv("FACE_MAX_IMAGE_EDGE", "1280"))
+FACE_MIN_DET_SCORE = float(os.getenv("FACE_MIN_DET_SCORE", "0.5"))
+FACE_MIN_PIXELS = int(os.getenv("FACE_MIN_PIXELS", "60"))
+# Laplacian-variance blur gate. A quality check, not anti-spoofing — a sharp
+# photo of a photo passes it. 0 disables.
+FACE_MIN_SHARPNESS = float(os.getenv("FACE_MIN_SHARPNESS", "0"))
+
+# -------------------------------------------------------
 # JWT CONFIG (import at the end)
 # -------------------------------------------------------
 from .settings_jwt import *

@@ -71,6 +71,22 @@ class StaffcreationOfficeDetails(BaseMaster):
         null=True,
         help_text="Reference face image used for attendance recognition.",
     )
+    # Face vector for the reference image above, written when attendance is
+    # running on a provider that compares embeddings (InsightFace) so a punch
+    # only has to process the incoming selfie instead of both images.
+    # Stays null under CompreFace, which compares the two image files on its
+    # own server and has nothing to cache here. Because it is only a cache of
+    # `attendance_reg_image`, it is cleared whenever that image is replaced
+    # and can always be rebuilt from it.
+    face_embedding = models.JSONField(
+        blank=True,
+        null=True,
+        editable=False,
+        help_text=(
+            "Cached face vector derived from attendance_reg_image. Provider-"
+            "specific; cleared and recomputed when the reference image changes."
+        ),
+    )
     qr_code = models.ImageField(upload_to="staff_qr/", blank=True, null=True)
     active_status = models.BooleanField(default=True)
 
