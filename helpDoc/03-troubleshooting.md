@@ -37,5 +37,8 @@ docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml logs --since 24h backend | grep generate_daily_trips
 ```
 
-Apache's own logs (reverse proxy, host-side) are separate:
-`/var/log/apache2/iwms-government-error.log` / `-access.log`.
+Apache is running on the host but its `iwms-government` reverse-proxy vhost
+is **not currently installed** (verified — only the stock default site is
+enabled), so `/var/log/apache2/iwms-government-*.log` does not exist yet.
+Production is reached directly on `:9001` today. See the frontend's
+`helpDoc/04-cicd-flow.md` for the full detail.

@@ -109,7 +109,10 @@ bridged container's connection is refused twice over; host networking makes
 the container share the host's loopback, satisfying both restrictions
 without loosening either. One consequence: `ports:` is not used in prod
 (illegal under `network_mode: host`) — gunicorn just binds `0.0.0.0:9001`
-inside the image, and Apache reverse-proxies to `127.0.0.1:9001` as before.
+inside the image, so port 9001 is reachable on the public interface
+directly. (A reverse-proxy vhost exists in the frontend repo's
+`deploy/apache/` but is not currently installed on the server — see the
+frontend's `helpDoc/04-cicd-flow.md` for the verified current state.)
 
 Always pass `-f docker-compose.prod.yml` explicitly for any production
 command — there is no default that happens to be correct for prod. A bare
