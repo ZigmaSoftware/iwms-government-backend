@@ -42,21 +42,28 @@ jobs:
       # deployment clone at this fixed path, which is never otherwise touched
       # by this workflow. Without this step that directory can lag main.
       - name: Sync the deployment directory to this commit
-        working-directory: /home/admin/localserver/iwmsGovernement/iwms-government-backend
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
           git fetch origin main
           git checkout --force "${{ github.sha }}"
 
       # Production has no db container (see docker-compose.prod.yml) — it
-      # connects to the externally-managed host MySQL/MariaDB directly, via
-      # host.docker.internal. Fail before touching the running service if the
-      # new image cannot reach it.
+      # connects to the externally-managed host MySQL/MariaDB. Fail before
+      # touching the running service if the new image cannot reach it.
+      #
+      # --network host (NOT --add-host host.docker.internal) so this mirrors
+      # exactly how docker-compose.prod.yml runs the container. The bridge
+      # route cannot work here: MariaDB listens on 127.0.0.1 only, and the
+      # DB_USER (root) is granted for 'root'@'localhost' only, so a connection
+      # from a docker bridge IP fails with
+      #   (2003, "Can't connect to MySQL server ... (timed out)").
+      # DB_HOST is deliberately NOT overridden — .env already has
+      # DB_HOST=localhost, which resolves over the host's loopback here.
       - name: Smoke-test the new image against the database
-        working-directory: /home/admin/localserver/iwmsGovernement/iwms-government-backend
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
           docker run --rm --env-file .env \
-            --add-host=host.docker.internal:host-gateway \
-            -e DB_HOST=host.docker.internal \
+            --network host \
             ghcr.io/zigmasoftware/iwms-government-backend:${{ github.sha }} \
             python -c "
           import os, django
@@ -69,7 +76,7 @@ jobs:
           "
 
       - name: Restart the service
-        working-directory: /home/admin/localserver/iwmsGovernement/iwms-government-backend
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: sudo /usr/bin/systemctl restart iwms-government-backend
 
       # Migrations are gitignored (.gitignore excludes **/migrations/*), so a
@@ -84,7 +91,7 @@ jobs:
       # automatically; migrate is idempotent and a no-op when there is
       # nothing new to apply.
       - name: Apply database migrations
-        working-directory: /home/admin/localserver/iwmsGovernement/iwms-government-backend
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
           for i in $(seq 1 30); do
             docker compose -f docker-compose.prod.yml exec -T backend true 2>/dev/null && break
@@ -96,7 +103,7 @@ jobs:
       # No wait-loop needed here — the "Apply database migrations" step
       # above already waited for the container to accept exec.
       - name: Collect static files
-        working-directory: /home/admin/localserver/iwmsGovernement/iwms-government-backend
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: docker compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
 
       # Sanity check, not a reminder anymore — migrate now runs automatically
@@ -104,7 +111,7 @@ jobs:
       # migrate silently didn't apply something it should have; investigate
       # rather than ignore the warning.
       - name: Check for unapplied migrations
-        working-directory: /home/admin/localserver/iwmsGovernement/iwms-government-backend
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         continue-on-error: true
         run: |
           # grep -c exits 1 when it finds nothing, so capture the count first
