@@ -56,3 +56,6 @@ dist/
 
 # Local AI prompts
 /prompt.md
+
+# === Server-only systemd unit files (never commit — install manually on server) ===
+deploy/systemd/

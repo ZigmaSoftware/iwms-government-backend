@@ -1,0 +1,70 @@
+# IWMS Government Backend — LOCAL DEV compose
+#
+# Production no longer uses this file — see docker-compose.prod.yml, which
+# runs only `backend` against the external host-managed MySQL instead of a
+# containerized db. This file (db + backend, DB_HOST=db) is for local
+# development only, where a disposable containerized DB is convenient.
+#
+# DB runs as its own container ("db", mariadb:11.8) on the default compose
+# network. backend reaches it at the hostname "db" (Docker's internal DNS),
+# not via network_mode: host / localhost.
+#
+# IMPORTANT — data safety:
+#   The db service uses a NAMED VOLUME (iwms_gov_db). Compose never deletes a
+#   named volume on `up`, `restart`, or plain `down` — only `down -v` would.
+#   deploy.yml deliberately runs `docker compose up -d db` (never
+#   `--force-recreate`, `down`, or `down -v`) so an EXISTING db
+#   container/volume is left completely untouched, and only a genuinely
+#   MISSING one gets created fresh.
+#
+# Migrating data from the old host-installed MariaDB into this container is a
+# separate, manual, one-time step — NOT something CI/CD does automatically.
+# Until that migration happens, a freshly created db container starts EMPTY.
+services:
+  db:
+    image: mariadb:11.8
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-iwmsdbGovernment}
+      MARIADB_USER: ${DB_USER:-iwms_prod}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      # root password kept equal to DB_PASSWORD so DB_USER=root (as .env is
+      # normally configured for this project) also works unchanged.
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - iwms_gov_db:/var/lib/mysql
+    restart: always
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    build: .
+    env_file: .env
+    environment:
+      # Always target the compose-managed db container, regardless of
+      # whatever DB_HOST happens to be set to in .env.
+      DB_HOST: db
+      DB_PORT: 3306
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+      # Migrations are gitignored (**/migrations/*), so a CI build - which
+      # works from a git checkout - produces an image with an EMPTY
+      # app/migrations/. Without this mount `manage.py migrate` inside the
+      # container dies with:
+      #   ValueError: Dependency on app with no migrations: app
+      # Mounting the host's real migration files makes migrate work in any
+      # container, CI-built or locally built, without tracking them in git.
+      - ./app/migrations:/app/app/migrations
+    restart: always
+
+volumes:
+  iwms_gov_db:

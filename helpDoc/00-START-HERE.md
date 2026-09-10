@@ -1,92 +1,46 @@
-# IWMS Government Backend — Help Docs (Start Here)
+# IWMS Government Backend — Start Here
 
-This `helpDoc/` folder explains the entire `iwms-government-backend` project
-from scratch, assuming you know nothing about it yet — not the architecture,
-not Django, not this team's specific workflow. Read the files in order the
-first time; after that, use them as reference.
+Django + Django REST Framework API for government/civic waste management
+(state → district → local body → ward). It is the sibling of the private
+`iwms-backend`, same stack and URL-routing conventions, but scoped to
+government hierarchy instead of multi-tenant companies.
 
-If you only remember one thing from this whole folder, remember this:
+> **If you remember one thing:** this is ONE Django project with ONE app
+> (`app/`) — not microservices. Masters, staff, complaints, leader portals
+> and reports are all modules inside that single app, each exposed under its
+> own URL group. And `app/migrations/` is **gitignored** — pulling code never
+> gives you the database schema. You must run `migrate` yourself on every
+> machine (see [01-local-dev.md](01-local-dev.md)).
 
-> **This is ONE Django project with ONE database and ONE app (`app/`). It is
-> not microservices. What makes it look big is that a single app holds every
-> module — masters, staff, complaints, leader portals, reports — each exposed
-> under its own URL group. Database tables are NOT created by pulling code;
-> they appear only when someone runs `migrate` on that machine, and sample
-> data appears only when someone runs `seed`.**
-
-This backend is the sibling of `iwms-backend` ("private") — same Django/DRF
-stack, same `GroupedRouter` URL convention, same not-tracking-migrations
-strategy — but it serves a different audience: **government/civic bodies**
-(state → district → local body → ward), not multi-tenant companies. Where
-they diverge is called out explicitly throughout this folder rather than
-assumed.
-
-## Reading order
-
-1. **[01-architecture-overview.md](01-architecture-overview.md)** — What the
-   project actually is: one Django project, one app, many URL groups. How a
-   request travels from the browser to a database row and back.
-2. **[02-database-and-env.md](02-database-and-env.md)** — Where the
-   database host/password come from, the `.env` file, how to create the
-   MySQL database, and how migrations really work here.
-3. **[03-app-structure.md](03-app-structure.md)** — A tour of `app/`:
-   models, serializers, viewsets, permissions, middleware, services, and how
-   the custom router turns a viewset into a URL.
-4. **[04-commands-reference.md](04-commands-reference.md)** — Every command
-   you will actually type: setup, run, migrate, seed (all groups listed),
-   backfill commands, the nightly scheduler.
-5. **[05-team-workflow.md](05-team-workflow.md)** — The day-to-day workflow:
-   a developer builds a feature locally, pushes code, and what each other
-   developer must run to get the new tables on their own machine.
-6. **[06-gitignore-and-secrets.md](06-gitignore-and-secrets.md)** — What is
-   and isn't tracked in git, and why (passwords, migration files, caches,
-   per-machine scripts) — including a real leak found and fixed in this
-   repo, and what to still do about it.
-7. **[07-deployment-and-troubleshooting.md](07-deployment-and-troubleshooting.md)** —
-   First-time server setup, `ALLOWED_HOSTS`/CORS, the shell scripts this repo
-   actually ships (`manage.sh`, `scheduler.sh`, `server_uv_sync.sh`), and a
-   troubleshooting table of real problems already hit.
-8. **[08-unit-testing-guide.md](08-unit-testing-guide.md)** — How the test
-   suite is wired (pytest + SQLite in-memory), the fixtures available in
-   `conftest.py`, how to write a model test, and how to run coverage.
-
-## The one-paragraph map of the whole project
+## The project, in one paragraph
 
 ```text
 iwms-government-backend/
-├── manage.py             <- the entry point for every django command
-├── manage.sh             <- wrapper: uses .venv if present, else `uv run`
-├── scheduler.sh           <- the nightly trip-generation cron entry point
-├── server_uv_sync.sh      <- `uv sync --locked` wrapper for deploys
-├── config/                <- project settings (NOT a Django app)
-│   ├── settings.py           <- database, apps, CORS, email, OTP, Firebase
-│   ├── settings_jwt.py       <- token lifetime and signing (issues BOTH
-│   │                            access AND refresh tokens — see 01)
-│   ├── test_settings.py      <- same, but SQLite in-memory for tests
-│   └── urls.py                <- top-level routes + Swagger UI
-├── app/                  <- THE app — all business code lives here
-│   ├── models/               <- database tables, grouped by domain
-│   ├── serializers/          <- JSON in/out validation
-│   ├── viewsets/             <- the API endpoints
-│   ├── urls/                 <- custom router that builds /api/v1/<group>/...
-│   ├── permissions/          <- who may call what
-│   ├── middleware/           <- runs on every request
-│   ├── services/             <- business logic too big for a viewset
-│   ├── utils/hierarchy.py    <- the geography scoping engine — see 01
-│   ├── management/commands   <- `seed`, backfills, `generate_daily_trips`
-│   └── migrations/           <- generated per machine, NOT in git
-├── tests/                <- pytest suite, mirrors the app structure
-├── media/                <- user uploads (not in git)
-├── .env                  <- this machine's own settings (NOT in git)
-└── .env.example          <- does not exist yet — see 02 and 06
+├── manage.py, manage.sh          <- entry point / local-dev wrapper
+├── Dockerfile                    <- production image (gunicorn)
+├── docker-compose.yml            <- LOCAL dev (backend + db containers)
+├── docker-compose.prod.yml       <- PRODUCTION (backend only, external DB)
+├── config/                       <- settings, urls, JWT config (not an app)
+├── app/                          <- the app — all business code
+│   ├── models/, serializers/, viewsets/, urls/   <- one module per domain
+│   ├── permissions/, middleware/, services/, utils/
+│   └── migrations/                <- generated per machine, NOT in git
+├── deploy/                       <- systemd unit, sudoers (Apache config
+│                                    lives in the FRONTEND repo — one shared
+│                                    vhost proxies both services, see below)
+└── .env                          <- this machine's own settings, NOT in git
 ```
 
-Everything the API serves is reachable under `/api/v1/`. Interactive API
-docs are at `/api/v1/swagger/` once the server is running.
+Everything is served under `/api/v1/`; interactive docs at `/api/v1/swagger/`.
+In production, requests never reach this API directly — Apache (on the host,
+outside any container) proxies `/api/` and `/admin/` to it; see
+`../../iwms-government-frontend/helpDoc/04-cicd-flow.md#how-apache-fits-into-this`.
 
-## Who is this for?
+## Where to go next
 
-Anyone who needs to work on, deploy, or simply understand this backend —
-including someone who has never opened this repo before and has no Django
-background. Every file tries to explain *why* something is set up the way it
-is, not just *what* the command is.
+- **[01-local-dev.md](01-local-dev.md)** — run this repo on your own machine.
+- **[02-production-deploy.md](02-production-deploy.md)** — what happens on
+  push to `main`, and how to do it by hand if you ever need to.
+- **[03-troubleshooting.md](03-troubleshooting.md)** — symptom → cause → fix.
+- **[04-cicd-flow.md](04-cicd-flow.md)** — the branch flow (developer → `dev`
+  → `main`) and the self-hosted runner that turns a push into a deploy.

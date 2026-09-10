@@ -1,0 +1,146 @@
+name: IWMS Government Backend CI/CD
+
+# Trigger: push to "main" ONLY -> build the image on the server itself and
+# restart the service. Pushes to dev or any feature branch do nothing at all -
+# the workflow does not even start.
+#
+# WHY A SELF-HOSTED RUNNER
+# GitHub's cloud runners cannot reach this server: only ports 3000/9001/80 are
+# forwarded from the public IP (115.245.93.26 -> 192.168.1.128), and 22 is not.
+# A self-hosted runner polls GitHub *outbound* over HTTPS, so no inbound port,
+# no router change and no SSH key are needed. That also means the image is
+# built where it runs, so GHCR is not in the deploy path at all.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # allow a manual re-deploy from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, iwms-government]
+    # Never let two deploys touch the same containers at once.
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # The runner works in its own directory; the live deployment (with its
+      # .env, media/ and static/) lives here. Build from the checkout, then
+      # restart the service in the deployment directory.
+      - name: Build image
+        run: |
+          docker build \
+            -t ghcr.io/zigmasoftware/iwms-government-backend:${{ github.sha }} \
+            -t ghcr.io/zigmasoftware/iwms-government-backend:latest \
+            .
+
+      # The runner's checkout above only updates its own workspace. Every
+      # step below runs `docker compose` against the separate, persistent
+      # deployment clone at this fixed path, which is never otherwise touched
+      # by this workflow. Without this step that directory can lag main.
+      - name: Sync the deployment directory to this commit
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: |
+          git fetch origin main
+          git checkout --force "${{ github.sha }}"
+
+      # Production has no db container (see docker-compose.prod.yml) — it
+      # connects to the externally-managed host MySQL/MariaDB. Fail before
+      # touching the running service if the new image cannot reach it.
+      #
+      # --network host (NOT --add-host host.docker.internal) so this mirrors
+      # exactly how docker-compose.prod.yml runs the container. The bridge
+      # route cannot work here: MariaDB listens on 127.0.0.1 only, and the
+      # DB_USER (root) is granted for 'root'@'localhost' only, so a connection
+      # from a docker bridge IP fails with
+      #   (2003, "Can't connect to MySQL server ... (timed out)").
+      # DB_HOST is deliberately NOT overridden — .env already has
+      # DB_HOST=localhost, which resolves over the host's loopback here.
+      - name: Smoke-test the new image against the database
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: |
+          docker run --rm --env-file .env \
+            --network host \
+            ghcr.io/zigmasoftware/iwms-government-backend:${{ github.sha }} \
+            python -c "
+          import os, django
+          os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')
+          django.setup()
+          from django.db import connection
+          with connection.cursor() as c:
+              c.execute('SELECT DATABASE()')
+              print('DB OK:', c.fetchone()[0])
+          "
+
+      - name: Restart the service
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: sudo /usr/bin/systemctl restart iwms-government-backend
+
+      # Migrations are gitignored (.gitignore excludes **/migrations/*), so a
+      # bare CI checkout has an empty app/migrations/. docker-compose.prod.yml
+      # bind-mounts the server's real, persistent migration files into the
+      # container (./app/migrations:/app/app/migrations), so running migrate
+      # INSIDE the container, via `docker compose exec`, uses the real
+      # migration history, not the checkout's empty one.
+      #
+      # makemigrations runs first so a developer's model change that was
+      # pushed without a matching migration file still gets applied
+      # automatically; migrate is idempotent and a no-op when there is
+      # nothing new to apply.
+      - name: Apply database migrations
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: |
+          for i in $(seq 1 30); do
+            docker compose -f docker-compose.prod.yml exec -T backend true 2>/dev/null && break
+            sleep 2
+          done
+          docker compose -f docker-compose.prod.yml exec -T backend python manage.py makemigrations --noinput
+          docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+
+      # No wait-loop needed here — the "Apply database migrations" step
+      # above already waited for the container to accept exec.
+      - name: Collect static files
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: docker compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
+
+      # Sanity check, not a reminder anymore — migrate now runs automatically
+      # above, so this should always report 0. A non-zero count here means
+      # migrate silently didn't apply something it should have; investigate
+      # rather than ignore the warning.
+      - name: Check for unapplied migrations
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        continue-on-error: true
+        run: |
+          # grep -c exits 1 when it finds nothing, so capture the count first
+          # and normalise it - "|| echo 0" on the same line yields "0\n0".
+          PENDING=$(docker compose -f docker-compose.prod.yml exec -T backend \
+            python manage.py showmigrations --plan 2>/dev/null | grep -c '^\[ \]') || true
+          PENDING=${PENDING:-0}
+          if [ "$PENDING" -gt 0 ]; then
+            echo "::warning::$PENDING unapplied migration(s) on the server - run 'manage.py migrate' there"
+          else
+            echo "no unapplied migrations"
+          fi
+
+      # 401 = healthy: auth rejecting an unauthenticated request proves Django
+      # ran and reached MySQL. 000 = nothing listening, 500 = database problem.
+      - name: Verify the API is serving
+        run: |
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+              http://127.0.0.1:9001/api/v1/masters/districts/ || echo 000)
+            case "$CODE" in
+              200|401|403) echo "API healthy (HTTP $CODE)"; exit 0 ;;
+            esac
+            sleep 2
+          done
+          echo "::error::API did not become healthy (last HTTP $CODE)"
+          sudo /usr/bin/systemctl status iwms-government-backend --no-pager -n 30 || true
+          exit 1
+
+      - name: Prune dangling images
+        if: always()
+        run: docker image prune -f

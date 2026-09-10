@@ -38,3 +38,4 @@ onnxruntime>=1.19
 opencv-python-headless>=4.10
 numpy>=1.26
 ml_dtypes>=0.5
+python-dotenv>=1.2.2
