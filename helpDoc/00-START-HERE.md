@@ -32,9 +32,12 @@ iwms-government-backend/
 ```
 
 Everything is served under `/api/v1/`; interactive docs at `/api/v1/swagger/`.
-In production, requests never reach this API directly — Apache (on the host,
-outside any container) proxies `/api/` and `/admin/` to it; see
-`../../iwms-government-frontend/helpDoc/04-cicd-flow.md#how-apache-fits-into-this`.
+An Apache reverse-proxy setup exists in the frontend repo's `deploy/apache/`
+but is **not currently installed** on the server — today, clients reach this
+API directly on `http://<public-ip>:9001` (`network_mode: host` in
+`docker-compose.prod.yml`), not through Apache. See
+`../../iwms-government-frontend/helpDoc/04-cicd-flow.md` (the "Apache"
+section) for the verified current state.
 
 ## Where to go next
 
