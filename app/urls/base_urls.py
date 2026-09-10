@@ -65,9 +65,7 @@ from ..viewsets.superadmin.staff_management.staff_access_dashboard_viewset impor
 from ..viewsets.superadmin.staff_management.unassigned_staff_pool_viewset import UnassignedStaffPoolViewSet
 
 # Authentication
-from ..viewsets.login.captcha_viewset import CaptchaViewSet
 from ..viewsets.login.login_viewset import LoginViewSet as DesktopLoginViewSet
-from ..viewsets.login.captcha_viewset import CaptchaViewSet
 from ..viewsets.login.permission_viewset import PermissionViewSet
 from ..viewsets.login.refresh_token_viewset import RefreshTokenViewSet
 from ..viewsets.auth.forgot_password_viewset import (
@@ -253,7 +251,6 @@ router.register_group("user-creations", "unassigned-staff-pool", UnassignedStaff
 # GROUP: AUTHENTICATION
 # ============================================================
 router.register_group("login", "login-user",      DesktopLoginViewSet)
-router.register_group("login", "captcha",         CaptchaViewSet)
 router.register_group("login", "my-permissions",     PermissionViewSet, basename="user-permissions")
 router.register_group("login", "refresh-token",     RefreshTokenViewSet, basename="refresh-token")
 

@@ -63,13 +63,73 @@ Check what's pending without applying anything:
 docker compose exec -T backend python manage.py showmigrations --plan
 ```
 
-Optional: seed sample data with `docker compose exec -T backend python
-manage.py seed --group <name>` (see `app/management/commands` for available
-groups). Seeding is disabled when `DJANGO_ENV=production`.
-
 This is local-only mechanics. Production's migration flow is different (it
 runs automatically on every deploy rather than by hand) — see
 [02-production-deploy.md](02-production-deploy.md#migrations).
+
+## Seed sample data
+
+```bash
+docker compose exec -T backend python manage.py seed              # everything, in dependency order
+docker compose exec -T backend python manage.py seed --group masters   # just one group
+```
+
+`--group` is optional — omitting it runs the full `"all"` list. Groups
+mostly mirror the URL router group names (`superadmin`, `common-masters`,
+`masters`, `waste-types`, `role-assigns`, `user-creations`,
+`transport-masters`, `schedule-setup`, `schedule-operations`,
+`screen-managements`, `collections`, `customer-masters`,
+`complaint-ticket`, `reports`, `driver-demo`, plus a few single-seeder
+shortcuts like `scheduler-demo`/`retrip-demo`/`vehicle-breakdowns`) — see
+`app/management/commands/seed.py`'s `SEED_GROUPS` dict for the authoritative,
+current list and a few legacy aliases (`assets` → `waste-types`,
+`schedule-masters` → `schedule-setup` + `schedule-operations`, etc.).
+
+**Order matters within a group and across groups** — e.g. `user-creations`
+needs `masters`/`role-assigns` seeded first, `schedule-operations` needs
+`schedule-setup`'s collection points to exist. Running the full `seed` (no
+`--group`) always gets the order right; running an individual group assumes
+its dependencies are already seeded.
+
+**Seeding is blocked outside local dev** — the command refuses to run
+unless `DEBUG=True` (and `settings.ENVIRONMENT` isn't `"production"`), both
+derived from `DJANGO_ENV` in `.env`. This is a real backend-enforced guard,
+not just a convention — the command exits immediately with an error message
+rather than seeding a production database by accident.
+
+## Poke around the database
+
+Open an interactive MySQL shell inside the `db` container:
+
+```bash
+docker compose exec db mariadb -u root -p iwmsdbGovernment
+```
+
+Prompts for the password — use `DB_PASSWORD` from `.env`, or skip the
+prompt entirely:
+
+```bash
+docker compose exec db mariadb -u root -p"$(grep DB_PASSWORD .env | cut -d= -f2)" iwmsdbGovernment
+```
+
+Once inside:
+
+```sql
+SHOW TABLES;                                       -- list every table
+DESCRIBE app_staffcreationofficedetails;            -- a table's columns
+SELECT * FROM app_staffcreationofficedetails LIMIT 10;  -- peek at rows
+EXIT;
+```
+
+Or run a one-off query straight from the host, without an interactive
+shell:
+
+```bash
+docker compose exec -T db mariadb -u root -p"$(grep DB_PASSWORD .env | cut -d= -f2)" iwmsdbGovernment -e "SHOW TABLES;"
+```
+
+phpMyAdmin (`192.168.1.128/phpmyadmin`) gives the same access through a
+browser UI if you'd rather click through tables than use the CLI.
 
 ## Check it's healthy
 
