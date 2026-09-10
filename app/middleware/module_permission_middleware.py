@@ -88,6 +88,11 @@ PUBLIC_PREFIXES = (
     "/api/v1/publicgrievance/",
     "/api/v1/attendance/register/",
     "/api/v1/attendance/staff-profile/",
+    # Which face engine attendance is running and its capture rules. Carries
+    # nothing about any individual, and the app reads it on the attendance
+    # screens so a provider switch in .env needs no mobile release — public
+    # for the same reason `register/` above is.
+    "/api/v1/attendance/face-config/",
     *PUBLIC_MOBILE_PREFIXES,
 )
 
