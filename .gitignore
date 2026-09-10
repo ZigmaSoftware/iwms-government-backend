@@ -17,10 +17,6 @@ __pycache__/
 # entry this once held.
 **/migrations/*
 !**/migrations/__init__.py
-!app/migrations/0002_add_vehiclebreakdown_new_assignment.py
-!app/migrations/0003_customercreation_app_module.py
-!app/migrations/0004_staffcreation_face_embedding.py
-
 
 # === Virtual Environments ===
 venv/
