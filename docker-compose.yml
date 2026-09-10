@@ -1,11 +1,13 @@
-# IWMS Government Backend — production compose
+# IWMS Government Backend — LOCAL DEV compose
 #
-# (Renamed from docker-compose.production.yml to docker-compose.yml — this is
-# now the default filename docker compose CLI picks up with no -f flag.)
+# Production no longer uses this file — see docker-compose.prod.yml, which
+# runs only `backend` against the external host-managed MySQL instead of a
+# containerized db. This file (db + backend, DB_HOST=db) is for local
+# development only, where a disposable containerized DB is convenient.
 #
 # DB runs as its own container ("db", mariadb:11.8) on the default compose
 # network. backend reaches it at the hostname "db" (Docker's internal DNS),
-# not via network_mode: host / localhost anymore.
+# not via network_mode: host / localhost.
 #
 # IMPORTANT — data safety:
 #   The db service uses a NAMED VOLUME (iwms_gov_db). Compose never deletes a

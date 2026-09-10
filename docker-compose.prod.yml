@@ -1,0 +1,35 @@
+# IWMS Government Backend — PRODUCTION compose
+#
+# Production connects to the existing, externally-managed MySQL/MariaDB on
+# the host (the one phpMyAdmin administers) — NOT a containerized db. There
+# is deliberately no `db:` service here; only `backend` runs.
+#
+# DB_HOST=host.docker.internal resolves to the host machine from inside the
+# container (extra_hosts below makes this work on Linux too, where Docker
+# does not map it by default). DB_PORT/DB_NAME/DB_USER/DB_PASSWORD come from
+# .env, same as before — just pointed at the host DB instead of a "db"
+# container.
+#
+# See docker-compose.yml for the LOCAL dev setup, which still runs its own
+# disposable db container.
+services:
+  backend:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    build: .
+    env_file: .env
+    environment:
+      DB_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+      # Migrations are gitignored (**/migrations/*), so a CI build - which
+      # works from a git checkout - produces an image with an EMPTY
+      # app/migrations/. Mounting the host's real migration files makes
+      # migrate/makemigrations work in any container, CI-built or local,
+      # without tracking them in git.
+      - ./app/migrations:/app/app/migrations
+    restart: always
