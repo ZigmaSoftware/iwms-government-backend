@@ -47,3 +47,6 @@ section) for the verified current state.
 - **[03-troubleshooting.md](03-troubleshooting.md)** — symptom → cause → fix.
 - **[04-cicd-flow.md](04-cicd-flow.md)** — the branch flow (developer → `dev`
   → `main`) and the self-hosted runner that turns a push into a deploy.
+- **[05-docker-hub-backup.md](05-docker-hub-backup.md)** — manual, personal
+  workflow for pushing copies of the three images to Docker Hub. Not part of
+  the real deploy pipeline (that never touches any registry).
