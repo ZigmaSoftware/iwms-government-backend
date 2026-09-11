@@ -53,6 +53,7 @@ def _snapshot_customer_address(customer):
 
 
 class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_address_change"
     serializer_class = ComplaintAddressChangeRequestSerializer
     lookup_field = "unique_id"
     AUDIT_MODULE = "complaint-ticket"

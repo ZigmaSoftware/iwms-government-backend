@@ -16,6 +16,7 @@ from rest_framework import viewsets
 
 
 class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "staffcreation"
     queryset = Staffcreation.objects.select_related(
         "personal_details",
         "staffusertype_id",

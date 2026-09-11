@@ -8,6 +8,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class GovernmentStaffUserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "government_staff_user_type"
     queryset = GovernmentStaffUserType.objects.filter(is_deleted=False)
     serializer_class = GovernmentStaffUserTypeSerializer
     lookup_field = "unique_id"

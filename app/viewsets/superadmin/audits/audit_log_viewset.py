@@ -5,6 +5,7 @@ from app.serializers.superadmin.audits.audit_log_serializer import AuditLogSeria
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    throttle_scope = "audit_log"
     http_method_names = ["get", "head", "options"]
     serializer_class = AuditLogSerializer
     permission_resource = "AuditLog"

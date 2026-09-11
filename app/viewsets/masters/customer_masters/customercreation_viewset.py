@@ -116,6 +116,7 @@ def get_or_create_apartment_qr(apartment_name, request):
 
 
 class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "customer_creation"
     permission_resource = "CustomerCreation"
     serializer_class = CustomerCreationSerializer
     lookup_field = "unique_id"

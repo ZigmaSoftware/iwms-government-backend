@@ -13,6 +13,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 
 
 class DashboardWidgetPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "dashboard_widget_permission"
     serializer_class = DashboardWidgetPermissionSerializer
     lookup_field = "unique_id"
     permission_resource = "DashboardWidgetPermission"

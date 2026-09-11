@@ -9,6 +9,7 @@ from app.serializers.masters.leader_management.panchayat_leader_serializer impor
 
 
 class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "panchayat_leader_login"
     queryset = PanchayatLeaderLogin.objects.select_related(
         "panchayat_id",
     ).filter(is_deleted=False)

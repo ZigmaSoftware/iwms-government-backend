@@ -10,6 +10,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class StaffUserTypeViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
+    throttle_scope = "staff_user_type"
     queryset = StaffUserType.objects.filter(is_deleted=False)
     serializer_class = StaffUserTypeSerializer
     lookup_field = "unique_id"

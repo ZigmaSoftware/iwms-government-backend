@@ -113,6 +113,7 @@ def _multi_values(params, key):
 
 class StaffAccessDashboardViewSet(ViewSet):
     """Read-only, scope-safe staff access and operational assignment dashboard."""
+    throttle_scope = "staff_access_dashboard"
 
     permission_classes = [IsAuthenticated]
     permission_resource = "StaffAccessDashboard"

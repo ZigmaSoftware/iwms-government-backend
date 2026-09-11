@@ -11,6 +11,7 @@ from app.serializers.core_modules.attendance import (
 
 
 class StaffProfileViewSet(viewsets.ViewSet):
+    throttle_scope = "staff_profile"
     permission_classes = [AllowAny]
     parser_classes = (MultiPartParser, FormParser)
 

@@ -38,6 +38,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
       PATCH  /{unique_id}/status/    — state machine transition
       PATCH  /{unique_id}/approval/  — approval flow (supervisor/admin only)
     """
+    throttle_scope = "daily_trip_assignment"
 
     queryset = DailyTripAssignment.objects.select_related(
         "trip_plan_id",

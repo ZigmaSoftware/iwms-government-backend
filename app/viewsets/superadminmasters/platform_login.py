@@ -15,6 +15,7 @@ from app.models.superadmin.staff_management.staffcreation import Staffcreation
 
 @method_decorator(csrf_exempt, name='dispatch')
 class PlatformLoginView(APIView):
+    throttle_scope = "platform_login"
     permission_classes = [AllowAny]
 
     def _password_matches(self, raw_password, stored_password):

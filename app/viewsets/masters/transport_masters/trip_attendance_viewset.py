@@ -25,6 +25,7 @@ class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
     columns, which are populated from the parent trip assignment on save
     (G1/G2/B2).
     """
+    throttle_scope = "trip_attendance"
 
     queryset = TripAttendance.objects.all()
     serializer_class = TripAttendanceSerializer

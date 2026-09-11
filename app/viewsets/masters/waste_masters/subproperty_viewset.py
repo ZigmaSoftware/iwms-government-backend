@@ -5,6 +5,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 
 class SubPropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "sub_property"
     queryset = SubProperty.objects.filter(is_deleted=False)\
         .select_related("property_id")\
         .order_by("sub_property_name")

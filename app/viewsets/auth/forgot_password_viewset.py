@@ -47,6 +47,7 @@ class ForgotPasswordView(APIView):
     Returns a session_token the client must include in the verify-otp call.
     """
     permission_classes = [AllowAny]
+    throttle_scope = "otp"
 
     def post(self, request):
         username = (request.data.get("username") or "").strip()
@@ -125,6 +126,7 @@ class VerifyOTPView(APIView):
     Verifies the OTP. On success returns a one-time reset_token.
     """
     permission_classes = [AllowAny]
+    throttle_scope = "otp"
 
     def post(self, request):
         session_token = (request.data.get("session_token") or "").strip()
@@ -174,6 +176,7 @@ class ResetPasswordView(APIView):
 
     Resets the customer's password. Invalidates the OTP afterwards.
     """
+    throttle_scope = "reset_password"
     permission_classes = [AllowAny]
 
     def post(self, request):

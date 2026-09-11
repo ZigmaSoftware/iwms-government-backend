@@ -121,6 +121,7 @@ def _active(qs):
 
 
 class DashboardSummaryViewSet(ViewSet):
+    throttle_scope = "dashboard_summary"
     permission_classes = [IsAuthenticated]
 
     def list(self, request):

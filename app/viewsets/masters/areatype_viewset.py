@@ -10,6 +10,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class AreaTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "area_type"
 
     serializer_class = AreaTypeSerializer
     # `name` included alongside the aliased `area_type_name` because

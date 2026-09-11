@@ -25,6 +25,7 @@ class _SoftDeleteMixin:
 
 
 class ComplaintRoutingRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_routing_rule"
     queryset = ComplaintRoutingRule.objects.filter(is_deleted=False).select_related(
         "category", "team"
     ).order_by("unique_id")
@@ -35,6 +36,7 @@ class ComplaintRoutingRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
 
 
 class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_feedback"
     serializer_class = ComplaintFeedbackSerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -55,6 +57,7 @@ class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
 
 
 class ComplaintReopenHistoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_reopen_history"
     serializer_class = ComplaintReopenHistorySerializer
     lookup_field = "unique_id"
     AUDIT_MODULE = "complaint-ticket"

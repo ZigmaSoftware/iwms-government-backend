@@ -31,6 +31,7 @@ def _r(value):
 
 
 class StateBodyDashboardViewSet(ViewSet):
+    throttle_scope = "state_body_dashboard"
     permission_classes = [IsAuthenticated]
 
     # ── helpers ─────────────────────────────────────────────────────────

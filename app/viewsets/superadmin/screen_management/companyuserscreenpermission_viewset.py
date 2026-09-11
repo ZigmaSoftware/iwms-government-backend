@@ -24,6 +24,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 
 
 class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "user_screen_permission"
     serializer_class = UserScreenPermissionSerializer
     lookup_field = "unique_id"
 

@@ -15,6 +15,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "trip_plan"
     queryset = TripPlan.objects.select_related(
         "state",
         "district",

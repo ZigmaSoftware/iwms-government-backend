@@ -8,6 +8,7 @@ from rest_framework import viewsets
 
 
 class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "department"
     queryset = Department.objects.filter(is_deleted=False)
     serializer_class = DepartmentSerializer
     lookup_field = "unique_id"

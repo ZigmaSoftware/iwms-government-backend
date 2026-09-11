@@ -39,3 +39,5 @@ opencv-python-headless>=4.10
 numpy>=1.26
 ml_dtypes>=0.5
 python-dotenv>=1.2.2
+redis>=5.0.0
+django-redis>=5.4.0

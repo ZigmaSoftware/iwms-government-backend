@@ -32,6 +32,7 @@ from rest_framework import viewsets
 
 
 class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "daily_trip_collection_point"
     serializer_class = DailyTripCollectionPointSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripCollectionPoint"

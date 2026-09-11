@@ -9,6 +9,7 @@ from app.serializers.masters.leader_management.district_leader_serializer import
 
 
 class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "district_leader_login"
     queryset = DistrictLeaderLogin.objects.select_related(
         "district_id",
     ).filter(is_deleted=False)

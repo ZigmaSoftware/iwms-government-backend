@@ -20,6 +20,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "daily_trip_log"
     queryset = (
         DailyTripLog.objects.select_related(
             "trip_assignment_id",

@@ -15,6 +15,7 @@ from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 
 
 class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "staff_access_configuration"
     queryset = Staffcreation.objects.select_related(
         "personal_details",
         "department_id",

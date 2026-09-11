@@ -9,6 +9,7 @@ from rest_framework import viewsets
 
 
 class StaffViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "staff"
     queryset = Staffcreation.objects.filter(is_deleted=False)
     serializer_class = StaffSerializer
     lookup_field = "staff_unique_id"

@@ -8,6 +8,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "collection_point"
     serializer_class = CollectionPointSerializer
     lookup_field = "unique_id"
 

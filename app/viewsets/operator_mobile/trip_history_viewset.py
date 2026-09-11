@@ -136,6 +136,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
     GET /api/v1/operator-mobile/trip-history/            (list)
     GET /api/v1/operator-mobile/trip-history/{trip_id}/  (detail)
     """
+    throttle_scope = "trip_history"
 
     permission_classes = [IsOperatorRole]
     lookup_field = "unique_id"

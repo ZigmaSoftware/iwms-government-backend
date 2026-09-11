@@ -122,6 +122,7 @@ def _staff_ticket_scope(user):
 
 
 class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_ticket"
     serializer_class = ComplaintTicketSerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

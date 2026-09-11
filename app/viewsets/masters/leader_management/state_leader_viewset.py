@@ -9,6 +9,7 @@ from app.serializers.masters.leader_management.state_leader_serializer import St
 
 
 class StateLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "state_leader_login"
     queryset = StateLeaderLogin.objects.select_related(
         "state_id",
     ).filter(is_deleted=False)

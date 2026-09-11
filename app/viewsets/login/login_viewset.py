@@ -22,6 +22,7 @@ def _client_ip(request):
 
 class LoginViewSet(ViewSet):
     permission_classes = [AllowAny]
+    throttle_scope = "login"
 
     def create(self, request):
         login_identifier = request.data.get("username", "").strip()
@@ -326,9 +327,9 @@ class LoginViewSet(ViewSet):
                 "role": role,
                 "staff_config_name": staff_config_name,
                 "permissions": permissions,
-                "permission_details": permission_details,
-                "column_permissions": column_permissions,
-                "module_access": module_access,
+                # "permission_details": permission_details,
+                # "column_permissions": column_permissions,
+                # "module_access": module_access,
                 "app_surfaces": app_surfaces,
                 "app_modules": app_modules,
                 "app_screens": app_screens,

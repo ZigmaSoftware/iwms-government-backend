@@ -32,6 +32,7 @@ from app.viewsets.operator_mobile.helpers import (
 
 class ScanBinViewSet(viewsets.ViewSet):
     """POST /api/v1/operator-mobile/scan-bin/"""
+    throttle_scope = "scan_bin"
 
     permission_classes = [IsOperatorRole]
 

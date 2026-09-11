@@ -8,6 +8,7 @@ from app.serializers.superadmin.screen_management.mainscreen_serializer import M
 
 
 class MainScreenViewSet(viewsets.ModelViewSet):
+    throttle_scope = "main_screen"
     serializer_class = MainScreenSerializer
     queryset = MainScreen.objects.filter(is_deleted=False)
     lookup_field = "unique_id"

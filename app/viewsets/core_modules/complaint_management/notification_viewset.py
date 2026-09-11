@@ -14,6 +14,7 @@ class ComplaintNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     platform AUTH_USER_MODEL (see app.authentication.jwt) - scope strictly to
     whichever one made the request so nobody sees another person's alerts.
     """
+    throttle_scope = "complaint_notification"
 
     serializer_class = ComplaintNotificationSerializer
     queryset = ComplaintNotification.objects.none()

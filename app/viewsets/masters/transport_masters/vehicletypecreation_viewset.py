@@ -8,6 +8,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class VehicleTypeCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "vehicle_type_creation"
     queryset = VehicleTypeCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleTypeCreationSerializer
     lookup_field = "unique_id"

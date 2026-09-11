@@ -12,6 +12,7 @@ from app.serializers.citizenLogin.login_serializer import LoginSerializer
 
 class CitizenLoginViewSet(viewsets.ViewSet):
     serializer_class = LoginSerializer
+    throttle_scope = "login"
 
     def get_serializer(self, *args, **kwargs):
         return self.serializer_class(*args, **kwargs)

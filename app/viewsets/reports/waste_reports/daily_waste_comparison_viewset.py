@@ -90,6 +90,7 @@ def percent(numerator, denominator):
 
 
 class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
+    throttle_scope = "daily_waste_comparison"
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
     queryset = DailyWasteComparison.objects.select_related(

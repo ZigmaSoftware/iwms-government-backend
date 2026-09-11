@@ -5,6 +5,7 @@ from app.serializers.masters.customer_masters.userchargerule_serializer import U
 
 
 class UserChargeRuleViewSet(viewsets.ModelViewSet):
+    throttle_scope = "user_charge_rule"
     permission_resource = "UserChargeRule"
     serializer_class = UserChargeRuleSerializer
     lookup_field = "unique_id"

@@ -26,6 +26,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     - Approve / Reject mapping
     - Filter by status, date, template
     """
+    throttle_scope = "alternative_staff_template"
 
     queryset = AlternativeStaffTemplate.objects.select_related(
         "staff_template",

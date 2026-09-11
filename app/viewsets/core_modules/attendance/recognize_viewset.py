@@ -37,6 +37,7 @@ def _safe_filename(value: str) -> str:
 
 
 class RecognizeViewSet(ViewSet):
+    throttle_scope = "recognize"
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 

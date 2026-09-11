@@ -8,6 +8,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class StateViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "state"
     queryset = State.objects.all()   # REQUIRED for DRF basename detection
     serializer_class = StateSerializer
     # `name` included alongside the aliased `state_name` because

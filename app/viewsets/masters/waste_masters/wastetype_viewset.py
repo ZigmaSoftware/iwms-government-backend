@@ -9,6 +9,7 @@ from rest_framework import filters, viewsets
 
 
 class WasteTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "waste_type"
 
     serializer_class = WasteTypeSerializer
     lite_serializer_class = make_lite_serializer(WasteType, "waste_type_name")
