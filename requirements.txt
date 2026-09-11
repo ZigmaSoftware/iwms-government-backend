@@ -20,6 +20,24 @@ uritemplate>=4.1.1
 setuptools<81
 cryptography>=43.0.0
 firebase-admin>=6.5.0
+
+# --- Attendance face recognition (FACE_RECOGNITION_PROVIDER=insightface) ---
+# Only needed when the InsightFace provider is selected; the CompreFace
+# provider uses `requests` above and nothing here. Left uninstalled, the
+# server still runs and simply reports the InsightFace provider as
+# unavailable via GET attendance/face-config/.
+# Versions below are the combination actually verified on this repo's
+# Python 3.14 venv. Two traps found while pinning them:
+#   * insightface 0.7.3 has no Python 3.14 wheel and builds from source;
+#     2.x installs cleanly and is what was tested here.
+#   * onnx pulls ml_dtypes, and an older ml_dtypes raises
+#     "module 'ml_dtypes' has no attribute 'float4_e2m1fn'" on import,
+#     which surfaces only as "provider unavailable" at runtime.
+insightface>=2.0,<3.0
+onnxruntime>=1.19
+opencv-python-headless>=4.10
+numpy>=1.26
+ml_dtypes>=0.5
 python-dotenv>=1.2.2
 redis>=5.0.0
 django-redis>=5.4.0

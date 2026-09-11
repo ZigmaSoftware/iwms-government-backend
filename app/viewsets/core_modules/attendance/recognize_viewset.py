@@ -1,49 +1,39 @@
+"""Attendance face recognition — verify a punch selfie and record it.
+
+Which engine does the comparison is decided by `FACE_RECOGNITION_PROVIDER`
+in `.env` (see `app/services/face_recognition/__init__.py`); this viewset
+never names one, and the HTTP contract is identical either way — same URL,
+same form fields, same response keys — so the mobile app works against both
+with no rebuild.
+
+Note the similarity numbers are NOT comparable between providers: CompreFace
+reports its own 0-1 confidence (cutoff 0.95) while InsightFace reports cosine
+similarity between face vectors (cutoff ~0.5). Each provider owns its own
+threshold, and the one actually applied is echoed back as `threshold`.
+"""
+
 import os
 import re
-import requests
 
 from django.conf import settings
 from django.utils import timezone
-from rest_framework.viewsets import ViewSet
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
-from rest_framework.parsers import MultiPartParser, FormParser
-from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.viewsets import ViewSet
 
 from app.models.core_modules.attendance import DailyAttendanceReg
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.services import face_recognition
 
 
 def _safe_filename(value: str) -> str:
     value = (value or "").strip()
     value = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", value)
     return value[:80] if value else "capture"
-
-
-def _verification_error(data):
-    if not isinstance(data, dict):
-        return "Face API invalid response"
-
-    message = str(data.get("message") or "").strip()
-    lower = message.lower()
-    code = data.get("code")
-    if code == 31 or "more than one face in the source" in lower:
-        return "Registered face has more than one face. Please re-register with only your face in the frame."
-    if "more than one face in the target" in lower:
-        return "More than one face detected in the punch selfie. Please try again alone in the frame."
-    if "more than one face" in lower:
-        return "More than one face detected. Please try again with only your face in the frame."
-
-    result = data.get("result")
-    if isinstance(result, list) and result:
-        first = result[0] if isinstance(result[0], dict) else {}
-        if first.get("source_image_face") and not first.get("face_matches"):
-            return "Face Similarity Not Matched"
-        if first.get("face_matches") is None:
-            return "Face not detected clearly. Please face the camera and try again."
-
-    return message or "Face not detected"
 
 
 class RecognizeViewSet(ViewSet):
@@ -93,7 +83,6 @@ class RecognizeViewSet(ViewSet):
         lat = request.data.get("latitude")
         lon = request.data.get("longitude")
 
-        # Validate required fields
         missing = []
         if not staff_unique_id: missing.append("emp_id")
         if not name: missing.append("name")
@@ -120,7 +109,43 @@ class RecognizeViewSet(ViewSet):
                 status=400
             )
 
-        # Save captured image into MEDIA_ROOT/captured_images/
+        captured_bytes = target_image.read()
+
+        provider = face_recognition.get_provider()
+        try:
+            result = provider.verify(
+                captured_bytes,
+                reference_path=source_path,
+                reference_embedding=staff.face_embedding,
+            )
+        except face_recognition.FaceUnavailable as exc:
+            # Engine down/misconfigured rather than a bad selfie — 503 so the
+            # app tells the user to retry instead of blaming their face. The
+            # mobile client also treats this as "save offline and sync later".
+            return Response({"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except face_recognition.FaceError as exc:
+            return Response({"error": str(exc)}, status=400)
+
+        # First punch after moving to an embedding-based provider derives the
+        # reference vector from the image already on file; cache it so this
+        # only ever happens once per staff member.
+        if result.derived_embedding and not staff.face_embedding:
+            staff.face_embedding = result.derived_embedding
+            staff.save(update_fields=["face_embedding"])
+
+        if not result.matched:
+            return Response(
+                {
+                    "error": "Face Similarity Not Matched",
+                    "similarity_score": result.score,
+                    "threshold": result.threshold,
+                    "provider": provider.name,
+                },
+                status=400
+            )
+
+        # Only persist the selfie once it has actually matched, so rejected
+        # attempts stop filling MEDIA_ROOT with unusable captures.
         timestamp = timezone.localtime().strftime("%Y%m%d_%H%M%S")
         folder = os.path.join(settings.MEDIA_ROOT, "captured_images")
         os.makedirs(folder, exist_ok=True)
@@ -128,42 +153,11 @@ class RecognizeViewSet(ViewSet):
         safe_name = _safe_filename(name)
         filename = f"{safe_name}_{staff_unique_id}_{timestamp}.jpg"
         target_path = os.path.join(folder, filename)
-
-        with open(target_path, "wb+") as f:
-            for chunk in target_image.chunks():
-                f.write(chunk)
+        with open(target_path, "wb") as handle:
+            handle.write(captured_bytes)
 
         captured_rel = f"captured_images/{filename}"
 
-        # CompreFace API verify
-        url = "http://125.17.238.158:8000/api/v1/verification/verify"
-        headers = {"x-api-key": "c4bb2855-e789-45e4-8dcd-903f03e03f2f"}
-
-        with open(source_path, "rb") as src, open(target_path, "rb") as tgt:
-            files = {
-                "source_image": ("source.jpg", src, "image/jpeg"),
-                "target_image": ("target.jpg", tgt, "image/jpeg"),
-            }
-            resp = requests.post(url, headers=headers, files=files, timeout=30)
-
-        try:
-            res = resp.json()
-        except Exception:
-            return Response({"error": "Face API invalid response"}, status=400)
-
-        # Parse similarity
-        try:
-            score = float(res["result"][0]["face_matches"][0]["similarity"])
-        except Exception:
-            return Response({"error": _verification_error(res), "raw": res}, status=400)
-
-        if score < 0.95:
-            return Response(
-                {"error": "Face Similarity Not Matched", "similarity_score": score},
-                status=400
-            )
-
-        # Save recognition (match your model fields)
         now = timezone.localtime()
         today = timezone.localdate()
         last = (
@@ -186,11 +180,11 @@ class RecognizeViewSet(ViewSet):
         created = DailyAttendanceReg.objects.create(
             staff=staff,
             emp_id=staff.emp_id,
-            emp_id_raw=staff_unique_id,          # keep raw string too
+            emp_id_raw=staff_unique_id,
             name=staff.employee_name,
-            records=now,                         # your model has records DateTimeField
-            captured_image_path=captured_rel,    # CharField -> store relative path STRING (CORRECT)
-            similarity_score=score,
+            records=now,
+            captured_image_path=captured_rel,
+            similarity_score=result.score,
             latitude=str(lat),
             longitude=str(lon),
             recognition_date=today,
@@ -207,7 +201,9 @@ class RecognizeViewSet(ViewSet):
                 "message": "Recognition successful",
                 "emp_id": staff_unique_id,
                 "name": staff.employee_name,
-                "score": score,
+                "score": result.score,
+                "threshold": result.threshold,
+                "provider": provider.name,
                 "captured_image": f"{settings.MEDIA_URL}{captured_rel}",
                 "punch_type": punch_type,
                 "worked_seconds": created.worked_seconds,

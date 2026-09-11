@@ -6,10 +6,17 @@ __pycache__/
 *.pyc
 
 # === Django Migrations ===
+# 0001_initial.py is a huge, machine-generated snapshot every environment
+# quietly regenerates for itself against whatever models.py looks like at
+# the time — never shared, never diffed. That means two environments can
+# both show "0001_initial applied" while their real table schemas have
+# drifted apart, since Django only compares migration NAMES, never content.
+# When a schema change absolutely must ship everywhere (production included),
+# hand-write/generate it as its own small migration and except it here —
+# same pattern as the (since-superseded) 0002_dailytripcollectionpoint_*
+# entry this once held.
 **/migrations/*
 !**/migrations/__init__.py
-!app/migrations/0002_dailytripcollectionpoint_carried_to_assignment_and_more.py
-
 
 # === Virtual Environments ===
 venv/

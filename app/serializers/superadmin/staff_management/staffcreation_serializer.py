@@ -290,6 +290,17 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "username",
             "office_email",
             "password",
+            # Which mobile app this staff member lands in. Explicit rather
+            # than guessed from the role name (see app_feature_grants).
+            #
+            # Was missing from this list, so the Staff Creation form's
+            # "Mobile App" dropdown was write-only-in-appearance: DRF drops
+            # unknown keys silently, so the value the form posted was
+            # discarded, and since it was never serialized back out either,
+            # the edit form re-opened showing "No app access" for everyone
+            # regardless of what was actually stored. Granting access is
+            # still a separate thing — see StaffAccessConfiguration.
+            "app_module",
             "qr_code",
 
             # Office details

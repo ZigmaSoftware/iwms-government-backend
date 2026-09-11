@@ -20,6 +20,7 @@ class Property(BaseMaster):
     )
 
     property_name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
 
     class Meta:
         verbose_name = "Fuel Type"

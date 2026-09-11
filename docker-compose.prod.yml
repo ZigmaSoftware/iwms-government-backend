@@ -1,0 +1,50 @@
+# IWMS Government Backend — PRODUCTION compose
+#
+# Production connects to the existing, externally-managed MySQL/MariaDB on
+# the host (the one phpMyAdmin administers) — NOT a containerized db. There
+# is deliberately no `db:` service here; only `backend` runs.
+#
+# NETWORKING — why network_mode: host and NOT host.docker.internal.
+#
+# The host MariaDB is locked down two independent ways, and host networking is
+# the only option that satisfies both without weakening either:
+#
+#   1. It listens on 127.0.0.1 ONLY
+#      (bind-address = 127.0.0.1 in /etc/mysql/mariadb.conf.d/50-server.cnf),
+#      so it never accepts a connection arriving from the docker bridge.
+#   2. The DB_USER (root) is granted for 'root'@'localhost' ONLY, so a
+#      connection from a bridge IP would be rejected at auth even if the
+#      bind-address were opened.
+#
+# Bridging via extra_hosts/host.docker.internal (172.17.0.1) therefore fails
+# with "(2003, Can't connect to MySQL server ... (timed out)")". Making that
+# route work would require BOTH widening bind-address AND adding a
+# root@'172.17.%' grant — i.e. exposing the DB beyond loopback. With
+# network_mode: host the container shares the host's network namespace, so
+# DB_HOST=127.0.0.1 (from .env) reaches MariaDB over loopback exactly like a
+# host process, and the DB stays bound to loopback only.
+#
+# Consequence of host networking: `ports:` is not used (it is ignored in this
+# mode). gunicorn binds 0.0.0.0:9001 inside the image, so the API is on host
+# port 9001 just as the old "9001:9001" mapping made it — Apache's
+# reverse-proxy to 127.0.0.1:9001 is unaffected. DB_HOST is deliberately NOT
+# overridden here; .env already sets DB_HOST=localhost, which is correct now.
+#
+# See docker-compose.yml for the LOCAL dev setup, which still runs its own
+# disposable db container.
+services:
+  backend:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    build: .
+    env_file: .env
+    network_mode: host
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+      # Migrations are gitignored (**/migrations/*), so a CI build - which
+      # works from a git checkout - produces an image with an EMPTY
+      # app/migrations/. Mounting the host's real migration files makes
+      # migrate/makemigrations work in any container, CI-built or local,
+      # without tracking them in git.
+      - ./app/migrations:/app/app/migrations
+    restart: always
