@@ -196,8 +196,132 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 ENABLE_AUTH_USER_SEEDING = os.getenv("ENABLE_AUTH_USER_SEEDING", "true").lower() == "true"
 
 # -------------------------------------------------------
-# REST Framework
+# Rate limiting (Redis-backed via CACHES["default"] above)
 # -------------------------------------------------------
+# Every DRF view has its own `throttle_scope` (set on the view class) so it
+# gets an independent Redis counter/limit. Edit the number on the right to
+# change that one API's request count — nothing else needs to change.
+API_THROTTLE_RATES = {
+    # Auth / sensitive endpoints — tighter limits
+    'login': '10/minute',
+    'otp': '5/minute',
+    'reset_password': '5/minute',
+    'change_password': '5/minute',
+    'admin_change_password': '5/minute',
+
+    # Everything else — default rate, tune individually as needed
+    "administrative_hierarchy": "5/minute",
+    "alternative_staff_template": "5/minute",
+    "app_module": "5/minute",
+    "area_type": "5/minute",
+    "attendance_records": "5/minute",
+    "audit_log": "5/minute",
+    "bin_collection_event": "5/minute",
+    "bins": "5/minute",
+    "block_panchayat_union": "5/minute",
+    "captcha": "5/minute",
+    "citizen_complaint_ticket": "5/minute",
+    "collection_point": "5/minute",
+    "common_audit": "5/minute",
+    "company_user_screen_column_permission": "5/minute",
+    "complaint_address_change": "5/minute",
+    "complaint_category": "5/minute",
+    "complaint_feedback": "5/minute",
+    "complaint_language": "5/minute",
+    "complaint_module": "5/minute",
+    "complaint_notification": "5/minute",
+    "complaint_priority": "5/minute",
+    "complaint_reopen_history": "5/minute",
+    "complaint_routing_rule": "5/minute",
+    "complaint_sla_rule": "5/minute",
+    "complaint_source": "5/minute",
+    "complaint_status": "5/minute",
+    "complaint_subcategory": "5/minute",
+    "complaint_team": "5/minute",
+    "complaint_ticket": "5/minute",
+    "continent": "5/minute",
+    "contractor_user_type": "5/minute",
+    "corporation": "5/minute",
+    "country": "5/minute",
+    "customer_access_configuration": "5/minute",
+    "customer_creation": "5/minute",
+    "daily_attendance_reg": "5/minute",
+    "daily_trip_assignment": "5/minute",
+    "daily_trip_collection_point": "5/minute",
+    "daily_trip_household_collection": "5/minute",
+    "daily_trip_log": "5/minute",
+    "daily_waste_comparison": "5/minute",
+    "dashboard_summary": "5/minute",
+    "dashboard_widget_permission": "5/minute",
+    "department": "5/minute",
+    "designation": "5/minute",
+    "district": "5/minute",
+    "district_body_dashboard": "5/minute",
+    "district_leader_login": "5/minute",
+    "feed_back": "5/minute",
+    "fuel": "5/minute",
+    "government_staff_user_type": "5/minute",
+    "local_body_dashboard": "5/minute",
+    "login_audit": "5/minute",
+    "main_screen": "5/minute",
+    "main_screen_type": "5/minute",
+    "monthly_waste_comparison_report": "5/minute",
+    "municipality": "5/minute",
+    "my_trip_today": "5/minute",
+    "my_trips_today": "5/minute",
+    "panchayat_leader_login": "5/minute",
+    "panchayat_union": "5/minute",
+    "panhayat": "5/minute",
+    "permission": "5/minute",
+    "permission_assign_api": "5/minute",
+    "platform_login": "5/minute",
+    "property": "5/minute",
+    "public_grievance": "5/minute",
+    "recognize": "5/minute",
+    "refresh_token": "5/minute",
+    "register": "5/minute",
+    "scan_bin": "5/minute",
+    "staff": "5/minute",
+    "staff_access_configuration": "5/minute",
+    "staff_access_dashboard": "5/minute",
+    "staff_audit": "5/minute",
+    "staff_notification": "5/minute",
+    "staff_profile": "5/minute",
+    "staff_template": "5/minute",
+    "staff_user_type": "5/minute",
+    "staffcreation": "5/minute",
+    "state": "5/minute",
+    "state_body_dashboard": "5/minute",
+    "state_daily_waste_comparison": "5/minute",
+    "state_leader_login": "5/minute",
+    "state_monthly_waste_comparison": "5/minute",
+    "sub_property": "5/minute",
+    "town_panchayat": "5/minute",
+    "trip_attendance": "5/minute",
+    "trip_history": "5/minute",
+    "trip_lifecycle": "5/minute",
+    "trip_plan": "5/minute",
+    "trip_retrip_request": "5/minute",
+    "unassigned_staff_pool": "5/minute",
+    "user_charge_rule": "5/minute",
+    "user_permissions_api": "5/minute",
+    "user_screen": "5/minute",
+    "user_screen_action": "5/minute",
+    "user_screen_columns_api": "5/minute",
+    "user_screen_permission": "5/minute",
+    "user_type": "5/minute",
+    "validate_bin_qr": "5/minute",
+    "vehicle_breakdown": "5/minute",
+    "vehicle_creation": "5/minute",
+    "vehicle_type_creation": "5/minute",
+    "ward": "5/minute",
+    "waste_collection": "5/minute",
+    "waste_collection_bluetooth": "5/minute",
+    "waste_collection_main": "5/minute",
+    "waste_collection_sub": "5/minute",
+    "waste_type": "5/minute",
+}
+
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -205,7 +329,20 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'app.authentication.jwt.JWTUserAuthentication',
     ],
-    "DEFAULT_PAGINATION_CLASS": None
+    "DEFAULT_PAGINATION_CLASS": None,
+
+    # Global defaults: per-IP for anonymous requests, per-user for
+    # authenticated ones, plus each view's own individual scope rate above.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/minute',
+        'user': '120/minute',
+        **API_THROTTLE_RATES,
+    },
 }
 
 # -------------------------------------------------------
@@ -249,10 +386,15 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "unique-permission-cache",
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
     }
 }
 

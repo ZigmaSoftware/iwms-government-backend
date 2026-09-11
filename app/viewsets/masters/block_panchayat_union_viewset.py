@@ -5,6 +5,7 @@ from rest_framework import viewsets
 
 
 class BlockPanchayatUnionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "block_panchayat_union"
     serializer_class = BlockPanchayatUnionSerializer
     lookup_field = "unique_id"
     permission_resource = "BlockPanchayatUnion"

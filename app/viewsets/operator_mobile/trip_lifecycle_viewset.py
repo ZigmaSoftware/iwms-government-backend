@@ -35,6 +35,7 @@ from app.viewsets.operator_mobile.helpers import (
 
 class TripLifecycleViewSet(viewsets.ViewSet):
     """Driver-initiated start / end for one of *their own* trips today."""
+    throttle_scope = "trip_lifecycle"
 
     permission_classes = [IsOperatorRole]
 

@@ -9,6 +9,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class FuelViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "fuel"
     queryset = Fuel.objects.filter(is_deleted=False)
     serializer_class = FuelSerializer
     lookup_field = "unique_id"

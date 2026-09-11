@@ -16,6 +16,7 @@ class PermissionViewSet(ViewSet):
     Fetch current user's permissions dynamically from DB.
     Works with custom Staffcreation model (no dependency on Django User).
     """
+    throttle_scope = "permission"
 
     def list(self, request):
         """

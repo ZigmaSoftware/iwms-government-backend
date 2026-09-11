@@ -37,17 +37,36 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    # No host port published: the "backend" container reaches this over the
+    # internal compose network at the "redis" hostname regardless. Local dev
+    # via `manage.py runserver` on the host uses the system-installed
+    # redis-server on 127.0.0.1:6379 instead (see .env) to avoid a port clash
+    # with this container.
+    volumes:
+      - iwms_gov_redis:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     image: ghcr.io/zigmasoftware/iwms-government-backend:latest
     build: .
     env_file: .env
     environment:
-      # Always target the compose-managed db container, regardless of
-      # whatever DB_HOST happens to be set to in .env.
+      # Always target the compose-managed db/redis containers, regardless of
+      # whatever DB_HOST/REDIS_URL happen to be set to in .env.
       DB_HOST: db
       DB_PORT: 3306
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "9001:9001"
@@ -66,3 +85,4 @@ services:
 
 volumes:
   iwms_gov_db:
+  iwms_gov_redis:

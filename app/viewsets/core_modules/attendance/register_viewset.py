@@ -66,6 +66,7 @@ def _find_staff(identifier):
 
 
 class RegisterViewSet(ViewSet):
+    throttle_scope = "register"
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 

@@ -41,6 +41,7 @@ def save_uploaded_file(file, folder_name):
 
 
 class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "bins"
 
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 

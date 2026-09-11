@@ -5,6 +5,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 
 class ContinentViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
+    throttle_scope = "continent"
     queryset = Continent.objects.filter(is_deleted=False)
     serializer_class = ContinentSerializer
     lookup_field = "unique_id"

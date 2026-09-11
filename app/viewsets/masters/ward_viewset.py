@@ -9,6 +9,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class WardViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "ward"
     serializer_class = WardSerializer
     lite_serializer_class = LiteWardSerializer
     lookup_field = "unique_id"

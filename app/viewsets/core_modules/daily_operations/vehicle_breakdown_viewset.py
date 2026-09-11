@@ -30,6 +30,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "vehicle_breakdown"
     queryset = (
         VehicleBreakdown.objects.select_related(
             "trip_assignment_id",

@@ -7,6 +7,7 @@ from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 
 class DistrictViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "district"
 
     queryset = District.objects.filter(is_deleted=False)
     serializer_class = DistrictSerializer

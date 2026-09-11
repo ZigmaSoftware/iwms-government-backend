@@ -5,6 +5,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 
 class PropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "property"
     queryset = Property.objects.filter(is_deleted=False)
     serializer_class = PropertySerializer
     lookup_field = "unique_id"

@@ -29,6 +29,7 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Staff Template API
     """
+    throttle_scope = "staff_template"
 
     serializer_class = StaffTemplateSerializer
     lookup_field = "unique_id"

@@ -6,6 +6,7 @@ from app.utils.pagination import LimitOffsetWithPage
 from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
 
 class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "waste_collection"
     queryset = WasteCollection.objects.filter(is_deleted=False).select_related(
         "customer__state", "customer__district", "customer__area_type",
         "customer__corporation", "customer__municipality", "customer__town_panchayat",

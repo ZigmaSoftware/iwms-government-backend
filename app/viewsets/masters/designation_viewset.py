@@ -8,6 +8,7 @@ from rest_framework import viewsets
 
 
 class DesignationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "designation"
     queryset = Designation.objects.filter(is_deleted=False)
     serializer_class = DesignationSerializer
     lookup_field = "unique_id"

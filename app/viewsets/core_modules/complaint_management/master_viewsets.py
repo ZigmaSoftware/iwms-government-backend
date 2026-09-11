@@ -37,6 +37,7 @@ class _SoftDeleteMixin:
 
 
 class ComplaintSourceViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_source"
     queryset = ComplaintSource.objects.filter(is_deleted=False).order_by("source_code")
     serializer_class = ComplaintSourceSerializer
     lookup_field = "unique_id"
@@ -49,6 +50,7 @@ class ComplaintSourceViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
 
 
 class ComplaintLanguageViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_language"
     queryset = ComplaintLanguage.objects.filter(is_deleted=False).order_by("language_code")
     serializer_class = ComplaintLanguageSerializer
     lookup_field = "unique_id"
@@ -61,6 +63,7 @@ class ComplaintLanguageViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
 
 
 class ComplaintPriorityViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_priority"
     queryset = ComplaintPriority.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintPrioritySerializer
     lookup_field = "unique_id"
@@ -73,6 +76,7 @@ class ComplaintPriorityViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
 
 
 class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_status"
     queryset = ComplaintStatus.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintStatusSerializer
     lookup_field = "unique_id"
@@ -85,6 +89,7 @@ class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
 
 
 class ComplaintTeamViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_team"
     queryset = ComplaintTeam.objects.filter(is_deleted=False).select_related("department").order_by("team_code")
     serializer_class = ComplaintTeamSerializer
     lookup_field = "unique_id"
@@ -97,6 +102,7 @@ class ComplaintTeamViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelVi
 
 
 class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_module"
     queryset = ComplaintModule.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintModuleSerializer
     lookup_field = "unique_id"
@@ -109,6 +115,7 @@ class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
 
 
 class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_category"
     queryset = ComplaintCategory.objects.filter(is_deleted=False).select_related(
         "default_priority", "default_team", "module"
     ).order_by("sort_order")
@@ -124,6 +131,7 @@ class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
 
 
 class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_subcategory"
     serializer_class = ComplaintSubcategorySerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -142,6 +150,7 @@ class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
 
 
 class ComplaintSlaRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_sla_rule"
     queryset = ComplaintSlaRule.objects.filter(is_deleted=False).select_related(
         "category", "priority"
     ).order_by("unique_id")

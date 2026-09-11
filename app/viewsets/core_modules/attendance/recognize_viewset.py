@@ -47,6 +47,7 @@ def _verification_error(data):
 
 
 class RecognizeViewSet(ViewSet):
+    throttle_scope = "recognize"
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 

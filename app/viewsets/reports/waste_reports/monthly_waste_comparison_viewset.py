@@ -86,6 +86,7 @@ def percent(numerator, denominator):
 
 
 class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
+    throttle_scope = "monthly_waste_comparison_report"
     permission_resource = "MonthlyWasteComparisonReport"
     queryset = MonthlyWeightReport.objects.select_related(
         "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id"

@@ -27,6 +27,7 @@ from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
 
 class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "vehicle_creation"
     queryset = VehicleCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleCreationSerializer
     lookup_field = "unique_id"

@@ -11,6 +11,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class UserScreenActionViewSet(viewsets.ModelViewSet):
+    throttle_scope = "user_screen_action"
     serializer_class = UserScreenActionSerializer
     queryset = UserScreenAction.objects.filter(is_deleted=False)
     lookup_field = "unique_id"

@@ -10,6 +10,7 @@ from app.models.core_modules.attendance import DailyAttendanceReg
 
 
 class DailyAttendanceRegViewSet(ViewSet):
+    throttle_scope = "daily_attendance_reg"
     def _worked_seconds(self, check_in, check_out):
         if not check_in:
             return 0

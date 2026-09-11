@@ -110,6 +110,7 @@ def _sla_strictness_key(waste_type):
 
 class CitizenComplaintTicketViewSet(viewsets.ViewSet):
     """My-tickets API for citizens (mobile app)."""
+    throttle_scope = "citizen_complaint_ticket"
 
     permission_classes = [IsAuthenticated]
 
@@ -289,6 +290,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
 
 class PublicGrievanceViewSet(viewsets.ViewSet):
     """Public grievance intake API with no login or module permission requirement."""
+    throttle_scope = "public_grievance"
 
     authentication_classes = []
     permission_classes = [AllowAny]

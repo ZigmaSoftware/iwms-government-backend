@@ -15,6 +15,7 @@ from app.viewsets.operator_mobile.helpers import (
 
 class MyTripTodayViewSet(viewsets.ViewSet):
     """GET /api/v1/operator-mobile/my-trip-today/"""
+    throttle_scope = "my_trip_today"
 
     permission_classes = [IsOperatorRole]
 
@@ -38,6 +39,7 @@ class MyTripsTodayViewSet(viewsets.ViewSet):
     ALL of the operator's trips today (a driver may hold e.g. a bin trip AND a
     household trip). Returns `{"results": [...]}` so the app can show a header
     carousel. Empty list (not an error) when there is no trip today."""
+    throttle_scope = "my_trips_today"
 
     permission_classes = [IsOperatorRole]
 

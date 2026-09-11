@@ -6,6 +6,7 @@ from app.utils.captcha import generate_captcha
 
 
 class CaptchaViewSet(ViewSet):
+    throttle_scope = "captcha"
     permission_classes = [AllowAny]
 
     def list(self, request):

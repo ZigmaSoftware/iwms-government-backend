@@ -6,6 +6,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class AdministrativeHierarchyViewSet(ModelViewSet):
+    throttle_scope = "administrative_hierarchy"
     queryset = AdministrativeHierarchy.objects.filter(is_deleted=False)
     serializer_class = AdministrativeHierarchySerializer
     lookup_field = "unique_id"

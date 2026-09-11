@@ -34,6 +34,7 @@ def _r(value):
 
 
 class DistrictBodyDashboardViewSet(ViewSet):
+    throttle_scope = "district_body_dashboard"
     permission_classes = [IsAuthenticated]
 
     # ── helpers ─────────────────────────────────────────────────────────

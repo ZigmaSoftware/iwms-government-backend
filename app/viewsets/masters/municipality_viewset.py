@@ -8,6 +8,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class MunicipalityViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "municipality"
     serializer_class = MunicipalitySerializer
     lite_serializer_class = make_lite_serializer(
         Municipality, "municipality_name", extra_fields=("state_id", "district_id", "area_type_id")

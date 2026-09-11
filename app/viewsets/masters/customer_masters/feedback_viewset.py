@@ -5,6 +5,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from rest_framework import viewsets
 
 class FeedBackViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "feed_back"
     queryset = FeedBack.objects.filter(is_deleted=False).select_related(
         "customer__state", "customer__district", "customer__area_type",
         "customer__corporation", "customer__municipality", "customer__town_panchayat",

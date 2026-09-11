@@ -11,6 +11,7 @@ from rest_framework import viewsets
 
 
 class CommonAuditViewSet(viewsets.ModelViewSet):
+    throttle_scope = "common_audit"
 
     permission_classes = [IsAuthenticated]
 

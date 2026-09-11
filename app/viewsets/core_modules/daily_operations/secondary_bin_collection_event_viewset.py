@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 
 class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "bin_collection_event"
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
     permission_resource = "BinCollectionEvent"

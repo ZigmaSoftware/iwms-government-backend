@@ -19,6 +19,7 @@ from app.viewsets.operator_mobile.helpers import (
 
 class ValidateBinQrViewSet(viewsets.ViewSet):
     """POST /api/v1/operator-mobile/validate-bin-qr/"""
+    throttle_scope = "validate_bin_qr"
 
     permission_classes = [IsOperatorRole]
 

@@ -14,6 +14,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "daily_trip_household_collection"
     serializer_class = DailyTripHouseholdCollectionSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripHouseholdCollection"

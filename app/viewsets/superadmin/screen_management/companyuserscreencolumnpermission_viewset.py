@@ -26,6 +26,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
       POST   /screen-managements/column-permissions/              → create (get_or_create, no duplicates)
       PATCH  /screen-managements/column-permissions/{unique_id}/  → update (can_view only)
     """
+    throttle_scope = "company_user_screen_column_permission"
 
     serializer_class = UserScreenColumnPermissionSerializer
     lookup_field = "unique_id"

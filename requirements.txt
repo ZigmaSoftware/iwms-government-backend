@@ -21,3 +21,5 @@ setuptools<81
 cryptography>=43.0.0
 firebase-admin>=6.5.0
 python-dotenv>=1.2.2
+redis>=5.0.0
+django-redis>=5.4.0

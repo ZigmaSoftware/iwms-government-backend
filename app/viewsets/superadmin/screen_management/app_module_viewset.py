@@ -16,6 +16,7 @@ class AppModuleViewSet(viewsets.ModelViewSet):
     if the mobile build has screens and a route for it, so the set of modules
     changes with an app release, not from this screen.
     """
+    throttle_scope = "app_module"
 
     queryset = AppModule.objects.filter(is_deleted=False)
     serializer_class = AppModuleSerializer
