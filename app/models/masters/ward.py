@@ -24,6 +24,15 @@ class Ward(BaseMaster):
     `WardSerializer.validate` via `normalize_flat_geo_attrs`, not at the DB
     level, matching that existing convention."""
 
+    CASCADE_SOFT_DELETE = (
+        "bins",
+        "bin_collection_events",
+        "waste_collections",
+        "customers",
+        "staff_access_configurations",
+    )
+    CACHE_SCOPES = ("ward_list", "ward_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,

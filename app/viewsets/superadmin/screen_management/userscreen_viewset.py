@@ -8,15 +8,19 @@ from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.serializers.superadmin.screen_management.userscreen_serializer import UserScreenSerializer
+from app.utils.audit_mixin import AuditViewSetMixin
 
 USER_SCREEN_CACHE_SCOPES = ("user_screen_list", "user_screen_detail")
 
 
-class UserScreenViewSet(viewsets.ModelViewSet):
+class UserScreenViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen"
     serializer_class = UserScreenSerializer
     queryset = UserScreen.objects.filter(is_deleted=False)
     lookup_field = "unique_id"
+
+    AUDIT_MODULE = "screen-managements"
+    AUDIT_ENDPOINT = "user-screens"
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
@@ -82,18 +86,15 @@ class UserScreenViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        serializer.save()
+        super().perform_create(serializer)
         invalidate_on_commit(*USER_SCREEN_CACHE_SCOPES)
 
     def perform_update(self, serializer):
-        serializer.save()
+        super().perform_update(serializer)
         invalidate_on_commit(*USER_SCREEN_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.is_active = False
-        instance.is_deleted = True
-        instance.save(update_fields=["is_active", "is_deleted"])
-
+        super().perform_destroy(instance)
         invalidate_on_commit(*USER_SCREEN_CACHE_SCOPES)
         return Response(
             {"message": "User Screen deleted successfully"},

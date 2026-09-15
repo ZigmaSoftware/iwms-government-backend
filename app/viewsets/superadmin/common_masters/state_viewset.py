@@ -2,6 +2,7 @@ from rest_framework import filters, viewsets
 
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
+from app.utils.cascade_delete import collect_cascade_cache_scopes
 from app.models.superadmin.common_masters.state import State
 from app.serializers.superadmin.common_masters.state_serializer import StateSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -78,5 +79,6 @@ class StateViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
         invalidate_on_commit(*STATE_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.delete()
-        invalidate_on_commit(*STATE_CACHE_SCOPES)
+        scopes = collect_cascade_cache_scopes(instance)
+        super().perform_destroy(instance)
+        invalidate_on_commit(*scopes)

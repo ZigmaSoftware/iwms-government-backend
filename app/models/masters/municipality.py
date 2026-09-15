@@ -11,6 +11,30 @@ def generate_municipality_id():
 
 
 class Municipality(BaseMaster):
+    CASCADE_SOFT_DELETE = (
+        "wards",
+        "bins",
+        "vehicles",
+        "staff_templates",
+        "collection_points",
+        "trip_plans",
+        "trip_plan_collection_points",
+        "daily_trip_logs",
+        "daily_trip_collection_points",
+        "daily_trip_assignments",
+        "daily_trip_household_collections",
+        "vehicle_breakdowns",
+        "secondary_bin_collection_events",
+        "waste_collections",
+        "complaint_routing_rules",
+        "address_change_requests",
+        "complaint_tickets",
+        "staff_members",
+        "customer_creations",
+        "staff_access_configurations",
+    )
+    CACHE_SCOPES = ("municipality_list", "municipality_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,

@@ -196,10 +196,4 @@ class UserScreenPermission(BaseMaster):
         ]
 
 
-    def delete(self, *args, **kwargs):
-        self.is_active = False
-        self.is_deleted = True
-        self.save(update_fields=["is_active", "is_deleted"])
-
-
 CompanyUserScreenPermission = UserScreenPermission

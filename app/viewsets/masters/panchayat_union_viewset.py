@@ -2,6 +2,7 @@ from rest_framework import filters, viewsets
 
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
+from app.utils.cascade_delete import collect_cascade_cache_scopes
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.serializers.masters.panchayat_union_serializer import PanchayatUnionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -70,5 +71,6 @@ class PanchayatUnionViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelView
         invalidate_on_commit(*PANCHAYAT_UNION_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.delete()
-        invalidate_on_commit(*PANCHAYAT_UNION_CACHE_SCOPES)
+        scopes = collect_cascade_cache_scopes(instance)
+        super().perform_destroy(instance)
+        invalidate_on_commit(*scopes)

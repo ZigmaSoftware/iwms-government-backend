@@ -9,12 +9,13 @@ from app.models.superadmin.screen_management.userscreenaction import UserScreenA
 from app.serializers.superadmin.screen_management.userscreenaction_serializer import (
     UserScreenActionSerializer
 )
+from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 
 USER_SCREEN_ACTION_CACHE_SCOPES = ("user_screen_action_list", "user_screen_action_detail")
 
 
-class UserScreenActionViewSet(viewsets.ModelViewSet):
+class UserScreenActionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen_action"
     serializer_class = UserScreenActionSerializer
     queryset = UserScreenAction.objects.filter(is_deleted=False)
@@ -23,6 +24,9 @@ class UserScreenActionViewSet(viewsets.ModelViewSet):
     pagination_class = LimitOffsetWithPage
     search_fields = ["action_name", "variable_name"]
     ordering_fields = ["action_name", "variable_name", "is_active"]
+
+    AUDIT_MODULE = "screen-managements"
+    AUDIT_ENDPOINT = "user-screen-actions"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -59,18 +63,15 @@ class UserScreenActionViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        serializer.save()
+        super().perform_create(serializer)
         invalidate_on_commit(*USER_SCREEN_ACTION_CACHE_SCOPES)
 
     def perform_update(self, serializer):
-        serializer.save()
+        super().perform_update(serializer)
         invalidate_on_commit(*USER_SCREEN_ACTION_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.is_active = False
-        instance.is_deleted = True
-        instance.save(update_fields=["is_active", "is_deleted"])
-
+        super().perform_destroy(instance)
         invalidate_on_commit(*USER_SCREEN_ACTION_CACHE_SCOPES)
         return Response(
             {"message": "User Screen Action deleted successfully"},

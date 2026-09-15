@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from app.utils.cascade_delete import cascade_soft_delete
+
 
 
 
@@ -41,8 +43,10 @@ class BaseMaster(models.Model):
     """Shared active/deleted flags for most tables."""
     is_active = models.BooleanField(default=True)
     is_deleted = models.BooleanField(default=False)
-    
-    
+
+    # Reverse-relation names (related_name strings) to soft-delete
+    # transitively when this row is soft-deleted. See app/utils/cascade_delete.py.
+    CASCADE_SOFT_DELETE = ()
 
     created_by = models.ForeignKey(
         Account,
@@ -64,7 +68,5 @@ class BaseMaster(models.Model):
         abstract = True
 
 
-    def delete(self, *args, **kwargs):
-        self.is_deleted = True
-        self.is_active = False
-        self.save(update_fields=["is_deleted", "is_active"])    
+    def delete(self, *args, updated_by=None, **kwargs):
+        cascade_soft_delete(self, updated_by=updated_by)

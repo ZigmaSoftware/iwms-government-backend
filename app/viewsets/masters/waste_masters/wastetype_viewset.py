@@ -46,6 +46,5 @@ class WasteTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
         invalidate_on_commit(*WASTE_TYPE_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.is_deleted = True
-        instance.save(update_fields=["is_deleted"])
+        super().perform_destroy(instance)
         invalidate_on_commit(*WASTE_TYPE_CACHE_SCOPES)

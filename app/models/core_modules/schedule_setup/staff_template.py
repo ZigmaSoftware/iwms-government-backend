@@ -21,7 +21,22 @@ def generate_stafftemplate_id():
     return f"STFTEMP-{generate_unique_id(length=6)}"
 
 class StaffTemplate(BaseMaster):
-    
+
+    CACHE_SCOPES = (
+        "staff_template_list",
+        "staff_template_detail",
+        "trip_plan_list",
+        "trip_plan_detail",
+        "alternative_staff_template_list",
+        "alternative_staff_template_detail",
+    )
+
+    # AlternativeStaffTemplate is deliberately excluded: it has no is_deleted
+    # field (not soft-deletable) — see app/utils/cascade_delete.py. Everything
+    # under trip_plans/daily_trip_assignments cascades further via their own
+    # CASCADE_SOFT_DELETE declarations.
+    CASCADE_SOFT_DELETE = ("trip_plans", "daily_trip_assignments")
+
     class ApprovalStatus(models.TextChoices):
         PENDING = "PENDING", "Pending"
         APPROVED = "APPROVED", "Approved"

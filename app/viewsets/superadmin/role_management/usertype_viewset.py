@@ -54,5 +54,5 @@ class UserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         invalidate_on_commit(*USER_TYPE_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.delete()
+        super().perform_destroy(instance)
         invalidate_on_commit(*USER_TYPE_CACHE_SCOPES)

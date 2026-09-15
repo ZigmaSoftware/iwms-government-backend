@@ -38,5 +38,5 @@ class PropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         invalidate_on_commit(*PROPERTY_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.delete()  # soft delete
+        super().perform_destroy(instance)
         invalidate_on_commit(*PROPERTY_CACHE_SCOPES)
