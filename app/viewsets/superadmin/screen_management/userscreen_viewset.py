@@ -4,8 +4,12 @@ from rest_framework import viewsets, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.serializers.superadmin.screen_management.userscreen_serializer import UserScreenSerializer
+
+USER_SCREEN_CACHE_SCOPES = ("user_screen_list", "user_screen_detail")
 
 
 class UserScreenViewSet(viewsets.ModelViewSet):
@@ -69,14 +73,28 @@ class UserScreenViewSet(viewsets.ModelViewSet):
         self.check_object_permissions(self.request, obj)
         return obj
 
+    @cache_api("user_screen_list", vary_on_user=False)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("user_screen_detail", vary_on_user=False)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save()
+        invalidate_on_commit(*USER_SCREEN_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        invalidate_on_commit(*USER_SCREEN_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
         instance.is_active = False
         instance.is_deleted = True
         instance.save(update_fields=["is_active", "is_deleted"])
 
+        invalidate_on_commit(*USER_SCREEN_CACHE_SCOPES)
         return Response(
             {"message": "User Screen deleted successfully"},
             status=status.HTTP_200_OK

@@ -1,5 +1,7 @@
 from rest_framework import filters, viewsets, status
 from rest_framework.response import Response
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.waste_masters.bins import Bins
 from app.serializers.masters.waste_masters.bins_serializer import BinsSerializer
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -9,6 +11,8 @@ from django.conf import settings
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
+
+BINS_CACHE_SCOPES = ("bins_list", "bins_detail")
 
 def save_uploaded_file(file, folder_name):
     """
@@ -122,6 +126,23 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
-    
+
+    @cache_api("bins_list", vary_on_user=True)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("bins_detail", vary_on_user=True)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*BINS_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*BINS_CACHE_SCOPES)
+
     def perform_destroy(self, instance):
         instance.delete()
+        invalidate_on_commit(*BINS_CACHE_SCOPES)

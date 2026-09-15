@@ -21,10 +21,15 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.serializers.masters.transport_masters.vehicleCreation_serializer import VehicleCreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
+
+VEHICLE_CREATION_CACHE_SCOPES = ("vehicle_creation_list", "vehicle_creation_detail")
+
 
 class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "vehicle_creation"
@@ -76,6 +81,26 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         self.check_object_permissions(self.request, obj)
         return obj
+
+    @cache_api("vehicle_creation_list", vary_on_user=False)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("vehicle_creation_detail", vary_on_user=False)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
+
+    def perform_destroy(self, instance):
+        super().perform_destroy(instance)
+        invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
 
     # -------------------------------------------------------------
     # Available vehicles — scoped to a government hierarchy (state/
@@ -211,6 +236,9 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 success_count += 1
             else:
                 errors.append({"row": index, "error": serializer.errors})
+
+        if success_count:
+            invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
 
         return Response({
             "message": "Vehicle bulk upload completed",

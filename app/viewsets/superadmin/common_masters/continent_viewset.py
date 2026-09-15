@@ -1,8 +1,13 @@
 from rest_framework import filters, viewsets
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.common_masters.continent import Continent
 from app.serializers.superadmin.common_masters.continent_serializer import ContinentSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+
+CONTINENT_CACHE_SCOPES = ("continent_list", "continent_detail")
+
 
 class ContinentViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
     throttle_scope = "continent"
@@ -18,5 +23,22 @@ class ContinentViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
     AUDIT_MODULE = "common-masters"
     AUDIT_ENDPOINT = "continents"
 
+    @cache_api("continent_list", vary_on_user=False)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("continent_detail", vary_on_user=False)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*CONTINENT_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*CONTINENT_CACHE_SCOPES)
+
     def perform_destroy(self, instance):
         instance.delete()
+        invalidate_on_commit(*CONTINENT_CACHE_SCOPES)
