@@ -36,6 +36,23 @@ def _generate_trip_assignment_unique_id():
 
 class DailyTripAssignment(BaseMaster):
 
+    # Only the assignment's OWN children — excludes carried_over_collection_points/
+    # carried_over_household_collections (stops carried in FROM a different
+    # assignment), retrip_source_requests and breakdown_source (point back at
+    # whichever retrip/breakdown created THIS assignment as a continuation of
+    # another one), and attendances (TripAttendance has no is_deleted field,
+    # not soft-deletable). See app/utils/cascade_delete.py.
+    CASCADE_SOFT_DELETE = (
+        "trip_collection_points",
+        "trip_household_collections",
+        "secondary_bin_collection_events",
+        "waste_collections",
+        "daily_trip_log",
+        "vehicle_breakdown",
+        "retrip_requests",
+        "unassignedstaffpool",
+    )
+
     STATUS_SCHEDULED = "Scheduled"
     STATUS_IN_PROGRESS = "In Progress"
     STATUS_COMPLETED = "Completed"

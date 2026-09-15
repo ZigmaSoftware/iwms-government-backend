@@ -28,6 +28,9 @@ def generate_trip_plan_id():
 class TripPlan(BaseMaster):
     """Single source of truth for route + trip configuration."""
 
+    CACHE_SCOPES = ("trip_plan_list", "trip_plan_detail")
+    CASCADE_SOFT_DELETE = ("plan_collection_points", "daily_trip_assignments")
+
     COLLECTION_TYPE_BIN = "bin_collection"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
     COLLECTION_TYPE_BULK = "bulk_waste_collection"

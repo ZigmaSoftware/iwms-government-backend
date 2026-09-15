@@ -14,6 +14,39 @@ class AreaTypeName(models.TextChoices):
 
 class AreaType(BaseMaster):
 
+    CASCADE_SOFT_DELETE = (
+        "corporations",
+        "municipalities",
+        "town_panchayats",
+        "panchayat_unions",
+        "panchayats",
+        "wards",
+        # consumer tables referencing this area type directly
+        "bins",
+        "vehicles",
+        "staff_templates",
+        "collection_points",
+        "trip_plans",
+        "trip_plan_collection_points",
+        "daily_trip_logs",
+        "daily_trip_collection_points",
+        "daily_trip_assignments",
+        "daily_trip_household_collections",
+        "vehicle_breakdowns",
+        "secondary_bin_collection_events",
+        "waste_collections",
+        "complaint_tickets",
+        "address_change_requests",
+        "scoped_staff",
+        "staff_members",
+        "userscreen_column_permissions",
+        "dashboard_widget_permissions",
+        "userscreenpermissions",
+        "customer_creations",
+        "staff_access_configurations",
+    )
+    CACHE_SCOPES = ("area_type_list", "area_type_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,

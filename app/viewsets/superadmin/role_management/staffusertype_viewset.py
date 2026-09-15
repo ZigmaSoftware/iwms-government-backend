@@ -45,7 +45,7 @@ class StaffUserTypeViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
         invalidate_on_commit(*STAFF_USER_TYPE_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
-        instance.delete()
+        super().perform_destroy(instance)
         invalidate_on_commit(*STAFF_USER_TYPE_CACHE_SCOPES)
 
     @action(detail=False, methods=["get"], url_path="role-choices")

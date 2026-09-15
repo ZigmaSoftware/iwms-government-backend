@@ -23,6 +23,8 @@ def generate_routing_rule_id():
 class ComplaintRoutingRule(BaseMaster):
     """Resolves a team/user/SLA for a ticket by category + geo + priority."""
 
+    CACHE_SCOPES = ("complaint_routing_rule_list", "complaint_routing_rule_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,

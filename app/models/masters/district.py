@@ -12,6 +12,42 @@ def generate_district_id():
 
 class District(BaseMaster):
 
+    CASCADE_SOFT_DELETE = (
+        "area_type",
+        "corporations",
+        "municipalities",
+        "town_panchayats",
+        "panchayat_unions",
+        "panchayat",
+        "wards",
+        # consumer tables referencing this district directly
+        "leader_logins",
+        "bins",
+        "vehicles",
+        "staff_templates",
+        "collection_points",
+        "trip_plans",
+        "trip_plan_collection_points",
+        "daily_trip_logs",
+        "daily_trip_collection_points",
+        "daily_trip_assignments",
+        "daily_trip_household_collections",
+        "vehicle_breakdowns",
+        "secondary_bin_collection_events",
+        "waste_collections",
+        "complaint_routing_rules",
+        "address_change_requests",
+        "complaint_tickets",
+        "scoped_staff",
+        "staff_members",
+        "userscreen_column_permissions",
+        "dashboard_widget_permissions",
+        "userscreenpermissions",
+        "users_district",
+        "customer_creations",
+        "staff_access_configurations",
+    )
+    CACHE_SCOPES = ("district_list", "district_detail")
 
     unique_id = models.CharField(
         max_length=30,

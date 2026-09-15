@@ -10,6 +10,8 @@ def generate_department_id():
 
 
 class Department(BaseMaster):
+    CACHE_SCOPES = ("department_list", "department_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,

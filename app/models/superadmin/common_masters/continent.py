@@ -9,6 +9,9 @@ def generate_continent_id():
 
 class Continent(BaseMaster):
 
+    CASCADE_SOFT_DELETE = ("countries", "states", "districts")
+    CACHE_SCOPES = ("continent_list", "continent_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -23,7 +26,3 @@ class Continent(BaseMaster):
 
     def __str__(self):
         return self.name
-
-    def delete(self, *args, **kwargs):
-        self.is_deleted = True
-        self.save(update_fields=["is_deleted"])
