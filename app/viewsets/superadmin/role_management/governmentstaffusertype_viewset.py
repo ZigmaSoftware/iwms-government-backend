@@ -1,10 +1,14 @@
 from rest_framework.response import Response
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.serializers.superadmin.role_management.governmentstaffusertype_serializer import GovernmentStaffUserTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+
+GOVERNMENT_STAFF_USER_TYPE_CACHE_SCOPES = ("government_staff_user_type_list", "government_staff_user_type_detail")
 
 
 class GovernmentStaffUserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -22,8 +26,25 @@ class GovernmentStaffUserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     permission_resource = "GovernmentStaffUserType"
 
+    @cache_api("government_staff_user_type_list", vary_on_user=False)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("government_staff_user_type_detail", vary_on_user=False)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*GOVERNMENT_STAFF_USER_TYPE_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*GOVERNMENT_STAFF_USER_TYPE_CACHE_SCOPES)
+
     def perform_destroy(self, instance):
         instance.delete()
+        invalidate_on_commit(*GOVERNMENT_STAFF_USER_TYPE_CACHE_SCOPES)
 
     @action(detail=False, methods=["get"], url_path="role-choices")
     def role_choices(self, request):

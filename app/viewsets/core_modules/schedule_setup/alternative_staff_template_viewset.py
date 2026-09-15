@@ -2,6 +2,8 @@ from rest_framework import filters, viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
@@ -17,6 +19,10 @@ from app.models.core_modules.notifications.staff_notification import StaffNotifi
 from app.services.staff_notification_service import notify_staff
 from app.utils.pagination import LimitOffsetWithPage
 
+ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES = (
+    "alternative_staff_template_list",
+    "alternative_staff_template_detail",
+)
 
 
 class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -93,6 +99,14 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "panchayat",
         )
 
+    @cache_api("alternative_staff_template_list", vary_on_user=True)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("alternative_staff_template_detail", vary_on_user=True)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     # --------------------------------------------------
     # ✅ USER RESOLUTION (NO SUPERADMIN CREATION)
     # --------------------------------------------------
@@ -152,6 +166,8 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             remarks=instance.change_remarks,
         )
 
+        invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
+
     def perform_update(self, serializer):
 
         if not self.request.user.is_authenticated:
@@ -204,6 +220,8 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     },
                 )
 
+        invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
+
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
 
@@ -214,6 +232,10 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             )
 
         return super().update(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        super().perform_destroy(instance)
+        invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
 
     def _resolve_performed_role(self, user):
         role = getattr(getattr(user, "staffusertype_id", None), "name", "") or ""
