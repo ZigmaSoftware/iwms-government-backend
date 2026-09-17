@@ -85,7 +85,7 @@ READ_MASTER_DATA = {
     "GET": "120/minute",
     "POST": "20/minute",
     "PUT": "20/minute",
-    "PATCH": "30/minute",
+    "PATCH": "30/minute",   
     "DELETE": "15/minute",
 }
 
