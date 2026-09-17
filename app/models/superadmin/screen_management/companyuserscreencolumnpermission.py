@@ -190,8 +190,3 @@ class CompanyUserScreenColumnPermission(BaseMaster):
 
     def __str__(self):
         return f"{self.userscreen_id} - {self.column_id}"
-
-    def delete(self, *args, **kwargs):
-        self.is_active = False
-        self.is_deleted = True
-        self.save(update_fields=["is_active", "is_deleted"])

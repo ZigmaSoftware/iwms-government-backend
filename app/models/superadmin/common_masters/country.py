@@ -10,6 +10,9 @@ def generate_country_id():
 
 class Country(BaseMaster):
 
+    CASCADE_SOFT_DELETE = ("states", "districts")
+    CACHE_SCOPES = ("country_list", "country_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -34,7 +37,3 @@ class Country(BaseMaster):
 
     def __str__(self):
         return self.name
-
-    def delete(self, *args, **kwargs):
-        self.is_deleted = True
-        self.save(update_fields=["is_deleted"])

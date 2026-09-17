@@ -61,7 +61,7 @@ class CustomerAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSe
         cache.clear()
 
     def perform_destroy(self, instance):
-        instance.delete()
+        super().perform_destroy(instance)
         cache.clear()
 
     @action(detail=False, methods=["get"], url_path="available-screens")

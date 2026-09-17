@@ -31,6 +31,8 @@ class VehicleCreation(models.Model):
         NEW = "NEW", "New"
         SECOND_HAND = "SECOND_HAND", "Second Hand"
 
+    CACHE_SCOPES = ("vehicle_creation_list", "vehicle_creation_detail")
+
     unique_id = models.CharField(
         max_length=40,
         primary_key=True,

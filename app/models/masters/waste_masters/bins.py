@@ -28,6 +28,8 @@ class BinType(models.TextChoices):
 
 class Bins(BaseMaster):
 
+    CACHE_SCOPES = ("bins_list", "bins_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,

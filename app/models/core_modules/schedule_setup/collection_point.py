@@ -17,6 +17,13 @@ def geneate_collection_point_id():
     return f"CP-{generate_unique_id()}"
 
 class Collection_point(BaseMaster):
+    CACHE_SCOPES = (
+        "collection_point_list",
+        "collection_point_detail",
+        "trip_plan_list",
+        "trip_plan_detail",
+    )
+
     COLLECTION_TYPE_BIN = "bin_collection"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
     COLLECTION_TYPE_BULK = "bulk_waste_collection"

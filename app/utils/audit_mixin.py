@@ -255,6 +255,7 @@ class AuditViewSetMixin:
     def perform_destroy(self, instance):
 
         previous_data = self._serialize_instance(instance)
+        account = self._account_for_request_user()
 
         self.log_audit(
             self.request,
@@ -263,4 +264,5 @@ class AuditViewSetMixin:
             new_data=None
         )
 
-        super().perform_destroy(instance)
+        delete_kwargs = {"updated_by": account} if account is not None else {}
+        instance.delete(**delete_kwargs)

@@ -157,7 +157,12 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         previous_data = self._serialize_instance(instance)
         instance.is_deleted = True
         instance.is_active = False
-        instance.save(update_fields=["is_deleted", "is_active", "updated_at"])
+        account = self._account_for_request_user()
+        update_fields = ["is_deleted", "is_active", "updated_at"]
+        if account is not None:
+            instance.updated_by = account
+            update_fields.append("updated_by")
+        instance.save(update_fields=update_fields)
         self.log_audit(
             self.request,
             instance=instance,

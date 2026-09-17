@@ -16,6 +16,7 @@ from app.serializers.core_modules.schedule_setup.staff_template_serializer impor
     StaffTemplateSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.cascade_delete import collect_cascade_cache_scopes
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
@@ -147,14 +148,10 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.delete()
-        invalidate_on_commit(*STAFF_TEMPLATE_CACHE_SCOPES)
-        return Response(
-            {"detail": "Staff template deleted successfully"},
-            status=status.HTTP_204_NO_CONTENT
-        )
+    def perform_destroy(self, instance):
+        scopes = collect_cascade_cache_scopes(instance)
+        super().perform_destroy(instance)
+        invalidate_on_commit(*(set(STAFF_TEMPLATE_CACHE_SCOPES) | set(scopes)))
 
     def update(self, request, *args, **kwargs):
         kwargs["partial"] = True
