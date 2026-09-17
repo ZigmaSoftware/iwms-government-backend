@@ -20,7 +20,7 @@ load_dotenv()
 # find SECRET_KEY already defined here.
 SECRET_KEY = os.getenv("SECRET_KEY", "insecure-test-secret-key-not-for-production")
 
-from .settings import *  # noqa: F401, F403, E402
+from .settings import * 
 
 # ── Override database ───────────────────────────────────────────────
 DATABASES = {

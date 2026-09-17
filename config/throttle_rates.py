@@ -118,7 +118,6 @@ REALTIME_MOBILE = {
 
 API_THROTTLE_RATES = {
     # ── Auth / sensitive endpoints — tighter limits ────────────────
-    # 'login': AUTH_SENSITIVE,
     "otp": AUTH_SENSITIVE,
     "reset_password": AUTH_SENSITIVE,
     "change_password": AUTH_SENSITIVE,
@@ -169,8 +168,6 @@ API_THROTTLE_RATES = {
     "trip_attendance": REALTIME_MOBILE,
 
     # ── Everything else — CRUD over masters/reference/config data ──
-    # (read_master_data: generous GET headroom for datagrid pagination/
-    # search/sort, moderate writes since reference data changes rarely)
     "administrative_hierarchy": READ_MASTER_DATA,
     "alternative_staff_template": READ_MASTER_DATA,
     "app_module": READ_MASTER_DATA,
