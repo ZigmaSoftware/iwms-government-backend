@@ -12,7 +12,6 @@ from app.utils.comfun import generate_unique_id
 from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.masters.district import District
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 
 
@@ -126,13 +125,9 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
     # -----------------------------
     # LOCATION FIELDS
     # -----------------------------
-    district_id = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        db_column="district_id",
-        related_name="users_district"
-    )
+    # Plain CharField holding District.unique_id (no DB relation/join) —
+    # matches the rest of the geo-hierarchy refactor's convention.
+    district_id = models.CharField(max_length=30, null=True, blank=True)
 
     # Dynamic geography: the hierarchy node this user is scoped to. Replaces
     # the static district_id (kept temporarily for zero-downtime migration).

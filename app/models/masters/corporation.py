@@ -1,8 +1,5 @@
 from django.db import models
 
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.areatype import AreaType
-from app.models.masters.district import District
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -43,24 +40,9 @@ class Corporation(BaseMaster):
         default=generate_corporation_id,
         editable=False,
     )
-    state_id = models.ForeignKey(
-        State,
-        on_delete=models.PROTECT,
-        related_name="corporations",
-        db_column="state_id",
-    )
-    district_id = models.ForeignKey(
-        District,
-        on_delete=models.PROTECT,
-        related_name="corporations",
-        db_column="district_id",
-    )
-    area_type_id = models.ForeignKey(
-        AreaType,
-        on_delete=models.PROTECT,
-        related_name="corporations",
-        db_column="area_type_id",
-    )
+    state_id = models.CharField(max_length=30)
+    district_id = models.CharField(max_length=30)
+    area_type_id = models.CharField(max_length=30)
     corporation_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -72,3 +54,23 @@ class Corporation(BaseMaster):
 
     def __str__(self):
         return self.corporation_name
+
+    @property
+    def wards(self):
+        """Wards under this corporation. Ward.corporation_id is a plain
+        unique_id string (no DB relation), so this replaces the reverse FK
+        accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE above) and
+        other callers expect; returns a QuerySet, so `.all()`/`.filter()`/
+        `.first()` etc. all still work the same as before."""
+        from app.models.masters.ward import Ward
+
+        return Ward.objects.filter(corporation_id=self.unique_id)
+
+    @property
+    def customer_creations(self):
+        """CustomerCreation rows scoped to this corporation. See `wards`
+        above — CustomerCreation.corporation_id is likewise a plain
+        unique_id string now."""
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+
+        return CustomerCreation.objects.filter(corporation_id=self.unique_id)

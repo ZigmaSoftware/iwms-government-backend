@@ -21,14 +21,6 @@ TRIP_PLAN_CACHE_SCOPES = ("trip_plan_list", "trip_plan_detail")
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "trip_plan"
     queryset = TripPlan.objects.select_related(
-        "state",
-        "district",
-        "area_type",
-        "corporation",
-        "municipality",
-        "town_panchayat",
-        "panchayat_union",
-        "panchayat",
         "staff_template_id",
         "staff_template_id__driver_id",
         "staff_template_id__operator_id",

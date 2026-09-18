@@ -4,6 +4,9 @@ from rest_framework import serializers
 from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
@@ -22,7 +25,6 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             "alt_staff_template_id",
             "alt_staff_template_id__driver_id",
             "alt_staff_template_id__operator_id",
-            "district",
         ).prefetch_related("waste_types").filter(is_deleted=False),
         write_only=True,
     )
@@ -381,20 +383,28 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         return level
 
     def get_location(self, obj):
-        # Full location detail straight from the geo master FKs on the log
-        # (falling back to its assignment) — no hierarchy tree/assignment lookup.
+        # Full location detail straight from the geo master columns on the log
+        # (falling back to its assignment) — these are now plain unique_id
+        # strings (no DB relation), so resolve display names with a lookup
+        # instead of attribute-chaining a live FK.
         source = obj if obj.district_id or obj.panchayat_id or obj.corporation_id else obj.trip_assignment_id
         if not source:
             source = obj
         name, level = flat_geo_display(source)
-        area_type = getattr(source, "area_type", None)
-        district = getattr(source, "district", None)
-        state = getattr(source, "state", None)
+        area_type_name = AreaType.objects.filter(
+            unique_id=getattr(source, "area_type_id", None)
+        ).values_list("name", flat=True).first()
+        district_name = District.objects.filter(
+            unique_id=getattr(source, "district_id", None)
+        ).values_list("name", flat=True).first()
+        state_name = State.objects.filter(
+            unique_id=getattr(source, "state_id", None)
+        ).values_list("name", flat=True).first()
         return {
-            "state": getattr(state, "name", None),
-            "district": getattr(district, "name", None),
+            "state": state_name,
+            "district": district_name,
             # "Urban Local Body" / "Rural Local Body" from the AreaType master
-            "classification": getattr(area_type, "name", None),
+            "classification": area_type_name,
             "local_body_name": name,
             "local_body_level": level,
         }

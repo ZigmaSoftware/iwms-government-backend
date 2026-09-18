@@ -1,11 +1,13 @@
 from rest_framework import serializers
+from app.models.superadmin.common_masters.continent import Continent
 from app.models.superadmin.common_masters.country import Country
 from app.validators.unique_name_validator import unique_name_validator
 
 class CountrySerializer(serializers.ModelSerializer):
-    continent_name = serializers.CharField(
-        source="continent_id.name", read_only=True
-    )
+    continent_name = serializers.SerializerMethodField()
+
+    def get_continent_name(self, obj):
+        return Continent.objects.filter(unique_id=obj.continent_id).values_list("name", flat=True).first()
 
     class Meta:
         model = Country

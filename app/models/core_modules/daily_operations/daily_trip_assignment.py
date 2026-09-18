@@ -9,14 +9,6 @@ from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.masters.waste_masters.wastetype import WasteType
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.utils.hierarchy import copy_flat_geo
 
@@ -126,78 +118,14 @@ class DailyTripAssignment(BaseMaster):
     # LOCATION
     # ------------------------------------------------------------------
 
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="daily_trip_assignments",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     # Inherited from the Trip Plan on create (see `save`), can be narrowed
     # per-trip the same way `waste_types` already is.
     wards = models.ManyToManyField(
@@ -297,7 +225,7 @@ class DailyTripAssignment(BaseMaster):
         indexes = [
             models.Index(fields=["trip_date", "status"]),
             models.Index(fields=["trip_plan_id", "trip_date"]),
-            models.Index(fields=["district", "trip_date"]),
+            models.Index(fields=["district_id", "trip_date"]),
         ]
 
     # ------------------------------------------------------------------

@@ -19,18 +19,29 @@ from app.serializers.superadmin.staff_management.user_serializer import UniqueId
 from app.utils.crew import CrewPresenceCache, crew_payload
 from app.utils.waste_images import capture_images_for_customer
 
+_GEO_LOOKUP_MODELS = {
+    "state": (State, "name"),
+    "district": (District, "name"),
+    "area_type": (AreaType, "name"),
+    "corporation": (Corporation, "corporation_name"),
+    "municipality": (Municipality, "municipality_name"),
+    "town_panchayat": (TownPanchayat, "town_panchayat_name"),
+    "panchayat_union": (PanchayatUnion, "union_name"),
+    "panchayat": (Panchayat, "panchayat_name"),
+}
+
 
 class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     trip_plan_id = UniqueIdOrPkField(slug_field="unique_id", queryset=TripPlan.objects.filter(is_deleted=False, status="ACTIVE"), write_only=True)
     staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    state_id = serializers.CharField(required=False, allow_null=True)
+    district_id = serializers.CharField(required=False, allow_null=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True)
     waste_type_ids = serializers.SlugRelatedField(
         slug_field="unique_id",
         queryset=WasteType.objects.filter(is_deleted=False),
@@ -127,8 +138,8 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "unique_id": plan.unique_id,
             "display_code": plan.display_code,
             "scheduled_time": plan.scheduled_time,
-            "district": self._ref(plan.district),
-            "panchayat": self._panchayat_payload(plan.panchayat),
+            "district": self._geo_ref(plan.district_id, "district"),
+            "panchayat": self._panchayat_payload(plan.panchayat_id),
             "vehicle_no": getattr(getattr(plan, "vehicle_id", None), "vehicle_no", None),
             "waste_type_names": [wt.waste_type_name for wt in plan.waste_types.all()],
             "has_bin": TripPlanCollectionPoint.COLLECTION_TYPE_BIN in stop_types,
@@ -162,38 +173,46 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
         )
 
     def get_panchayat(self, obj):
-        return self._panchayat_payload(obj.panchayat)
+        return self._panchayat_payload(obj.panchayat_id)
 
     def get_state(self, obj):
-        return self._ref(obj.state)
+        return self._geo_ref(obj.state_id, "state")
 
     def get_district(self, obj):
-        return self._ref(obj.district)
+        return self._geo_ref(obj.district_id, "district")
 
     def get_area_type(self, obj):
-        return self._ref(obj.area_type)
+        return self._geo_ref(obj.area_type_id, "area_type")
 
     def get_corporation(self, obj):
-        return self._ref(obj.corporation, "corporation_name")
+        return self._geo_ref(obj.corporation_id, "corporation")
 
     def get_municipality(self, obj):
-        return self._ref(obj.municipality, "municipality_name")
+        return self._geo_ref(obj.municipality_id, "municipality")
 
     def get_town_panchayat(self, obj):
-        return self._ref(obj.town_panchayat, "town_panchayat_name")
+        return self._geo_ref(obj.town_panchayat_id, "town_panchayat")
 
     def get_panchayat_union(self, obj):
-        return self._ref(obj.panchayat_union, "union_name")
+        return self._geo_ref(obj.panchayat_union_id, "panchayat_union")
 
-    def _ref(self, value, label_attr="name"):
+    def _geo_ref(self, value, field):
+        # These fields are now plain unique_id strings (no DB relation), so
+        # the display ref is resolved with a lookup instead of attribute-
+        # chaining a live FK.
         if not value:
             return None
-        return {"unique_id": value.unique_id, label_attr: getattr(value, label_attr, None)}
+        model, label_attr = _GEO_LOOKUP_MODELS[field]
+        name = model.objects.filter(unique_id=value).values_list(label_attr, flat=True).first()
+        return {"unique_id": value, label_attr: name}
 
-    def _panchayat_payload(self, panchayat):
-        if not panchayat:
+    def _panchayat_payload(self, panchayat_id):
+        if not panchayat_id:
             return None
-        return {"unique_id": panchayat.unique_id, "panchayat_name": panchayat.panchayat_name}
+        name = Panchayat.objects.filter(unique_id=panchayat_id).values_list(
+            "panchayat_name", flat=True
+        ).first()
+        return {"unique_id": panchayat_id, "panchayat_name": name}
 
     def get_vehicle(self, obj):
         vehicle = obj.vehicle_id
@@ -370,7 +389,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
         trip_date = attrs.get("trip_date", getattr(instance, "trip_date", None))
         scheduled_time = attrs.get("scheduled_time", getattr(instance, "scheduled_time", None))
 
-        geo_fields = ("state", "district", "area_type", "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat")
+        geo_fields = ("state_id", "district_id", "area_type_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id")
         if trip_plan:
             attrs.setdefault("staff_template_id", trip_plan.staff_template_id)
             attrs.setdefault("vehicle_id", trip_plan.vehicle_id)
@@ -387,7 +406,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
         if not waste_types:
             raise serializers.ValidationError({"waste_type_ids": "At least one waste type is required."})
 
-        if not any(attrs.get(field, getattr(instance, field, None)) for field in ("district", "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat")):
+        if not any(attrs.get(field, getattr(instance, field, None)) for field in ("district_id", "corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id")):
             raise serializers.ValidationError("Daily trip assignment must belong to a geographic area.")
 
         if trip_plan and trip_date:

@@ -16,24 +16,57 @@ from app.utils.hierarchy import validate_wards_for_flat_geo
 
 class BinsSerializer(serializers.ModelSerializer):
 
-    country_id = UniqueIdOrPkField(source="country", slug_field="unique_id", queryset=Country.objects.filter(is_deleted=False), required=False, allow_null=True)
-    country_name = serializers.CharField(source="country.name", read_only=True)
-    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True)
-    state_name = serializers.CharField(source="state.name", read_only=True)
-    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True)
-    district_name = serializers.CharField(source="district.name", read_only=True)
-    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), required=False, allow_null=True)
-    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
-    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), required=False, allow_null=True)
-    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True)
-    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), required=False, allow_null=True)
-    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True)
-    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
-    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True)
-    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), required=False, allow_null=True)
-    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
-    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
-    panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
+    # state/district/area_type/corporation/.../panchayat/country are plain
+    # CharFields (unique_id strings, no DB relation) copied automatically
+    # from the parent Collection_point on save (see Bins.save()) — hence
+    # read_only below, matching the pre-conversion behavior where these
+    # fields could not be set directly either.
+    country_id = serializers.CharField(read_only=True)
+    country_name = serializers.SerializerMethodField()
+    state_id = serializers.CharField(read_only=True)
+    state_name = serializers.SerializerMethodField()
+    district_id = serializers.CharField(read_only=True)
+    district_name = serializers.SerializerMethodField()
+    area_type_id = serializers.CharField(read_only=True)
+    area_type_name = serializers.SerializerMethodField()
+    corporation_id = serializers.CharField(read_only=True)
+    corporation_name = serializers.SerializerMethodField()
+    municipality_id = serializers.CharField(read_only=True)
+    municipality_name = serializers.SerializerMethodField()
+    town_panchayat_id = serializers.CharField(read_only=True)
+    town_panchayat_name = serializers.SerializerMethodField()
+    panchayat_union_id = serializers.CharField(read_only=True)
+    panchayat_union_name = serializers.SerializerMethodField()
+    panchayat_id = serializers.CharField(read_only=True)
+    panchayat_name = serializers.SerializerMethodField()
+
+    def get_country_name(self, obj):
+        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+
+    def get_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+
+    def get_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+
+    def get_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+
+    def get_panchayat_name(self, obj):
+        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+
     ward_id = UniqueIdOrPkField(
         source="ward",
         slug_field="unique_id",
@@ -130,11 +163,11 @@ class BinsSerializer(serializers.ModelSerializer):
             ward_error = validate_wards_for_flat_geo(
                 [ward],
                 {
-                    "corporation": collection_point.corporation,
-                    "municipality": collection_point.municipality,
-                    "town_panchayat": collection_point.town_panchayat,
-                    "panchayat_union": collection_point.panchayat_union,
-                    "panchayat": collection_point.panchayat,
+                    "corporation": collection_point.corporation_id,
+                    "municipality": collection_point.municipality_id,
+                    "town_panchayat": collection_point.town_panchayat_id,
+                    "panchayat_union": collection_point.panchayat_union_id,
+                    "panchayat": collection_point.panchayat_id,
                 },
             )
             if ward_error:

@@ -50,7 +50,6 @@ class CustomerUserSeeder(BaseSeeder):
 
         panchayat = (
             Panchayat.objects.filter(panchayat_name=self.PANCHAYAT_NAME, is_deleted=False)
-            .select_related("district_id", "state_id", "area_type_id")
             .first()
         )
         if not panchayat:
@@ -65,10 +64,10 @@ class CustomerUserSeeder(BaseSeeder):
                 "building_no": "1",
                 "street": "Demo Street",
                 "area": "Modakkurichi",
-                "state": panchayat.state_id,
-                "district": panchayat.district_id,
-                "area_type": panchayat.area_type_id,
-                "panchayat": panchayat,
+                "state_id": panchayat.state_id,
+                "district_id": panchayat.district_id,
+                "area_type_id": panchayat.area_type_id,
+                "panchayat_id": panchayat.unique_id,
                 "pincode": "638104",
                 "latitude": "11.3805",
                 "longitude": "77.7032",
@@ -84,10 +83,10 @@ class CustomerUserSeeder(BaseSeeder):
         if not created:
             customer.customer_name = "Sameer"
             customer.password = make_password(self.PASSWORD)
-            customer.state = panchayat.state_id
-            customer.district = panchayat.district_id
-            customer.area_type = panchayat.area_type_id
-            customer.panchayat = panchayat
+            customer.state_id = panchayat.state_id
+            customer.district_id = panchayat.district_id
+            customer.area_type_id = panchayat.area_type_id
+            customer.panchayat_id = panchayat.unique_id
             customer.property_ref = property_obj
             customer.sub_property = sub_property
             customer.is_bulkwaste_generator = False

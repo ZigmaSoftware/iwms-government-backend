@@ -1,7 +1,6 @@
 from django.db import models
 
 from app.utils.base_models import BaseMaster
-from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_leader_login import generate_panchayat_leader_id
 
 
@@ -19,13 +18,10 @@ class PanchayatLeaderLogin(BaseMaster):
         default=generate_panchayat_leader_id,
     )
 
-    panchayat_id = models.ForeignKey(
-        Panchayat,
-        on_delete=models.PROTECT,
-        related_name="leader_logins",
-        db_column="panchayat_id",
-        to_field="unique_id",
-    )
+    # Plain CharField holding Panchayat.unique_id (no DB relation/join) —
+    # matches the rest of the geo-hierarchy refactor's convention. Was
+    # NOT NULL as a ForeignKey, so kept required here too.
+    panchayat_id = models.CharField(max_length=30)
 
     # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
     # the static panchayat_id (kept temporarily for zero-downtime migration).
@@ -73,7 +69,16 @@ class PanchayatLeaderLogin(BaseMaster):
         verbose_name_plural = "Panchayat Leader Logins"
 
     def __str__(self):
-        return f"{self.username} ({self.panchayat_id.panchayat_name if self.panchayat_id else '—'})"
+        from app.models.masters.panchayat import Panchayat
+
+        panchayat_name = (
+            Panchayat.objects.filter(unique_id=self.panchayat_id)
+            .values_list("panchayat_name", flat=True)
+            .first()
+            if self.panchayat_id
+            else None
+        )
+        return f"{self.username} ({panchayat_name or '—'})"
 
     # Required by DRF permission system
     @property

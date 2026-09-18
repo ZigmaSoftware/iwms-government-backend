@@ -8,9 +8,6 @@ from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
 from app.models.superadmin.screen_management.companyuserscreenpermission import LocalBodyType, PermissionOwnerKind
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -78,24 +75,12 @@ class CompanyUserScreenColumnPermission(BaseMaster):
         null=True,
         blank=True,
     )
-    state_id = models.ForeignKey(
-        State, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="state_id",
-        related_name="userscreen_column_permissions",
-        null=True, blank=True,
-    )
-    district_id = models.ForeignKey(
-        District, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="district_id",
-        related_name="userscreen_column_permissions",
-        null=True, blank=True,
-    )
-    area_type_id = models.ForeignKey(
-        AreaType, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="area_type_id",
-        related_name="userscreen_column_permissions",
-        null=True, blank=True,
-    )
+    # Plain CharFields holding State/District/AreaType.unique_id (no DB
+    # relation/join) — matches the rest of the geo-hierarchy refactor's
+    # convention.
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
     local_body_type = models.CharField(
         max_length=20, choices=LocalBodyType.choices,
         null=True, blank=True,

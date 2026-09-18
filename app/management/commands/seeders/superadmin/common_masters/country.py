@@ -26,7 +26,7 @@ class CountrySeeder(BaseSeeder):
                 continent_cache[continent_name] = Continent.objects.get(name=continent_name)
             Country.objects.update_or_create(
                 name=country_name,
-                continent_id=continent_cache[continent_name],
+                continent_id=continent_cache[continent_name].unique_id,
                 defaults={
                     "currency": currency,
                     "mob_code": mob_code,

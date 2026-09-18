@@ -130,13 +130,16 @@ class ComplaintTicketSeeder(BaseSeeder):
                     "location_text": location_text,
                     "latitude": customer.latitude or None,
                     "longitude": customer.longitude or None,
-                    "state": customer.state,
-                    "district": customer.district,
-                    "corporation": customer.corporation,
-                    "municipality": customer.municipality,
-                    "town_panchayat": customer.town_panchayat,
-                    "panchayat_union": customer.panchayat_union,
-                    "panchayat": customer.panchayat,
+                    # Both CustomerCreation's and ComplaintTicket's own geo
+                    # columns are plain unique_id strings (no DB relation) -
+                    # copy them straight across.
+                    "state_id": customer.state_id,
+                    "district_id": customer.district_id,
+                    "corporation_id": customer.corporation_id,
+                    "municipality_id": customer.municipality_id,
+                    "town_panchayat_id": customer.town_panchayat_id,
+                    "panchayat_union_id": customer.panchayat_union_id,
+                    "panchayat_id": customer.panchayat_id,
                     "assigned_team": team,
                     "assigned_staff": getattr(team, "lead_staff", None) if team else None,
                     "resolved_at": now if status.status_code in ("RESOLVED", "CLOSED") else None,

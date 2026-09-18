@@ -22,10 +22,10 @@ class PanchayatSeeder(BaseSeeder):
 
         count = 0
         for district_name, geo in DISTRICTS.items():
-            district = District.objects.filter(state_id=tamil_nadu, name=district_name).first()
+            district = District.objects.filter(state_id=tamil_nadu.unique_id, name=district_name).first()
             area_type = AreaType.objects.filter(
-                state_id=tamil_nadu,
-                district_id=district,
+                state_id=tamil_nadu.unique_id,
+                district_id=district.unique_id,
                 name="Rural Local Body",
             ).first()
             if not district or not area_type:
@@ -35,9 +35,9 @@ class PanchayatSeeder(BaseSeeder):
             for panchayat_name, lat, lon, _pincode in geo["panchayats"]:
                 Panchayat.objects.update_or_create(
                     panchayat_name=panchayat_name,
-                    state_id=tamil_nadu,
-                    district_id=district,
-                    area_type_id=area_type,
+                    state_id=tamil_nadu.unique_id,
+                    district_id=district.unique_id,
+                    area_type_id=area_type.unique_id,
                     defaults={
                         "coordinates": coordinates((lat, lon)),
                         "is_active": True,

@@ -35,15 +35,6 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
                 "customer_id",
-                "customer_id__corporation",
-                "customer_id__municipality",
-                "customer_id__town_panchayat",
-                "customer_id__panchayat_union",
-                "corporation",
-                "municipality",
-                "town_panchayat",
-                "panchayat_union",
-                "panchayat",
                 "waste_collection_id",
             )
             .filter(is_deleted=False)

@@ -4,10 +4,12 @@ from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.ward_utils import FLAT_GEO_FIELDS
 from app.models.core_modules.schedule_setup.alternative_staff_template import (
     AlternativeStaffTemplate,
 )
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.masters.panchayat import Panchayat
 from app.models.masters.transport_masters.fuel import Fuel
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
@@ -79,15 +81,13 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
+        # StaffTemplate/AlternativeStaffTemplate/Staffcreation all carry the
+        # flat-geo block as plain "<field>_id" CharFields now (unique_id
+        # strings, no DB relation) — read straight off the supervisor's own
+        # attnames rather than resolving FK objects.
         geo = {
-            "state": supervisor.state,
-            "district": supervisor.district,
-            "area_type": supervisor.area_type,
-            "corporation": supervisor.corporation,
-            "municipality": supervisor.municipality,
-            "town_panchayat": supervisor.town_panchayat,
-            "panchayat_union": supervisor.panchayat_union,
-            "panchayat": supervisor.panchayat,
+            f"{field}_id": getattr(supervisor, f"{field}_id", None)
+            for field in FLAT_GEO_FIELDS
         }
 
         drivers = [
@@ -105,6 +105,12 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
         ]
 
         vehicles_created = self._seed_vehicles(geo)
+
+        panchayat_name = (
+            Panchayat.objects.filter(unique_id=supervisor.panchayat_id)
+            .values_list("panchayat_name", flat=True)
+            .first()
+        )
 
         today = timezone.localdate()
         alt, created = AlternativeStaffTemplate.objects.get_or_create(
@@ -125,7 +131,7 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             f"Seeded {len(drivers)} extra driver(s), {len(operators)} extra "
             f"operator(s), {len(templates)} staff template(s), "
             f"{vehicles_created} spare vehicle(s) under "
-            f"{supervisor.panchayat.panchayat_name}; "
+            f"{panchayat_name}; "
             f"{'created' if created else 'reused'} alternative staff template "
             f"{alt.display_code} substituting onto {templates[0].display_code}."
         )

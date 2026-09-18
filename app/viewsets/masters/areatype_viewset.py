@@ -28,7 +28,7 @@ class AreaTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     permission_resource = "AreaType"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["name", "state_id__name", "district_id__name"]
+    search_fields = ["name"]
     ordering_fields = ["name", "is_active"]
 
     AUDIT_MODULE = "masters"
@@ -36,8 +36,8 @@ class AreaTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
 
     SCOPE_FIELD_MAP = {
         "area_type": "unique_id",
-        "district": "district_id_id",
-        "state": "state_id_id",
+        "district": "district_id",
+        "state": "state_id",
     }
 
     def get_queryset(self):
@@ -46,9 +46,9 @@ class AreaTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
         district_uid = self.request.query_params.get("district") or self.request.query_params.get("district_id")
 
         if state_uid:
-            queryset = queryset.filter(state_id__unique_id=state_uid)
+            queryset = queryset.filter(state_id=state_uid)
         if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
+            queryset = queryset.filter(district_id=district_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(
             queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP

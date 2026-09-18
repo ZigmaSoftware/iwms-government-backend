@@ -10,9 +10,9 @@ from app.serializers.masters.leader_management.state_leader_serializer import St
 
 class StateLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "state_leader_login"
-    queryset = StateLeaderLogin.objects.select_related(
-        "state_id",
-    ).filter(is_deleted=False)
+    # state_id is now a plain unique_id CharField (no DB relation), so it
+    # can no longer be select_related.
+    queryset = StateLeaderLogin.objects.filter(is_deleted=False)
 
     serializer_class = StateLeaderLoginSerializer
     lookup_field = "unique_id"
@@ -23,17 +23,15 @@ class StateLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["username", "leader_name", "email", "state_id__name"]
+    search_fields = ["username", "leader_name", "email"]
     ordering_fields = ["username", "created_at"]
 
     def get_queryset(self):
-        qs = StateLeaderLogin.objects.select_related(
-            "state_id"
-        ).filter(is_deleted=False)
+        qs = StateLeaderLogin.objects.filter(is_deleted=False)
 
         state_id = self.request.query_params.get("state_id")
         if state_id:
-            qs = qs.filter(state_id__unique_id=state_id)
+            qs = qs.filter(state_id=state_id)
 
         return qs.order_by("-created_at")
 

@@ -42,12 +42,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     queryset = DailyTripAssignment.objects.select_related(
         "trip_plan_id",
-        "trip_plan_id__district",
-        "trip_plan_id__panchayat",
-        "trip_plan_id__corporation",
-        "trip_plan_id__municipality",
-        "trip_plan_id__town_panchayat",
-        "trip_plan_id__panchayat_union",
         "trip_plan_id__vehicle_id",
         "staff_template_id",
         "staff_template_id__driver_id",
@@ -55,14 +49,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "alt_staff_template_id",
         "alt_staff_template_id__driver_id",
         "alt_staff_template_id__operator_id",
-        "state",
-        "district",
-        "area_type",
-        "corporation",
-        "municipality",
-        "town_panchayat",
-        "panchayat_union",
-        "panchayat",
         "vehicle_id",
     ).prefetch_related("trip_plan_id__waste_types", "waste_types").filter(is_deleted=False)
 

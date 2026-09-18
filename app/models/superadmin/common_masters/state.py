@@ -1,7 +1,5 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
-from .country import Country
-from .continent import Continent
 from app.utils.comfun import generate_unique_id
 
 
@@ -55,21 +53,9 @@ class State(BaseMaster):
         default=generate_state_id
     )
 
-    country_id = models.ForeignKey(
-        Country,
-        on_delete=models.PROTECT,
-        related_name="states",
-        to_field="unique_id",
-        db_column="country_id",
-    )
+    country_id = models.CharField(max_length=30)
 
-    continent_id = models.ForeignKey(
-        Continent,
-        on_delete=models.PROTECT,
-        related_name="states",
-        to_field="unique_id",
-        db_column="continent_id",
-    )
+    continent_id = models.CharField(max_length=30)
 
     name = models.CharField(max_length=100)
     label = models.CharField(max_length=20, blank=True, null=True)
@@ -79,4 +65,25 @@ class State(BaseMaster):
         unique_together = ("country_id", "name")
 
     def __str__(self):
-        return f"{self.name} ({self.country_id.name})"
+        from .country import Country
+        country_name = Country.objects.filter(unique_id=self.country_id).values_list("name", flat=True).first()
+        return f"{self.name} ({country_name})"
+
+    @property
+    def wards(self):
+        """Wards directly scoped to this state. Ward.state_id is a plain
+        unique_id string (no DB relation), so this replaces the reverse FK
+        accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE above) and
+        other callers expect; returns a QuerySet, so `.all()`/`.filter()`/
+        `.first()` etc. all still work the same as before."""
+        from app.models.masters.ward import Ward
+
+        return Ward.objects.filter(state_id=self.unique_id)
+
+    @property
+    def customer_creations(self):
+        """CustomerCreation rows scoped to this state. See `wards` above —
+        CustomerCreation.state_id is likewise a plain unique_id string now."""
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+
+        return CustomerCreation.objects.filter(state_id=self.unique_id)

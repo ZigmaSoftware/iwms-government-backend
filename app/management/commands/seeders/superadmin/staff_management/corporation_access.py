@@ -77,10 +77,14 @@ class CorporationAccessSeeder(BaseSeeder):
                     "governmentusertype_id": role,
                     # Geo captured directly on the staff record (matches the finer
                     # StaffDataScope below); inclusive-downward from the corporation.
-                    "state": corporation.state_id,
-                    "district": corporation.district_id,
-                    "area_type": corporation.area_type_id,
-                    "corporation": corporation,
+                    # StaffcreationOfficeDetails' own state/district/area_type/
+                    # corporation columns are plain unique_id CharFields now (no
+                    # DB relation), so assign the corporation's own unique_id
+                    # strings directly instead of resolving FK instances.
+                    "state_id": corporation.state_id,
+                    "district_id": corporation.district_id,
+                    "area_type_id": corporation.area_type_id,
+                    "corporation_id": corporation.unique_id,
                     "active_status": True,
                     "login_enabled": True,
                     "is_active": True,
@@ -109,9 +113,9 @@ class CorporationAccessSeeder(BaseSeeder):
                     staff=staff,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id_id,
-                        "district_id": corporation.district_id_id,
-                        "area_type_id": corporation.area_type_id_id,
+                        "state_id": corporation.state_id,
+                        "district_id": corporation.district_id,
+                        "area_type_id": corporation.area_type_id,
                         "is_active": True,
                     },
                 )
@@ -133,7 +137,7 @@ class CorporationAccessSeeder(BaseSeeder):
             # StaffDataScope. District-wide drivers/operators intentionally
             # remain outside this set because they serve several local bodies.
             managed_staff = StaffcreationOfficeDetails.objects.filter(
-                corporation=corporation,
+                corporation_id=corporation.unique_id,
                 is_deleted=False,
             ).filter(
                 Q(username=f"{code}.corp.supervisor")
@@ -150,9 +154,9 @@ class CorporationAccessSeeder(BaseSeeder):
                     staff=staff,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id_id,
-                        "district_id": corporation.district_id_id,
-                        "area_type_id": corporation.area_type_id_id,
+                        "state_id": corporation.state_id,
+                        "district_id": corporation.district_id,
+                        "area_type_id": corporation.area_type_id,
                         "is_active": True,
                     },
                 )

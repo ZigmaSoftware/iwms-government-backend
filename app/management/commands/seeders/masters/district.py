@@ -19,15 +19,17 @@ class DistrictSeeder(BaseSeeder):
     def run(self):
         asia = Continent.objects.get(name="Asia")
         india = Country.objects.get(name="India")
-        tamil_nadu = State.objects.get(name="Tamil Nadu", country_id=india, continent_id=asia)
+        tamil_nadu = State.objects.get(
+            name="Tamil Nadu", country_id=india.unique_id, continent_id=asia.unique_id
+        )
 
         for name, code, geo_coordinates in self.DISTRICTS:
             District.objects.update_or_create(
-                state_id=tamil_nadu,
+                state_id=tamil_nadu.unique_id,
                 name=name,
                 defaults={
-                    "continent_id": asia,
-                    "country_id": india,
+                    "continent_id": asia.unique_id,
+                    "country_id": india.unique_id,
                     "district_code": code,
                     "coordinates": geo_coordinates,
                     "is_active": True,

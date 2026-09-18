@@ -24,7 +24,7 @@ class DistrictViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["name", "district_code", "state_id__name"]
+    search_fields = ["name", "district_code"]
     ordering_fields = ["name", "district_code", "is_active"]
     permission_resource = "District"
 
@@ -33,7 +33,7 @@ class DistrictViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
 
     SCOPE_FIELD_MAP = {
         "district": "unique_id",
-        "state": "state_id_id",
+        "state": "state_id",
     }
 
     def get_queryset(self):
@@ -47,13 +47,13 @@ class DistrictViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
         continent_uid = self.request.query_params.get("continent")
 
         if country_uid:
-            queryset = queryset.filter(country_id__unique_id=country_uid)
+            queryset = queryset.filter(country_id=country_uid)
 
         if state_uid:
-            queryset = queryset.filter(state_id__unique_id=state_uid)
+            queryset = queryset.filter(state_id=state_uid)
 
         if continent_uid:
-            queryset = queryset.filter(continent_id__unique_id=continent_uid)
+            queryset = queryset.filter(continent_id=continent_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(
             queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP

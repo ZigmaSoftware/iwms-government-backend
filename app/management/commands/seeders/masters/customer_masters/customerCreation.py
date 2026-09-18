@@ -132,6 +132,7 @@ class CustomerCreationSeeder(BaseSeeder):
                         geo_defaults_for_local_body(
                             location["parent_type"],
                             location["parent"],
+                            as_strings=True,
                         )
                     )
 

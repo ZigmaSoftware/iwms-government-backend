@@ -1,7 +1,6 @@
 from django.db import models
 
 from app.utils.base_models import BaseMaster
-from app.models.masters.district import District
 from app.models.masters.district_leader_login import generate_district_leader_id
 
 
@@ -19,13 +18,10 @@ class DistrictLeaderLogin(BaseMaster):
         default=generate_district_leader_id,
     )
 
-    district_id = models.ForeignKey(
-        District,
-        on_delete=models.PROTECT,
-        related_name="leader_logins",
-        db_column="district_id",
-        to_field="unique_id",
-    )
+    # Plain CharField holding District.unique_id (no DB relation/join) —
+    # matches the rest of the geo-hierarchy refactor's convention. Was
+    # NOT NULL as a ForeignKey, so kept required here too.
+    district_id = models.CharField(max_length=30)
 
     # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
     # the static district_id (kept temporarily for zero-downtime migration).
@@ -73,7 +69,16 @@ class DistrictLeaderLogin(BaseMaster):
         verbose_name_plural = "District Leader Logins"
 
     def __str__(self):
-        return f"{self.username} ({self.district_id.name if self.district_id else '—'})"
+        from app.models.masters.district import District
+
+        district_name = (
+            District.objects.filter(unique_id=self.district_id)
+            .values_list("name", flat=True)
+            .first()
+            if self.district_id
+            else None
+        )
+        return f"{self.username} ({district_name or '—'})"
 
     # Required by DRF permission system
     @property

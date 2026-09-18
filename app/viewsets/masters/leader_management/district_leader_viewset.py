@@ -10,9 +10,9 @@ from app.serializers.masters.leader_management.district_leader_serializer import
 
 class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "district_leader_login"
-    queryset = DistrictLeaderLogin.objects.select_related(
-        "district_id",
-    ).filter(is_deleted=False)
+    # district_id is now a plain unique_id CharField (no DB relation), so it
+    # can no longer be select_related.
+    queryset = DistrictLeaderLogin.objects.filter(is_deleted=False)
 
     serializer_class = DistrictLeaderLoginSerializer
     lookup_field = "unique_id"
@@ -23,17 +23,15 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["username", "leader_name", "email", "district_id__name"]
+    search_fields = ["username", "leader_name", "email"]
     ordering_fields = ["username", "created_at"]
 
     def get_queryset(self):
-        qs = DistrictLeaderLogin.objects.select_related(
-            "district_id"
-        ).filter(is_deleted=False)
+        qs = DistrictLeaderLogin.objects.filter(is_deleted=False)
 
         district_id = self.request.query_params.get("district_id")
         if district_id:
-            qs = qs.filter(district_id__unique_id=district_id)
+            qs = qs.filter(district_id=district_id)
 
         return qs.order_by("-created_at")
 

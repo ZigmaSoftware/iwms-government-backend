@@ -1,29 +1,29 @@
 from rest_framework import serializers
 from app.models.superadmin.common_masters.continent import Continent
 from app.models.superadmin.common_masters.country import Country
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 class DistrictSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
-    continent_id = serializers.SlugRelatedField(
-        queryset=Continent.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    continent_name = serializers.CharField(source="continent_id.name", read_only=True)
-    country_id = serializers.SlugRelatedField(
-        queryset=Country.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    country_name   = serializers.CharField(source="country_id.name", read_only=True)
-    state_name     = serializers.CharField(source="state_id.name", read_only=True)
+    continent_id = serializers.CharField(required=False, allow_null=True)
+    continent_name = serializers.SerializerMethodField()
+    country_id = serializers.CharField(required=False, allow_null=True)
+    country_name = serializers.SerializerMethodField()
+    state_name = serializers.SerializerMethodField()
     district_name = serializers.CharField(source="name", required=False)
     district_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     name = serializers.CharField(required=False)
+
+    def get_continent_name(self, obj):
+        return Continent.objects.filter(unique_id=obj.continent_id).values_list("name", flat=True).first()
+
+    def get_country_name(self, obj):
+        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
 
     class Meta:
         model = District
@@ -48,10 +48,12 @@ class DistrictSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializ
         validators = []
 
     def validate(self, attrs):
-        state = attrs.get("state_id") or getattr(self.instance, "state_id", None)
-        if state:
-            attrs.setdefault("continent_id", state.continent_id)
-            attrs.setdefault("country_id", state.country_id)
+        state_id = attrs.get("state_id") or getattr(self.instance, "state_id", None)
+        if state_id:
+            state = State.objects.filter(unique_id=state_id).first()
+            if state:
+                attrs.setdefault("continent_id", state.continent_id)
+                attrs.setdefault("country_id", state.country_id)
         if not attrs.get("name"):
             raise serializers.ValidationError({"district_name": "This field is required."})
         if not attrs.get("state_id"):

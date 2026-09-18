@@ -119,11 +119,11 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "local_body_id": scope["local_body_id"],
         }
         if scope.get("state_id"):
-            filters["state_id_id"] = scope["state_id"]
+            filters["state_id"] = scope["state_id"]
         if scope.get("district_id"):
-            filters["district_id_id"] = scope["district_id"]
+            filters["district_id"] = scope["district_id"]
         if scope.get("area_type_id"):
-            filters["area_type_id_id"] = scope["area_type_id"]
+            filters["area_type_id"] = scope["area_type_id"]
         if scope.get("permission_type"):
             filters["permission_type"] = scope["permission_type"]
         if permission_owner_kind:

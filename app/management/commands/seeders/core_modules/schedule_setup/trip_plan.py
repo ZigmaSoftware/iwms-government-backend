@@ -61,7 +61,9 @@ class TripPlanSeeder(BaseSeeder):
             return 0
 
         templates = list(
-            StaffTemplate.objects.filter(**{parent_type: parent}, is_deleted=False).order_by("created_at")
+            StaffTemplate.objects.filter(
+                **{f"{parent_type}_id": parent.unique_id}, is_deleted=False
+            ).order_by("created_at")
         )
         vehicles = list(
             VehicleCreation.objects.filter(**{parent_type: parent}, is_deleted=False).order_by("created_at")
@@ -76,10 +78,10 @@ class TripPlanSeeder(BaseSeeder):
             )
 
         supervisor = StaffcreationOfficeDetails.objects.filter(
-            district=parent.district_id, designation="Field Supervisor", is_deleted=False,
+            district_id=parent.district_id, designation="Field Supervisor", is_deleted=False,
         ).first()
 
-        geo_fields = geo_defaults_for_local_body(parent_type, parent)
+        geo_fields = geo_defaults_for_local_body(parent_type, parent, as_strings=True)
 
         created_count = 0
         for ward_idx, ward in enumerate(wards):

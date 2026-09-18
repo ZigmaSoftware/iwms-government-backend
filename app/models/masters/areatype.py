@@ -1,8 +1,6 @@
 from django.db import models
 from app.utils.comfun import generate_unique_id
 from app.utils.base_models import BaseMaster
-from app.models.masters.district import District
-from app.models.superadmin.common_masters.state import State
 
 
 def generate_area_type_id():
@@ -54,21 +52,9 @@ class AreaType(BaseMaster):
         editable=False
     )
 
-    state_id = models.ForeignKey(
-        State,
-        on_delete = models.PROTECT,
-        related_name="area_type",
-        db_column="state_id",
-        
-    )
+    state_id = models.CharField(max_length=30)
 
-    district_id = models.ForeignKey(
-        District,
-        on_delete = models.PROTECT,
-        related_name="area_type",
-        db_column="district_id",
-        
-    )
+    district_id = models.CharField(max_length=30)
 
     name = models.CharField(max_length=50, choices=AreaTypeName.choices)
     coordinates = models.JSONField(default=list, blank=True)
@@ -82,3 +68,23 @@ class AreaType(BaseMaster):
 
     def __str__(self):
         return self.name
+
+    @property
+    def wards(self):
+        """Wards directly scoped to this area type. Ward.area_type_id is a
+        plain unique_id string (no DB relation), so this replaces the
+        reverse FK accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE
+        above) and other callers expect; returns a QuerySet, so `.all()`/
+        `.filter()`/`.first()` etc. all still work the same as before."""
+        from app.models.masters.ward import Ward
+
+        return Ward.objects.filter(area_type_id=self.unique_id)
+
+    @property
+    def customer_creations(self):
+        """CustomerCreation rows scoped to this area type. See `wards` above
+        — CustomerCreation.area_type_id is likewise a plain unique_id string
+        now."""
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+
+        return CustomerCreation.objects.filter(area_type_id=self.unique_id)

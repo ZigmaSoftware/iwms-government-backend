@@ -5,6 +5,7 @@ from django.utils import timezone
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.district import District
 from app.models.masters.transport_masters.trip_attendance import TripAttendance
 
 
@@ -19,10 +20,13 @@ class TripAttendanceSeeder(BaseSeeder):
     def run(self):
         created = 0
         for district_name in DISTRICTS:
+            district_uid = District.objects.filter(
+                name=district_name
+            ).values_list("unique_id", flat=True).first()
             trip = (
-                DailyTripAssignment.objects.filter(district__name=district_name)
+                DailyTripAssignment.objects.filter(district_id=district_uid)
                 .order_by("-trip_date", "-created_at")
-                .select_related("district", "staff_template_id", "vehicle_id")
+                .select_related("staff_template_id", "vehicle_id")
                 .first()
             )
             if not trip:
@@ -39,8 +43,9 @@ class TripAttendanceSeeder(BaseSeeder):
                 continue
 
             lat, lon = 11.0, 78.0
-            if trip.district and trip.district.coordinates:
-                point = trip.district.coordinates[0]
+            district_obj = District.objects.filter(unique_id=trip.district_id).first()
+            if district_obj and district_obj.coordinates:
+                point = district_obj.coordinates[0]
                 lat, lon = point["latitude"], point["longitude"]
 
             for idx, staff in enumerate([staff_template.operator_id, staff_template.driver_id]):
