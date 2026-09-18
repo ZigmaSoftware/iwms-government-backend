@@ -27,6 +27,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "dotenv>=0.9.9",
     "django-redis>=7.0.0",
+    "watchdog>=6.0.0",
 ]
 
 [dependency-groups]
