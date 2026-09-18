@@ -20,12 +20,15 @@ count x 2 collection types.
 """
 
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
+from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
+from app.models.masters.district import District
 from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.ward import Ward
+from app.models.superadmin.common_masters.state import State
 
 # Wards per local body — kept deliberately small (each ward fans out into a
 # trip plan x 2 collection types x HISTORY_DAYS of daily assignments, so
@@ -109,21 +112,23 @@ def local_bodies_for_district(district_name):
             "ward_count": WARDS_PER_LOCAL_BODY["corporation"],
         })
 
-    municipality = Municipality.objects.filter(district_id__name=district_name, is_deleted=False).first()
+    district_uid = District.objects.filter(name=district_name).values_list("unique_id", flat=True).first()
+
+    municipality = Municipality.objects.filter(district_id=district_uid, is_deleted=False).first()
     if municipality:
         result.append({
             "parent_type": "municipality", "parent": municipality,
             "ward_count": WARDS_PER_LOCAL_BODY["municipality"],
         })
 
-    town_panchayat = TownPanchayat.objects.filter(district_id__name=district_name, is_deleted=False).first()
+    town_panchayat = TownPanchayat.objects.filter(district_id=district_uid, is_deleted=False).first()
     if town_panchayat:
         result.append({
             "parent_type": "town_panchayat", "parent": town_panchayat,
             "ward_count": WARDS_PER_LOCAL_BODY["town_panchayat"],
         })
 
-    panchayat_union = PanchayatUnion.objects.filter(district_id__name=district_name, is_deleted=False).first()
+    panchayat_union = PanchayatUnion.objects.filter(district_id=district_uid, is_deleted=False).first()
     if panchayat_union:
         result.append({
             "parent_type": "panchayat_union", "parent": panchayat_union,
@@ -141,19 +146,43 @@ def local_bodies_for_district(district_name):
     return result
 
 
-def geo_defaults_for_local_body(parent_type, parent, include_country=False):
+def geo_defaults_for_local_body(parent_type, parent, include_country=False, as_strings=False):
     """Flat-geo {field: value} dict pointing a model at this exact local
     body (state/district/area_type inherited from the local body itself,
     plus the local body's own FK set, every other local-body FK cleared).
     Pass include_country=True for models (VehicleCreation, Collection_point,
-    Bins) that also carry a `country` FK alongside the usual block."""
+    Bins) that also carry a `country_id` field alongside the usual block.
+    Pass as_strings=True for models whose OWN state/district/area_type/
+    local-body columns are plain CharFields literally named "<field>_id"
+    (Ward, CustomerCreation, VehicleCreation, Collection_point, Bins, ...)
+    rather than live FKs — the dict then holds "<field>_id" keys mapped to
+    plain unique_id strings, matching those models' fields. TripPlan/
+    StaffTemplate are still FK-based and must keep calling without
+    as_strings."""
     values = {field: None for field in FLAT_GEO_FIELDS}
-    values["state"] = parent.state_id
-    values["district"] = parent.district_id
-    values["area_type"] = parent.area_type_id
+    # Every local-body model (Corporation, Municipality, TownPanchayat,
+    # PanchayatUnion, Panchayat) now stores state_id/district_id/area_type_id
+    # as plain unique_id strings rather than FKs, so they're all resolved
+    # back into real instances uniformly here.
+    parent_state = State.objects.filter(unique_id=parent.state_id).first()
+    parent_district = District.objects.filter(unique_id=parent.district_id).first()
+    parent_area_type = AreaType.objects.filter(unique_id=parent.area_type_id).first()
+    if as_strings:
+        values = {f"{field}_id": None for field in FLAT_GEO_FIELDS}
+        values["state_id"] = getattr(parent_state, "unique_id", None)
+        values["district_id"] = getattr(parent_district, "unique_id", None)
+        values["area_type_id"] = getattr(parent_area_type, "unique_id", None)
+        values[f"{parent_type}_id"] = parent.unique_id
+        if include_country:
+            values["country_id"] = parent_district.country_id if parent_district else None
+        return values
+
+    values["state"] = parent_state
+    values["district"] = parent_district
+    values["area_type"] = parent_area_type
     values[parent_type] = parent
     if include_country:
-        values["country"] = parent.district_id.country_id if parent.district_id else None
+        values["country"] = parent_district.country_id if parent_district else None
     return values
 
 
@@ -161,11 +190,14 @@ def wards_for_local_body(parent_type, parent):
     """Every seeded Ward under this specific local body, in the same
     deterministic order WardSeeder created them in (corporation wards keep
     their curated name order; generated wards are Ward N, N=1..count)."""
-    filter_kwargs = {parent_type: parent, "is_deleted": False}
+    filter_kwargs = {f"{parent_type}_id": parent.unique_id, "is_deleted": False}
     wards = {w.ward_name: w for w in Ward.objects.filter(**filter_kwargs)}
 
     if parent_type == "corporation":
-        geo = DISTRICTS[parent.district_id.name]
+        district_name = District.objects.filter(unique_id=parent.district_id).values_list(
+            "name", flat=True
+        ).first()
+        geo = DISTRICTS[district_name]
         ordered_names = [
             f"{name}{ward_type_tag('corporation')}" for name, _lat, _lon
             in geo["corporation_wards"][:WARDS_PER_LOCAL_BODY["corporation"]]

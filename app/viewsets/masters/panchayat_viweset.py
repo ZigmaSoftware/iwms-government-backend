@@ -23,16 +23,16 @@ class PanhayatViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     permission_resource = "Panchayat"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["panchayat_name", "state_id__name", "district_id__name", "area_type_id__name"]
+    search_fields = ["panchayat_name", "area_type_id"]
     ordering_fields = ["panchayat_name", "is_active"]
 
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT ="panchayat"
 
     SCOPE_FIELD_MAP = {
-        "panchayat": "unique_id",
-        "district": "district_id_id",
-        "state": "state_id_id",
+        "panchayat_id": "unique_id",
+        "district": "district_id",
+        "state": "state_id",
     }
 
     def get_queryset(self):
@@ -46,12 +46,12 @@ class PanhayatViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
         area_type_uid = self.request.query_params.get("area_type") or self.request.query_params.get("area_type_id")
 
         if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
+            queryset = queryset.filter(district_id=district_uid)
 
         if state_uid:
-            queryset = queryset.filter(state_id__unique_id=state_uid)
+            queryset = queryset.filter(state_id=state_uid)
         if area_type_uid:
-            queryset = queryset.filter(area_type_id__unique_id=area_type_uid)
+            queryset = queryset.filter(area_type_id=area_type_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(
             queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP

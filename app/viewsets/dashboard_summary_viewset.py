@@ -58,41 +58,41 @@ LOCAL_BODY_MODELS = {
 
 FILTER_SCOPE_FIELD_MAPS = {
     "state": {"state_id": "unique_id"},
-    "district": {"district_id": "unique_id", "state_id": "state_id_id"},
+    "district": {"district_id": "unique_id", "state_id": "state_id"},
     "area_type": {
         "area_type_id": "unique_id",
-        "district_id": "district_id_id",
-        "state_id": "state_id_id",
+        "district_id": "district_id",
+        "state_id": "state_id",
     },
     "corporation_id": {
         "corporation_id": "unique_id",
-        "area_type_id": "area_type_id_id",
-        "district_id": "district_id_id",
-        "state_id": "state_id_id",
+        "area_type_id": "area_type_id",
+        "district_id": "district_id",
+        "state_id": "state_id",
     },
     "municipality_id": {
         "municipality_id": "unique_id",
-        "area_type_id": "area_type_id_id",
-        "district_id": "district_id_id",
-        "state_id": "state_id_id",
+        "area_type_id": "area_type_id",
+        "district_id": "district_id",
+        "state_id": "state_id",
     },
     "town_panchayat_id": {
         "town_panchayat_id": "unique_id",
-        "area_type_id": "area_type_id_id",
-        "district_id": "district_id_id",
-        "state_id": "state_id_id",
+        "area_type_id": "area_type_id",
+        "district_id": "district_id",
+        "state_id": "state_id",
     },
     "panchayat_union_id": {
         "panchayat_union_id": "unique_id",
-        "area_type_id": "area_type_id_id",
-        "district_id": "district_id_id",
-        "state_id": "state_id_id",
+        "area_type_id": "area_type_id",
+        "district_id": "district_id",
+        "state_id": "state_id",
     },
     "panchayat_id": {
         "panchayat_id": "unique_id",
-        "area_type_id": "area_type_id_id",
-        "district_id": "district_id_id",
-        "state_id": "state_id_id",
+        "area_type_id": "area_type_id",
+        "district_id": "district_id",
+        "state_id": "state_id",
     },
 }
 
@@ -190,10 +190,15 @@ class DashboardSummaryViewSet(ViewSet):
     def _apply_geo(self, qs, params, include_ward=True):
         for key, value in params.items():
             if key == "local_body_type":
-                if value in LOCAL_BODY_MODELS:
-                    field_name = value.removesuffix("_id")
-                    if _model_has_field(qs.model, field_name):
-                        qs = qs.filter(**{f"{value}__isnull": False})
+                # `_model_has_field` matches by Django attname too (e.g. a
+                # still-FK model's "corporation" field resolves under
+                # "corporation_id"), so checking the "_id"-suffixed `value`
+                # directly works uniformly whether `qs.model`'s own column
+                # is a live FK (StaffTemplate/TripPlan) or an already-
+                # converted plain CharField literally named "..._id" (Ward,
+                # CustomerCreation, Corporation, District, ...).
+                if value in LOCAL_BODY_MODELS and _model_has_field(qs.model, value):
+                    qs = qs.filter(**{f"{value}__isnull": False})
                 continue
             if key == "ward_id" and not include_ward:
                 continue
@@ -918,9 +923,17 @@ class DashboardSummaryViewSet(ViewSet):
     def _ward_performance(self, params, target_date=None):
         _ward_qs = self._apply_dashboard_geo(
             Ward.objects.filter(is_deleted=False), params
-        ).select_related("district")[:50]
+        )[:50]
         ward_list = list(_ward_qs)
         ward_ids = [w.unique_id for w in ward_list]
+        # Ward.district_id is a plain unique_id string (no DB relation), so
+        # District names are resolved in one batched lookup rather than a
+        # per-ward join.
+        district_names = dict(
+            District.objects.filter(
+                unique_id__in={w.district_id for w in ward_list if w.district_id}
+            ).values_list("unique_id", "name")
+        )
 
         collection_qs = DailyTripHouseholdCollection.objects.filter(
             customer_id__ward__in=ward_ids,
@@ -1068,7 +1081,7 @@ class DashboardSummaryViewSet(ViewSet):
             result.append({
                 "ward_id": w.unique_id,
                 "ward_name": w.ward_name,
-                "district_name": w.district.name if w.district_id else "",
+                "district_name": district_names.get(w.district_id, ""),
                 "trips": trips_by_ward.get(w.unique_id, []),
                 "household_current_kg": household_kg,
                 "household_target_kg": household_target_kg,
@@ -1270,12 +1283,6 @@ class DashboardSummaryViewSet(ViewSet):
                 "created_by__user",
                 "assigned_team",
                 "assigned_staff",
-                "district",
-                "corporation",
-                "municipality",
-                "town_panchayat",
-                "panchayat_union",
-                "panchayat",
             )
             .prefetch_related("extra_details", "waste_types")
             .order_by("-created"),

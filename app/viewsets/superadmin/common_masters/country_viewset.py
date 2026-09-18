@@ -17,7 +17,7 @@ class CountryViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["name", "continent_id__name"]
+    search_fields = ["name"]
     ordering_fields = ["name", "is_active"]
 
     AUDIT_MODULE = "common-masters"
@@ -29,9 +29,7 @@ class CountryViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
         # Filter by Continent Unique ID
         continent_uid = self.request.query_params.get("continent")
         if continent_uid:
-            queryset = queryset.filter(
-                continent_id__unique_id=continent_uid
-            )
+            queryset = queryset.filter(continent_id=continent_uid)
             
         return queryset
 

@@ -2,14 +2,6 @@ from django.db import models
 
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 
 
 def generate_ward_id():
@@ -22,7 +14,14 @@ class Ward(BaseMaster):
     flat-geo FK block used by TripPlan/StaffTemplate/CustomerCreation. Exactly
     one of the five local-body FKs is populated per row; enforced in
     `WardSerializer.validate` via `normalize_flat_geo_attrs`, not at the DB
-    level, matching that existing convention."""
+    level, matching that existing convention.
+
+    state_id/district_id/area_type_id/corporation_id/municipality_id/
+    town_panchayat_id/panchayat_union_id/panchayat_id are plain CharFields
+    holding the related row's `unique_id` (no DB relation/join) — literal
+    field names with the "_id" suffix, matching the rest of the geo-hierarchy
+    (Continent/Country/State/District/AreaType/Corporation/Municipality/
+    TownPanchayat/Panchayat/PanchayatUnion all follow this same convention)."""
 
     CASCADE_SOFT_DELETE = (
         "bins",
@@ -39,78 +38,14 @@ class Ward(BaseMaster):
         default=generate_ward_id,
         editable=False,
     )
-    state = models.ForeignKey(
-        State,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="wards",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
     ward_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
@@ -120,8 +55,8 @@ class Ward(BaseMaster):
     class Meta:
         ordering = ["ward_name"]
         unique_together = (
-            "corporation", "municipality", "town_panchayat",
-            "panchayat_union", "panchayat", "ward_name",
+            "corporation_id", "municipality_id", "town_panchayat_id",
+            "panchayat_union_id", "panchayat_id", "ward_name",
         )
 
     def __str__(self):

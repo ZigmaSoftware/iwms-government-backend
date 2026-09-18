@@ -13,6 +13,14 @@ from app.models.core_modules.complaint_management.reopen_history import Complain
 from app.models.core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 
 
 class ComplaintTicketSerializer(serializers.ModelSerializer):
@@ -45,12 +53,9 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     assigned_staff_name = serializers.CharField(source="assigned_staff.employee_name", read_only=True)
     assigned_department_name = serializers.CharField(source="assigned_team.department.department_name", read_only=True)
     escalation_level = serializers.IntegerField(source="assigned_team.escalation_level", read_only=True)
-    state_id = serializers.CharField(read_only=True)
-    state_name = serializers.CharField(source="state.name", read_only=True)
-    district_id = serializers.CharField(read_only=True)
-    district_name = serializers.CharField(source="district.name", read_only=True)
-    area_type_id = serializers.CharField(read_only=True)
-    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
+    state_name = serializers.SerializerMethodField()
+    district_name = serializers.SerializerMethodField()
+    area_type_name = serializers.SerializerMethodField()
     city_id = serializers.SerializerMethodField()
     city_name = serializers.SerializerMethodField()
     city_type = serializers.SerializerMethodField()
@@ -76,6 +81,15 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
 
     def get_waste_type_names(self, obj):
         return [w.waste_type_name for w in obj.waste_types.all()]
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
 
     def get_reporter_type(self, obj):
         return "Customer" if obj.customer_id or self._matched_customer_name(obj) else "Public Grievance"
@@ -348,11 +362,39 @@ class ComplaintCommentSerializer(serializers.ModelSerializer):
 class ComplaintRoutingRuleSerializer(serializers.ModelSerializer):
     category_code = serializers.CharField(source="category.category_code", read_only=True)
     team_name = serializers.CharField(source="team.team_name", read_only=True)
+    state_name = serializers.SerializerMethodField()
+    district_name = serializers.SerializerMethodField()
+    corporation_name = serializers.SerializerMethodField()
+    municipality_name = serializers.SerializerMethodField()
+    town_panchayat_name = serializers.SerializerMethodField()
+    panchayat_union_name = serializers.SerializerMethodField()
+    panchayat_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ComplaintRoutingRule
         fields = "__all__"
         read_only_fields = ["unique_id"]
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+
+    def get_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+
+    def get_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+
+    def get_panchayat_name(self, obj):
+        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
 
 
 class ComplaintEscalationHistorySerializer(serializers.ModelSerializer):
@@ -399,6 +441,14 @@ class ComplaintAddressChangeRequestSerializer(serializers.ModelSerializer):
     ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
     proof_file_url = serializers.SerializerMethodField()
+    new_state_name = serializers.SerializerMethodField()
+    new_district_name = serializers.SerializerMethodField()
+    new_area_type_name = serializers.SerializerMethodField()
+    new_corporation_name = serializers.SerializerMethodField()
+    new_municipality_name = serializers.SerializerMethodField()
+    new_town_panchayat_name = serializers.SerializerMethodField()
+    new_panchayat_union_name = serializers.SerializerMethodField()
+    new_panchayat_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ComplaintAddressChangeRequest
@@ -417,3 +467,27 @@ class ComplaintAddressChangeRequestSerializer(serializers.ModelSerializer):
         if obj.proof_file and request:
             return request.build_absolute_uri(obj.proof_file.url)
         return None
+
+    def get_new_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.new_state_id).values_list("name", flat=True).first()
+
+    def get_new_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.new_district_id).values_list("name", flat=True).first()
+
+    def get_new_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.new_area_type_id).values_list("name", flat=True).first()
+
+    def get_new_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.new_corporation_id).values_list("corporation_name", flat=True).first()
+
+    def get_new_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.new_municipality_id).values_list("municipality_name", flat=True).first()
+
+    def get_new_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.new_town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_new_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.new_panchayat_union_id).values_list("union_name", flat=True).first()
+
+    def get_new_panchayat_name(self, obj):
+        return Panchayat.objects.filter(unique_id=obj.new_panchayat_id).values_list("panchayat_name", flat=True).first()

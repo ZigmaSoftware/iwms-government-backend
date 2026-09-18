@@ -27,6 +27,11 @@ from rest_framework import viewsets
 from rest_framework.response import Response
 
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.town_panchayat import TownPanchayat
 from app.models.reports.waste_reports.monthly_weight_report import MonthlyWeightReport
 from app.serializers.reports.waste_reports.monthly_weight_report_serializer import MonthlyWeightReportSerializer
 from app.utils.hierarchy import (
@@ -59,13 +64,30 @@ LOCAL_BODY_LABELS = {
     "panchayat": "Panchayat",
 }
 
-LOCAL_BODY_NAME_FIELDS = {
-    "corporation": "corporation__corporation_name",
-    "municipality": "municipality__municipality_name",
-    "town_panchayat": "town_panchayat__town_panchayat_name",
-    "panchayat_union": "panchayat_union__union_name",
-    "panchayat": "panchayat__panchayat_name",
+LOCAL_BODY_NAME_MODELS = {
+    "corporation": (Corporation, "corporation_name"),
+    "municipality": (Municipality, "municipality_name"),
+    "town_panchayat": (TownPanchayat, "town_panchayat_name"),
+    "panchayat_union": (PanchayatUnion, "union_name"),
+    "panchayat": (Panchayat, "panchayat_name"),
 }
+
+
+def _bulk_local_body_names(ids_by_field):
+    """{(field, unique_id): name} for every local-body id referenced,
+    resolved with one query per field instead of a per-row join — the
+    fields are now plain unique_id strings on DailyTripLog (no relation to
+    select_related/join against)."""
+    names = {}
+    for field, ids in ids_by_field.items():
+        if not ids:
+            continue
+        model, name_field = LOCAL_BODY_NAME_MODELS[field]
+        for unique_id, name in model.objects.filter(unique_id__in=ids).values_list(
+            "unique_id", name_field
+        ):
+            names[(field, unique_id)] = name
+    return names
 
 
 def decimal_value(value):
@@ -96,9 +118,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
 
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
-        base_qs = DailyTripLog.objects.select_related(
-            "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat",
-        ).prefetch_related("waste_types").filter(
+        base_qs = DailyTripLog.objects.prefetch_related("waste_types").filter(
             is_deleted=False,
             log_status__in=[
                 DailyTripLog.LOG_STATUS_SUBMITTED,
@@ -151,7 +171,6 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             weight_field = "collected_weight_kg"
 
         group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
-        name_fields = list(LOCAL_BODY_NAME_FIELDS.values())
 
         # ── Aggregate by (year, month, local body) — trip-log level, so a
         # trip is never double counted here even if it spans waste types ──
@@ -171,7 +190,7 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
             )
 
         location_qs = base_qs.values(
-            "trip_date__year", "trip_date__month", *group_fields, *name_fields,
+            "trip_date__year", "trip_date__month", *group_fields,
         ).annotate(**annotation_kwargs)
 
         # ── per-waste-type weight, computed separately (a trip can now
@@ -252,11 +271,15 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
                     if key in bucket_totals:
                         bucket_totals[key]["weight_kg"] += weight
 
-        local_body_names = {}
+        ids_by_field = {field: set() for field in LOCAL_BODY_FIELDS}
         for r in location_qs:
             lb_field, lb_id = self._local_body_from_row(r)
             if lb_id:
-                local_body_names[(lb_field, lb_id)] = r.get(LOCAL_BODY_NAME_FIELDS[lb_field]) or lb_id
+                ids_by_field[lb_field].add(lb_id)
+        resolved_names = _bulk_local_body_names(ids_by_field)
+        local_body_names = {
+            key: name or key[1] for key, name in resolved_names.items()
+        }
 
         rows = []
         for (year_val, month_val, local_body_field, local_body_id, waste_type_id), bucket in bucket_totals.items():
@@ -339,12 +362,22 @@ class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
         """Trip-log-level rows (month, local body) — one row per group,
         independent of waste type, used for totals/trends/location comparison
         so a multi-waste-type trip is never double counted there."""
+        location_rows = list(location_qs)
+        ids_by_field = {field: set() for field in LOCAL_BODY_FIELDS}
+        for row in location_rows:
+            lb_field, lb_id = self._local_body_from_row(row)
+            if lb_id:
+                ids_by_field[lb_field].add(lb_id)
+        resolved_names = _bulk_local_body_names(ids_by_field)
+
         rows = []
-        for row in location_qs:
+        for row in location_rows:
             local_body_field, local_body_id = self._local_body_from_row(row)
             if not local_body_id:
                 continue
-            local_body_name = row.get(LOCAL_BODY_NAME_FIELDS[local_body_field]) or local_body_id
+            local_body_name = (
+                resolved_names.get((local_body_field, local_body_id)) or local_body_id
+            )
             year_val = row["trip_date__year"]
             month_val = row["trip_date__month"]
             actual = decimal_value(row["total_actual_weight"])

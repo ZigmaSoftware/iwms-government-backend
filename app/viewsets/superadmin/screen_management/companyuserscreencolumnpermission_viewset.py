@@ -47,9 +47,6 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         qs = CompanyUserScreenColumnPermission.objects.filter(
             is_deleted=False,
         ).select_related(
-            "state_id",
-            "district_id",
-            "area_type_id",
             "userscreen_id",
             "column_id",
         )
@@ -71,13 +68,13 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
 
         state_id = self.request.query_params.get("state_id") or self.request.query_params.get("stateId")
         if state_id:
-            qs = qs.filter(state_id_id=state_id)
+            qs = qs.filter(state_id=state_id)
         district_id = self.request.query_params.get("district_id") or self.request.query_params.get("districtId")
         if district_id:
-            qs = qs.filter(district_id_id=district_id)
+            qs = qs.filter(district_id=district_id)
         area_type_id = self.request.query_params.get("area_type_id") or self.request.query_params.get("areaTypeId")
         if area_type_id:
-            qs = qs.filter(area_type_id_id=area_type_id)
+            qs = qs.filter(area_type_id=area_type_id)
 
         return qs
 
@@ -131,9 +128,9 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
 
         with transaction.atomic():
             instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
-                state_id_id=vd.get("state_id"),
-                district_id_id=vd.get("district_id"),
-                area_type_id_id=vd.get("area_type_id"),
+                state_id=vd.get("state_id"),
+                district_id=vd.get("district_id"),
+                area_type_id=vd.get("area_type_id"),
                 local_body_type=vd["local_body_type"],
                 local_body_id=vd["local_body_id"],
                 userscreen_id=userscreen,

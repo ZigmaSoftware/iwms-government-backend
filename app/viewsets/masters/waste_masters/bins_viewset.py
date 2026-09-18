@@ -79,15 +79,6 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Bins.objects.select_related(
-            "country",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "municipality",
-            "town_panchayat",
-            "panchayat_union",
-            "panchayat",
             "ward",
             "collection_point_id",
             "wastetype_id",

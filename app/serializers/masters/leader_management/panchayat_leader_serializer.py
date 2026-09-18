@@ -7,14 +7,35 @@ from app.models.masters.panchayat import Panchayat
 
 class PanchayatLeaderLoginSerializer(serializers.ModelSerializer):
 
-    panchayat_id = serializers.PrimaryKeyRelatedField(
-        queryset=Panchayat.objects.filter(is_deleted=False),
-        required=True,
-    )
-    panchayat_name = serializers.CharField(
-        source="panchayat_id.panchayat_name",
-        read_only=True,
-    )
+    panchayat_id = serializers.CharField(required=True)
+    panchayat_name = serializers.SerializerMethodField(read_only=True)
+
+    def get_panchayat_name(self, obj):
+        return (
+            Panchayat.objects.filter(unique_id=obj.panchayat_id)
+            .values_list("panchayat_name", flat=True)
+            .first()
+        )
+
+    def validate_panchayat_id(self, value):
+        """Must reference a real panchayat, and one panchayat can have at
+        most one (non-deleted) leader."""
+        if not value:
+            return value
+        if not Panchayat.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError("Invalid panchayat.")
+        qs = PanchayatLeaderLogin.objects.filter(
+            panchayat_id=value,
+            is_deleted=False,
+        )
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "This panchayat already has a leader assigned. "
+                "Each panchayat can have only one leader."
+            )
+        return value
 
     password = serializers.CharField(
         required=False,
@@ -38,23 +59,6 @@ class PanchayatLeaderLoginSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["unique_id", "created_at", "updated_at"]
-
-    def validate_panchayat_id(self, value):
-        """One panchayat can have at most one (non-deleted) leader."""
-        if not value:
-            return value
-        qs = PanchayatLeaderLogin.objects.filter(
-            panchayat_id=value,
-            is_deleted=False,
-        )
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "This panchayat already has a leader assigned. "
-                "Each panchayat can have only one leader."
-            )
-        return value
 
     def validate_username(self, value):
         if not value:

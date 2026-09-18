@@ -5,24 +5,20 @@ from app.models.superadmin.common_masters.state import State
 from app.validators.unique_name_validator import unique_name_validator
 
 class StateSerializer(serializers.ModelSerializer):
-    continent_id = serializers.SlugRelatedField(
-        queryset=Continent.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    continent_name = serializers.CharField(source="continent_id.name", read_only=True)
-    country_id = serializers.SlugRelatedField(
-        queryset=Country.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    country_name = serializers.CharField(source="country_id.name", read_only=True)
+    continent_id = serializers.CharField(required=False, allow_null=True)
+    continent_name = serializers.SerializerMethodField()
+    country_id = serializers.CharField(required=False, allow_null=True)
+    country_name = serializers.SerializerMethodField()
     state_name = serializers.CharField(source="name", required=False)
     state_code = serializers.CharField(source="label", required=False, allow_blank=True, allow_null=True)
     name = serializers.CharField(required=False)
     label = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def get_continent_name(self, obj):
+        return Continent.objects.filter(unique_id=obj.continent_id).values_list("name", flat=True).first()
+
+    def get_country_name(self, obj):
+        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
 
     class Meta:
         model = State
@@ -45,8 +41,12 @@ class StateSerializer(serializers.ModelSerializer):
         validators = []
 
     def validate(self, attrs):
-        attrs.setdefault("continent_id", Continent.objects.filter(name__iexact="Asia", is_deleted=False).first())
-        attrs.setdefault("country_id", Country.objects.filter(name__iexact="India", is_deleted=False).first())
+        if not attrs.get("continent_id"):
+            default_continent = Continent.objects.filter(name__iexact="Asia", is_deleted=False).first()
+            attrs["continent_id"] = default_continent.unique_id if default_continent else None
+        if not attrs.get("country_id"):
+            default_country = Country.objects.filter(name__iexact="India", is_deleted=False).first()
+            attrs["country_id"] = default_country.unique_id if default_country else None
         if not attrs.get("name"):
             raise serializers.ValidationError({"state_name": "This field is required."})
         if not attrs.get("continent_id"):

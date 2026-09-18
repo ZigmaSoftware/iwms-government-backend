@@ -4,14 +4,6 @@ from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.models.core_modules.complaint_management.source_master import ComplaintSource
 from app.models.core_modules.complaint_management.language_master import ComplaintLanguage
@@ -120,72 +112,19 @@ class ComplaintTicket(BaseMaster):
     location_text = models.TextField(blank=True, null=True)
     latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="area_type_id",
-    )
-    # Only one of the local-body FKs below should be populated at a time -
+    # Flat geo hierarchy: plain CharFields holding the related row's
+    # `unique_id` (no DB relation/join) — same convention as Ward/
+    # CustomerCreation and the rest of the geo-hierarchy refactor.
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    # Only one of the local-body fields below should be populated at a time -
     # it is the ticket's "city" (the level right below District).
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-        db_column="panchayat_id",
-    )
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
     LOCAL_BODY_FIELDS = (
         ("corporation", "corporation_name"),
@@ -198,9 +137,12 @@ class ComplaintTicket(BaseMaster):
     @property
     def local_body(self):
         """(field_name, instance, display_name) of the populated local-body
-        FK - the ticket's "city" - or (None, None, None)."""
+        field - the ticket's "city" - or (None, None, None). Resolves the
+        stored unique_id string against its owning master."""
+        from app.utils.hierarchy import _resolve_geo_candidate
+
         for field, name_attr in self.LOCAL_BODY_FIELDS:
-            obj = getattr(self, field, None)
+            obj = _resolve_geo_candidate(self, field)
             if obj:
                 return field, obj, getattr(obj, name_attr, None)
         return None, None, None

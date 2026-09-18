@@ -468,7 +468,10 @@ class LoginSerializer(serializers.Serializer):
         return None
 
     def _build_panchayat_leader_payload(self, leader):
-        panchayat = leader.panchayat_id
+        # leader.panchayat_id is now a plain unique_id CharField (no DB
+        # relation) — kept as an unused local previously only for
+        # readability; nothing in this payload actually reads the resolved
+        # object, so no resolution is needed here.
 
         return {
             "user": leader,
@@ -487,9 +490,10 @@ class LoginSerializer(serializers.Serializer):
         }
 
     def _authenticate_panchayat_leader(self, username, password):
+        # panchayat_id is now a plain unique_id CharField (no DB relation),
+        # so it can no longer be select_related.
         leader = (
             PanchayatLeaderLogin.objects
-            .select_related("panchayat_id")
             .filter(is_active=True, is_deleted=False)
             .filter(Q(username__iexact=username) | Q(email__iexact=username))
             .first()
@@ -504,7 +508,8 @@ class LoginSerializer(serializers.Serializer):
         return self._build_panchayat_leader_payload(leader)
 
     def _build_district_leader_payload(self, leader):
-        district = leader.district_id
+        # leader.district_id is now a plain unique_id CharField (no DB
+        # relation); nothing in this payload reads the resolved object.
 
         return {
             "user": leader,
@@ -523,9 +528,10 @@ class LoginSerializer(serializers.Serializer):
         }
 
     def _authenticate_district_leader(self, username, password):
+        # district_id is now a plain unique_id CharField (no DB relation),
+        # so it can no longer be select_related.
         leader = (
             DistrictLeaderLogin.objects
-            .select_related("district_id")
             .filter(is_active=True, is_deleted=False)
             .filter(Q(username__iexact=username) | Q(email__iexact=username))
             .first()
@@ -540,7 +546,8 @@ class LoginSerializer(serializers.Serializer):
         return self._build_district_leader_payload(leader)
 
     def _build_state_leader_payload(self, leader):
-        state = leader.state_id
+        # leader.state_id is now a plain unique_id CharField (no DB
+        # relation); nothing in this payload reads the resolved object.
 
         return {
             "user": leader,
@@ -559,9 +566,10 @@ class LoginSerializer(serializers.Serializer):
         }
 
     def _authenticate_state_leader(self, username, password):
+        # state_id is now a plain unique_id CharField (no DB relation), so
+        # it can no longer be select_related.
         leader = (
             StateLeaderLogin.objects
-            .select_related("state_id")
             .filter(is_active=True, is_deleted=False)
             .filter(Q(username__iexact=username) | Q(email__iexact=username))
             .first()

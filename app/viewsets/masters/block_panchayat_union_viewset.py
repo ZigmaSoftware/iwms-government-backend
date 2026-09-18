@@ -24,9 +24,9 @@ class BlockPanchayatUnionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         state_uid = self.request.query_params.get("state") or self.request.query_params.get("state_id")
 
         if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
+            queryset = queryset.filter(district_id=district_uid)
         if state_uid:
-            queryset = queryset.filter(state_id__unique_id=state_uid)
+            queryset = queryset.filter(state_id=state_uid)
 
         return queryset
 

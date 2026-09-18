@@ -377,6 +377,7 @@ class DriverUserSeeder(BaseSeeder):
         with_customers = (
             CustomerCreation.objects.filter(is_deleted=False, is_active=True)
             .exclude(panchayat_id__isnull=True)
+            .exclude(panchayat_id="")
             .values("panchayat_id")
             .annotate(n=Count("unique_id"))
             # Secondary sort by panchayat_id makes the choice DETERMINISTIC so
@@ -399,7 +400,7 @@ class DriverUserSeeder(BaseSeeder):
         every model that references them, so a missing WardSeeder run should
         never block the rest of this seeder."""
         return Ward.objects.filter(
-            panchayat=panchayat, is_deleted=False, is_active=True
+            panchayat_id=panchayat.unique_id, is_deleted=False, is_active=True
         ).order_by("ward_name").first()
 
     def _get_or_create_template(self, driver, operator, panchayat):
@@ -410,20 +411,20 @@ class DriverUserSeeder(BaseSeeder):
             template = StaffTemplate.objects.create(
                 driver_id=driver,
                 operator_id=operator,
-                state=panchayat.state_id,
-                district=panchayat.district_id,
-                area_type=panchayat.area_type_id,
-                panchayat=panchayat,
+                state_id=panchayat.state_id,
+                district_id=panchayat.district_id,
+                area_type_id=panchayat.area_type_id,
+                panchayat_id=panchayat.unique_id,
                 approval_status=StaffTemplate.ApprovalStatus.APPROVED,
                 status=StaffTemplate.Status.ACTIVE,
                 is_active=True,
                 is_deleted=False,
             )
         else:
-            template.state = panchayat.state_id
-            template.district = panchayat.district_id
-            template.area_type = panchayat.area_type_id
-            template.panchayat = panchayat
+            template.state_id = panchayat.state_id
+            template.district_id = panchayat.district_id
+            template.area_type_id = panchayat.area_type_id
+            template.panchayat_id = panchayat.unique_id
             template.approval_status = StaffTemplate.ApprovalStatus.APPROVED
             template.status = StaffTemplate.Status.ACTIVE
             template.is_active = True
@@ -583,14 +584,14 @@ class DriverUserSeeder(BaseSeeder):
 
             cp_name = f"Wet Waste Point{suffix} {seq} (driver_user)"
             cp = Collection_point.objects.filter(
-                cp_name=cp_name, panchayat=panchayat
+                cp_name=cp_name, panchayat_id=panchayat.unique_id
             ).first()
             if cp is None:
                 cp = Collection_point.objects.create(
-                    state=panchayat.state_id,
-                    district=panchayat.district_id,
-                    area_type=panchayat.area_type_id,
-                    panchayat=panchayat,
+                    state_id=panchayat.state_id,
+                    district_id=panchayat.district_id,
+                    area_type_id=panchayat.area_type_id,
+                    panchayat_id=panchayat.unique_id,
                     cp_name=cp_name,
                     latitude=lat,
                     longitude=lng,
@@ -671,13 +672,13 @@ class DriverUserSeeder(BaseSeeder):
         plan, _ = TripPlan.objects.update_or_create(
             staff_template_id=template,
             collection_type=collection_type,
-            panchayat=panchayat,
+            panchayat_id=panchayat.unique_id,
             scheduled_time=scheduled_time,
             is_deleted=False,
             defaults={
-                "state": panchayat.state_id,
-                "district": panchayat.district_id,
-                "area_type": panchayat.area_type_id,
+                "state_id": panchayat.state_id,
+                "district_id": panchayat.district_id,
+                "area_type_id": panchayat.area_type_id,
                 "vehicle_id": vehicle,
                 "trip_trigger_weight_kg": 100,
                 "max_vehicle_capacity_kg": 5000,
@@ -778,14 +779,14 @@ class DriverUserSeeder(BaseSeeder):
             defaults={
                 "staff_template_id": plan.staff_template_id,
                 "vehicle_id": plan.vehicle_id,
-                "state": plan.state,
-                "district": plan.district,
-                "area_type": plan.area_type,
-                "corporation": plan.corporation,
-                "municipality": plan.municipality,
-                "town_panchayat": plan.town_panchayat,
-                "panchayat_union": plan.panchayat_union,
-                "panchayat": plan.panchayat,
+                "state_id": plan.state_id,
+                "district_id": plan.district_id,
+                "area_type_id": plan.area_type_id,
+                "corporation_id": plan.corporation_id,
+                "municipality_id": plan.municipality_id,
+                "town_panchayat_id": plan.town_panchayat_id,
+                "panchayat_union_id": plan.panchayat_union_id,
+                "panchayat_id": plan.panchayat_id,
                 "scheduled_time": plan.scheduled_time,
                 "status": DailyTripAssignment.STATUS_SCHEDULED,
                 "approval_status": DailyTripAssignment.APPROVAL_APPROVED,

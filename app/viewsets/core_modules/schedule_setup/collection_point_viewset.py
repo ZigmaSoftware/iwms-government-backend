@@ -34,17 +34,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT ="collection-point"
 
     def get_queryset(self):
-        queryset = Collection_point.objects.select_related(
-            "country",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "municipality",
-            "town_panchayat",
-            "panchayat_union",
-            "panchayat",
-        ).prefetch_related("wards").filter(is_deleted=False)
+        queryset = Collection_point.objects.prefetch_related("wards").filter(is_deleted=False)
 
         for field in (
             "country_id",

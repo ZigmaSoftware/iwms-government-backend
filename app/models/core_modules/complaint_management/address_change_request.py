@@ -3,14 +3,6 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
 
 
@@ -80,72 +72,19 @@ class ComplaintAddressChangeRequest(BaseMaster):
     new_longitude = models.CharField(max_length=100, null=True, blank=True)
     new_full_address = models.TextField(null=True, blank=True)
 
-    # Requested new flat geo (same FK family as CustomerCreation). Only one
-    # of the local-body FKs should be populated at a time.
-    new_state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_state_id",
-    )
-    new_district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_district_id",
-    )
-    new_area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_area_type_id",
-    )
-    new_corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_corporation_id",
-    )
-    new_municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_municipality_id",
-    )
-    new_town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_town_panchayat_id",
-    )
-    new_panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_panchayat_union_id",
-    )
-    new_panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="address_change_requests",
-        db_column="new_panchayat_id",
-    )
+    # Requested new flat geo (same family as CustomerCreation). Only one of
+    # the local-body fields should be populated at a time. Plain CharFields
+    # holding the related row's `unique_id` (no DB relation/join) — same
+    # convention as Ward/CustomerCreation and the rest of the geo-hierarchy
+    # refactor, kept "new_"-prefixed to match this model's own naming.
+    new_state_id = models.CharField(max_length=30, null=True, blank=True)
+    new_district_id = models.CharField(max_length=30, null=True, blank=True)
+    new_area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    new_corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    new_municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    new_town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    new_panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    new_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
     proof_type = models.CharField(
         max_length=40,

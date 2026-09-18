@@ -7,14 +7,15 @@ from app.models.superadmin.common_masters.state import State
 
 class StateLeaderLoginSerializer(serializers.ModelSerializer):
 
-    state_id = serializers.PrimaryKeyRelatedField(
-        queryset=State.objects.filter(is_deleted=False),
-        required=True,
-    )
-    state_name = serializers.CharField(
-        source="state_id.name",
-        read_only=True,
-    )
+    state_id = serializers.CharField(required=True)
+    state_name = serializers.SerializerMethodField(read_only=True)
+
+    def get_state_name(self, obj):
+        return (
+            State.objects.filter(unique_id=obj.state_id)
+            .values_list("name", flat=True)
+            .first()
+        )
 
     password = serializers.CharField(
         required=False,
@@ -40,9 +41,12 @@ class StateLeaderLoginSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id", "created_at", "updated_at"]
 
     def validate_state_id(self, value):
-        """One state can have at most one (non-deleted) leader."""
+        """Must reference a real state, and one state can have at most one
+        (non-deleted) leader."""
         if not value:
             return value
+        if not State.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError("Invalid state.")
         qs = StateLeaderLogin.objects.filter(
             state_id=value,
             is_deleted=False,

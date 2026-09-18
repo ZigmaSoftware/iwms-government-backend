@@ -10,14 +10,6 @@ from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.waste_masters.wastetype import WasteType
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 
 
@@ -67,78 +59,19 @@ class TripPlan(BaseMaster):
     # ---- tenancy ---------------------------------------------------
 
     # ---- WHERE -----------------------------------------------------
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plans",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    # state_id/district_id/area_type_id/corporation_id/municipality_id/
+    # town_panchayat_id/panchayat_union_id/panchayat_id are plain CharFields
+    # holding the related row's `unique_id` (no DB relation/join) — matching
+    # the rest of the geo-hierarchy (Ward, CustomerCreation, Corporation/
+    # District/.../Panchayat, ...).
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     # A trip plan can span multiple wards within its selected local body
     # (e.g. one corporation route covering several wards in a single run).
     wards = models.ManyToManyField(
@@ -235,7 +168,7 @@ class TripPlan(BaseMaster):
             models.Index(fields=["collection_type"]),
             models.Index(fields=["status", "approval_status"]),
             models.Index(fields=["display_code"]),
-            models.Index(fields=["district"]),
+            models.Index(fields=["district_id"]),
         ]
 
     def _generate_display_code(self):

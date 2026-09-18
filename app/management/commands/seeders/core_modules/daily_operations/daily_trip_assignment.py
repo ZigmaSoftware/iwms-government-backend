@@ -14,8 +14,8 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 HISTORY_DAYS = 4
 
 FLAT_GEO_FIELDS = (
-    "state", "district", "area_type", "corporation",
-    "municipality", "town_panchayat", "panchayat_union", "panchayat",
+    "state_id", "district_id", "area_type_id", "corporation_id",
+    "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id",
 )
 
 # driver_user.py/supervisor_user.py own and continuously reset their
@@ -57,7 +57,7 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 approval_status=TripPlan.ApprovalStatus.APPROVED,
             )
             .exclude(staff_template_id__driver_id__username__in=DEMO_STAFF_USERNAMES)
-            .select_related("staff_template_id", "vehicle_id", "district")
+            .select_related("staff_template_id", "vehicle_id")
             .prefetch_related("waste_types")
         )
 

@@ -9,15 +9,11 @@ from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
 
 class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "waste_collection"
+    # NOTE: CustomerCreation's own state/district/.../panchayat and this
+    # model's record-level geography are plain unique_id CharFields now (no
+    # DB relation), so they are no longer valid select_related paths.
     queryset = WasteCollection.objects.filter(is_deleted=False).select_related(
-        "customer__state", "customer__district", "customer__area_type",
-        "customer__corporation", "customer__municipality", "customer__town_panchayat",
-        "customer__panchayat_union", "customer__panchayat",
         "customer__property_ref", "customer__sub_property",
-        # record-level geography
-        "state", "district", "area_type",
-        "corporation", "municipality", "town_panchayat",
-        "panchayat_union", "panchayat",
     ).order_by("-collection_date","-collection_time")
     serializer_class = WasteCollectionSerializer
     lookup_field = "unique_id"

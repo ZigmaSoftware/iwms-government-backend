@@ -120,7 +120,7 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
         center = self._route_center(plan, ward)
         pincode = self._route_pincode(plan, ward)
         area_name = ward.ward_name if ward else (
-            plan.panchayat.panchayat_name if plan.panchayat else "Demo Area"
+            self._plan_panchayat_name(plan) or "Demo Area"
         )
 
         points = spread_points(
@@ -167,15 +167,17 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
                 "is_bulkwaste_generator": False,
                 # Geo copied straight off the plan so the household fan-out's
                 # geo filter matches exactly (it compares the most specific
-                # populated field, not the ancestor chain).
-                "state": plan.state,
-                "district": plan.district,
-                "area_type": plan.area_type,
-                "corporation": plan.corporation,
-                "municipality": plan.municipality,
-                "town_panchayat": plan.town_panchayat,
-                "panchayat_union": plan.panchayat_union,
-                "panchayat": plan.panchayat,
+                # populated field, not the ancestor chain). Both TripPlan's
+                # and CustomerCreation's columns are plain unique_id strings
+                # now, so assign directly.
+                "state_id": plan.state_id,
+                "district_id": plan.district_id,
+                "area_type_id": plan.area_type_id,
+                "corporation_id": plan.corporation_id,
+                "municipality_id": plan.municipality_id,
+                "town_panchayat_id": plan.town_panchayat_id,
+                "panchayat_union_id": plan.panchayat_union_id,
+                "panchayat_id": plan.panchayat_id,
                 "ward": ward,
                 # Apartment identity only for the apartment flats; every other
                 # kind must clear these or the model groups them into a block.
@@ -203,7 +205,7 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
 
         self.log(
             f"---driver_user households: {created} created, {updated} updated in "
-            f"{area_name} ({plan.panchayat.panchayat_name if plan.panchayat else '—'}) | "
+            f"{area_name} ({self._plan_panchayat_name(plan) or '—'}) | "
             f"{added} new daily stop(s) fanned out---"
         )
 
@@ -225,10 +227,18 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
                 collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
                 is_deleted=False,
             )
-            .select_related("panchayat", "state", "district", "area_type")
             .order_by("unique_id")
             .first()
         )
+
+    def _plan_panchayat_name(self, plan):
+        if not plan.panchayat_id:
+            return None
+        from app.models.masters.panchayat import Panchayat
+
+        return Panchayat.objects.filter(unique_id=plan.panchayat_id).values_list(
+            "panchayat_name", flat=True
+        ).first()
 
     def _resolve_properties(self):
         """{kind: (Property, SubProperty)} or None when a master is missing."""
@@ -269,7 +279,9 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
 
         neighbour = (
             CustomerCreation.objects.filter(
-                panchayat=plan.panchayat, is_deleted=False, is_active=True
+                panchayat_id=plan.panchayat_id,
+                is_deleted=False,
+                is_active=True,
             )
             .exclude(latitude="")
             .order_by("unique_id")
@@ -285,7 +297,9 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
     def _route_pincode(self, plan, ward):
         neighbour = (
             CustomerCreation.objects.filter(
-                panchayat=plan.panchayat, is_deleted=False, is_active=True
+                panchayat_id=plan.panchayat_id,
+                is_deleted=False,
+                is_active=True,
             )
             .exclude(pincode="")
             .order_by("unique_id")

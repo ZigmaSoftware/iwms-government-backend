@@ -6,6 +6,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.ward_utils import FLAT_GEO_FIELDS
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.masters.district import District
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 REASONS = ["Sick leave", "Annual leave", "Emergency replacement", "Training duty", "Vehicle change"]
@@ -28,7 +29,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
     def run(self):
         templates = StaffTemplate.objects.filter(
             is_deleted=False, status=StaffTemplate.Status.ACTIVE
-        ).select_related("driver_id__district", "operator_id").order_by("created_at")
+        ).select_related("driver_id", "operator_id").order_by("created_at")
 
         if not templates.exists():
             self.log("No StaffTemplates found — run StaffTemplateSeeder first.")
@@ -38,13 +39,23 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
         count = 0
         updated = 0
         for idx, template in enumerate(templates):
-            district = template.driver_id.district if template.driver_id_id else None
+            # driver_id.district_id is a plain unique_id string now (no DB
+            # relation) — resolve the District row separately for filtering
+            # candidates and for the log message.
+            district_id = template.driver_id.district_id if template.driver_id_id else None
+            district = (
+                District.objects.filter(unique_id=district_id).first()
+                if district_id
+                else None
+            )
             if not district:
                 self.log(f"Template '{template.display_code}' has no district — skipping.")
                 continue
 
             candidates = list(
-                StaffcreationOfficeDetails.objects.filter(district=district, is_deleted=False)
+                StaffcreationOfficeDetails.objects.filter(
+                    district_id=district_id, is_deleted=False
+                )
                 .exclude(staff_unique_id__in=[template.driver_id_id, template.operator_id_id])
                 .order_by("staff_unique_id")
             )
@@ -58,7 +69,10 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
             remarks = REMARKS[idx % len(REMARKS)]
             from_date = base_date + timedelta(days=idx + 1)
             to_date = from_date + timedelta(days=6)
-            geo_defaults = {field: getattr(template, field, None) for field in FLAT_GEO_FIELDS}
+            geo_defaults = {
+                f"{field}_id": getattr(template, f"{field}_id", None)
+                for field in FLAT_GEO_FIELDS
+            }
             approver = template.approved_by
 
             existing = AlternativeStaffTemplate.objects.filter(staff_template=template).first()

@@ -1,6 +1,9 @@
 from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
 from django.db.models import Q
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
 
 # NOTE: The Hierarchy Tree/Level/Assignment admin UI and management API have
 # been removed. HierarchyNode/HierarchyClosure themselves — and the helpers
@@ -133,20 +136,70 @@ def _staff_scope(user):
             "panchayats",
             "wards",
         )
-        .select_related("state", "district", "area_type")
         .first()
     )
 
 
 FLAT_GEO_LEVEL_CANDIDATES = (
     ("panchayat", "panchayat_name", "Panchayat"),
-    ("panchayat_union", "panchayat_union_name", "Panchayat Union"),
+    ("panchayat_union", "union_name", "Panchayat Union"),
     ("town_panchayat", "town_panchayat_name", "Town Panchayat"),
     ("municipality", "municipality_name", "Municipality"),
     ("corporation", "corporation_name", "Corporation"),
     ("district", "name", "District"),
     ("state", "name", "State"),
 )
+
+# Model each flat-geo field resolves against, for callers whose OWN field is
+# a plain unique_id string rather than a live FK object (Ward, CustomerCreation,
+# and every other model converted in this pass — see `_as_geo_instance` for
+# state/district/area_type; local-body levels are added here too since
+# `flat_geo_display`/`node_ids_for_flat_geo` need to resolve those as well).
+_GEO_FIELD_MODELS = {
+    "state": "app.models.superadmin.common_masters.state.State",
+    "district": "app.models.masters.district.District",
+    "area_type": "app.models.masters.areatype.AreaType",
+    "corporation": "app.models.masters.corporation.Corporation",
+    "municipality": "app.models.masters.municipality.Municipality",
+    "town_panchayat": "app.models.masters.town_panchayat.TownPanchayat",
+    "panchayat_union": "app.models.masters.panchayat_union.PanchayatUnion",
+    "panchayat": "app.models.masters.panchayat.Panchayat",
+}
+
+
+def _geo_model(field):
+    import importlib
+
+    module_path, class_name = _GEO_FIELD_MODELS[field].rsplit(".", 1)
+    return getattr(importlib.import_module(module_path), class_name)
+
+
+def _geo_attr_value(obj, field):
+    """Read `obj`'s value for a flat-geo `field`, whether `obj`'s own column
+    is a live FK named `field` (StaffTemplate/TripPlan, attname `field_id`
+    resolves to an object via `field`), or an already-converted plain
+    CharField literally named `field_id` (Ward, CustomerCreation, and every
+    other model converted in this refactor — matching Corporation/District/.../
+    Panchayat's own `state_id`/`district_id`/`area_type_id` convention).
+    Tries the FK-style bare name first, then the plain-string `_id` name."""
+    value = getattr(obj, field, None)
+    if value is not None:
+        return value
+    return getattr(obj, f"{field}_id", None)
+
+
+def _resolve_geo_candidate(obj, field):
+    """Return the resolved parent/local-body instance for `obj`'s `field`,
+    whether that field is still a live FK (an object is already there) or a
+    plain unique_id string (already-converted models like Ward/
+    CustomerCreation) — lets `flat_geo_display`/`node_ids_for_flat_geo` keep
+    working unmodified for both kinds of caller."""
+    value = _geo_attr_value(obj, field)
+    if not value:
+        return None
+    if isinstance(value, str):
+        return _geo_model(field).objects.filter(unique_id=value).first()
+    return value
 
 
 def flat_geo_display(obj):
@@ -157,7 +210,7 @@ def flat_geo_display(obj):
     if not obj:
         return None, None
     for field, name_attr, level_label in FLAT_GEO_LEVEL_CANDIDATES:
-        candidate = getattr(obj, field, None)
+        candidate = _resolve_geo_candidate(obj, field)
         if not candidate:
             continue
         name = getattr(candidate, name_attr, None)
@@ -176,13 +229,13 @@ def node_ids_for_flat_geo(obj):
         return []
 
     candidates = [
-        (getattr(obj, "panchayat", None), "panchayat_name"),
-        (getattr(obj, "panchayat_union", None), "panchayat_union_name"),
-        (getattr(obj, "town_panchayat", None), "town_panchayat_name"),
-        (getattr(obj, "municipality", None), "municipality_name"),
-        (getattr(obj, "corporation", None), "corporation_name"),
-        (getattr(obj, "district", None), "name"),
-        (getattr(obj, "state", None), "name"),
+        (_resolve_geo_candidate(obj, "panchayat"), "panchayat_name"),
+        (_resolve_geo_candidate(obj, "panchayat_union"), "union_name"),
+        (_resolve_geo_candidate(obj, "town_panchayat"), "town_panchayat_name"),
+        (_resolve_geo_candidate(obj, "municipality"), "municipality_name"),
+        (_resolve_geo_candidate(obj, "corporation"), "corporation_name"),
+        (_resolve_geo_candidate(obj, "district"), "name"),
+        (_resolve_geo_candidate(obj, "state"), "name"),
     ]
     for candidate, name_attr in candidates:
         if not candidate:
@@ -235,6 +288,14 @@ FLAT_GEO_FIELDS = (
 
 FLAT_GEO_QUERY_FIELDS = tuple(f"{field}_id" for field in FLAT_GEO_FIELDS)
 
+# {bare geo-level name: "<name>_id"} — for serializers of models converted in
+# this refactor pass (Ward, CustomerCreation, ...) whose OWN flat-geo columns
+# are literal "<field>_id" plain CharFields (matching Corporation/District/.../
+# Panchayat's convention), so their `validate()` can translate attrs to/from
+# the bare-keyed shape `normalize_flat_geo_attrs` operates on before handing
+# validated_data back to the ModelSerializer machinery.
+BARE_TO_ID_GEO_FIELDS = {field: f"{field}_id" for field in FLAT_GEO_FIELDS}
+
 LOCAL_BODY_FIELDS = (
     "corporation",
     "municipality",
@@ -278,7 +339,7 @@ def validate_wards_for_flat_geo(wards, attrs, instance=None):
     selected_body = _resolve_geo_value(attrs, instance, selected_field)
     selected_pk = _object_pk(selected_body)
     for ward in wards:
-        if _object_pk(getattr(ward, selected_field, None)) != selected_pk:
+        if _object_pk(_geo_attr_value(ward, selected_field)) != selected_pk:
             return (
                 f"Ward '{ward.ward_name}' does not belong to the selected "
                 f"{selected_field.replace('_', ' ')}."
@@ -316,16 +377,63 @@ def _same_fk(left, right):
 def _resolve_geo_value(attrs, instance, field):
     if field in attrs:
         return attrs.get(field)
-    return getattr(instance, field, None) if instance else None
+    return _geo_attr_value(instance, field) if instance else None
 
 
-def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False):
+_GEO_PARENT_MODELS = {
+    "state": "app.models.superadmin.common_masters.state.State",
+    "district": "app.models.masters.district.District",
+    "area_type": "app.models.masters.areatype.AreaType",
+}
+
+
+def _as_geo_instance(parent, value):
+    """Some local-body/parent models (e.g. Corporation) store their
+    state/district/area_type as a plain unique_id string rather than a
+    ForeignKey; resolve those into real instances so callers that assign
+    onto a still-FK attrs field (e.g. Ward.state) get an object, not a bare
+    string."""
+    if value is None or not isinstance(value, str):
+        return value
+    import importlib
+
+    module_path, class_name = _GEO_PARENT_MODELS[parent].rsplit(".", 1)
+    model = getattr(importlib.import_module(module_path), class_name)
+    return model.objects.filter(unique_id=value).first()
+
+
+def _as_geo_local_body_instance(field, value):
+    """Like `_as_geo_instance`, but for the local-body fields (corporation/
+    .../panchayat) rather than state/district/area_type — needed so
+    `normalize_flat_geo_attrs` can read a local body's own state_id/
+    district_id/area_type_id regardless of whether the CALLER's local-body
+    attrs value is already a plain unique_id string (Ward/CustomerCreation,
+    post-conversion) or a live FK object (StaffTemplate/TripPlan, not yet
+    converted)."""
+    if value is None or isinstance(value, str):
+        return _geo_model(field).objects.filter(unique_id=value).first() if value else None
+    return value
+
+
+def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings=False):
     """
     Normalize serializer attrs carrying flat geo FKs. If a corporation/
     municipality/town_panchayat/panchayat_union/panchayat is selected, copy
     its state, district, and area_type onto the attrs and reject contradictory
     parent selections. Returns an error dict; an empty dict means attrs were
     normalized successfully.
+
+    `as_strings`: pass True when the CALLING model's own state/district/
+    area_type/local-body columns are plain CharFields holding a unique_id
+    (Ward, CustomerCreation, and the other models converted in this same
+    FK-to-plain-string refactor pass) rather than live ForeignKeys. Every
+    value this function assigns into `attrs` is then a plain unique_id
+    string instead of a model instance, matching what the model's `.save()`
+    expects. Values already present in `attrs`/`instance` are still read
+    transparently either way (resolved to an object internally when needed
+    to walk .state_id/.district_id/.area_type_id, e.g. off a local body).
+    Other callers (StaffTemplate, TripPlan, ... — still FK-based) must NOT
+    pass this, so they keep getting real objects as before.
     """
     selected_local_bodies = [
         field for field in LOCAL_BODY_FIELDS
@@ -340,15 +448,30 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False):
             )
         }
 
+    local_body_field = selected_local_bodies[0] if selected_local_bodies else None
+    local_body_raw = (
+        _resolve_geo_value(attrs, instance, local_body_field)
+        if local_body_field
+        else None
+    )
     local_body = (
-        _resolve_geo_value(attrs, instance, selected_local_bodies[0])
-        if selected_local_bodies
+        _as_geo_local_body_instance(local_body_field, local_body_raw)
+        if local_body_raw is not None
         else None
     )
 
+    def _set(field, value):
+        """Assign `value` (a resolved parent instance, or None) into attrs,
+        as a plain unique_id string when `as_strings`, else as the object
+        itself — matching the calling model's own column type."""
+        if as_strings:
+            attrs[field] = getattr(value, "unique_id", value)
+        else:
+            attrs[field] = value
+
     if local_body:
         for parent in ("state", "district", "area_type"):
-            parent_obj = getattr(local_body, f"{parent}_id", None)
+            parent_obj = _as_geo_instance(parent, getattr(local_body, f"{parent}_id", None))
             if not parent_obj:
                 continue
 
@@ -360,26 +483,29 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False):
                         "the selected local body."
                     )
                 }
-            attrs[parent] = parent_obj
+            _set(parent, parent_obj)
 
-    district = _resolve_geo_value(attrs, instance, "district")
-    area_type = _resolve_geo_value(attrs, instance, "area_type")
-    state = _resolve_geo_value(attrs, instance, "state")
+    district_raw = _resolve_geo_value(attrs, instance, "district")
+    area_type_raw = _resolve_geo_value(attrs, instance, "area_type")
+    state_raw = _resolve_geo_value(attrs, instance, "state")
+    district = _as_geo_instance("district", district_raw)
+    area_type = _as_geo_instance("area_type", area_type_raw)
+    state = _as_geo_instance("state", state_raw)
 
     if area_type:
-        if "district" in attrs and district and not _same_fk(district, getattr(area_type, "district_id", None)):
+        if "district" in attrs and district and _object_pk(district) != area_type.district_id:
             return {"district_id": "Selected district does not match the selected area type."}
-        if "state" in attrs and state and not _same_fk(state, getattr(area_type, "state_id", None)):
+        if "state" in attrs and state and _object_pk(state) != area_type.state_id:
             return {"state_id": "Selected state does not match the selected area type."}
         if "district" not in attrs:
-            attrs["district"] = getattr(area_type, "district_id", None)
+            _set("district", _as_geo_instance("district", getattr(area_type, "district_id", None)))
         if "state" not in attrs:
-            attrs["state"] = getattr(area_type, "state_id", None)
+            _set("state", _as_geo_instance("state", getattr(area_type, "state_id", None)))
     elif district:
-        if "state" in attrs and state and not _same_fk(state, getattr(district, "state_id", None)):
+        if "state" in attrs and state and _object_pk(state) != district.state_id:
             return {"state_id": "Selected state does not match the selected district."}
         if "state" not in attrs:
-            attrs["state"] = getattr(district, "state_id", None)
+            _set("state", _as_geo_instance("state", getattr(district, "state_id", None)))
 
     has_geo = any(_resolve_geo_value(attrs, instance, field) for field in FLAT_GEO_FIELDS)
     if require_geo and not has_geo:
@@ -401,8 +527,19 @@ def copy_flat_geo(target, source, only_empty=False):
     if only_empty and getattr(target, "district_id", None):
         return
 
-    if any(hasattr(source, field) for field in FLAT_GEO_FIELDS):
-        values = {field: getattr(source, f"{field}_id", None) for field in FLAT_GEO_FIELDS}
+    if any(hasattr(source, field) or hasattr(source, f"{field}_id") for field in FLAT_GEO_FIELDS):
+        # `source`'s own flat-geo columns may still be live FKs (bare name
+        # "<field>", Django attname "<field>_id" resolving to an object via
+        # "<field>", e.g. TripPlan) or, for already-converted models (Ward,
+        # CustomerCreation, ...), plain CharFields literally named
+        # "<field>_id" holding a unique_id string. Resolve to a plain
+        # unique_id string either way.
+        values = {}
+        for field in FLAT_GEO_FIELDS:
+            value = _geo_attr_value(source, field)
+            if value is not None and not isinstance(value, str):
+                value = getattr(value, "unique_id", None)
+            values[field] = value
     else:
         node = getattr(source, LOCATION_FIELD, None)
         values = {field: None for field in FLAT_GEO_FIELDS}
@@ -727,9 +864,9 @@ def local_body_scope_for_staff(user):
     local_body_type, local_body_id = _single_local_body(scope)
 
     return {
-        "state_unique_id": scope.state_id,
-        "district_unique_id": scope.district_id,
-        "area_type_unique_id": scope.area_type_id,
+        "state_unique_id": scope.state,
+        "district_unique_id": scope.district,
+        "area_type_unique_id": scope.area_type,
         "local_body_type": local_body_type,
         "local_body_id": local_body_id,
     }
@@ -750,6 +887,14 @@ def staff_scope_payload(user):
             return None
         return {"unique_id": obj.unique_id, "name": getattr(obj, name_attr, None)}
 
+    def _ref_by_id(model, unique_id):
+        if not unique_id:
+            return None
+        obj = model.objects.filter(unique_id=unique_id, is_deleted=False).first()
+        if not obj:
+            return {"unique_id": unique_id, "name": None}
+        return {"unique_id": obj.unique_id, "name": obj.name}
+
     local_body_name_attrs = {
         "corporations": "corporation_name",
         "municipalities": "municipality_name",
@@ -765,9 +910,9 @@ def staff_scope_payload(user):
     }
 
     return {
-        "state": _ref(scope.state, "name"),
-        "district": _ref(scope.district, "name"),
-        "area_type": _ref(scope.area_type, "name"),
+        "state": _ref_by_id(State, scope.state),
+        "district": _ref_by_id(District, scope.district),
+        "area_type": _ref_by_id(AreaType, scope.area_type),
         # Backward-compatible single value — the first selected local body of
         # each level — so existing consumers (every form that locks a field
         # to the staff's own single corporation/etc via scopeOption()) keep
@@ -850,9 +995,9 @@ def _granted_scope_level(scope):
                 return level
     if _local_body_ids_by_level(scope):
         return "local_body"
-    if scope.district_id:
+    if scope.district:
         return "district"
-    if scope.state_id:
+    if scope.state:
         return "state"
     return None
 
@@ -884,9 +1029,9 @@ def _expanded_descendants(scope):
         "panchayat": (Panchayat, "panchayat_name"),
     }
 
-    state_id = scope.state_id
-    district_id = scope.district_id
-    area_type_id = scope.area_type_id
+    state_id = scope.state
+    district_id = scope.district
+    area_type_id = scope.area_type
 
     # Every local body selected, grouped by level — a staff can now be
     # anchored to several local bodies (across one or more levels) at once.

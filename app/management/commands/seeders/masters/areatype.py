@@ -30,14 +30,14 @@ class AreaTypeSeeder(BaseSeeder):
 
         count = 0
         for district_name, area_type_name, geo_coordinates in self.AREA_TYPE_ASSIGNMENTS:
-            district = District.objects.filter(state_id=tamil_nadu, name=district_name).first()
+            district = District.objects.filter(state_id=tamil_nadu.unique_id, name=district_name).first()
             if not district:
                 self.log(f"District '{district_name}' not found — skipping.")
                 continue
 
             AreaType.objects.update_or_create(
-                state_id=tamil_nadu,
-                district_id=district,
+                state_id=tamil_nadu.unique_id,
+                district_id=district.unique_id,
                 name=area_type_name,
                 defaults={
                     "coordinates": geo_coordinates,

@@ -80,7 +80,6 @@ def find_active_assignment_for_operator(
         .filter(trip_date=today, is_deleted=False)
         .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
         .select_related(
-            "panchayat",
             "vehicle_id",
             "staff_template_id",
             "staff_template_id__driver_id",
@@ -170,7 +169,6 @@ def find_all_active_assignments_for_operator(staff: Staffcreation):
             DailyTripAssignment.STATUS_COMPLETED,
         ))
         .select_related(
-            "panchayat",
             "vehicle_id",
             "trip_plan_id",
             "staff_template_id",
@@ -265,14 +263,6 @@ def resolve_bin_from_qr(bin_qr: str) -> Bins:
         .filter(Q(unique_id=identifier) | Q(bin_qr=bin_qr))
         .select_related(
             "collection_point_id",
-            "collection_point_id__state",
-            "collection_point_id__district",
-            "collection_point_id__area_type",
-            "collection_point_id__corporation",
-            "collection_point_id__municipality",
-            "collection_point_id__town_panchayat",
-            "collection_point_id__panchayat_union",
-            "collection_point_id__panchayat",
             "wastetype_id",
         )
         .first()
@@ -465,15 +455,24 @@ def serialize_trip_cp_brief(trip_cp: DailyTripCollectionPoint) -> dict:
 
 
 def serialize_assignment_brief(assignment: DailyTripAssignment) -> dict:
-    panchayat = assignment.panchayat
+    from app.models.masters.panchayat import Panchayat
+
+    panchayat_id = assignment.panchayat_id
+    panchayat_name = (
+        Panchayat.objects.filter(unique_id=panchayat_id).values_list(
+            "panchayat_name", flat=True
+        ).first()
+        if panchayat_id
+        else None
+    )
     vehicle = assignment.vehicle_id
     return {
         "unique_id": assignment.unique_id,
         "status": assignment.status,
         "trip_date": assignment.trip_date.isoformat(),
         "panchayat": {
-            "unique_id": panchayat.unique_id,
-            "name": panchayat.panchayat_name,
+            "unique_id": panchayat_id,
+            "name": panchayat_name,
         },
         "waste_types": [
             {"unique_id": wt.unique_id, "name": wt.waste_type_name}

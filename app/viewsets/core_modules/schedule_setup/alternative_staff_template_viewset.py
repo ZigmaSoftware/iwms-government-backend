@@ -34,14 +34,14 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     throttle_scope = "alternative_staff_template"
 
+    # driver_id__corporation/operator_id__corporation (Staffcreation's own
+    # geo columns) are plain unique_id CharFields now — not select_related-able.
     queryset = AlternativeStaffTemplate.objects.select_related(
         "staff_template",
         "driver_id",
         "driver_id__designation_id",
-        "driver_id__corporation",
         "operator_id",
         "operator_id__designation_id",
-        "operator_id__corporation",
     )
     serializer_class = AlternativeStaffTemplateSerializer
 
@@ -79,24 +79,17 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
+        # state/district/area_type/corporation/municipality/town_panchayat/
+        # panchayat_union/panchayat are plain unique_id CharFields now (no DB
+        # relation) — not select_related-able.
         return qs.select_related(
             "staff_template",
             "driver_id",
             "driver_id__designation_id",
-            "driver_id__corporation",
             "operator_id",
             "operator_id__designation_id",
-            "operator_id__corporation",
             # "requested_by",
             "approved_by",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "municipality",
-            "town_panchayat",
-            "panchayat_union",
-            "panchayat",
         )
 
     @cache_api("alternative_staff_template_list", vary_on_user=True)

@@ -7,14 +7,15 @@ from app.models.masters.district import District
 
 class DistrictLeaderLoginSerializer(serializers.ModelSerializer):
 
-    district_id = serializers.PrimaryKeyRelatedField(
-        queryset=District.objects.filter(is_deleted=False),
-        required=True,
-    )
-    district_name = serializers.CharField(
-        source="district_id.name",
-        read_only=True,
-    )
+    district_id = serializers.CharField(required=True)
+    district_name = serializers.SerializerMethodField(read_only=True)
+
+    def get_district_name(self, obj):
+        return (
+            District.objects.filter(unique_id=obj.district_id)
+            .values_list("name", flat=True)
+            .first()
+        )
 
     password = serializers.CharField(
         required=False,
@@ -40,9 +41,12 @@ class DistrictLeaderLoginSerializer(serializers.ModelSerializer):
         read_only_fields = ["unique_id", "created_at", "updated_at"]
 
     def validate_district_id(self, value):
-        """One district can have at most one (non-deleted) leader."""
+        """Must reference a real district, and one district can have at most
+        one (non-deleted) leader."""
         if not value:
             return value
+        if not District.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError("Invalid district.")
         qs = DistrictLeaderLogin.objects.filter(
             district_id=value,
             is_deleted=False,

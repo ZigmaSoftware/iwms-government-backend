@@ -60,7 +60,7 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "staff-templates"
 
     def get_queryset(self):
-        qs = StaffTemplate.objects.all()
+        qs = StaffTemplate.objects.filter(is_deleted=False)
 
         status_param = self.request.query_params.get("status")
         if status_param:
@@ -73,24 +73,18 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
+        # state/district/area_type/corporation/municipality/town_panchayat/
+        # panchayat_union/panchayat are plain unique_id CharFields now (no DB
+        # relation), same for driver_id__corporation/operator_id__corporation
+        # (Staffcreation's own geo columns) — none of these are select_related-able.
         return qs.select_related(
             "driver_id",
             "driver_id__designation_id",
-            "driver_id__corporation",
             "operator_id",
             "operator_id__designation_id",
-            "operator_id__corporation",
             "created_by",
             "updated_by",
             "approved_by",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "municipality",
-            "town_panchayat",
-            "panchayat_union",
-            "panchayat",
         )
 
     # ── available-staff action ────────────────────────────────────────

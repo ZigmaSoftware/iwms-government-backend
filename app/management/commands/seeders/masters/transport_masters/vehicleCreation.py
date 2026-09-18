@@ -47,7 +47,9 @@ class VehicleCreationSeeder(BaseSeeder):
             vehicle_idx = 0
 
             for lb in local_bodies:
-                geo_defaults = geo_defaults_for_local_body(lb["parent_type"], lb["parent"], include_country=True)
+                geo_defaults = geo_defaults_for_local_body(
+                    lb["parent_type"], lb["parent"], include_country=True, as_strings=True
+                )
                 slots = lb["ward_count"] * SLOTS_PER_WARD + SPARE_PER_LOCAL_BODY
                 for _slot in range(slots):
                     spec_idx = vehicle_idx % len(VEHICLE_SPECS)

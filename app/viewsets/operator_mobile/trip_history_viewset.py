@@ -12,6 +12,7 @@ from app.models.core_modules.daily_operations.daily_trip_collection_point import
 from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
+from app.models.masters.panchayat import Panchayat
 from app.permissions.operator_permission import IsOperatorRole
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
@@ -46,7 +47,14 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
     total_weight += sum(
         (h.collected_weight_kg or Decimal("0")) for h in household_children
     )
-    panchayat = assignment.panchayat
+    panchayat_id = assignment.panchayat_id
+    panchayat_name = (
+        Panchayat.objects.filter(unique_id=panchayat_id).values_list(
+            "panchayat_name", flat=True
+        ).first()
+        if panchayat_id
+        else None
+    )
     ward = assignment.wards.first()
     duration = assignment.total_trip_time
     return {
@@ -70,9 +78,9 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
         # panchayat is a nullable FK — a household-only / higher-level trip may
         # have none, so guard it instead of crashing the whole history list.
         "panchayat": {
-            "unique_id": panchayat.unique_id,
-            "name": panchayat.panchayat_name,
-        } if panchayat else None,
+            "unique_id": panchayat_id,
+            "name": panchayat_name,
+        } if panchayat_id else None,
         # ward narrows the panchayat/local-body scope for this trip, when set.
         "ward": {
             "unique_id": ward.unique_id,
@@ -160,7 +168,6 @@ class TripHistoryViewSet(viewsets.ViewSet):
                 | Q(alt_staff_template_id__isnull=True, staff_template_id__driver_id=operator)
             )
             .select_related(
-                "panchayat",
                 "vehicle_id",
                 "alt_staff_template_id",
             )

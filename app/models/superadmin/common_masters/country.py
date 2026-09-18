@@ -1,6 +1,5 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
-from .continent import Continent
 from app.utils.comfun import generate_unique_id
 
 
@@ -20,13 +19,7 @@ class Country(BaseMaster):
         default=generate_country_id
     )
 
-    continent_id = models.ForeignKey(
-        Continent,
-        on_delete=models.PROTECT,
-        related_name="countries",
-        to_field="unique_id",
-        db_column="continent_id",
-    )
+    continent_id = models.CharField(max_length=30)
 
     name = models.CharField(max_length=100)
     currency = models.CharField(max_length=20, blank=True, null=True)

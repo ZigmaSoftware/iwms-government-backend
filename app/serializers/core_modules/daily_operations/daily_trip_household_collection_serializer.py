@@ -25,6 +25,12 @@ class DailyTripHouseholdCollectionSerializer(
     trip_assignment = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
     hierarchy = serializers.SerializerMethodField()
+    # Not model fields — DailyTripHouseholdCollection has no ward column of
+    # its own; these are derived from customer_id.ward in to_representation()
+    # below. Declared here (read-only) so Meta.fields can list them without
+    # DRF's ModelSerializer field-introspection raising ImproperlyConfigured.
+    ward_id = serializers.SerializerMethodField()
+    ward_name = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyTripHouseholdCollection
@@ -88,6 +94,13 @@ class DailyTripHouseholdCollectionSerializer(
     def get_hierarchy(self, obj):
         name, level = flat_geo_display(obj)
         return {"location_name": name, "location_level": level}
+
+    def get_ward_id(self, obj):
+        return getattr(getattr(obj, "customer_id", None), "ward_id", None)
+
+    def get_ward_name(self, obj):
+        ward = getattr(getattr(obj, "customer_id", None), "ward", None)
+        return getattr(ward, "ward_name", None)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

@@ -29,6 +29,11 @@ class UniqueIdOrPkField(serializers.SlugRelatedField):
 
 
 class VehicleCreationSerializer(serializers.ModelSerializer):
+    # NOTE: state/district/area_type/corporation/.../panchayat/country are
+    # plain CharFields (unique_id strings, no DB relation) — same convention
+    # as WardSerializer. Input fields need no `source=` override since the
+    # model's own field name already carries the "_id" suffix; display
+    # names are resolved via SerializerMethodField, matching ward_serializer.py.
 
     # Read fields — return IDs and names in response
 
@@ -59,25 +64,52 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
     )
 
     # Government hierarchy — mirrors Collection Point's location fields
-    # (see app/serializers/schedule_masters/collection_point_serializer.py).
-    country_id = UniqueIdOrPkField(source="country", slug_field="unique_id", queryset=Country.objects.filter(is_deleted=False), required=False, allow_null=True)
-    country_name = serializers.CharField(source="country.name", read_only=True)
-    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True)
-    state_name = serializers.CharField(source="state.name", read_only=True)
-    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True)
-    district_name = serializers.CharField(source="district.name", read_only=True)
-    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), required=False, allow_null=True)
-    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
-    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), required=False, allow_null=True)
-    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True)
-    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), required=False, allow_null=True)
-    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True)
-    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
-    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True)
-    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), required=False, allow_null=True)
-    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
-    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True)
-    panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
+    # (see app/serializers/core_modules/schedule_setup/collection_point_serializer.py).
+    country_id = serializers.CharField(required=False, allow_null=True)
+    country_name = serializers.SerializerMethodField()
+    state_id = serializers.CharField(required=False, allow_null=True)
+    state_name = serializers.SerializerMethodField()
+    district_id = serializers.CharField(required=False, allow_null=True)
+    district_name = serializers.SerializerMethodField()
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    area_type_name = serializers.SerializerMethodField()
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    corporation_name = serializers.SerializerMethodField()
+    municipality_id = serializers.CharField(required=False, allow_null=True)
+    municipality_name = serializers.SerializerMethodField()
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_name = serializers.SerializerMethodField()
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_name = serializers.SerializerMethodField()
+    panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_name = serializers.SerializerMethodField()
+
+    def get_country_name(self, obj):
+        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+
+    def get_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+
+    def get_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+
+    def get_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+
+    def get_panchayat_name(self, obj):
+        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
 
     class Meta:
         model = VehicleCreation
@@ -125,16 +157,17 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
-        state = attrs.get("state") or getattr(instance, "state", None)
-        country = attrs.get("country") or getattr(instance, "country", None)
+        state_id = attrs.get("state_id") if "state_id" in attrs else getattr(instance, "state_id", None)
+        country_id = attrs.get("country_id") if "country_id" in attrs else getattr(instance, "country_id", None)
 
-        if state:
-            state_country = state.country_id
-            if country and country.pk != state_country.pk:
+        if state_id:
+            state = State.objects.filter(unique_id=state_id).first()
+            state_country_id = state.country_id if state else None
+            if country_id and state_country_id and country_id != state_country_id:
                 raise serializers.ValidationError(
                     {"country_id": "Country must match the selected state."}
                 )
-            attrs["country"] = state_country
+            attrs["country_id"] = state_country_id
 
         return unique_name_validator(
             Model=VehicleCreation,
