@@ -64,7 +64,7 @@ class SchedulerDemoSeeder(BaseSeeder):
             return
 
         panchayat = (
-            Panchayat.objects.filter(district_id=district, is_deleted=False)
+            Panchayat.objects.filter(district_id=district.unique_id, is_deleted=False)
             .order_by("panchayat_name")
             .first()
         )
@@ -94,15 +94,15 @@ class SchedulerDemoSeeder(BaseSeeder):
         # ---- 2. Create / refresh the demo TripPlan -------------------------
         # Guaranteed-scheduled: ACTIVE + APPROVED + auto-assign + every weekday.
         plan, created = TripPlan.objects.update_or_create(
-            district=district,
-            corporation=corporation,
-            panchayat=None,
+            district_id=district.unique_id,
+            corporation_id=corporation.unique_id,
+            panchayat_id=None,
             collection_type=TripPlan.COLLECTION_TYPE_BIN,
             trip_trigger_weight_kg=DEMO_TRIGGER_KG,  # our sentinel
             is_deleted=False,
             defaults={
-                "state": corporation.state_id,
-                "area_type": corporation.area_type_id,
+                "state_id": corporation.state_id,
+                "area_type_id": corporation.area_type_id,
                 "staff_template_id": template,
                 "vehicle_id": vehicle,
                 "scheduled_time": time(7, 0),
@@ -121,13 +121,13 @@ class SchedulerDemoSeeder(BaseSeeder):
         # ---- 3. Give it real bin stops (so daily points are generated) -----
         cps = list(
             Collection_point.objects.filter(
-                panchayat=panchayat, is_deleted=False, is_active=True
+                panchayat_id=panchayat.unique_id, is_deleted=False, is_active=True
             ).order_by("cp_name")[:3]
         )
         if not cps:
             cps = list(
                 Collection_point.objects.filter(
-                    district=district, is_deleted=False, is_active=True
+                    district_id=district.unique_id, is_deleted=False, is_active=True
                 ).order_by("cp_name")[:3]
             )
         if not cps:

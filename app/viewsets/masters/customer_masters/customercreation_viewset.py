@@ -116,6 +116,7 @@ def get_or_create_apartment_qr(apartment_name, request):
 
 
 class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "customer_creation"
     permission_resource = "CustomerCreation"
     serializer_class = CustomerCreationSerializer
     lookup_field = "unique_id"
@@ -137,9 +138,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         CustomerCreation.objects
         .filter(is_deleted=False)
         .select_related(
-            "state", "district", "area_type",
-            "corporation", "municipality", "town_panchayat",
-            "panchayat_union", "panchayat", "ward",
+            "ward",
             "property_ref", "sub_property",
         )
         .prefetch_related(
@@ -545,7 +544,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                         break
                     local_body = (
                         model.objects.filter(
-                            district_id=district,
+                            district_id=district.unique_id if district else None,
                             is_deleted=False,
                         )
                         .filter(
@@ -563,7 +562,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 if local_body and local_body_field != "multiple" and ward_value:
                     ward = (
                         Ward.objects.filter(
-                            **{local_body_field: local_body},
+                            **{f"{local_body_field}_id": local_body.unique_id},
                             is_deleted=False,
                         )
                         .filter(
@@ -639,11 +638,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
                     "state_id": state.unique_id,
                     "district_id": district.unique_id,
-                    "area_type_id": (
-                        local_body.area_type_id.unique_id
-                        if local_body.area_type_id
-                        else None
-                    ),
+                    "area_type_id": local_body.area_type_id,
                     f"{local_body_field}_id": local_body.unique_id,
                     "ward_id": ward.unique_id,
 

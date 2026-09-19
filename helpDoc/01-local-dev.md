@@ -1,8 +1,9 @@
 # Local Development
 
 Local dev uses `docker-compose.yml` (no `-f` flag needed) — it runs a
-disposable `db` container (`mariadb:11.8`) alongside `backend`. This is
-different from production, which has no `db` container at all (see
+disposable `db` container (`mariadb:11.8`) and a `redis` container
+(`redis:7-alpine`) alongside `backend`. This is different from production,
+which has no `db` container at all (see
 [02-production-deploy.md](02-production-deploy.md)).
 
 ## First-time setup
@@ -27,9 +28,30 @@ the compose-managed container.
 ## Bring it up
 
 ```bash
-docker compose up -d              # starts db + backend
+docker compose up -d --build      # starts db + redis + backend, rebuilding backend's image if code changed
 docker compose logs -f backend    # watch it come up
 ```
+
+`backend` won't start until both `db` and `redis` report healthy
+(`depends_on: condition: service_healthy` in `docker-compose.yml`), so the
+first `up` can take a few seconds longer than a plain restart.
+
+### Rebuilding after a dependency change
+
+`--build` above only rebuilds if Docker thinks something changed. If you've
+edited `requirements.txt` (or anything else that a cached layer might
+otherwise reuse) and want to force a truly clean rebuild:
+
+```bash
+docker compose build --no-cache backend
+docker compose up -d
+```
+
+Unlike the frontend (see `../../iwms-government-frontend/helpDoc/01-local-dev.md`),
+the backend rarely *needs* `--no-cache` day-to-day — its `.env` values are
+read at **container runtime** (`env_file: .env`), not baked into the image at
+build time, so a stale build-arg cache isn't a real risk here. Reach for
+`--no-cache` only when you suspect a stale dependency/layer, not routinely.
 
 ## Apply migrations
 
@@ -162,7 +184,29 @@ docker compose down -v    # also wipes the db volume — fine locally, never do 
 ## Full local reset
 
 ```bash
-docker compose down -v
-docker compose up -d
+docker compose down -v            # also wipes db AND redis named volumes
+docker compose up -d --build
 docker compose exec -T backend python manage.py migrate
 ```
+
+## Quick reference: rerun everything from scratch
+
+The four commands to go from "nothing running" to "verified healthy":
+
+```bash
+cd iwms-government-backend
+docker compose up -d --build
+docker compose exec -T backend python manage.py migrate
+curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9001/api/v1/masters/districts/
+```
+
+| Step | Why it's needed |
+|---|---|
+| `cd iwms-government-backend` | `docker compose` reads `docker-compose.yml`/`.env` relative to the current directory — there's no global config. |
+| `docker compose up -d --build` | Builds `backend`'s image if code changed, then starts all three containers (`db`, `redis`, `backend`) in the background. `backend` waits for `db` and `redis` to both pass their healthchecks before starting. |
+| `migrate` | `app/migrations/*.py` is gitignored — a fresh clone/container has no schema until you apply migrations yourself (see "Apply migrations" above). Safe to re-run; a no-op if nothing's pending. |
+| `curl ...` | Verifies the stack actually works end-to-end — `200`/`401`/`403` all mean Django booted and reached the database; only used to confirm, not required for the containers to be "up". |
+
+If you only changed backend code and don't need a full reset, `docker compose
+up -d --build` alone is usually enough — migrations and the curl check are
+only needed after a schema change or when verifying a fresh setup.

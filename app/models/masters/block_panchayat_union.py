@@ -1,8 +1,6 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.district import District
-from app.models.superadmin.common_masters.state import State
 from app.models.masters.hierarchy import AdministrativeHierarchy
 from app.models.masters.areatype import AreaType
 
@@ -20,18 +18,8 @@ class BlockPanchayatUnion(BaseMaster):
     )
 
 
-    state_id = models.ForeignKey(
-        State,
-        on_delete=models.PROTECT,
-        related_name="block_panchayat_unions",
-        db_column="state_id",
-    )
-    district_id = models.ForeignKey(
-        District,
-        on_delete=models.PROTECT,
-        related_name="block_panchayat_unions",
-        db_column="district_id",
-    )
+    state_id = models.CharField(max_length=30)
+    district_id = models.CharField(max_length=30)
 
     area_type_id = models.ForeignKey(
         AreaType,

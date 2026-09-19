@@ -4,6 +4,8 @@ from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.masters.district import District
+from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 from app.serializers.superadmin.staff_management.staff_access_configuration_serializer import (
@@ -15,6 +17,7 @@ from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 
 
 class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "staff_access_configuration"
     queryset = Staffcreation.objects.select_related(
         "personal_details",
         "department_id",
@@ -311,7 +314,6 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 is_active=True,
                 is_deleted=False,
             )
-            .select_related("state", "district", "area_type")
             .prefetch_related(
                 "corporations",
                 "municipalities",
@@ -335,9 +337,15 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 continue
             hierarchy = []
             if scope.state:
-                hierarchy.append({"level": "state", "id": scope.state_id, "name": scope.state.name})
+                state_name = State.objects.filter(unique_id=scope.state).values_list(
+                    "name", flat=True
+                ).first()
+                hierarchy.append({"level": "state", "id": scope.state, "name": state_name})
             if scope.district:
-                hierarchy.append({"level": "district", "id": scope.district_id, "name": scope.district.name})
+                district_name = District.objects.filter(
+                    unique_id=scope.district
+                ).values_list("name", flat=True).first()
+                hierarchy.append({"level": "district", "id": scope.district, "name": district_name})
             local_bodies = {}
             for key, relation, name_field, label in body_fields:
                 entries = [
@@ -364,9 +372,9 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "role": admin.governmentusertype_id.get_name_display(),
                 "roleLevel": admin.governmentusertype_id.level,
                 "scope": {
-                    "stateId": scope.state_id,
-                    "districtId": scope.district_id,
-                    "areaTypeId": scope.area_type_id,
+                    "stateId": scope.state,
+                    "districtId": scope.district,
+                    "areaTypeId": scope.area_type,
                     "localBodies": local_bodies,
                     "wards": ward_entries,
                 },

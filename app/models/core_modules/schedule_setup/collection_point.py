@@ -2,21 +2,19 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from django.core.exceptions import ValidationError
-from app.models.superadmin.common_masters.country import Country
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 
 def geneate_collection_point_id():
     return f"CP-{generate_unique_id()}"
 
 class Collection_point(BaseMaster):
+    CACHE_SCOPES = (
+        "collection_point_list",
+        "collection_point_detail",
+        "trip_plan_list",
+        "trip_plan_detail",
+    )
+
     COLLECTION_TYPE_BIN = "bin_collection"
     COLLECTION_TYPE_HOUSEHOLD = "household_collection"
     COLLECTION_TYPE_BULK = "bulk_waste_collection"
@@ -34,87 +32,18 @@ class Collection_point(BaseMaster):
         editable=False
     )
 
-    country = models.ForeignKey(
-        Country,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="country_id",
-    )
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="collection_points",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    # Government hierarchy — plain CharFields holding the related row's
+    # `unique_id` (no DB relation/join), matching the rest of the
+    # geo-hierarchy convention.
+    country_id = models.CharField(max_length=30, null=True, blank=True)
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     wards = models.ManyToManyField(
         Ward,
         related_name="collection_points_multi",
@@ -143,4 +72,4 @@ class Collection_point(BaseMaster):
         
 
     def __str__(self):
-        return f"{self.cp_name} ({self.district})" if self.district_id else self.cp_name
+        return f"{self.cp_name} ({self.district_id})" if self.district_id else self.cp_name

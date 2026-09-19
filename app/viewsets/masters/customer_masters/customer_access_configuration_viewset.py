@@ -25,6 +25,7 @@ class CustomerAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSe
     StaffAccessConfiguration, and they have no web screens to inherit. This
     screen ticks the app they may sign into and the citizen screens they see.
     """
+    throttle_scope = "customer_access_configuration"
 
     serializer_class = CustomerAccessConfigurationSerializer
     lookup_field = "customer_unique_id"
@@ -60,7 +61,7 @@ class CustomerAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSe
         cache.clear()
 
     def perform_destroy(self, instance):
-        instance.delete()
+        super().perform_destroy(instance)
         cache.clear()
 
     @action(detail=False, methods=["get"], url_path="available-screens")

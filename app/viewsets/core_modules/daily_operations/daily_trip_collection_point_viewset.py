@@ -32,6 +32,7 @@ from rest_framework import viewsets
 
 
 class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "daily_trip_collection_point"
     serializer_class = DailyTripCollectionPointSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripCollectionPoint"
@@ -65,6 +66,18 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 is_deleted=False,
             ).values_list("collection_point_id_id", "bin_id_id")
         )
+        # (trip_assignment_id, collection_point_id, bin_id) is uniquely
+        # constrained regardless of is_deleted, so a row soft-deleted by an
+        # admin still occupies that key — look it up and reuse/reactivate it
+        # instead of trying to INSERT a duplicate, which would raise
+        # IntegrityError.
+        soft_deleted_by_key = {
+            (row.collection_point_id_id, row.bin_id_id): row
+            for row in DailyTripCollectionPoint.objects.filter(
+                trip_assignment_id=assignment,
+                is_deleted=True,
+            )
+        }
         plan_stops = TripPlanCollectionPoint.objects.filter(
             trip_plan_id=assignment.trip_plan_id,
             is_active=True,
@@ -75,7 +88,22 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             # the household-collection table, not here (collection_point is NOT NULL).
             if not stop.collection_point_id_id:
                 continue
-            if (stop.collection_point_id_id, stop.bin_id_id) in existing_cp_bins:
+            key = (stop.collection_point_id_id, stop.bin_id_id)
+            if key in existing_cp_bins:
+                continue
+            reusable = soft_deleted_by_key.get(key)
+            if reusable is not None:
+                reusable.sequence = stop.sequence
+                reusable.is_deleted = False
+                reusable.is_active = True
+                reusable.is_collected = False
+                reusable.status = DailyTripCollectionPoint.STATUS_PENDING
+                reusable.collected_weight_kg = None
+                reusable.collected_at = None
+                reusable.save(update_fields=[
+                    "sequence", "is_deleted", "is_active", "is_collected",
+                    "status", "collected_weight_kg", "collected_at", "updated_at",
+                ])
                 continue
             DailyTripCollectionPoint.objects.create(
                 trip_assignment_id=assignment,
@@ -484,23 +512,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             DailyTripCollectionPoint.objects.select_related(
                 "trip_assignment_id",
                 "trip_assignment_id__trip_plan_id",
-                "trip_assignment_id__state",
-                "trip_assignment_id__district",
-                "trip_assignment_id__area_type",
-                "trip_assignment_id__corporation",
-                "trip_assignment_id__municipality",
-                "trip_assignment_id__town_panchayat",
-                "trip_assignment_id__panchayat_union",
-                "trip_assignment_id__panchayat",
                 "collection_point_id",
-                "collection_point_id__state",
-                "collection_point_id__district",
-                "collection_point_id__area_type",
-                "collection_point_id__corporation",
-                "collection_point_id__municipality",
-                "collection_point_id__town_panchayat",
-                "collection_point_id__panchayat_union",
-                "collection_point_id__panchayat",
                 "bin_id",
                 "bin_id__wastetype_id",
                 "collected_by",
@@ -861,14 +873,6 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             stops = list(
                 DailyTripCollectionPoint.objects.select_related(
                     "collection_point_id",
-                    "collection_point_id__state",
-                    "collection_point_id__district",
-                    "collection_point_id__area_type",
-                    "collection_point_id__corporation",
-                    "collection_point_id__municipality",
-                    "collection_point_id__town_panchayat",
-                    "collection_point_id__panchayat_union",
-                    "collection_point_id__panchayat",
                     "trip_assignment_id",
                     "trip_assignment_id__trip_plan_id",
                     "bin_id",
@@ -1023,11 +1027,33 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         previous_data = self._serialize_instance(instance)
         instance.is_deleted = True
         instance.is_active = False
-        instance.save(update_fields=["is_deleted", "is_active", "updated_at"])
+        account = self._account_for_request_user()
+        update_fields = ["is_deleted", "is_active", "updated_at"]
+        if account is not None:
+            instance.updated_by = account
+            update_fields.append("updated_by")
+        instance.save(update_fields=update_fields)
         self.log_audit(
             self.request,
             instance=instance,
             previous_data=previous_data,
             new_data=self._serialize_instance(instance),
         )
+        assignment = instance.trip_assignment_id
+        if assignment is not None:
+            assignment.mark_completed_if_all_cps_collected()
+            if assignment.trip_collection_points.filter(is_deleted=False).exists():
+                self._upsert_trip_log_for_assignment(assignment)
+            else:
+                # No stops remain — _upsert_trip_log_for_assignment() early-
+                # returns on an empty queryset, which would leave a stale
+                # non-zero collected_weight_kg; reset it explicitly. Mirrors
+                # that helper's own guard: only a VERIFIED log is left alone.
+                log = DailyTripLog.objects.filter(
+                    trip_assignment_id=assignment, is_deleted=False
+                ).first()
+                if log is not None and log.log_status != DailyTripLog.LOG_STATUS_VERIFIED:
+                    log.collected_weight_kg = 0
+                    log.log_status = DailyTripLog.LOG_STATUS_DRAFT
+                    log.save(update_fields=["collected_weight_kg", "log_status"])
         self._optimize_assignment_silently(assignment_id)

@@ -61,54 +61,49 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     area = serializers.CharField(source="customer.area", read_only=True)
 
     # ---- geography: state/district/area type/local body (stored on the record,
-    # auto-inherited from the household when left blank in WasteCollection.save) --
-    state_id = serializers.SlugRelatedField(
-        source="state", queryset=State.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    state_name = serializers.CharField(source="state.name", read_only=True)
+    # auto-inherited from the household when left blank in WasteCollection.save).
+    # Plain unique_id strings in, display names out (see WardSerializer).
+    state_id = serializers.CharField(required=False, allow_null=True)
+    district_id = serializers.CharField(required=False, allow_null=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True)
 
-    district_id = serializers.SlugRelatedField(
-        source="district", queryset=District.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    district_name = serializers.CharField(source="district.name", read_only=True)
+    state_name = serializers.SerializerMethodField()
+    district_name = serializers.SerializerMethodField()
+    area_type_name = serializers.SerializerMethodField()
+    corporation_name = serializers.SerializerMethodField()
+    municipality_name = serializers.SerializerMethodField()
+    town_panchayat_name = serializers.SerializerMethodField()
+    panchayat_union_name = serializers.SerializerMethodField()
+    panchayat_name = serializers.SerializerMethodField()
 
-    area_type_id = serializers.SlugRelatedField(
-        source="area_type", queryset=AreaType.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
 
-    corporation_id = serializers.SlugRelatedField(
-        source="corporation", queryset=Corporation.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True)
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
 
-    municipality_id = serializers.SlugRelatedField(
-        source="municipality", queryset=Municipality.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True)
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
 
-    town_panchayat_id = serializers.SlugRelatedField(
-        source="town_panchayat", queryset=TownPanchayat.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True)
+    def get_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
 
-    panchayat_union_id = serializers.SlugRelatedField(
-        source="panchayat_union", queryset=PanchayatUnion.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
+    def get_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
 
-    panchayat_id = serializers.SlugRelatedField(
-        source="panchayat", queryset=Panchayat.objects.filter(is_deleted=False),
-        slug_field="unique_id", required=False, allow_null=True,
-    )
-    panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
+    def get_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+
+    def get_panchayat_name(self, obj):
+        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
 
     # Most-specific local body (corporation/municipality/.../panchayat) + its level
     location_name = serializers.SerializerMethodField(read_only=True)

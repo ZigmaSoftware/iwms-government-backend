@@ -3,15 +3,6 @@ from django.db import models
 from app.models.masters.transport_masters.fuel import Fuel
 from .vehicleTypeCreation import VehicleTypeCreation
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin.common_masters.country import Country
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 
 
 def generate_vehicle_creation_id():
@@ -31,6 +22,8 @@ class VehicleCreation(models.Model):
         NEW = "NEW", "New"
         SECOND_HAND = "SECOND_HAND", "Second Hand"
 
+    CACHE_SCOPES = ("vehicle_creation_list", "vehicle_creation_detail")
+
     unique_id = models.CharField(
         max_length=40,
         primary_key=True,
@@ -46,88 +39,18 @@ class VehicleCreation(models.Model):
     )
 
     # Government hierarchy the vehicle belongs to (mirrors Collection_point's
-    # flat geo FKs — see app/models/schedule_masters/collection_point.py).
-    country = models.ForeignKey(
-        Country,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="country_id",
-    )
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vehicles",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    # flat geo block — see app/models/core_modules/schedule_setup/collection_point.py).
+    # Plain CharFields holding the related row's `unique_id` (no DB relation/
+    # join) — matching the rest of the geo-hierarchy convention.
+    country_id = models.CharField(max_length=30, null=True, blank=True)
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
     vehicle_no = models.CharField(max_length=50, unique=True)
     capacity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

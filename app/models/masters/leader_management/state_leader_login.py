@@ -1,7 +1,6 @@
 from django.db import models
 
 from app.utils.base_models import BaseMaster
-from app.models.superadmin.common_masters.state import State
 from app.models.masters.state_leader_login import generate_state_leader_id
 
 
@@ -19,13 +18,10 @@ class StateLeaderLogin(BaseMaster):
         default=generate_state_leader_id,
     )
 
-    state_id = models.ForeignKey(
-        State,
-        on_delete=models.PROTECT,
-        related_name="leader_logins",
-        db_column="state_id",
-        to_field="unique_id",
-    )
+    # Plain CharField holding State.unique_id (no DB relation/join) —
+    # matches the rest of the geo-hierarchy refactor's convention. Was
+    # NOT NULL as a ForeignKey, so kept required here too.
+    state_id = models.CharField(max_length=30)
 
     # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
     # the static state_id (kept temporarily for zero-downtime migration).
@@ -71,7 +67,16 @@ class StateLeaderLogin(BaseMaster):
         verbose_name_plural = "State Leader Logins"
 
     def __str__(self):
-        return f"{self.username} ({self.state_id.name if self.state_id else '—'})"
+        from app.models.superadmin.common_masters.state import State
+
+        state_name = (
+            State.objects.filter(unique_id=self.state_id)
+            .values_list("name", flat=True)
+            .first()
+            if self.state_id
+            else None
+        )
+        return f"{self.username} ({state_name or '—'})"
 
     # Required by DRF permission system
     @property

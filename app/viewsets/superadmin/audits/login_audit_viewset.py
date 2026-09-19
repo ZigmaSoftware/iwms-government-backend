@@ -6,6 +6,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 
 class LoginAuditViewSet(viewsets.ReadOnlyModelViewSet):
+    throttle_scope = "login_audit"
     http_method_names = ["get", "head", "options"]
     serializer_class = LoginAuditSerializer
     permission_resource = "LoginAudit"

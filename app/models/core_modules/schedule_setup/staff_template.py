@@ -3,14 +3,6 @@ from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 
 
 
@@ -21,7 +13,22 @@ def generate_stafftemplate_id():
     return f"STFTEMP-{generate_unique_id(length=6)}"
 
 class StaffTemplate(BaseMaster):
-    
+
+    CACHE_SCOPES = (
+        "staff_template_list",
+        "staff_template_detail",
+        "trip_plan_list",
+        "trip_plan_detail",
+        "alternative_staff_template_list",
+        "alternative_staff_template_detail",
+    )
+
+    # AlternativeStaffTemplate is deliberately excluded: it has no is_deleted
+    # field (not soft-deletable) — see app/utils/cascade_delete.py. Everything
+    # under trip_plans/daily_trip_assignments cascades further via their own
+    # CASCADE_SOFT_DELETE declarations.
+    CASCADE_SOFT_DELETE = ("trip_plans", "daily_trip_assignments")
+
     class ApprovalStatus(models.TextChoices):
         PENDING = "PENDING", "Pending"
         APPROVED = "APPROVED", "Approved"
@@ -64,78 +71,17 @@ class StaffTemplate(BaseMaster):
     )
 
     # ---------------- GEO HIERARCHY (WHERE) ----------------
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="staff_templates",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    # Plain CharFields holding the related row's `unique_id` (no DB
+    # relation/join) — literal "_id"-suffixed field names, matching the rest
+    # of the geo-hierarchy (Continent/.../Panchayat, Ward, CustomerCreation).
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
     # ---------------- HUMAN READABLE BUSINESS CODE ----------------
     display_code = models.CharField(

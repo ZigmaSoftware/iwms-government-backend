@@ -35,12 +35,18 @@ class TripRetripRequestSerializer(serializers.ModelSerializer):
         return getattr(plan, "collection_type", None)
 
     def get_area_name(self, obj):
+        from app.models.masters.panchayat import Panchayat
+
         assignment = obj.assignment
         ward = assignment.wards.first()
         if ward is not None:
             return ward.ward_name
-        panchayat = assignment.panchayat
-        return getattr(panchayat, "panchayat_name", None)
+        panchayat_id = assignment.panchayat_id
+        if not panchayat_id:
+            return None
+        return Panchayat.objects.filter(unique_id=panchayat_id).values_list(
+            "panchayat_name", flat=True
+        ).first()
 
     def get_live_pending(self, obj):
         return build_pending_snapshot(obj.assignment)

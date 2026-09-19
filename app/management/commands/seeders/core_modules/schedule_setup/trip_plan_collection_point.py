@@ -87,9 +87,9 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                     cps = cps.filter(wards__in=plan_wards)
                 else:
                     for field in FLAT_HIERARCHY_FIELDS:
-                        value = getattr(plan, field, None)
+                        value = getattr(plan, f"{field}_id", None)
                         if value:
-                            cps = cps.filter(**{field: value})
+                            cps = cps.filter(**{f"{field}_id": value})
                             break
                 cps = cps.order_by("cp_name").distinct()
 

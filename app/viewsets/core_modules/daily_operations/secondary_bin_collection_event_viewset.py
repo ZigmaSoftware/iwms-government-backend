@@ -22,6 +22,7 @@ from rest_framework.response import Response
 
 
 class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "bin_collection_event"
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
     permission_resource = "BinCollectionEvent"
@@ -183,6 +184,27 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         log.remarks = log.remarks or remarks
         log.save()
 
+    def _apply_event_to_trip_cp(self, trip_cp, event):
+        """
+        Stamp `trip_cp`'s collected/weight/status fields from `event`'s status,
+        without saving or re-syncing the trip log — the caller does that.
+        """
+        if event.status == BinCollectionEvent.STATUS_NOT_COLLECTED:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_MISSED
+        elif event.status == BinCollectionEvent.STATUS_COLLECT_LATER:
+            trip_cp.collected_weight_kg = None
+            trip_cp.collected_at = None
+            trip_cp.is_collected = False
+            trip_cp.status = DailyTripCollectionPoint.STATUS_PENDING
+        else:
+            trip_cp.collected_weight_kg = event.collected_weight_kg or 0
+            trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
+            trip_cp.is_collected = True
+            trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
+
     def _sync_trip_cp_from_event(self, event):
         """
         Sync the linked DailyTripCollectionPoint whenever a BinCollectionEvent is saved.
@@ -209,21 +231,49 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not trip_cp:
             return
 
-        if event.status == BinCollectionEvent.STATUS_NOT_COLLECTED:
-            trip_cp.collected_weight_kg = None
-            trip_cp.collected_at = None
-            trip_cp.is_collected = False
-            trip_cp.status = DailyTripCollectionPoint.STATUS_MISSED
-        elif event.status == BinCollectionEvent.STATUS_COLLECT_LATER:
+        self._apply_event_to_trip_cp(trip_cp, event)
+        trip_cp.save(update_fields=[
+            "collected_weight_kg",
+            "collected_at",
+            "is_collected",
+            "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
+            "updated_at",
+        ])
+        assignment = trip_cp.trip_assignment_id
+        assignment.mark_completed_if_all_cps_collected()
+        self._upsert_trip_log_for_assignment(assignment)
+
+    def _resync_trip_cp_after_delete(self, deleted_event):
+        """
+        Called after a BinCollectionEvent is soft-deleted. The linked
+        DailyTripCollectionPoint (and downstream DailyTripLog) must not keep
+        reflecting the now-deleted event's weight/status — recompute the
+        DTCP from whichever non-deleted BinCollectionEvent is now the most
+        recent for that stop, or reset it to "not collected" if none remain.
+        """
+        trip_cp = getattr(deleted_event, "trip_collection_point_id", None)
+        if not trip_cp:
+            return
+
+        latest_remaining = (
+            BinCollectionEvent.objects.filter(
+                trip_collection_point_id=trip_cp, is_deleted=False
+            )
+            .order_by("-created_at")
+            .first()
+        )
+
+        if latest_remaining:
+            self._apply_event_to_trip_cp(trip_cp, latest_remaining)
+        else:
             trip_cp.collected_weight_kg = None
             trip_cp.collected_at = None
             trip_cp.is_collected = False
             trip_cp.status = DailyTripCollectionPoint.STATUS_PENDING
-        else:
-            trip_cp.collected_weight_kg = event.collected_weight_kg or 0
-            trip_cp.collected_at = getattr(event, "created_at", None) or timezone.now()
-            trip_cp.is_collected = True
-            trip_cp.status = DailyTripCollectionPoint.STATUS_COLLECTED
+
         trip_cp.save(update_fields=[
             "collected_weight_kg",
             "collected_at",
@@ -257,10 +307,16 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         previous_data = self._serialize_instance(instance)
         instance.is_deleted = True
         instance.is_active = False
-        instance.save(update_fields=["is_deleted", "is_active", "updated_at"])
+        account = self._account_for_request_user()
+        update_fields = ["is_deleted", "is_active", "updated_at"]
+        if account is not None:
+            instance.updated_by = account
+            update_fields.append("updated_by")
+        instance.save(update_fields=update_fields)
         self.log_audit(
             self.request,
             instance=instance,
             previous_data=previous_data,
             new_data=self._serialize_instance(instance),
         )
+        self._resync_trip_cp_after_delete(instance)

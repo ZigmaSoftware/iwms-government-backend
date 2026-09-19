@@ -102,9 +102,9 @@ class CorporationPermissionSeeder(BaseSeeder):
             )
 
             scope = {
-                "state_id_id": corporation.state_id_id,
-                "district_id_id": corporation.district_id_id,
-                "area_type_id_id": corporation.area_type_id_id,
+                "state_id": corporation.state_id,
+                "district_id": corporation.district_id,
+                "area_type_id": corporation.area_type_id,
                 "local_body_type": "corporation",
                 "local_body_id": corporation.unique_id,
             }

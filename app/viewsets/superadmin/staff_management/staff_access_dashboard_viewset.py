@@ -17,6 +17,7 @@ from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.screen_management.companyuserscreenpermission import (
     UserScreenPermission,
 )
@@ -25,6 +26,7 @@ from app.models.superadmin.staff_management.staff_data_scope import StaffDataSco
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_requester_scope,
     filter_staff_queryset_by_requester_scope,
+    flat_geo_display,
 )
 
 
@@ -113,6 +115,7 @@ def _multi_values(params, key):
 
 class StaffAccessDashboardViewSet(ViewSet):
     """Read-only, scope-safe staff access and operational assignment dashboard."""
+    throttle_scope = "staff_access_dashboard"
 
     permission_classes = [IsAuthenticated]
     permission_resource = "StaffAccessDashboard"
@@ -252,9 +255,15 @@ class StaffAccessDashboardViewSet(ViewSet):
 
         hierarchy = []
         if scope.state:
-            hierarchy.append(scope.state.name)
+            state_name = State.objects.filter(unique_id=scope.state).values_list(
+                "name", flat=True
+            ).first()
+            hierarchy.append(state_name)
         if scope.district:
-            hierarchy.append(scope.district.name)
+            district_name = District.objects.filter(
+                unique_id=scope.district
+            ).values_list("name", flat=True).first()
+            hierarchy.append(district_name)
         resolved_type = None
         resolved_id = None
         for scope_type, relation, name_field in (
@@ -293,14 +302,11 @@ class StaffAccessDashboardViewSet(ViewSet):
         }
 
     def _admin_queryset(self, request):
+        # state/district/area_type/corporation/panchayat_union/panchayat are
+        # now plain unique_id CharFields on StaffcreationOfficeDetails (no DB
+        # relation), so they can no longer be select_related.
         queryset = StaffcreationOfficeDetails.objects.select_related(
             "governmentusertype_id",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "panchayat_union",
-            "panchayat",
         ).prefetch_related(
             "data_scopes__corporations",
             "data_scopes__panchayat_unions",
@@ -362,12 +368,12 @@ class StaffAccessDashboardViewSet(ViewSet):
         hierarchy = []
         default_scope = None
         selected_state_id = (
-            selected_scope.state_id_id if selected_scope else None
+            selected_scope.state_id if selected_scope else None
         )
         selected_district_id = (
             selected_scope.unique_id
             if selected_scope and selected_scope_type == "district"
-            else selected_scope.district_id_id
+            else selected_scope.district_id
             if selected_scope
             else None
         )
@@ -375,18 +381,24 @@ class StaffAccessDashboardViewSet(ViewSet):
             if scope.state and (
                 not selected_state_id or scope.state_id == selected_state_id
             ):
+                state_name = State.objects.filter(unique_id=scope.state_id).values_list(
+                    "name", flat=True
+                ).first()
                 hierarchy.append(
-                    {"level": "state", "id": scope.state_id, "name": scope.state.name}
+                    {"level": "state", "id": scope.state_id, "name": state_name}
                 )
             if scope.district and (
                 not selected_district_id
                 or scope.district_id == selected_district_id
             ):
+                district_name = District.objects.filter(
+                    unique_id=scope.district_id
+                ).values_list("name", flat=True).first()
                 hierarchy.append(
                     {
                         "level": "district",
                         "id": scope.district_id,
-                        "name": scope.district.name,
+                        "name": district_name,
                     }
                 )
                 default_scope = {
@@ -403,7 +415,7 @@ class StaffAccessDashboardViewSet(ViewSet):
                     for item in getattr(scope, relation).all()
                     if (
                         not selected_district_id
-                        or item.district_id_id == selected_district_id
+                        or item.district_id == selected_district_id
                     )
                     and (
                         not selected_scope
@@ -448,11 +460,14 @@ class StaffAccessDashboardViewSet(ViewSet):
                     }
                 )
         if selected_scope:
+            selected_state_name = State.objects.filter(
+                unique_id=selected_scope.state_id
+            ).values_list("name", flat=True).first()
             effective_hierarchy = [
                 {
                     "level": "state",
-                    "id": selected_scope.state_id_id,
-                    "name": selected_scope.state_id.name,
+                    "id": selected_scope.state_id,
+                    "name": selected_state_name,
                 }
             ]
             if selected_scope_type == "district":
@@ -464,12 +479,15 @@ class StaffAccessDashboardViewSet(ViewSet):
                     }
                 )
             else:
+                selected_scope_district_name = District.objects.filter(
+                    unique_id=selected_scope.district_id
+                ).values_list("name", flat=True).first()
                 effective_hierarchy.extend(
                     [
                         {
                             "level": "district",
-                            "id": selected_scope.district_id_id,
-                            "name": selected_scope.district_id.name,
+                            "id": selected_scope.district_id,
+                            "name": selected_scope_district_name,
                         },
                         {
                             "level": selected_scope_type,
@@ -518,11 +536,11 @@ class StaffAccessDashboardViewSet(ViewSet):
         admin_scope = self._active_data_scope(admin)
         if not admin_scope:
             return False
-        selected_state_id = selected_scope.state_id_id
+        selected_state_id = selected_scope.state_id
         selected_district_id = (
             selected_scope.unique_id
             if scope_type == "district"
-            else selected_scope.district_id_id
+            else selected_scope.district_id
         )
         if admin_scope.state_id and admin_scope.state_id != selected_state_id:
             return False
@@ -620,14 +638,11 @@ class StaffAccessDashboardViewSet(ViewSet):
         raise ValidationError({"scope_id": "Unknown scope."})
 
     def _staff_queryset(self, request, config, scope_id, selected_admin=None):
+        # state/district/area_type/corporation/panchayat_union/panchayat are
+        # now plain unique_id CharFields on StaffcreationOfficeDetails (no DB
+        # relation), so they can no longer be select_related.
         queryset = StaffcreationOfficeDetails.objects.select_related(
             "personal_details",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "panchayat_union",
-            "panchayat",
             "staffusertype_id",
             "contractorusertype_id",
             "governmentusertype_id",
@@ -784,6 +799,20 @@ class StaffAccessDashboardViewSet(ViewSet):
 
     def _scope_ref(self, config, scope):
         is_district = config["geo_field"] == "district"
+        state_name = State.objects.filter(
+            unique_id=scope.state_id
+        ).values_list("name", flat=True).first() if scope.state_id else ""
+        district_name = (
+            scope.name
+            if is_district
+            else (
+                District.objects.filter(unique_id=scope.district_id)
+                .values_list("name", flat=True)
+                .first()
+                if scope.district_id
+                else ""
+            )
+        )
         return {
             "id": scope.unique_id,
             "name": getattr(scope, config["name"]),
@@ -791,12 +820,10 @@ class StaffAccessDashboardViewSet(ViewSet):
                 key for key, value in SCOPE_CONFIG.items() if value is config
             ),
             "scope_type_label": config["label"],
-            "state_id": scope.state_id_id,
-            "state_name": getattr(scope.state_id, "name", ""),
-            "district_id": scope.unique_id if is_district else scope.district_id_id,
-            "district_name": (
-                scope.name if is_district else getattr(scope.district_id, "name", "")
-            ),
+            "state_id": scope.state_id,
+            "state_name": state_name,
+            "district_id": scope.unique_id if is_district else scope.district_id,
+            "district_name": district_name,
         }
 
     def _filters(
@@ -813,11 +840,17 @@ class StaffAccessDashboardViewSet(ViewSet):
         districts = {}
         for scope in scopes:
             if scope.state_id:
-                states[scope.state_id_id] = scope.state_id.name
+                state_name = State.objects.filter(
+                    unique_id=scope.state_id
+                ).values_list("name", flat=True).first()
+                states[scope.state_id] = state_name
             if selected_scope_type == "district":
                 districts[scope.unique_id] = scope.name
             elif scope.district_id:
-                districts[scope.district_id_id] = scope.district_id.name
+                district_name = District.objects.filter(
+                    unique_id=scope.district_id
+                ).values_list("name", flat=True).first()
+                districts[scope.district_id] = district_name
         staff = filter_staff_queryset_by_requester_scope(
             StaffcreationOfficeDetails.objects.select_related(
                 "staffusertype_id",
@@ -928,36 +961,42 @@ class StaffAccessDashboardViewSet(ViewSet):
                         "hierarchy_names": names,
                     }
             if scope.district:
+                district_name = District.objects.filter(
+                    unique_id=scope.district
+                ).values_list("name", flat=True).first()
                 return {
                     "hierarchy_level": "district",
                     "hierarchy_level_label": "District",
-                    "hierarchy_names": [scope.district.name],
+                    "hierarchy_names": [district_name],
                 }
             if scope.state:
+                state_name = State.objects.filter(unique_id=scope.state).values_list(
+                    "name", flat=True
+                ).first()
                 return {
                     "hierarchy_level": "state",
                     "hierarchy_level_label": "State",
-                    "hierarchy_names": [scope.state.name],
+                    "hierarchy_names": [state_name],
                 }
 
-        direct_levels = (
-            ("panchayat", staff.panchayat, "panchayat_name"),
-            ("panchayat_union", staff.panchayat_union, "union_name"),
-            ("corporation", staff.corporation, "corporation_name"),
-            ("district", staff.district, "name"),
-            ("state", staff.state, "name"),
-        )
-        for level, obj, name_field in direct_levels:
-            if obj:
-                return {
-                    "hierarchy_level": level,
-                    "hierarchy_level_label": (
-                        SCOPE_CONFIG[level]["label"]
-                        if level in SCOPE_CONFIG
-                        else "State"
-                    ),
-                    "hierarchy_names": [getattr(obj, name_field)],
-                }
+        # staff.panchayat/.../.state are now plain unique_id strings (no DB
+        # relation) — resolve the display name via the shared flat-geo
+        # helper instead of treating them as FK objects.
+        name, level_label = flat_geo_display(staff)
+        if name:
+            level = next(
+                (
+                    lvl
+                    for lvl, cfg in SCOPE_CONFIG.items()
+                    if cfg["label"] == level_label
+                ),
+                "state" if level_label == "State" else "district",
+            )
+            return {
+                "hierarchy_level": level,
+                "hierarchy_level_label": level_label,
+                "hierarchy_names": [name],
+            }
         return {
             "hierarchy_level": "unassigned",
             "hierarchy_level_label": "Unassigned",

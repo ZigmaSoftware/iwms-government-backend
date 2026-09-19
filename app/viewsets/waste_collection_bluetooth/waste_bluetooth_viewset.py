@@ -19,6 +19,7 @@ from app.utils.audit_mixin import serialize_instance_for_audit, log_common_audit
 
 
 class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
+    throttle_scope = "waste_collection_bluetooth"
     parser_classes = [JSONParser, FormParser, MultiPartParser]
         # ----------------- API ROOT FOR /waste/ -----------------
     def list(self, request):

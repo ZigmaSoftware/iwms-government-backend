@@ -66,7 +66,7 @@ ALLOWED_HOSTS = [
     '192.168.3.120',
     '10.152.141.197',
     '192.168.3.112',
-    '192.168.5.240', #sathya ip addr
+    '192.168.5.240',
     '10.245.75.197',
     '10.255.70.197',
     '192.168.6.238',
@@ -107,7 +107,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    
     'app.middleware.module_permission_middleware.ModulePermissionMiddleware',
     'app.middleware.request_meta_middleware.RequestMetaMiddleware',
 ]
@@ -196,8 +195,12 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 ENABLE_AUTH_USER_SEEDING = os.getenv("ENABLE_AUTH_USER_SEEDING", "true").lower() == "true"
 
 # -------------------------------------------------------
-# REST Framework
+# Rate limiting (Redis-backed via CACHES["default"] above)
 # -------------------------------------------------------
+# Rates live in config/throttle_rates.py (kept separate — it's a long,
+# purely data-only table, one entry per API view's throttle_scope).
+from config.throttle_rates import API_THROTTLE_RATES
+
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -205,7 +208,24 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'app.authentication.jwt.JWTUserAuthentication',
     ],
-    "DEFAULT_PAGINATION_CLASS": None
+    "DEFAULT_PAGINATION_CLASS": None,
+
+    # Global defaults: per-IP for anonymous requests, per-user for
+    # authenticated ones, plus each view's own individual scope rate above.
+    # MethodScopedRateThrottle is a drop-in replacement for DRF's
+    # ScopedRateThrottle that additionally supports per-HTTP-method rates
+    # (see app/utils/throttling.py) — existing plain-string scopes in
+    # API_THROTTLE_RATES behave exactly as before.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'app.utils.throttling.MethodScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/minute',
+        'user': '120/minute',
+        **API_THROTTLE_RATES,
+    },
 }
 
 # -------------------------------------------------------
@@ -249,11 +269,51 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+
+# Dedicated DB for the app-level response cache (app/cache/), kept
+# separate from CACHES["default"] above (throttling counters, db 0) and
+# from any future Celery broker/result-backend so they never collide or
+# get flushed together. See app/cache/service.py.
+REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", "redis://127.0.0.1:6379/1")
+
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "unique-permission-cache",
-    }
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    },
+    "app_cache": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_CACHE_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    },
+}
+
+# Surface app.cache's CACHE HIT/MISS/SET/INVALIDATED/ERROR logs (see
+# app/cache/service.py) to the console. Without this, Django's implicit
+# default logging config only shows WARNING+ and these INFO-level calls
+# are silently dropped — there is otherwise no LOGGING config in this
+# project at all.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "app.cache": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
 }
 
 # -------------------------------------------------------

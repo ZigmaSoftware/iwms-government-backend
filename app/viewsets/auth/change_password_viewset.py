@@ -43,6 +43,7 @@ class ChangePasswordView(APIView):
         new_password        (str) - desired new password
         confirm_new_password (str) - must match new_password
     """
+    throttle_scope = "change_password"
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -125,6 +126,7 @@ class AdminChangePasswordView(APIView):
         new_password   (str)
         confirm_new_password (str)
     """
+    throttle_scope = "admin_change_password"
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

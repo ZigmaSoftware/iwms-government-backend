@@ -369,9 +369,9 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         ]
         local_body_type, local_body_id = candidates[0] if len(candidates) == 1 else (None, None)
         return {
-            "stateId": scope.state_id,
-            "districtId": scope.district_id,
-            "areaTypeId": scope.area_type_id,
+            "stateId": scope.state,
+            "districtId": scope.district,
+            "areaTypeId": scope.area_type,
             "localBodyType": local_body_type,
             "localBodyId": local_body_id,
         }
@@ -434,9 +434,9 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         saved = []
         for permission in dashboard_permissions:
             obj, _ = DashboardWidgetPermission.objects.update_or_create(
-                state_id_id=access_scope["stateId"],
-                district_id_id=access_scope["districtId"],
-                area_type_id_id=access_scope["areaTypeId"],
+                state_id=access_scope["stateId"],
+                district_id=access_scope["districtId"],
+                area_type_id=access_scope["areaTypeId"],
                 local_body_type=access_scope["localBodyType"],
                 local_body_id=access_scope["localBodyId"],
                 permission_owner_kind="staff",
@@ -554,9 +554,9 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             staff=staff,
             is_deleted=False,
             defaults={
-                "state_id": state_id,
-                "district_id": district_id,
-                "area_type_id": area_type_id,
+                "state": state_id,
+                "district": district_id,
+                "area_type": area_type_id,
                 "is_active": True,
             },
         )
@@ -583,11 +583,11 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "staff_id": staff.staff_unique_id,
         }
         if access_scope.get("stateId"):
-            filters["state_id_id"] = access_scope["stateId"]
+            filters["state_id"] = access_scope["stateId"]
         if access_scope.get("districtId"):
-            filters["district_id_id"] = access_scope["districtId"]
+            filters["district_id"] = access_scope["districtId"]
         if access_scope.get("areaTypeId"):
-            filters["area_type_id_id"] = access_scope["areaTypeId"]
+            filters["area_type_id"] = access_scope["areaTypeId"]
         if access_scope.get("localBodyType") and access_scope.get("localBodyId"):
             filters["local_body_type"] = access_scope["localBodyType"]
             filters["local_body_id"] = access_scope["localBodyId"]
@@ -774,9 +774,9 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
 
         return {
             "locationNodes": list(scope.location_nodes.values_list("unique_id", flat=True)),
-            "stateId": scope.state_id,
-            "districtId": scope.district_id,
-            "areaTypeId": scope.area_type_id,
+            "stateId": scope.state,
+            "districtId": scope.district,
+            "areaTypeId": scope.area_type,
             "corporationIds": corporation_ids,
             "municipalityIds": municipality_ids,
             "townPanchayatIds": town_panchayat_ids,

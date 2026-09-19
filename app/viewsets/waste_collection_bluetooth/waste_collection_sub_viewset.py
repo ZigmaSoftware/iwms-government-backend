@@ -7,6 +7,7 @@ from app.serializers.waste_collection_bluetooth.waste_collection_sub_serializer 
 
 
 class WasteCollectionSubViewSet(viewsets.ModelViewSet):
+    throttle_scope = "waste_collection_sub"
     queryset = WasteCollectionSub.objects.filter(is_deleted=False)
     serializer_class = WasteCollectionSubSerializer
     lookup_field = "unique_id"

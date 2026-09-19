@@ -1,9 +1,6 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.district import District
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.areatype import AreaType
 
 
 def generate_town_panchayat_id():
@@ -11,6 +8,30 @@ def generate_town_panchayat_id():
 
 
 class TownPanchayat(BaseMaster):
+    CASCADE_SOFT_DELETE = (
+        "wards",
+        "bins",
+        "vehicles",
+        "staff_templates",
+        "collection_points",
+        "trip_plans",
+        "trip_plan_collection_points",
+        "daily_trip_logs",
+        "daily_trip_collection_points",
+        "daily_trip_assignments",
+        "daily_trip_household_collections",
+        "vehicle_breakdowns",
+        "secondary_bin_collection_events",
+        "waste_collections",
+        "complaint_routing_rules",
+        "address_change_requests",
+        "complaint_tickets",
+        "staff_members",
+        "customer_creations",
+        "staff_access_configurations",
+    )
+    CACHE_SCOPES = ("town_panchayat_list", "town_panchayat_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -19,27 +40,10 @@ class TownPanchayat(BaseMaster):
     )
 
 
-    state_id = models.ForeignKey(
-        State,
-        on_delete=models.PROTECT,
-        related_name="town_panchayats",
-        db_column="state_id",
-    )
-    district_id = models.ForeignKey(
-        District,
-        on_delete=models.PROTECT,
-        related_name="town_panchayats",
-        db_column="district_id",
-    )
+    state_id = models.CharField(max_length=30)
+    district_id = models.CharField(max_length=30)
 
-    area_type_id = models.ForeignKey(
-        AreaType,
-        on_delete=models.PROTECT,
-        related_name="town_panchayats",
-        db_column="area_type_id",
-        null=True,
-        blank=True,
-    )
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
 
     town_panchayat_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
@@ -50,3 +54,23 @@ class TownPanchayat(BaseMaster):
     class Meta:
         ordering = ["town_panchayat_name"]
         unique_together = ("state_id", "district_id", "area_type_id", "town_panchayat_name")
+
+    @property
+    def wards(self):
+        """Wards under this town panchayat. Ward.town_panchayat_id is a
+        plain unique_id string (no DB relation), so this replaces the
+        reverse FK accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE
+        above) and other callers expect; returns a QuerySet, so `.all()`/
+        `.filter()`/`.first()` etc. all still work the same as before."""
+        from app.models.masters.ward import Ward
+
+        return Ward.objects.filter(town_panchayat_id=self.unique_id)
+
+    @property
+    def customer_creations(self):
+        """CustomerCreation rows scoped to this town panchayat. See `wards`
+        above — CustomerCreation.town_panchayat_id is likewise a plain
+        unique_id string now."""
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+
+        return CustomerCreation.objects.filter(town_panchayat_id=self.unique_id)

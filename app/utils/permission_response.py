@@ -745,11 +745,11 @@ def permission_querysets(
             "local_body_id": local_body_id,
         }
         if state_unique_id:
-            filters["state_id_id"] = state_unique_id
+            filters["state_id"] = state_unique_id
         if district_unique_id:
-            filters["district_id_id"] = district_unique_id
+            filters["district_id"] = district_unique_id
         if area_type_unique_id:
-            filters["area_type_id_id"] = area_type_unique_id
+            filters["area_type_id"] = area_type_unique_id
         if permission_owner_kind:
             filters["permission_owner_kind"] = permission_owner_kind
         if staff_id:
@@ -767,11 +767,11 @@ def permission_querysets(
             "local_body_id__isnull": True,
         }
         if state_unique_id:
-            filters["state_id_id"] = state_unique_id
+            filters["state_id"] = state_unique_id
         if district_unique_id:
-            filters["district_id_id"] = district_unique_id
+            filters["district_id"] = district_unique_id
         if area_type_unique_id:
-            filters["area_type_id_id"] = area_type_unique_id
+            filters["area_type_id"] = area_type_unique_id
         if permission_owner_kind:
             filters["permission_owner_kind"] = permission_owner_kind
         if staff_id:

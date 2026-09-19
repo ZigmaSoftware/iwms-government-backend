@@ -18,7 +18,12 @@ from app.models.masters.waste_masters.wastetype import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
-from app.utils.hierarchy import normalize_flat_geo_attrs, validate_wards_for_flat_geo
+from app.utils.hierarchy import (
+    BARE_TO_ID_GEO_FIELDS,
+    FLAT_GEO_FIELDS,
+    normalize_flat_geo_attrs,
+    validate_wards_for_flat_geo,
+)
 
 PASSWORD_PATTERN = re.compile(r"^(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9]).{8,12}$")
 PASSWORD_RULE_MESSAGE = (
@@ -29,78 +34,58 @@ PASSWORD_RULE_MESSAGE = (
 
 class CustomerCreationSerializer(serializers.ModelSerializer):
 
-    # ---- geography: state/district/area type/local body ------------------
-    state_id = serializers.SlugRelatedField(
-        source="state",
-        queryset=State.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    state_name = serializers.CharField(source="state.name", read_only=True)
+    # ---- geography: state/district/area type/local body -------------------
+    # Plain unique_id strings in (no DB relation) — CustomerCreation's own
+    # columns are literally named "<field>_id" (matching Corporation/District/
+    # etc.'s convention), so these need no `source=` override. Display names
+    # resolved via explicit lookups, mirroring CorporationSerializer/DistrictSerializer.
+    state_id = serializers.CharField(required=False, allow_null=True)
+    state_name = serializers.SerializerMethodField()
 
-    district_id = serializers.SlugRelatedField(
-        source="district",
-        queryset=District.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    district_name = serializers.CharField(source="district.name", read_only=True)
+    district_id = serializers.CharField(required=False, allow_null=True)
+    district_name = serializers.SerializerMethodField()
 
-    area_type_id = serializers.SlugRelatedField(
-        source="area_type",
-        queryset=AreaType.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    area_type_name = serializers.CharField(source="area_type.name", read_only=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    area_type_name = serializers.SerializerMethodField()
 
-    corporation_id = serializers.SlugRelatedField(
-        source="corporation",
-        queryset=Corporation.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    corporation_name = serializers.SerializerMethodField()
 
-    municipality_id = serializers.SlugRelatedField(
-        source="municipality",
-        queryset=Municipality.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True)
+    municipality_name = serializers.SerializerMethodField()
 
-    town_panchayat_id = serializers.SlugRelatedField(
-        source="town_panchayat",
-        queryset=TownPanchayat.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_name = serializers.SerializerMethodField()
 
-    panchayat_union_id = serializers.SlugRelatedField(
-        source="panchayat_union",
-        queryset=PanchayatUnion.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_name = serializers.SerializerMethodField()
 
-    panchayat_id = serializers.SlugRelatedField(
-        source="panchayat",
-        queryset=Panchayat.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=False,
-        allow_null=True,
-    )
-    panchayat_name = serializers.CharField(source="panchayat.panchayat_name", read_only=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_name = serializers.SerializerMethodField()
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+
+    def get_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+
+    def get_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+
+    def get_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+
+    def get_panchayat_name(self, obj):
+        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
 
     ward_id = serializers.SlugRelatedField(
         source="ward",
@@ -282,28 +267,41 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         # )(self, attrs)
 
         instance = getattr(self, "instance", None)
-        geo_errors = normalize_flat_geo_attrs(attrs, instance=instance, require_geo=True)
+
+        # `normalize_flat_geo_attrs`/`validate_wards_for_flat_geo` are shared
+        # with still-FK-based callers (StaffTemplate/TripPlan) and operate in
+        # terms of the bare geo-level names ("state", "corporation", ...).
+        # CustomerCreation's own model fields are the "_id"-suffixed plain
+        # CharFields, so translate both ways around these calls.
+        bare_attrs = dict(attrs)
+        for bare, real in BARE_TO_ID_GEO_FIELDS.items():
+            if real in bare_attrs:
+                bare_attrs[bare] = bare_attrs.pop(real)
+
+        geo_errors = normalize_flat_geo_attrs(
+            bare_attrs, instance=instance, require_geo=True, as_strings=True
+        )
         if geo_errors:
             raise serializers.ValidationError(geo_errors)
 
-        ward = attrs.get("ward") or getattr(instance, "ward", None)
+        ward = bare_attrs.get("ward") or getattr(instance, "ward", None)
         if not ward:
             geo_is_being_changed = any(
-                field in attrs
-                for field in (
-                    "state", "district", "area_type", "corporation",
-                    "municipality", "town_panchayat", "panchayat_union",
-                    "panchayat",
-                )
+                field in bare_attrs for field in FLAT_GEO_FIELDS
             )
             if not instance or not self.partial or geo_is_being_changed:
                 raise serializers.ValidationError({"ward_id": "Ward is required."})
         else:
-            ward_error = validate_wards_for_flat_geo([ward], attrs, instance)
+            ward_error = validate_wards_for_flat_geo([ward], bare_attrs, instance)
             if ward_error:
                 raise serializers.ValidationError({"ward_id": ward_error})
 
-        district = attrs.get("district") or getattr(instance, "district", None)
+        for bare, real in BARE_TO_ID_GEO_FIELDS.items():
+            if bare in bare_attrs:
+                attrs[real] = bare_attrs.pop(bare)
+        attrs.update(bare_attrs)
+
+        district = attrs.get("district_id") or getattr(instance, "district_id", None)
         if not district:
             raise serializers.ValidationError({"district_id": "Customer must be assigned to a district."})
         name = attrs.get("customer_name") or getattr(instance, "customer_name", None)

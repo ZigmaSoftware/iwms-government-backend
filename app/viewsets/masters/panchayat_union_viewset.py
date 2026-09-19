@@ -1,5 +1,8 @@
 from rest_framework import filters, viewsets
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
+from app.utils.cascade_delete import collect_cascade_cache_scopes
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.serializers.masters.panchayat_union_serializer import PanchayatUnionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -7,8 +10,11 @@ from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 
+PANCHAYAT_UNION_CACHE_SCOPES = ("panchayat_union_list", "panchayat_union_detail")
+
 
 class PanchayatUnionViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "panchayat_union"
     serializer_class = PanchayatUnionSerializer
     lite_serializer_class = make_lite_serializer(
         PanchayatUnion, "union_name", extra_fields=("state_id", "district_id", "area_type_id")
@@ -17,16 +23,16 @@ class PanchayatUnionViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelView
     permission_resource = "PanchayatUnion"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["union_name", "state_id__name", "district_id__name", "area_type_id__name"]
+    search_fields = ["union_name", "area_type_id"]
     ordering_fields = ["union_name", "is_active"]
 
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT = "panchayat-unions"
 
     SCOPE_FIELD_MAP = {
-        "panchayat_union": "unique_id",
-        "district": "district_id_id",
-        "state": "state_id_id",
+        "panchayat_union_id": "unique_id",
+        "district": "district_id",
+        "state": "state_id",
     }
 
     def get_queryset(self):
@@ -36,11 +42,11 @@ class PanchayatUnionViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelView
         area_type_uid = self.request.query_params.get("area_type") or self.request.query_params.get("area_type_id")
 
         if state_uid:
-            queryset = queryset.filter(state_id__unique_id=state_uid)
+            queryset = queryset.filter(state_id=state_uid)
         if district_uid:
-            queryset = queryset.filter(district_id__unique_id=district_uid)
+            queryset = queryset.filter(district_id=district_uid)
         if area_type_uid:
-            queryset = queryset.filter(area_type_id__unique_id=area_type_uid)
+            queryset = queryset.filter(area_type_id=area_type_uid)
 
         queryset = filter_flat_geo_queryset_by_requester_scope(
             queryset, self.request.user, field_map=self.SCOPE_FIELD_MAP
@@ -48,5 +54,23 @@ class PanchayatUnionViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelView
 
         return queryset
 
+    @cache_api("panchayat_union_list", vary_on_user=True)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("panchayat_union_detail", vary_on_user=True)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*PANCHAYAT_UNION_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*PANCHAYAT_UNION_CACHE_SCOPES)
+
     def perform_destroy(self, instance):
-        instance.delete()
+        scopes = collect_cascade_cache_scopes(instance)
+        super().perform_destroy(instance)
+        invalidate_on_commit(*scopes)

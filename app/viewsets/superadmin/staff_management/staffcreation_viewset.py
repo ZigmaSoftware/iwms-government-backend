@@ -16,6 +16,7 @@ from rest_framework import viewsets
 
 
 class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "staffcreation"
     queryset = Staffcreation.objects.select_related(
         "personal_details",
         "staffusertype_id",
@@ -38,7 +39,7 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     ordering_fields = ["staff_unique_id", "employee_name", "created_at"]
 
     def get_queryset(self):
-        queryset = Staffcreation.objects.select_related(
+        queryset = Staffcreation.objects.filter(is_deleted=False).select_related(
             "personal_details",
             "staffusertype_id",
             "contractorusertype_id",

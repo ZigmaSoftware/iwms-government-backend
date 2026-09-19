@@ -3,14 +3,23 @@ from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.serializers.superadmin.screen_management.mainscreen_serializer import MainScreenSerializer
+from app.utils.audit_mixin import AuditViewSetMixin
+
+MAIN_SCREEN_CACHE_SCOPES = ("main_screen_list", "main_screen_detail")
 
 
-class MainScreenViewSet(viewsets.ModelViewSet):
+class MainScreenViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "main_screen"
     serializer_class = MainScreenSerializer
     queryset = MainScreen.objects.filter(is_deleted=False)
     lookup_field = "unique_id"
+
+    AUDIT_MODULE = "screen-managements"
+    AUDIT_ENDPOINT = "main-screens"
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
@@ -68,11 +77,25 @@ class MainScreenViewSet(viewsets.ModelViewSet):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    def perform_destroy(self, instance):
-        instance.is_active = False
-        instance.is_deleted = True
-        instance.save(update_fields=["is_active", "is_deleted"])
+    @cache_api("main_screen_list", vary_on_user=False)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
+    @cache_api("main_screen_detail", vary_on_user=False)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*MAIN_SCREEN_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*MAIN_SCREEN_CACHE_SCOPES)
+
+    def perform_destroy(self, instance):
+        super().perform_destroy(instance)
+        invalidate_on_commit(*MAIN_SCREEN_CACHE_SCOPES)
         return Response(
             {"message": "Main Screen deleted successfully"},
             status=status.HTTP_200_OK

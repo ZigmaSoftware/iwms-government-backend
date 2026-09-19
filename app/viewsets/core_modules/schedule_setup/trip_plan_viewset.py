@@ -2,6 +2,8 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework import filters, status, viewsets
 from rest_framework.response import Response
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.serializers.core_modules.schedule_setup.trip_plan_serializer import (
     TripPlanSerializer,
@@ -13,17 +15,12 @@ from app.utils.hierarchy import (
 )
 from app.utils.pagination import LimitOffsetWithPage
 
+TRIP_PLAN_CACHE_SCOPES = ("trip_plan_list", "trip_plan_detail")
+
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "trip_plan"
     queryset = TripPlan.objects.select_related(
-        "state",
-        "district",
-        "area_type",
-        "corporation",
-        "municipality",
-        "town_panchayat",
-        "panchayat_union",
-        "panchayat",
         "staff_template_id",
         "staff_template_id__driver_id",
         "staff_template_id__operator_id",
@@ -49,6 +46,14 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
         return queryset
 
+    @cache_api("trip_plan_list", vary_on_user=True)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("trip_plan_detail", vary_on_user=True)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     @swagger_auto_schema(request_body=TripPlanSerializer)
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -65,3 +70,15 @@ class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return super().destroy(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*TRIP_PLAN_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*TRIP_PLAN_CACHE_SCOPES)
+
+    def perform_destroy(self, instance):
+        super().perform_destroy(instance)
+        invalidate_on_commit(*TRIP_PLAN_CACHE_SCOPES)

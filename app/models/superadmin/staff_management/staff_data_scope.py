@@ -1,9 +1,6 @@
 from django.db import models
 
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
-from app.models.masters.district import District
 from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
@@ -39,33 +36,14 @@ class StaffDataScope(BaseMaster):
         blank=True,
         related_name="scoped_staff",
     )
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="scoped_staff",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
+    # Plain CharFields holding State/District/AreaType.unique_id (no DB
+    # relation/join) — matches the rest of the geo-hierarchy refactor's
+    # convention. db_column kept as "state_id"/etc (the field's own bare
+    # name predates the "_id"-suffixed FK attname convention) so the
+    # existing DB columns are preserved unrenamed.
+    state = models.CharField(max_length=30, null=True, blank=True, db_column="state_id")
+    district = models.CharField(max_length=30, null=True, blank=True, db_column="district_id")
+    area_type = models.CharField(max_length=30, null=True, blank=True, db_column="area_type_id")
     corporations = models.ManyToManyField(
         Corporation,
         blank=True,

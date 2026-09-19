@@ -53,6 +53,7 @@ def _status(actual, agreed):
 
 
 class LocalBodyDashboardViewSet(ViewSet):
+    throttle_scope = "local_body_dashboard"
     permission_classes = [IsAuthenticated]
 
     # ── helpers ─────────────────────────────────────────────────────────

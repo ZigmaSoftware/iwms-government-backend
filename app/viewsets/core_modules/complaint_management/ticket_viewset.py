@@ -21,7 +21,7 @@ from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_escalation
-from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope, _resolve_geo_candidate
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.roles import is_admin_role, is_supervisor_role
 from app.services import notification_service
@@ -122,6 +122,7 @@ def _staff_ticket_scope(user):
 
 
 class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_ticket"
     serializer_class = ComplaintTicketSerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -140,8 +141,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = ComplaintTicket.objects.filter(is_deleted=False).select_related(
             "category", "subcategory", "priority", "status", "source",
             "customer", "assigned_team", "assigned_team__department",
-            "assigned_staff", "state", "district", "area_type", "corporation",
-            "municipality", "town_panchayat", "panchayat_union", "panchayat",
+            "assigned_staff",
             "created_by", "created_by__user",
         ).prefetch_related(
             "status_history", "status_history__to_status",
@@ -384,9 +384,10 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         city_obj, city_name = _find_local_body(city_id)
         if city_id and not district_id and city_obj:
-            # The local-body masters carry their own district FK, so a
-            # city-only override still resolves the covering district.
-            district_id = getattr(city_obj, "district_id_id", None)
+            # The local-body masters carry their own district_id (plain
+            # unique_id string, no DB relation), so a city-only override
+            # still resolves the covering district.
+            district_id = getattr(city_obj, "district_id", None)
         district_obj = (
             District.objects.filter(unique_id=district_id).first() if district_id else None
         )
@@ -416,21 +417,22 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if department_id:
             qs = qs.filter(department_id__unique_id=department_id)
 
-        qs = qs.select_related(
-            "department_id", "district", "corporation", "municipality",
-            "town_panchayat", "panchayat_union", "panchayat",
-        ).order_by("employee_name")
+        qs = qs.select_related("department_id").order_by("employee_name")
 
         def _local_body(member):
             # Each local-body master has its own name field (corporation_name,
             # panchayat_name, ...) — there is no common `name` attribute.
-            for level, obj, name_attr in (
-                ("Corporation", member.corporation, "corporation_name"),
-                ("Municipality", member.municipality, "municipality_name"),
-                ("Town Panchayat", member.town_panchayat, "town_panchayat_name"),
-                ("Panchayat Union", member.panchayat_union, "union_name"),
-                ("Panchayat", member.panchayat, "panchayat_name"),
+            # `district`/`corporation`/etc are plain unique_id strings on
+            # StaffcreationOfficeDetails (no DB relation), so resolve each
+            # against its owning master.
+            for level, field, name_attr in (
+                ("Corporation", "corporation", "corporation_name"),
+                ("Municipality", "municipality", "municipality_name"),
+                ("Town Panchayat", "town_panchayat", "town_panchayat_name"),
+                ("Panchayat Union", "panchayat_union", "union_name"),
+                ("Panchayat", "panchayat", "panchayat_name"),
             ):
+                obj = _resolve_geo_candidate(member, field)
                 if obj:
                     return level, getattr(obj, name_attr, None) or getattr(obj, "name", None)
             return None, None
@@ -438,11 +440,12 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         data = []
         for member in qs[:200]:
             level_name, local_body_name = _local_body(member)
+            member_district = District.objects.filter(unique_id=member.district_id).first()
             data.append({
                 "staff_unique_id": member.staff_unique_id,
                 "employee_name": member.employee_name,
                 "department_name": getattr(member.department_id, "department_name", None),
-                "district_name": getattr(member.district, "name", None),
+                "district_name": getattr(member_district, "name", None),
                 "local_body_name": local_body_name,
                 "location_level_name": level_name or ("District" if member.district_id else None),
             })

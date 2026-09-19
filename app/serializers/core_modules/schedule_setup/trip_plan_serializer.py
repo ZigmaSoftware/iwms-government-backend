@@ -20,6 +20,17 @@ from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 
+_GEO_LOOKUP_MODELS = {
+    "state": (State, "name"),
+    "district": (District, "name"),
+    "area_type": (AreaType, "name"),
+    "corporation": (Corporation, "corporation_name"),
+    "municipality": (Municipality, "municipality_name"),
+    "town_panchayat": (TownPanchayat, "town_panchayat_name"),
+    "panchayat_union": (PanchayatUnion, "union_name"),
+    "panchayat": (Panchayat, "panchayat_name"),
+}
+
 
 class TripPlanStopInputSerializer(serializers.Serializer):
     collection_type = serializers.ChoiceField(
@@ -34,14 +45,18 @@ class TripPlanStopInputSerializer(serializers.Serializer):
 
 
 class TripPlanSerializer(serializers.ModelSerializer):
-    state_id = UniqueIdOrPkField(source="state", slug_field="unique_id", queryset=State.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    district_id = UniqueIdOrPkField(source="district", slug_field="unique_id", queryset=District.objects.filter(is_deleted=False), write_only=True)
-    area_type_id = UniqueIdOrPkField(source="area_type", slug_field="unique_id", queryset=AreaType.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    corporation_id = UniqueIdOrPkField(source="corporation", slug_field="unique_id", queryset=Corporation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    municipality_id = UniqueIdOrPkField(source="municipality", slug_field="unique_id", queryset=Municipality.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    town_panchayat_id = UniqueIdOrPkField(source="town_panchayat", slug_field="unique_id", queryset=TownPanchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_union_id = UniqueIdOrPkField(source="panchayat_union", slug_field="unique_id", queryset=PanchayatUnion.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
-    panchayat_id = UniqueIdOrPkField(source="panchayat", slug_field="unique_id", queryset=Panchayat.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    # ---- Geo hierarchy: plain unique_id strings in, display names out ----
+    # TripPlan's own columns are literally named "<field>_id" (CharField, no
+    # DB relation) — same convention as Ward/Corporation/District/etc. — so
+    # these input fields need no `source=` override.
+    state_id = serializers.CharField(required=False, allow_null=True)
+    district_id = serializers.CharField()
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True)
     staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True)
     vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True)
     supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
@@ -97,11 +112,16 @@ class TripPlanSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["unique_id", "display_code", "created_at", "updated_at"]
 
-    def _ref(self, obj, attr, label_attr="name"):
-        value = getattr(obj, attr, None)
+    def _ref(self, obj, field):
+        # TripPlan's own geo columns are now plain unique_id strings (no DB
+        # relation), so the display ref is resolved with a lookup against
+        # the relevant master rather than attribute-chaining a live FK.
+        value = getattr(obj, f"{field}_id", None)
         if not value:
             return None
-        return {"unique_id": getattr(value, "unique_id", None), label_attr: getattr(value, label_attr, None)}
+        model, label_attr = _GEO_LOOKUP_MODELS[field]
+        name = model.objects.filter(unique_id=value).values_list(label_attr, flat=True).first()
+        return {"unique_id": value, label_attr: name}
 
     def get_state(self, obj):
         return self._ref(obj, "state")
@@ -113,19 +133,19 @@ class TripPlanSerializer(serializers.ModelSerializer):
         return self._ref(obj, "area_type")
 
     def get_corporation(self, obj):
-        return self._ref(obj, "corporation", "corporation_name")
+        return self._ref(obj, "corporation")
 
     def get_municipality(self, obj):
-        return self._ref(obj, "municipality", "municipality_name")
+        return self._ref(obj, "municipality")
 
     def get_town_panchayat(self, obj):
-        return self._ref(obj, "town_panchayat", "town_panchayat_name")
+        return self._ref(obj, "town_panchayat")
 
     def get_panchayat_union(self, obj):
-        return self._ref(obj, "panchayat_union", "union_name")
+        return self._ref(obj, "panchayat_union")
 
     def get_panchayat(self, obj):
-        return self._ref(obj, "panchayat", "panchayat_name")
+        return self._ref(obj, "panchayat")
 
     def get_staff_template(self, obj):
         st = obj.staff_template_id
@@ -182,21 +202,27 @@ class TripPlanSerializer(serializers.ModelSerializer):
         instance = getattr(self, "instance", None)
 
         def value_for(field):
-            return attrs.get(field, getattr(instance, field, None))
+            # `attrs`/the model both key geo values as "<field>_id" (plain
+            # unique_id strings) now — no live FK object to unwrap.
+            return attrs.get(f"{field}_id", getattr(instance, f"{field}_id", None))
 
         # Most specific populated geo field wins - a trip plan scoped to one
         # Panchayat validates stops/customers against that Panchayat; one
         # scoped only to a District validates against the District.
         trip_hierarchy_field = None
-        trip_hierarchy_obj = None
+        trip_hierarchy_value = None
         for field in ("panchayat", "panchayat_union", "town_panchayat", "municipality", "corporation", "district"):
             candidate = value_for(field)
             if candidate:
-                trip_hierarchy_field, trip_hierarchy_obj = field, candidate
+                trip_hierarchy_field, trip_hierarchy_value = field, candidate
                 break
 
-        if not trip_hierarchy_obj:
+        if not trip_hierarchy_value:
             raise serializers.ValidationError({"district_id": "Trip plan must be assigned to at least a district."})
+
+        trip_hierarchy_obj = _GEO_LOOKUP_MODELS[trip_hierarchy_field][0].objects.filter(
+            unique_id=trip_hierarchy_value
+        ).first()
 
         staff_template = attrs.get("staff_template_id", getattr(instance, "staff_template_id", None))
         vehicle = attrs.get("vehicle_id", getattr(instance, "vehicle_id", None))
@@ -220,7 +246,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
             "panchayat",
         )
         target_location = tuple(
-            str(value_for(field).pk) if value_for(field) else ""
+            str(value_for(field) or "")
             for field in location_fields
         )
 

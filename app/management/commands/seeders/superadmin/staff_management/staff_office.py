@@ -79,11 +79,11 @@ class StaffOfficeSeeder(BaseSeeder):
                 defaults = {
                     "employee_name": full_name,
                     "department_id": dept,
-                    "state": district.state_id,
-                    "district": district,
+                    "state_id": district.state_id,
+                    "district_id": district.unique_id,
                     # Supervisor/inspector additionally scoped to the corporation
                     # itself so corporation-level schedule filtering has data.
-                    "corporation": corporation if is_corp_scoped else None,
+                    "corporation_id": corporation.unique_id if is_corp_scoped and corporation else None,
                     "department": dept.department_name if dept else "",
                     "designation": designation,
                     "designation_id": None,

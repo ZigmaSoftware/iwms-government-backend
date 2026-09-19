@@ -21,6 +21,7 @@ from app.services.schema_sync_service import sync_userscreen_schema
 
 
 class UserScreenColumnsAPIView(APIView):
+    throttle_scope = "user_screen_columns_api"
     def get(self, request, userscreen_id):
         userscreen = UserScreen.objects.filter(
             unique_id=userscreen_id,
@@ -39,6 +40,7 @@ class UserScreenColumnsAPIView(APIView):
 
 
 class PermissionAssignAPIView(APIView):
+    throttle_scope = "permission_assign_api"
     @transaction.atomic
     def post(self, request):
         payload = request.data
@@ -93,6 +95,7 @@ class PermissionAssignAPIView(APIView):
 
 
 class UserPermissionsAPIView(APIView):
+    throttle_scope = "user_permissions_api"
     def get(self, request, *_args, **_kwargs):
         staffusertype_id = (
             request.query_params.get("staffUserTypeId")
