@@ -54,8 +54,16 @@ def get_audit_object_id(instance):
     return None
 
 
+def get_client_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
 def _write_audit_pair(
     *, module_name, endpoint_name, method, instance, previous_data, new_data, created_by,
+    ip_address=None, user_agent=None, success=True, reason=None,
 ):
     """Write one CommonAudit row (super-admin, unscoped, unchanged) and one
     mirrored StaffAudit row (same data, read by the staff-facing hierarchy-
@@ -70,6 +78,10 @@ def _write_audit_pair(
         previous_data=previous_data,
         new_data=new_data,
         createdBy=created_by,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        success=success,
+        reason=reason,
     )
 
     common_audit = CommonAudit(**shared_kwargs)
@@ -86,7 +98,7 @@ def _write_audit_pair(
 
 def log_common_audit(
     request, *, module_name, endpoint_name, instance=None,
-    previous_data=None, new_data=None,
+    previous_data=None, new_data=None, success=True, reason=None,
 ):
     """Standalone version of AuditViewSetMixin.log_audit for plain
     function-based views (e.g. mobile actions) that don't inherit the mixin."""
@@ -98,6 +110,10 @@ def log_common_audit(
         previous_data=previous_data,
         new_data=new_data,
         created_by=str(request.user) if request.user.is_authenticated else "SYSTEM",
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get("HTTP_USER_AGENT"),
+        success=success,
+        reason=reason,
     )
 
 
@@ -207,7 +223,7 @@ class AuditViewSetMixin:
 
         return data
 
-    def log_audit(self, request, instance=None, previous_data=None, new_data=None):
+    def log_audit(self, request, instance=None, previous_data=None, new_data=None, success=True, reason=None):
 
         _write_audit_pair(
             module_name=self.AUDIT_MODULE,
@@ -217,11 +233,51 @@ class AuditViewSetMixin:
             previous_data=previous_data,
             new_data=new_data,
             created_by=str(request.user) if request.user.is_authenticated else "SYSTEM",
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get("HTTP_USER_AGENT"),
+            success=success,
+            reason=reason,
         )
+
+    @staticmethod
+    def _format_audit_error(exc):
+        """Render a DRF/Django validation error into a short, readable
+        string for the audit 'reason' column — e.g. a dropdown left empty
+        surfaces as its serializer field error, not a raw exception repr."""
+        detail = getattr(exc, "detail", None)
+        if detail is None:
+            return str(exc)[:255]
+
+        parts = []
+
+        def _walk(node, prefix=""):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    _walk(value, f"{prefix}{key}: " if not prefix else f"{prefix}{key}: ")
+            elif isinstance(node, (list, tuple)):
+                for item in node:
+                    _walk(item, prefix)
+            else:
+                parts.append(f"{prefix}{node}")
+
+        _walk(detail)
+        message = "; ".join(parts) if parts else str(exc)
+        return message[:255]
 
     # CREATE
     def perform_create(self, serializer):
-        serializer.save(**self._audit_save_kwargs(create=True))
+        try:
+            serializer.save(**self._audit_save_kwargs(create=True))
+        except Exception as exc:
+            self.log_audit(
+                self.request,
+                instance=None,
+                previous_data=None,
+                new_data=getattr(serializer, "initial_data", None),
+                success=False,
+                reason=self._format_audit_error(exc),
+            )
+            raise
 
         instance = serializer.instance
         new_data = self._serialize_instance(instance)
@@ -230,7 +286,8 @@ class AuditViewSetMixin:
             self.request,
             instance=instance,
             previous_data=None,
-            new_data=new_data
+            new_data=new_data,
+            success=True,
         )
 
     # UPDATE
@@ -239,7 +296,18 @@ class AuditViewSetMixin:
         instance = serializer.instance
         previous_data = self._serialize_instance(instance)
 
-        serializer.save(**self._audit_save_kwargs(create=False))
+        try:
+            serializer.save(**self._audit_save_kwargs(create=False))
+        except Exception as exc:
+            self.log_audit(
+                self.request,
+                instance=instance,
+                previous_data=previous_data,
+                new_data=getattr(serializer, "initial_data", None),
+                success=False,
+                reason=self._format_audit_error(exc),
+            )
+            raise
 
         updated_instance = serializer.instance
         new_data = self._serialize_instance(updated_instance)
@@ -248,19 +316,34 @@ class AuditViewSetMixin:
             self.request,
             instance=updated_instance,
             previous_data=previous_data,
-            new_data=new_data
+            new_data=new_data,
+            success=True,
         )
 
     # DELETE
     def perform_destroy(self, instance):
 
         previous_data = self._serialize_instance(instance)
+        account = self._account_for_request_user()
+
+        try:
+            delete_kwargs = {"updated_by": account} if account is not None else {}
+            instance.delete(**delete_kwargs)
+        except Exception as exc:
+            self.log_audit(
+                self.request,
+                instance=instance,
+                previous_data=previous_data,
+                new_data=None,
+                success=False,
+                reason=self._format_audit_error(exc),
+            )
+            raise
 
         self.log_audit(
             self.request,
             instance=instance,
             previous_data=previous_data,
-            new_data=None
+            new_data=None,
+            success=True,
         )
-
-        super().perform_destroy(instance)
