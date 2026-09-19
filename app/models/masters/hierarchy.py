@@ -18,11 +18,10 @@ class AdministrativeHierarchy(BaseMaster):
         editable=False
     )
 
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.PROTECT,
-        related_name="hierarchies"
-    )
+    # Plain unique_id reference (no ForeignKey/DB relation) — see
+    # docs/geo_hierarchy_fk_removal.md. area_type is looked up explicitly
+    # via AreaType.objects.filter(unique_id=self.area_type) where needed.
+    area_type = models.CharField(max_length=30, db_column="area_type_id")
 
     level_name = models.CharField(max_length=50)
     # Local body / Panchayat
@@ -47,4 +46,9 @@ class AdministrativeHierarchy(BaseMaster):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.area_type.name} - {self.level_name}"
+        area_type_name = (
+            AreaType.objects.filter(unique_id=self.area_type)
+            .values_list("name", flat=True)
+            .first()
+        )
+        return f"{area_type_name or self.area_type} - {self.level_name}"

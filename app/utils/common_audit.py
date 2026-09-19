@@ -28,6 +28,14 @@ class CommonAudit(models.Model):
     createdBy = models.CharField(max_length=150, null=True, blank=True)
     createdAt = models.DateTimeField(default=timezone.now)
 
+    # Request context + outcome — mirrors LoginAudit's ip_address/user_agent/
+    # success/reason so every audited create/update/delete (not just login)
+    # carries the same "who, from where, did it work, why not" trail.
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    success = models.BooleanField(default=True)
+    reason = models.CharField(max_length=255, null=True, blank=True)
+
     # Flat geo scope block — stamped from the audited instance at write time
     # (see AuditViewSetMixin.log_audit / copy_flat_geo) so staff-facing audit
     # views can be filtered to the requester's own local body hierarchy,
