@@ -90,6 +90,19 @@ jobs:
       # pushed without a matching migration file still gets applied
       # automatically; migrate is idempotent and a no-op when there is
       # nothing new to apply.
+      #
+      # SELF-HEALING RETRY: makemigrations' autodetector can order operations
+      # in a way that fails against this server's actual schema (e.g. an
+      # AddField landing before the RemoveField that frees the same column
+      # name on another model) even though the model code itself is fine.
+      # Since migration files here are regenerated from models.py on every
+      # run anyway (never hand-authored, never committed), a migration file
+      # that migrate just failed on and that is NOT yet recorded as applied
+      # is always safe to delete and regenerate - it carries no history to
+      # lose. So on failure: find every migration newer than the last one
+      # Django successfully applied, delete only those files, and retry
+      # ONCE. A second failure means the problem is real (bad model code,
+      # genuine data conflict) and the job must fail loudly for a human.
       - name: Apply database migrations
         working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
         run: |
@@ -97,8 +110,43 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T backend true 2>/dev/null && break
             sleep 2
           done
-          docker compose -f docker-compose.prod.yml exec -T backend python manage.py makemigrations --noinput
-          docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+
+          apply() {
+            docker compose -f docker-compose.prod.yml exec -T backend python manage.py makemigrations --noinput
+            docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+          }
+
+          drop_unapplied() {
+            echo "::warning::migrate failed - checking for unapplied migration files to regenerate"
+            # showmigrations --plan prints one line per migration in
+            # dependency order, "[X] app.0002_name" if applied, "[ ] app.0002_name"
+            # if not. Only "[ ]" entries are safe to delete: an "[X]" is
+            # recorded in django_migrations and dropping its file would
+            # desync history from a schema that already reflects it.
+            UNAPPLIED=$(docker compose -f docker-compose.prod.yml exec -T backend \
+              python manage.py showmigrations --plan 2>/dev/null \
+              | grep -E '^\[ \][[:space:]]+app\.' \
+              | sed -E 's/^\[ \][[:space:]]+app\.([0-9]+)_.*/\1/')
+
+            if [ -z "$UNAPPLIED" ]; then
+              echo "::error::migrate failed but no unapplied app migration was found - not a stale-file issue, leaving as-is"
+              return 1
+            fi
+
+            for num in $UNAPPLIED; do
+              for f in app/migrations/${num}_*.py; do
+                [ -f "$f" ] || continue
+                echo "Removing unapplied migration file: $f"
+                rm -f "$f"
+              done
+            done
+          }
+
+          if ! apply; then
+            drop_unapplied
+            echo "Retrying migrations once against a freshly regenerated file..."
+            apply
+          fi
 
       # No wait-loop needed here — the "Apply database migrations" step
       # above already waited for the container to accept exec.
