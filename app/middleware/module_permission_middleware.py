@@ -404,27 +404,23 @@ def _authenticate_request(request):
         return None
 
     # Panchayat leader (localbody portal)
-    leader = PanchayatLeaderLogin.objects.select_related(
-        "panchayat_id"
-    ).filter(unique_id=unique_id).first()
+    # panchayat_id/district_id/state_id are now plain unique_id CharFields
+    # (no DB relation), so they can no longer be select_related.
+    leader = PanchayatLeaderLogin.objects.filter(unique_id=unique_id).first()
     if leader:
         request.user = leader
         request.jwt_payload = payload
         return None
 
     # District leader (districtbody portal)
-    district_leader = DistrictLeaderLogin.objects.select_related(
-        "district_id"
-    ).filter(unique_id=unique_id).first()
+    district_leader = DistrictLeaderLogin.objects.filter(unique_id=unique_id).first()
     if district_leader:
         request.user = district_leader
         request.jwt_payload = payload
         return None
 
     # State leader (statebody portal)
-    state_leader = StateLeaderLogin.objects.select_related(
-        "state_id"
-    ).filter(unique_id=unique_id).first()
+    state_leader = StateLeaderLogin.objects.filter(unique_id=unique_id).first()
     if state_leader:
         request.user = state_leader
         request.jwt_payload = payload

@@ -38,15 +38,10 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
       PATCH  /{unique_id}/status/    — state machine transition
       PATCH  /{unique_id}/approval/  — approval flow (supervisor/admin only)
     """
+    throttle_scope = "daily_trip_assignment"
 
     queryset = DailyTripAssignment.objects.select_related(
         "trip_plan_id",
-        "trip_plan_id__district",
-        "trip_plan_id__panchayat",
-        "trip_plan_id__corporation",
-        "trip_plan_id__municipality",
-        "trip_plan_id__town_panchayat",
-        "trip_plan_id__panchayat_union",
         "trip_plan_id__vehicle_id",
         "staff_template_id",
         "staff_template_id__driver_id",
@@ -54,14 +49,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "alt_staff_template_id",
         "alt_staff_template_id__driver_id",
         "alt_staff_template_id__operator_id",
-        "state",
-        "district",
-        "area_type",
-        "corporation",
-        "municipality",
-        "town_panchayat",
-        "panchayat_union",
-        "panchayat",
         "vehicle_id",
     ).prefetch_related("trip_plan_id__waste_types", "waste_types").filter(is_deleted=False)
 
@@ -169,7 +156,12 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         instance.is_deleted = True
         instance.is_active = False
         instance.status = DailyTripAssignment.STATUS_CANCELLED
-        instance.save(update_fields=["is_deleted", "is_active", "status", "updated_at"])
+        account = self._account_for_request_user()
+        update_fields = ["is_deleted", "is_active", "status", "updated_at"]
+        if account is not None:
+            instance.updated_by = account
+            update_fields.append("updated_by")
+        instance.save(update_fields=update_fields)
 
         self.log_audit(
             self.request,

@@ -18,7 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install deps first for better layer caching
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# --timeout/--retries: this build environment has a slow/unstable link to
+# PyPI, so pip's default 15s read-timeout was cutting off large wheel
+# downloads (django, pillow, grpcio) mid-stream.
+RUN pip install --no-cache-dir --timeout=180 --retries=10 -r requirements.txt
 
 COPY . .
 

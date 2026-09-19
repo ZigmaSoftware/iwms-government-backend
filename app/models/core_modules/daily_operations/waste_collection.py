@@ -2,14 +2,6 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
@@ -61,41 +53,18 @@ class WasteCollection(BaseMaster):
         blank=True,
     )
 
-    # Geography (flat FKs, mirroring CustomerCreation). Auto-inherited from the
-    # linked household on save when left blank, but selectable/editable so a
-    # collection can be scoped independently.
-    state = models.ForeignKey(
-        State, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="waste_collections", to_field="unique_id", db_column="panchayat_id",
-    )
+    # Geography (flat plain-string FKs, mirroring CustomerCreation/Ward — no
+    # DB relation/join, holding the related row's unique_id). Auto-inherited
+    # from the linked household on save when left blank, but
+    # selectable/editable so a collection can be scoped independently.
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     ward = models.ForeignKey(
         Ward, on_delete=models.PROTECT, related_name="waste_collections",
         to_field="unique_id", db_column="ward_id", null=True, blank=True,
@@ -126,10 +95,23 @@ class WasteCollection(BaseMaster):
 
     def __str__(self):
         """Readable entry with linked customer and location."""
+        from app.models.masters.district import District
+        from app.models.masters.panchayat import Panchayat
+
         customer_name = self.customer.customer_name if self.customer else "Unknown"
-        district = getattr(getattr(self.customer, "district", None), "name", "") if self.customer else ""
-        panchayat = getattr(getattr(self.customer, "panchayat_id", None), "panchayat_name", "") if self.customer else ""
-        return f"{customer_name} - {panchayat or district}"
+        district = (
+            District.objects.filter(unique_id=self.customer.district_id)
+            .values_list("name", flat=True)
+            .first()
+            if self.customer else ""
+        )
+        panchayat = (
+            Panchayat.objects.filter(unique_id=self.customer.panchayat_id)
+            .values_list("panchayat_name", flat=True)
+            .first()
+            if self.customer else ""
+        )
+        return f"{customer_name} - {panchayat or district or ''}"
 
     def save(self, *args, **kwargs):
         """Auto-calculate total and inherit geography from the household."""

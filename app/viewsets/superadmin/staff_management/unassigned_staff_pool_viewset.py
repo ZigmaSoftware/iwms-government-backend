@@ -15,6 +15,7 @@ class UnassignedStaffPoolViewSet(ModelViewSet,AuditViewSetMixin):
     Controls staff availability.
     Used by system + supervisors.
     """
+    throttle_scope = "unassigned_staff_pool"
 
     serializer_class = UnassignedStaffPoolSerializer
     permission_resource = "UnassignedStaffPool"

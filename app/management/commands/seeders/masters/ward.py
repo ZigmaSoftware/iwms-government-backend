@@ -7,7 +7,6 @@ from app.management.commands.seeders.ward_utils import (
     local_bodies_for_district,
     local_body_ward_name,
 )
-from app.models.masters.corporation import Corporation
 from app.models.masters.ward import Ward
 
 
@@ -40,16 +39,16 @@ class WardSeeder(BaseSeeder):
         for ward_name, lat, lon in geo["corporation_wards"][:WARDS_PER_LOCAL_BODY["corporation"]]:
             full_ward_name = f"{ward_name}{ward_type_tag('corporation')}"
             _, created = Ward.objects.update_or_create(
-                corporation=corporation,
-                municipality=None,
-                town_panchayat=None,
-                panchayat_union=None,
-                panchayat=None,
+                corporation_id=corporation.unique_id,
+                municipality_id=None,
+                town_panchayat_id=None,
+                panchayat_union_id=None,
+                panchayat_id=None,
                 ward_name=full_ward_name,
                 defaults={
-                    "state": corporation.state_id,
-                    "district": corporation.district_id,
-                    "area_type": corporation.area_type_id,
+                    "state_id": corporation.state_id,
+                    "district_id": corporation.district_id,
+                    "area_type_id": corporation.area_type_id,
                     "coordinates": generate_ward_geofence(lat, lon, full_ward_name, corporation.corporation_name),
                     "is_active": True,
                     "is_deleted": False,
@@ -78,10 +77,10 @@ class WardSeeder(BaseSeeder):
         points = spread_points(lat, lon, count_needed, radius_km=1.5)
         created_count = 0
         base_filter = {
-            "corporation": None, "municipality": None, "town_panchayat": None,
-            "panchayat_union": None, "panchayat": None,
+            "corporation_id": None, "municipality_id": None, "town_panchayat_id": None,
+            "panchayat_union_id": None, "panchayat_id": None,
         }
-        base_filter[parent_type] = parent
+        base_filter[f"{parent_type}_id"] = parent.unique_id
 
         for i, (w_lat, w_lon) in enumerate(points, start=1):
             ward_name = local_body_ward_name(parent_name, i, parent_type)
@@ -89,9 +88,9 @@ class WardSeeder(BaseSeeder):
                 ward_name=ward_name,
                 **base_filter,
                 defaults={
-                    "state": parent.state_id,
-                    "district": parent.district_id,
-                    "area_type": parent.area_type_id,
+                    "state_id": parent.state_id,
+                    "district_id": parent.district_id,
+                    "area_type_id": parent.area_type_id,
                     "coordinates": generate_ward_geofence(w_lat, w_lon, ward_name, parent_name),
                     "is_active": True,
                     "is_deleted": False,

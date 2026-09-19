@@ -13,6 +13,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 
 
 class DashboardWidgetPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "dashboard_widget_permission"
     serializer_class = DashboardWidgetPermissionSerializer
     lookup_field = "unique_id"
     permission_resource = "DashboardWidgetPermission"
@@ -110,9 +111,9 @@ class DashboardWidgetPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet)
                 is_enabled = bool(widget.get("isEnabled", widget.get("is_enabled", True)))
 
                 obj, created = DashboardWidgetPermission.objects.update_or_create(
-                    state_id_id=state_id,
-                    district_id_id=district_id,
-                    area_type_id_id=area_type_id,
+                    state_id=state_id,
+                    district_id=district_id,
+                    area_type_id=area_type_id,
                     local_body_type=local_body_type,
                     local_body_id=local_body_id,
                     permission_owner_kind="super_admin",

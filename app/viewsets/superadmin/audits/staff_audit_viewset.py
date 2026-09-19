@@ -21,6 +21,7 @@ class StaffAuditViewSet(viewsets.ModelViewSet):
     within their own StaffDataScope subtree, narrowed further by explicit
     ?corporation_id=/?district_id=/etc params.
     """
+    throttle_scope = "staff_audit"
 
     permission_classes = [IsAuthenticated]
     permission_resource = "StaffAudit"

@@ -2,13 +2,6 @@ from django.conf import settings
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.models.core_modules.complaint_management.category_master import ComplaintCategory
 from app.models.core_modules.complaint_management.subcategory_master import ComplaintSubcategory
 from app.models.core_modules.complaint_management.priority_master import ComplaintPriority
@@ -22,6 +15,8 @@ def generate_routing_rule_id():
 
 class ComplaintRoutingRule(BaseMaster):
     """Resolves a team/user/SLA for a ticket by category + geo + priority."""
+
+    CACHE_SCOPES = ("complaint_routing_rule_list", "complaint_routing_rule_detail")
 
     unique_id = models.CharField(
         max_length=30,
@@ -43,63 +38,16 @@ class ComplaintRoutingRule(BaseMaster):
         related_name="routing_rules",
     )
     # Optional flat geo scope: a rule may target a whole state/district or a
-    # single local body. Empty fields mean "any".
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="district_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_routing_rules",
-        db_column="panchayat_id",
-    )
+    # single local body. Empty fields mean "any". Plain CharFields holding
+    # the related row's `unique_id` (no DB relation/join) — same convention
+    # as Ward/CustomerCreation and the rest of the geo-hierarchy refactor.
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     priority = models.ForeignKey(
         ComplaintPriority,
         on_delete=models.SET_NULL,

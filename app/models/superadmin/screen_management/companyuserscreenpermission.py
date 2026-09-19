@@ -10,9 +10,6 @@ from django.db.models import Q, UniqueConstraint
 
 from app.models.superadmin.role_management.contractorUserType import ContractorUserType
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
 
 
 def generate_userscreenpermission_id():
@@ -88,26 +85,12 @@ class UserScreenPermission(BaseMaster):
         blank=True
     )
 
-    state_id = models.ForeignKey(
-        State, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="state_id",
-        related_name="userscreenpermissions",
-        null=True, blank=True
-    )
-
-    district_id = models.ForeignKey(
-        District, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="district_id",
-        related_name="userscreenpermissions",
-        null=True, blank=True
-    )
-
-    area_type_id = models.ForeignKey(
-        AreaType, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="area_type_id",
-        related_name="userscreenpermissions",
-        null=True, blank=True
-    )
+    # Plain CharFields holding State/District/AreaType.unique_id (no DB
+    # relation/join) — matches the rest of the geo-hierarchy refactor's
+    # convention.
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
 
     local_body_type = models.CharField(
         max_length=20, choices=LocalBodyType.choices,
@@ -194,12 +177,6 @@ class UserScreenPermission(BaseMaster):
                 name="uq_active_local_body_screen_permission",
             ),
         ]
-
-
-    def delete(self, *args, **kwargs):
-        self.is_active = False
-        self.is_deleted = True
-        self.save(update_fields=["is_active", "is_deleted"])
 
 
 CompanyUserScreenPermission = UserScreenPermission

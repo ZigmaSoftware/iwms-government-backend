@@ -53,48 +53,46 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
 
     # Geo scope — writable. Explicit selections from the form are persisted;
     # when left blank the model's save() inherits them from the trip assignment.
-    state_id = serializers.SlugRelatedField(
-        source="state", slug_field="unique_id",
-        queryset=State.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    district_id = serializers.SlugRelatedField(
-        source="district", slug_field="unique_id",
-        queryset=District.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    area_type_id = serializers.SlugRelatedField(
-        source="area_type", slug_field="unique_id",
-        queryset=AreaType.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    corporation_id = serializers.SlugRelatedField(
-        source="corporation", slug_field="unique_id",
-        queryset=Corporation.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    municipality_id = serializers.SlugRelatedField(
-        source="municipality", slug_field="unique_id",
-        queryset=Municipality.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    town_panchayat_id = serializers.SlugRelatedField(
-        source="town_panchayat", slug_field="unique_id",
-        queryset=TownPanchayat.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    panchayat_union_id = serializers.SlugRelatedField(
-        source="panchayat_union", slug_field="unique_id",
-        queryset=PanchayatUnion.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
-    panchayat_id = serializers.SlugRelatedField(
-        source="panchayat", slug_field="unique_id",
-        queryset=Panchayat.objects.filter(is_deleted=False), required=False, allow_null=True,
-    )
+    # Plain unique_id strings in, display names out (see WardSerializer).
+    state_id = serializers.CharField(required=False, allow_null=True)
+    district_id = serializers.CharField(required=False, allow_null=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True)
 
     # Read-only display names so the edit form can label its geo selects
     # immediately from the record, without waiting for the master lists.
-    state_name = serializers.CharField(source="state.name", read_only=True, allow_null=True)
-    district_name = serializers.CharField(source="district.name", read_only=True, allow_null=True)
-    area_type_name = serializers.CharField(source="area_type.name", read_only=True, allow_null=True)
-    corporation_name = serializers.CharField(source="corporation.corporation_name", read_only=True, allow_null=True)
-    municipality_name = serializers.CharField(source="municipality.municipality_name", read_only=True, allow_null=True)
-    town_panchayat_name = serializers.CharField(source="town_panchayat.town_panchayat_name", read_only=True, allow_null=True)
-    panchayat_union_name = serializers.CharField(source="panchayat_union.union_name", read_only=True, allow_null=True)
+    state_name = serializers.SerializerMethodField()
+    district_name = serializers.SerializerMethodField()
+    area_type_name = serializers.SerializerMethodField()
+    corporation_name = serializers.SerializerMethodField()
+    municipality_name = serializers.SerializerMethodField()
+    town_panchayat_name = serializers.SerializerMethodField()
+    panchayat_union_name = serializers.SerializerMethodField()
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+
+    def get_corporation_name(self, obj):
+        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+
+    def get_municipality_name(self, obj):
+        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+
+    def get_town_panchayat_name(self, obj):
+        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+
+    def get_panchayat_union_name(self, obj):
+        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
 
     bin = serializers.SerializerMethodField()
     waste_type = serializers.SerializerMethodField()
@@ -369,13 +367,20 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
 
     def get_panchayat_name(self, obj):
         # Prefer the event's own stored panchayat column (explicit selection),
-        # then fall back to the collection point / trip assignment.
-        panchayat = (
-            getattr(obj, "panchayat", None)
-            or getattr(getattr(obj, "collection_point_id", None), "panchayat_id", None)
-            or getattr(getattr(obj, "trip_assignment_id", None), "panchayat_id", None)
+        # then fall back to the collection point / trip assignment. All three
+        # sources hold a plain panchayat unique_id string (Collection_point
+        # and BinCollectionEvent are converted; DailyTripAssignment's own
+        # `panchayat` FK attname `panchayat_id` also yields the raw id).
+        panchayat_uid = (
+            obj.panchayat_id
+            or getattr(obj.collection_point_id, "panchayat_id", None)
+            or getattr(obj.trip_assignment_id, "panchayat_id", None)
         )
-        return getattr(panchayat, "panchayat_name", None)
+        if not panchayat_uid:
+            return None
+        return Panchayat.objects.filter(unique_id=panchayat_uid).values_list(
+            "panchayat_name", flat=True
+        ).first()
 
     def get_location_name(self, obj):
         # Prefer the event's own geo; fall back to the collection point, then the trip assignment.

@@ -5,6 +5,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
@@ -14,6 +16,7 @@ from app.serializers.core_modules.schedule_setup.staff_template_serializer impor
     StaffTemplateSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.cascade_delete import collect_cascade_cache_scopes
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
@@ -24,11 +27,26 @@ from app.utils.roles import is_admin_role, is_super_admin
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
 
+# TripPlanSerializer embeds StaffTemplate.display_code + driver/operator
+# names, and AlternativeStaffTemplateSerializer embeds
+# staff_template.display_code + driver/operator names — both go stale if
+# a StaffTemplate's driver/operator/approval changes without invalidating
+# them too.
+STAFF_TEMPLATE_CACHE_SCOPES = (
+    "staff_template_list",
+    "staff_template_detail",
+    "trip_plan_list",
+    "trip_plan_detail",
+    "alternative_staff_template_list",
+    "alternative_staff_template_detail",
+)
+
 
 class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Staff Template API
     """
+    throttle_scope = "staff_template"
 
     serializer_class = StaffTemplateSerializer
     lookup_field = "unique_id"
@@ -42,7 +60,7 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "staff-templates"
 
     def get_queryset(self):
-        qs = StaffTemplate.objects.all()
+        qs = StaffTemplate.objects.filter(is_deleted=False)
 
         status_param = self.request.query_params.get("status")
         if status_param:
@@ -55,24 +73,18 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
+        # state/district/area_type/corporation/municipality/town_panchayat/
+        # panchayat_union/panchayat are plain unique_id CharFields now (no DB
+        # relation), same for driver_id__corporation/operator_id__corporation
+        # (Staffcreation's own geo columns) — none of these are select_related-able.
         return qs.select_related(
             "driver_id",
             "driver_id__designation_id",
-            "driver_id__corporation",
             "operator_id",
             "operator_id__designation_id",
-            "operator_id__corporation",
             "created_by",
             "updated_by",
             "approved_by",
-            "state",
-            "district",
-            "area_type",
-            "corporation",
-            "municipality",
-            "town_panchayat",
-            "panchayat_union",
-            "panchayat",
         )
 
     # ── available-staff action ────────────────────────────────────────
@@ -122,13 +134,18 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ]
         return Response(data)
 
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.delete()
-        return Response(
-            {"detail": "Staff template deleted successfully"},
-            status=status.HTTP_204_NO_CONTENT
-        )
+    @cache_api("staff_template_list", vary_on_user=True)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("staff_template_detail", vary_on_user=True)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        scopes = collect_cascade_cache_scopes(instance)
+        super().perform_destroy(instance)
+        invalidate_on_commit(*(set(STAFF_TEMPLATE_CACHE_SCOPES) | set(scopes)))
 
     def update(self, request, *args, **kwargs):
         kwargs["partial"] = True
@@ -220,6 +237,8 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 entity_id=instance.unique_id,
                 remarks=None,
             )
+
+        invalidate_on_commit(*STAFF_TEMPLATE_CACHE_SCOPES)
     # ================= UPDATE =================
 
     def perform_update(self, serializer):
@@ -268,6 +287,8 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             )
 
         self._notify_team_change(previous_data, new_data, instance)
+
+        invalidate_on_commit(*STAFF_TEMPLATE_CACHE_SCOPES)
 
     def _notify_team_change(self, previous_data, new_data, instance):
         """Alert whichever driver/operator was swapped on or off this team —

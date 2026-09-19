@@ -24,6 +24,7 @@ from app.services import retrip_service
 
 
 class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
+    throttle_scope = "trip_retrip_request"
     serializer_class = TripRetripRequestSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = "unique_id"

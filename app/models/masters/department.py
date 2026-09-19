@@ -1,6 +1,5 @@
 from django.db import models
 
-from app.models.masters.corporation import Corporation
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
@@ -10,6 +9,8 @@ def generate_department_id():
 
 
 class Department(BaseMaster):
+    CACHE_SCOPES = ("department_list", "department_detail")
+
     unique_id = models.CharField(
         max_length=30,
         primary_key=True,
@@ -19,14 +20,9 @@ class Department(BaseMaster):
     # Departments belong to a Corporation (this is a corporation-level
     # government product). Nullable so pre-existing rows and non-corporation
     # flows keep working; staff forms filter department options by corporation.
-    corporation_id = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="departments",
-        db_column="corporation_id",
-    )
+    # Plain CharField holding Corporation.unique_id (no DB relation/join) —
+    # matches the rest of the geo-hierarchy refactor's convention.
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
     department_name = models.CharField(max_length=150)
     department_code = models.CharField(max_length=30)
     description = models.TextField(blank=True, null=True)

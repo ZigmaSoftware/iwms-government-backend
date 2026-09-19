@@ -444,9 +444,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         existing_qs = UserScreenPermission.objects.select_related(
             "userscreen_id", "userscreenaction_id"
         ).filter(
-            state_id_id=state_id,
-            district_id_id=district_id,
-            area_type_id_id=area_type_id,
+            state_id=state_id,
+            district_id=district_id,
+            area_type_id=area_type_id,
             local_body_type=local_body_type,
             local_body_id=local_body_id,
             permission_owner_kind=permission_owner_kind,
@@ -489,9 +489,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     })
 
                 permission = UserScreenPermission.objects.create(
-                    state_id_id=state_id,
-                    district_id_id=district_id,
-                    area_type_id_id=area_type_id,
+                    state_id=state_id,
+                    district_id=district_id,
+                    area_type_id=area_type_id,
                     local_body_type=local_body_type,
                     local_body_id=local_body_id,
                     permission_type=permission_type,
@@ -559,9 +559,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         existing = {
             obj.column_id_id: obj
             for obj in CompanyUserScreenColumnPermission.objects.filter(
-                state_id_id=state_id,
-                district_id_id=district_id,
-                area_type_id_id=area_type_id,
+                state_id=state_id,
+                district_id=district_id,
+                area_type_id=area_type_id,
                 local_body_type=local_body_type,
                 local_body_id=local_body_id,
                 permission_owner_kind=permission_owner_kind,
@@ -605,9 +605,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
 
             created.append(
                 CompanyUserScreenColumnPermission(
-                    state_id_id=state_id,
-                    district_id_id=district_id,
-                    area_type_id_id=area_type_id,
+                    state_id=state_id,
+                    district_id=district_id,
+                    area_type_id=area_type_id,
                     local_body_type=local_body_type,
                     local_body_id=local_body_id,
                     permission_owner_kind=permission_owner_kind,

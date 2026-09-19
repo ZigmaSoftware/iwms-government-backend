@@ -1,14 +1,26 @@
 from rest_framework import serializers
+from app.models.masters.areatype import AreaType
 from app.models.masters.panchayat import Panchayat
+from app.models.masters.district import District
+from app.models.superadmin.common_masters.state import State
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 
 
 class PanchayatSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
 
-    state_name = serializers.CharField(source="state_id.name", read_only=True)
-    district_name = serializers.CharField(source="district_id.name", read_only=True)
-    area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
+    state_name = serializers.SerializerMethodField()
+    district_name = serializers.SerializerMethodField()
+    area_type_name = serializers.SerializerMethodField()
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+
+    def get_area_type_name(self, obj):
+        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
 
     class Meta:
         model = Panchayat
@@ -38,7 +50,8 @@ class PanchayatSerializer(GeoCoordinateSerializerMixin, serializers.ModelSeriali
 
     def validate(self, attrs):
 
-        area_type = attrs.get("area_type_id") or getattr(self.instance, "area_type_id", None)
+        area_type_id = attrs.get("area_type_id") or getattr(self.instance, "area_type_id", None)
+        area_type = AreaType.objects.filter(unique_id=area_type_id).first() if area_type_id else None
         panchayat_name = attrs.get("panchayat_name")
 
         if area_type and area_type.name != "Rural Local Body":

@@ -2,13 +2,18 @@ from django.shortcuts import get_object_or_404
 
 from rest_framework import filters, viewsets
 
+from app.cache.decorators import cache_api
+from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.transport_masters.fuel import Fuel
 from app.serializers.masters.transport_masters.fuel_serializer import FuelSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 
+FUEL_CACHE_SCOPES = ("fuel_list", "fuel_detail")
+
 
 class FuelViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "fuel"
     queryset = Fuel.objects.filter(is_deleted=False)
     serializer_class = FuelSerializer
     lookup_field = "unique_id"
@@ -30,3 +35,23 @@ class FuelViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         self.check_object_permissions(self.request, obj)
         return obj
+
+    @cache_api("fuel_list", vary_on_user=False)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cache_api("fuel_detail", vary_on_user=False)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        invalidate_on_commit(*FUEL_CACHE_SCOPES)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        invalidate_on_commit(*FUEL_CACHE_SCOPES)
+
+    def perform_destroy(self, instance):
+        super().perform_destroy(instance)
+        invalidate_on_commit(*FUEL_CACHE_SCOPES)

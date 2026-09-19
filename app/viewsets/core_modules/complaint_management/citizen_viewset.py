@@ -110,6 +110,7 @@ def _sla_strictness_key(waste_type):
 
 class CitizenComplaintTicketViewSet(viewsets.ViewSet):
     """My-tickets API for citizens (mobile app)."""
+    throttle_scope = "citizen_complaint_ticket"
 
     permission_classes = [IsAuthenticated]
 
@@ -289,6 +290,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
 
 class PublicGrievanceViewSet(viewsets.ViewSet):
     """Public grievance intake API with no login or module permission requirement."""
+    throttle_scope = "public_grievance"
 
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -334,7 +336,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             rows = rows.filter(state_id=state_id)
         rows = rows.order_by("name")
         return Response([
-            {"unique_id": d.unique_id, "name": d.name, "state_id": d.state_id_id}
+            {"unique_id": d.unique_id, "name": d.name, "state_id": d.state_id}
             for d in rows
         ])
 
@@ -405,9 +407,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
 
         # Flat geo chosen on the public form: State -> District -> City
         # (city = one of the five local-body masters; `city_type` says which
-        # one, otherwise all five are checked).
-        state = State.objects.filter(unique_id=data.get("state"), is_deleted=False).first()
-        district = District.objects.filter(unique_id=data.get("district"), is_deleted=False).first()
+        # one, otherwise all five are checked). ComplaintTicket's own geo
+        # columns are plain unique_id strings (no DB relation), so this
+        # block works entirely in unique_id strings rather than instances.
+        state_id = State.objects.filter(unique_id=data.get("state"), is_deleted=False).values_list("unique_id", flat=True).first()
+        district_id = District.objects.filter(unique_id=data.get("district"), is_deleted=False).values_list("unique_id", flat=True).first()
         city_id = data.get("city")
         city_type = str(data.get("city_type") or "").strip()
         local_body_fields = {}
@@ -417,12 +421,13 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
                     continue
                 local_body = model.objects.filter(unique_id=city_id, is_deleted=False).first()
                 if local_body:
-                    local_body_fields[field] = local_body
-                    if not district:
-                        district = local_body.district_id
+                    local_body_fields[f"{field}_id"] = local_body.unique_id
+                    if not district_id:
+                        district_id = local_body.district_id
                     break
-        if district and not state:
-            state = district.state_id
+        if district_id and not state_id:
+            district_row = District.objects.filter(unique_id=district_id, is_deleted=False).first()
+            state_id = getattr(district_row, "state_id", None)
 
         # Category is required by ComplaintTicket; when the form did not send
         # one (legacy waste-type-only submissions) fall back to OTHER so
@@ -505,8 +510,8 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             location_text=location_text,
             latitude=latitude,
             longitude=longitude,
-            state=state,
-            district=district,
+            state_id=state_id,
+            district_id=district_id,
             idempotency_key=idempotency_key,
             assigned_team=assigned_team,
             **local_body_fields,

@@ -29,7 +29,7 @@ class CollectionPointSeeder(BaseSeeder):
                 lat, lon = point["latitude"], point["longitude"]
 
                 geo_defaults = geo_defaults_for_local_body(
-                    ward_info["parent_type"], ward_info["parent"], include_country=True
+                    ward_info["parent_type"], ward_info["parent"], include_country=True, as_strings=True
                 )
                 cp, created = Collection_point.objects.update_or_create(
                     cp_name=f"CP-{code}-W{idx:03d}",

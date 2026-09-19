@@ -25,10 +25,10 @@ class CorporationSeeder(BaseSeeder):
 
         count = 0
         for district_name, corporation_name, geo_coordinates in self.CORPORATIONS:
-            district = District.objects.filter(state_id=tamil_nadu, name=district_name).first()
+            district = District.objects.filter(state_id=tamil_nadu.unique_id, name=district_name).first()
             area_type = AreaType.objects.filter(
-                state_id=tamil_nadu,
-                district_id=district,
+                state_id=tamil_nadu.unique_id,
+                district_id=district.unique_id,
                 name="Urban Local Body",
             ).first()
             if not district or not area_type:
@@ -36,9 +36,9 @@ class CorporationSeeder(BaseSeeder):
                 continue
 
             Corporation.objects.update_or_create(
-                state_id=tamil_nadu,
-                district_id=district,
-                area_type_id=area_type,
+                state_id=tamil_nadu.unique_id,
+                district_id=district.unique_id,
+                area_type_id=area_type.unique_id,
                 corporation_name=corporation_name,
                 defaults={
                     "coordinates": geo_coordinates,

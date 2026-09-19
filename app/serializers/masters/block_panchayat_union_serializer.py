@@ -1,13 +1,21 @@
 from rest_framework import serializers
 from app.models.masters.block_panchayat_union import BlockPanchayatUnion
+from app.models.masters.district import District
+from app.models.superadmin.common_masters.state import State
 from app.validators.unique_name_validator import unique_name_validator
 
 
 class BlockPanchayatUnionSerializer(serializers.ModelSerializer):
 
-    state_name = serializers.CharField(source="state_id.name", read_only=True)
-    district_name = serializers.CharField(source="district_id.name", read_only=True)
+    state_name = serializers.SerializerMethodField()
+    district_name = serializers.SerializerMethodField()
     area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
+
+    def get_state_name(self, obj):
+        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+
+    def get_district_name(self, obj):
+        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
     hierarchy_name = serializers.CharField(source="hierarchy_id.level_name", read_only=True)
     hierarchy_order = serializers.IntegerField(source="hierarchy_id.hierarchy_order", read_only=True)
 

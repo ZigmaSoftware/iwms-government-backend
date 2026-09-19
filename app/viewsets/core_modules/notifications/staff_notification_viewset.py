@@ -15,6 +15,7 @@ class StaffNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     shared by the driver, operator, and supervisor apps. Scoped strictly to
     whichever staff login made the request.
     """
+    throttle_scope = "staff_notification"
 
     serializer_class = StaffNotificationSerializer
     queryset = StaffNotification.objects.none()

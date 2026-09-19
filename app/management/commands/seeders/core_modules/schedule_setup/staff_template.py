@@ -2,6 +2,7 @@ from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.management.commands.seeders.ward_utils import geo_defaults_for_local_body, local_bodies_for_district
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.masters.district import District
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
 SLOTS_PER_WARD = 2  # one template for the ward's bin route, one for its household route
@@ -23,18 +24,24 @@ class StaffTemplateSeeder(BaseSeeder):
     def run(self):
         count = 0
         for district_name in DISTRICTS:
+            # StaffcreationOfficeDetails.district_id is a plain unique_id
+            # string now (no DB relation) — resolve the District's unique_id
+            # once and filter on that instead of a district__name join.
+            district_uid = District.objects.filter(name=district_name).values_list(
+                "unique_id", flat=True
+            ).first()
             drivers = list(
                 StaffcreationOfficeDetails.objects.filter(
-                    district__name=district_name, designation="Vehicle Driver", is_deleted=False,
+                    district_id=district_uid, designation="Vehicle Driver", is_deleted=False,
                 ).order_by("staff_unique_id")
             )
             operators = list(
                 StaffcreationOfficeDetails.objects.filter(
-                    district__name=district_name, designation="Waste Collector", is_deleted=False,
+                    district_id=district_uid, designation="Waste Collector", is_deleted=False,
                 ).order_by("staff_unique_id")
             )
             approver = StaffcreationOfficeDetails.objects.filter(
-                district__name=district_name, designation="Field Supervisor", is_deleted=False,
+                district_id=district_uid, designation="Field Supervisor", is_deleted=False,
             ).first()
             local_bodies = local_bodies_for_district(district_name)
             if not drivers or not operators or not local_bodies:
@@ -51,7 +58,9 @@ class StaffTemplateSeeder(BaseSeeder):
 
             combo_idx = 0
             for lb in local_bodies:
-                geo_defaults = geo_defaults_for_local_body(lb["parent_type"], lb["parent"])
+                geo_defaults = geo_defaults_for_local_body(
+                    lb["parent_type"], lb["parent"], as_strings=True
+                )
                 slots = lb["ward_count"] * SLOTS_PER_WARD
                 for slot in range(slots):
                     if combo_idx >= len(combos):

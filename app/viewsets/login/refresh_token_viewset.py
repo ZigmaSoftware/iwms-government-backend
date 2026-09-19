@@ -27,6 +27,7 @@ class RefreshTokenViewSet(ViewSet):
     frontend can renew an expired session silently instead of forcing the
     user back to the login screen.
     """
+    throttle_scope = "refresh_token"
 
     permission_classes = [AllowAny]
 

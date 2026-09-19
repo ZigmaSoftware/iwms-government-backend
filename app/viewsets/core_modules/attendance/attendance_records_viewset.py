@@ -31,6 +31,7 @@ class AttendanceRecordsViewSet(ViewSet):
     would silently split a single person's day across two pages, breaking
     the first-in/last-out computation at the page boundary.
     """
+    throttle_scope = "attendance_records"
 
     permission_classes = [IsAuthenticated]
     permission_resource = "DailyAttendanceReg"

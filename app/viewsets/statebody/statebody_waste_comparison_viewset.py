@@ -193,6 +193,8 @@ class _StateWasteComparisonBase(ViewSet):
 
 
 class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
+    throttle_scope = "state_monthly_waste_comparison"
+
     def list(self, request):
         state = self._get_state(request)
         if not state:
@@ -320,6 +322,8 @@ class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
 
 
 class StateDailyWasteComparisonViewSet(_StateWasteComparisonBase):
+    throttle_scope = "state_daily_waste_comparison"
+
     def list(self, request):
         state = self._get_state(request)
         if not state:

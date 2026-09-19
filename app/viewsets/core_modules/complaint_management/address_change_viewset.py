@@ -53,6 +53,7 @@ def _snapshot_customer_address(customer):
 
 
 class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+    throttle_scope = "complaint_address_change"
     serializer_class = ComplaintAddressChangeRequestSerializer
     lookup_field = "unique_id"
     AUDIT_MODULE = "complaint-ticket"
@@ -132,9 +133,11 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if any(new_geo_fields.values()):
             # Clear any previously-set local body before applying the new one,
             # since only one of corporation/municipality/.../panchayat should
-            # be populated at a time.
+            # be populated at a time. CustomerCreation's own columns are the
+            # plain "<field>_id" CharFields (no DB relation), so that's the
+            # attribute to clear/set — not the bare geo-level name.
             for customer_field, _ in GEO_FIELD_MAP:
-                setattr(customer, customer_field, None)
+                setattr(customer, f"{customer_field}_id", None)
             for customer_field, value in new_geo_fields.items():
                 if value:
                     setattr(customer, f"{customer_field}_id", value)

@@ -5,14 +5,6 @@ from app.models.masters.waste_masters.bins import Bins
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.district import District
-from app.models.masters.areatype import AreaType
-from app.models.masters.corporation import Corporation
-from app.models.masters.municipality import Municipality
-from app.models.masters.town_panchayat import TownPanchayat
-from app.models.masters.panchayat_union import PanchayatUnion
-from app.models.masters.panchayat import Panchayat
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
@@ -88,78 +80,14 @@ class TripPlanCollectionPoint(BaseMaster):
         blank=True,
     )
 
-    state = models.ForeignKey(
-        State,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="state_id",
-    )
-    district = models.ForeignKey(
-        District,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="district_id",
-    )
-    area_type = models.ForeignKey(
-        AreaType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="area_type_id",
-    )
-    corporation = models.ForeignKey(
-        Corporation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="corporation_id",
-    )
-    municipality = models.ForeignKey(
-        Municipality,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="municipality_id",
-    )
-    town_panchayat = models.ForeignKey(
-        TownPanchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="town_panchayat_id",
-    )
-    panchayat_union = models.ForeignKey(
-        PanchayatUnion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="panchayat_union_id",
-    )
-    panchayat = models.ForeignKey(
-        Panchayat,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="trip_plan_collection_points",
-        to_field="unique_id",
-        db_column="panchayat_id",
-    )
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     sequence = models.PositiveIntegerField(
         help_text="Visit order within the route.",
     )

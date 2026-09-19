@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from app.models.masters.corporation import Corporation
 from app.models.masters.department import Department
 
 
@@ -10,10 +11,15 @@ class DepartmentSerializer(serializers.ModelSerializer):
         required=False,
     )
     status_label = serializers.SerializerMethodField(read_only=True)
-    corporation_name = serializers.CharField(
-        source="corporation_id.corporation_name",
-        read_only=True,
-    )
+    corporation_id = serializers.CharField(required=False, allow_null=True)
+    corporation_name = serializers.SerializerMethodField(read_only=True)
+
+    def get_corporation_name(self, obj):
+        return (
+            Corporation.objects.filter(unique_id=obj.corporation_id)
+            .values_list("corporation_name", flat=True)
+            .first()
+        )
 
     class Meta:
         model = Department
