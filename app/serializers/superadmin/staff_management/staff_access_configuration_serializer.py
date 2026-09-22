@@ -12,15 +12,15 @@ from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.ward import Ward
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
+from app.serializers.superadmin.screen_management.userscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
 from app.serializers.superadmin.staff_management.staffcreation_serializer import StaffcreationSerializer
@@ -606,7 +606,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             is_deleted=False,
             **filters,
         ).select_related("mainscreen_id", "userscreen_id", "userscreenaction_id")
-        columns = CompanyUserScreenColumnPermission.objects.filter(
+        columns = UserScreenColumnPermission.objects.filter(
             is_active=True,
             is_deleted=False,
             **filters,

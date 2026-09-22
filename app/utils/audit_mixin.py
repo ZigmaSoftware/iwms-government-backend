@@ -1,4 +1,5 @@
 from django.forms.models import model_to_dict
+from django.db import transaction
 from django.db.models.fields.files import FieldFile
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import Account
@@ -91,8 +92,11 @@ def _write_audit_pair(
         copy_flat_geo(common_audit, instance, only_empty=True)
         copy_flat_geo(staff_audit, instance, only_empty=True)
 
-    common_audit.save()
-    staff_audit.save()
+    # The two ledgers represent the same event. Roll both writes back if
+    # either table cannot accept the row, rather than leaving a partial pair.
+    with transaction.atomic():
+        common_audit.save()
+        staff_audit.save()
     return common_audit
 
 

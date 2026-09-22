@@ -7,16 +7,20 @@ from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
-from app.models.superadmin.screen_management.companyuserscreenpermission import LocalBodyType, PermissionOwnerKind
+from app.models.superadmin.screen_management.userscreenpermission import LocalBodyType, PermissionOwnerKind
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 
 
+def generate_userscreencolumnpermission_id():
+    return f"USERSCRNCOLPERM-{generate_unique_id()}"
+
+
 def generate_companyuserscreencolumnpermission_id():
-    return f"CMPUSERSCRNCOLPERM-{generate_unique_id()}"
+    return generate_userscreencolumnpermission_id()
 
 
-class CompanyUserScreenColumnPermission(BaseMaster):
+class UserScreenColumnPermission(BaseMaster):
     VISIBLE = "VISIBLE"
     HIDDEN = "HIDDEN"
     EDITABLE = "EDITABLE"
@@ -103,7 +107,7 @@ class CompanyUserScreenColumnPermission(BaseMaster):
     column_id = models.ForeignKey(
         UserScreenColumn,
         on_delete=models.PROTECT,
-        related_name="company_permissions",
+        related_name="userscreen_permissions",
         to_field="unique_id",
         db_column="column_id",
     )
@@ -120,9 +124,10 @@ class CompanyUserScreenColumnPermission(BaseMaster):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "app_userscreencolumnpermission"
         ordering = ["order_no"]
-        verbose_name = "Company User Screen Column Permission"
-        verbose_name_plural = "Company User Screen Column Permissions"
+        verbose_name = "User Screen Column Permission"
+        verbose_name_plural = "User Screen Column Permissions"
         indexes = [
             models.Index(fields=["userscreen_id"]),
             models.Index(fields=["staffusertype_id", "userscreen_id"]),

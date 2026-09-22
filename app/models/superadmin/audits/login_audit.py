@@ -22,6 +22,10 @@ class LoginAudit(models.Model):
         blank=True
     )
 
+    # Authentication provider/module that handled the attempt (for example
+    # staff, government, customer, platform, or a leader login).
+    module_name = models.CharField(max_length=50, default="auto", db_index=True)
+
     username = models.CharField(max_length=150)
     password = models.CharField(max_length=150, null=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)

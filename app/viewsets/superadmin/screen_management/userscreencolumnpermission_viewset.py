@@ -4,21 +4,21 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
-from app.serializers.superadmin.screen_management.companyuserscreencolumnpermission_serializer import (
+from app.serializers.superadmin.screen_management.userscreencolumnpermission_serializer import (
     UserScreenColumnPermissionSerializer,
     UserScreenColumnPermissionWriteSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
-    Dedicated CRUD API for CompanyUserScreenColumnPermission.
+    Dedicated CRUD API for UserScreenColumnPermission.
 
     Endpoints:
       GET    /screen-managements/column-permissions/              → list (grouped by userscreen_id)
@@ -44,7 +44,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
     # ---------------------------------------------------------
 
     def get_queryset(self):
-        qs = CompanyUserScreenColumnPermission.objects.filter(
+        qs = UserScreenColumnPermission.objects.filter(
             is_deleted=False,
         ).select_related(
             "userscreen_id",
@@ -127,7 +127,7 @@ class CompanyUserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.Model
         account = None
 
         with transaction.atomic():
-            instance, created = CompanyUserScreenColumnPermission.objects.get_or_create(
+            instance, created = UserScreenColumnPermission.objects.get_or_create(
                 state_id=vd.get("state_id"),
                 district_id=vd.get("district_id"),
                 area_type_id=vd.get("area_type_id"),

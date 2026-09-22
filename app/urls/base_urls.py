@@ -42,8 +42,8 @@ from ..viewsets.superadmin.screen_management.app_module_viewset import AppModule
 from ..viewsets.masters.customer_masters.customer_access_configuration_viewset import (
     CustomerAccessConfigurationViewSet,
 )
-from ..viewsets.superadmin.screen_management.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
-from ..viewsets.superadmin.screen_management.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
+from ..viewsets.superadmin.screen_management.userscreenpermission_viewset import UserScreenPermissionViewSet
+from ..viewsets.superadmin.screen_management.userscreencolumnpermission_viewset import UserScreenColumnPermissionViewSet
 from ..viewsets.superadmin.screen_management.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
 from ..viewsets.superadmin.screen_management.permission_api_views import (
     PermissionAssignAPIView,
@@ -134,6 +134,8 @@ from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import Dail
 # Audits
 from ..viewsets.superadmin.audits.login_audit_viewset import LoginAuditViewSet
 from ..viewsets.superadmin.audits.common_audit_viewset import CommonAuditViewSet
+from ..viewsets.superadmin.audits.permission_audit_viewset import PermissionAuditLogViewSet
+from ..viewsets.superadmin.audits.staff_change_request_viewset import StaffChangeRequestViewSet
 from ..viewsets.superadmin.audits.staff_audit_viewset import StaffAuditViewSet
 
 # Localbody
@@ -218,7 +220,7 @@ router.register_group(
     UserScreenPermissionViewSet,
     basename="screen-managements-companywisescreenpermissions-legacy",
 )
-router.register_group("screen-managements", "column-permissions", CompanyUserScreenColumnPermissionViewSet)
+router.register_group("screen-managements", "column-permissions", UserScreenColumnPermissionViewSet)
 router.register_group("screen-managements", "dashboard-widget-permissions", DashboardWidgetPermissionViewSet)
 router.register_group("screen-managements", "app-modules", AppModuleViewSet)
 
@@ -353,6 +355,8 @@ router.register_group("reports", "daily-waste-comparisons", DailyWasteComparison
 router.register_group("audits", "login-audit", LoginAuditViewSet)
 router.register_group("audits", "common-audit", CommonAuditViewSet)
 router.register_group("audits", "staff-audit", StaffAuditViewSet)
+router.register_group("audits", "permission-audit", PermissionAuditLogViewSet)
+router.register_group("audits", "staff-change-requests", StaffChangeRequestViewSet)
 
 # ============================================================
 # GROUP: LOCALBODY (panchayat leader portal — auth-only, no module permission check)

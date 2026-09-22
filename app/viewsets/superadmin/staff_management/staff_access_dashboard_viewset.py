@@ -18,7 +18,7 @@ from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.common_masters.state import State
-from app.models.superadmin.screen_management.companyuserscreenpermission import (
+from app.models.superadmin.screen_management.userscreenpermission import (
     UserScreenPermission,
 )
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails

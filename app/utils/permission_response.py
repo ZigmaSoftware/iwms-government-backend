@@ -4,10 +4,10 @@ import re
 
 from django.utils import timezone
 
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 
 
@@ -179,7 +179,7 @@ def build_permission_details(action_queryset, column_queryset=None):
             screen_payload["permissions"][action_name] = True
 
     if column_queryset is None:
-        column_queryset = CompanyUserScreenColumnPermission.objects.none()
+        column_queryset = UserScreenColumnPermission.objects.none()
 
     for column_permission in column_queryset.order_by("userscreen_id__order_no", "order_no"):
         screen_id = column_permission.userscreen_id_id
@@ -317,7 +317,7 @@ def build_module_access(action_queryset, column_queryset=None):
             screen_entry["permissions"][action_name] = True
 
     if column_queryset is None:
-        column_queryset = CompanyUserScreenColumnPermission.objects.none()
+        column_queryset = UserScreenColumnPermission.objects.none()
 
     for column_permission in column_queryset.order_by(
         "userscreen_id__mainscreen_id__order_no",
@@ -714,7 +714,7 @@ def permission_querysets(
         "contractorusertype_id",
         "governmentusertype_id",
     )
-    column_queryset = CompanyUserScreenColumnPermission.objects.filter(
+    column_queryset = UserScreenColumnPermission.objects.filter(
         is_active=True,
         is_deleted=False,
         userscreen_id__is_deleted=False,

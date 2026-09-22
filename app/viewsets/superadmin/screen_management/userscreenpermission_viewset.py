@@ -10,14 +10,14 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
-from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreencolumnpermission import UserScreenColumnPermission
+from app.serializers.superadmin.screen_management.userscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
     UserScreenPermissionSerializer,
 )
-from app.serializers.superadmin.screen_management.companyuserscreencolumnpermission_serializer import (
-    CompanyUserScreenColumnPermissionSerializer,
+from app.serializers.superadmin.screen_management.userscreencolumnpermission_serializer import (
+    UserScreenColumnPermissionAllFieldsSerializer,
 )
 
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -203,9 +203,9 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "created": UserScreenPermissionSerializer(result["created"], many=True).data,
                 "updated": UserScreenPermissionSerializer(result["updated"], many=True).data,
                 "deleted": UserScreenPermissionSerializer(result["deleted"], many=True).data,
-                "created_columns": CompanyUserScreenColumnPermissionSerializer(result.get("created_columns", []), many=True).data,
-                "updated_columns": CompanyUserScreenColumnPermissionSerializer(result.get("updated_columns", []), many=True).data,
-                "deleted_columns": CompanyUserScreenColumnPermissionSerializer(result.get("deleted_columns", []), many=True).data,
+                "created_columns": UserScreenColumnPermissionAllFieldsSerializer(result.get("created_columns", []), many=True).data,
+                "updated_columns": UserScreenColumnPermissionAllFieldsSerializer(result.get("updated_columns", []), many=True).data,
+                "deleted_columns": UserScreenColumnPermissionAllFieldsSerializer(result.get("deleted_columns", []), many=True).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -322,7 +322,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             return Response(cached)
 
         local_body_filters = self._local_body_filter_kwargs(scope)
-        # CompanyUserScreenColumnPermission has no permission_type column — it
+        # UserScreenColumnPermission has no permission_type column — it
         # IS the field-permission data, so this filter only applies to the
         # UserScreenPermission (screen/action) queryset.
         column_local_body_filters = {k: v for k, v in local_body_filters.items() if k != "permission_type"}
@@ -339,7 +339,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "description",
         )
 
-        column_perms = CompanyUserScreenColumnPermission.objects.filter(
+        column_perms = UserScreenColumnPermission.objects.filter(
             userscreen_id__mainscreen_id_id=mainscreen_id,
             is_deleted=False,
             **column_local_body_filters,
@@ -364,7 +364,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         for cp in column_perms:
             column_map[cp["userscreen_id_id"]].append({
                 "column_id": cp["column_id_id"],
-                "can_view": cp["field_permission_state"] != CompanyUserScreenColumnPermission.HIDDEN,
+                "can_view": cp["field_permission_state"] != UserScreenColumnPermission.HIDDEN,
             })
 
         # 🔥 LIGHTWEIGHT QUERY
@@ -531,8 +531,16 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         deleted_count = qs.count()
         if deleted_count > 0:
-            qs.update(is_deleted=True, is_active=False)
-            CompanyUserScreenColumnPermission.objects.filter(
+            # Per-instance saves (not a queryset .update()) so post_save
+            # fires for each row and log_permission_change actually records
+            # this bulk soft-delete in PermissionAuditLog — a queryset
+            # .update() bypasses signals entirely and would leave these
+            # deletions un-audited.
+            for permission in qs:
+                permission.is_deleted = True
+                permission.is_active = False
+                permission.save(update_fields=["is_deleted", "is_active", "updated_at"])
+            UserScreenColumnPermission.objects.filter(
                 userscreen_id__mainscreen_id_id=mainscreen_id,
                 is_deleted=False,
                 **column_local_body_filters,
@@ -548,6 +556,3 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
-
-
-CompanyUserScreenPermissionViewSet = UserScreenPermissionViewSet

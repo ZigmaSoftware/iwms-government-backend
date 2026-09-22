@@ -26,7 +26,7 @@ class LoginViewSet(ViewSet):
 
     def create(self, request):
         login_identifier = request.data.get("username", "").strip()
-        login_password = request.data.get("password", "").strip()
+        requested_module = str(request.data.get("login_type") or "auto").strip().lower()
         ip_address = getattr(request, "ip_address", None) or _client_ip(request)
 
         serializer = LoginSerializer(data=request.data)
@@ -39,8 +39,10 @@ class LoginViewSet(ViewSet):
         except Exception:
             LoginAudit.objects.create(
                 user_unique_id=None,
+                module_name=requested_module,
                 username=login_identifier,
-                password=login_password,
+                # Never retain submitted credentials in an audit record.
+                password=None,
                 ip_address=ip_address or "",
                 user_agent=getattr(request, "user_agent", ""),
                 success=False,
@@ -311,8 +313,10 @@ class LoginViewSet(ViewSet):
         # -------------------------
         LoginAudit.objects.create(
             user_unique_id=user_unique_id,
-            username=login_identifier,  
-            password=login_password,
+            module_name=user_type,
+            username=login_identifier,
+            # Authentication success is auditable without storing a secret.
+            password=None,
             ip_address=ip_address or "",
             user_agent=getattr(request, "user_agent", ""),
             success=True,

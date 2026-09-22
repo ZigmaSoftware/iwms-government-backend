@@ -1,20 +1,20 @@
 from rest_framework import serializers
 
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
-from app.models.superadmin.screen_management.companyuserscreenpermission import LocalBodyType
+from app.models.superadmin.screen_management.userscreenpermission import LocalBodyType
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
-from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
+from app.serializers.superadmin.screen_management.userscreenpermission_serializer import (
     _resolve_local_body_model,
 )
 
 
-class CompanyUserScreenColumnPermissionSerializer(serializers.ModelSerializer):
+class UserScreenColumnPermissionAllFieldsSerializer(serializers.ModelSerializer):
     column_name = serializers.CharField(source="column_id.field_name", read_only=True)
     display_name = serializers.CharField(source="column_id.display_name", read_only=True)
     data_type = serializers.CharField(source="column_id.data_type", read_only=True)
@@ -22,7 +22,7 @@ class CompanyUserScreenColumnPermissionSerializer(serializers.ModelSerializer):
     can_view = serializers.BooleanField(read_only=True)
 
     class Meta:
-        model = CompanyUserScreenColumnPermission
+        model = UserScreenColumnPermission
         fields = "__all__"
 
 
@@ -49,7 +49,7 @@ class UserScreenColumnPermissionSerializer(serializers.ModelSerializer):
         return (col.display_name or col.field_name) if col else ""
 
     class Meta:
-        model = CompanyUserScreenColumnPermission
+        model = UserScreenColumnPermission
         fields = [
             "userscreen_name",
             "userscreencolumnpermission_id",
@@ -86,7 +86,7 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
 
     is_active = serializers.BooleanField(default=True)
     field_permission_state = serializers.ChoiceField(
-        choices=CompanyUserScreenColumnPermission.FIELD_PERMISSION_STATE_CHOICES,
+        choices=UserScreenColumnPermission.FIELD_PERMISSION_STATE_CHOICES,
         required=False,
     )
     order_no = serializers.IntegerField(default=1, required=False)
@@ -130,9 +130,9 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
 
         if "field_permission_state" not in data:
             data["field_permission_state"] = (
-                CompanyUserScreenColumnPermission.VISIBLE
+                UserScreenColumnPermission.VISIBLE
                 if data.get("is_active", True)
-                else CompanyUserScreenColumnPermission.HIDDEN
+                else UserScreenColumnPermission.HIDDEN
             )
         userscreen_id = data.get("userscreen_id")
         column_id = data.get("column_id")

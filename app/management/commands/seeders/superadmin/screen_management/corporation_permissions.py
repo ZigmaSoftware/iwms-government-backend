@@ -27,7 +27,7 @@ must match ``AppSidebar.tsx``.
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.masters.corporation import Corporation
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails

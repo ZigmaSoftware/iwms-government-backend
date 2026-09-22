@@ -5,10 +5,9 @@ from django.utils import timezone
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.utils.permission_response import resolve_permission_payload
 
-CompanyUserScreenPermission = UserScreenPermission
 
 
 class PermissionViewSet(ViewSet):

@@ -157,8 +157,8 @@ _register(_STATE, "leader_logins", "app.models.masters.leader_management.state_l
 
 # scoped_staff / screen-permission scoping: declared on District/AreaType/State only.
 _STAFF_DATA_SCOPE = "app.models.superadmin.staff_management.staff_data_scope.StaffDataScope"
-_USER_SCREEN_PERMISSION = "app.models.superadmin.screen_management.companyuserscreenpermission.UserScreenPermission"
-_COLUMN_PERMISSION = "app.models.superadmin.screen_management.companyuserscreencolumnpermission.CompanyUserScreenColumnPermission"
+_USER_SCREEN_PERMISSION = "app.models.superadmin.screen_management.userscreenpermission.UserScreenPermission"
+_COLUMN_PERMISSION = "app.models.superadmin.screen_management.userscreencolumnpermission.UserScreenColumnPermission"
 _DASHBOARD_WIDGET_PERMISSION = "app.models.superadmin.screen_management.dashboardwidgetpermission.DashboardWidgetPermission"
 for _parent, _scope_field in ((_STATE, "state"), (_DISTRICT, "district"), (_AREA_TYPE, "area_type")):
     _register(_parent, "scoped_staff", _STAFF_DATA_SCOPE, _scope_field)
