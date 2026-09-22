@@ -143,6 +143,8 @@ API_THROTTLE_RATES = {
     "staff_audit": AUDIT_LOG,
     "common_audit": AUDIT_LOG,
     "login_audit": AUDIT_LOG,
+    "permission_audit": AUDIT_LOG,
+    "staff_change_request": AUDIT_LOG,
 
     # ── Operator/field mobile app — frequent polling by design ─────
     "trip_history": REALTIME_MOBILE,

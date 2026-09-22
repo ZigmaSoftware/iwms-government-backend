@@ -38,6 +38,13 @@ class StaffAudit(models.Model):
     createdBy = models.CharField(max_length=150, null=True, blank=True)
     createdAt = models.DateTimeField(default=timezone.now)
 
+    # Request context and outcome. These fields intentionally mirror
+    # CommonAudit because audit_mixin writes the same payload to both ledgers.
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    success = models.BooleanField(default=True)
+    reason = models.CharField(max_length=255, null=True, blank=True)
+
     # Flat geo scope block, stamped from the audited instance at write time
     # (copy_flat_geo) — the basis for hierarchy-level filtering on the
     # staff-facing audit list. Plain CharFields holding each row's unique_id

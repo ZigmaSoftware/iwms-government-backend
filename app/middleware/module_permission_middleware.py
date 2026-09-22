@@ -141,7 +141,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "UserScreen",
         "UserScreenAction",
         "UserScreenPermission",
-        "CompanyUserScreenPermission",
+        "UserScreenPermission",
         "userscreenpermissions",
         "companywisescreenpermissions",
         "column-permissions",
@@ -310,13 +310,18 @@ RESOURCE_PERMISSION_ALIASES = {
     "DailyTripLog": ("daily-trip-logs",),
     "DailyWasteComparison": ("daily-waste-comparisons",),
     "MonthlyWasteComparisonReport": ("MonthlyWasteComparison", "monthly-waste-comparison"),
-    "CommonAudit": ("common-audit",),
+    # "staff-audit" is included so a user granted view access under the old,
+    # separate "Collection Audit" screen still unlocks the merged Transaction
+    # Audit screen (same CommonAuditViewSet, now the single UI for both) —
+    # _resolve_allowed_actions tries "common-audit" first and only falls
+    # back to this alias if that specific grant is absent, so it purely adds
+    # coverage without changing behavior for anyone who already holds the
+    # "common-audit" grant directly.
+    "CommonAudit": ("common-audit", "staff-audit"),
     "StaffAudit": ("staff-audit",),
     "LoginAudit": ("login-audit",),
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
-    "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
-    "companywisescreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
-    "column-permissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "userscreenpermissions": ("UserScreenPermission", "UserScreenPermission"),
     "DashboardWidgetPermission": ("userscreenpermissions", "dashboard-widget-permissions"),
 }
 

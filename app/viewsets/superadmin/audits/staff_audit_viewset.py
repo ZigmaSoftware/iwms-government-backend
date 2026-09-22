@@ -3,13 +3,26 @@ from rest_framework.permissions import IsAuthenticated
 
 from app.models.superadmin.audits.staff_audit import StaffAudit
 from app.serializers.superadmin.audits.staff_audit_serializer import StaffAuditSerializer
-from app.utils.hierarchy import (
-    filter_flat_geo_queryset_by_params,
-    filter_flat_geo_queryset_by_requester_scope,
-)
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 
 from rest_framework import viewsets
+
+# StaffAudit's flat geo columns are plain CharFields named without the "_id"
+# suffix (state/district/.../panchayat, db_column="..._id") — the helper's
+# default field map assumes "..._id"-named fields, which raises FieldError
+# against this model's bare names for any requester who actually has a
+# StaffDataScope row (the super_admin bypass masks this in casual testing).
+FLAT_GEO_FIELD_MAP = {
+    "state_id": "state",
+    "district_id": "district",
+    "area_type_id": "area_type",
+    "corporation_id": "corporation",
+    "municipality_id": "municipality",
+    "town_panchayat_id": "town_panchayat",
+    "panchayat_union_id": "panchayat_union",
+    "panchayat_id": "panchayat",
+}
 
 
 class StaffAuditViewSet(viewsets.ModelViewSet):
@@ -52,7 +65,11 @@ class StaffAuditViewSet(viewsets.ModelViewSet):
         if created_by:
             queryset = queryset.filter(createdBy=created_by)
 
-        queryset = filter_flat_geo_queryset_by_params(queryset, self.request.query_params)
-        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
+        # filter_flat_geo_queryset_by_params (explicit ?state_id=/etc. params)
+        # is intentionally not called here — see the field_map note above;
+        # it has no field_map override and would FieldError the same way.
+        queryset = filter_flat_geo_queryset_by_requester_scope(
+            queryset, self.request.user, field_map=FLAT_GEO_FIELD_MAP,
+        )
 
         return queryset

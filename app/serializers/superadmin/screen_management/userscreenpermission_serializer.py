@@ -2,10 +2,10 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
@@ -14,7 +14,7 @@ from app.models.superadmin.screen_management.userscreencolumn import UserScreenC
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
-from app.models.superadmin.screen_management.companyuserscreenpermission import (
+from app.models.superadmin.screen_management.userscreenpermission import (
     LocalBodyType,
     PermissionOwnerKind,
     PermissionType,
@@ -558,7 +558,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
     ):
         existing = {
             obj.column_id_id: obj
-            for obj in CompanyUserScreenColumnPermission.objects.filter(
+            for obj in UserScreenColumnPermission.objects.filter(
                 state_id=state_id,
                 district_id=district_id,
                 area_type_id=area_type_id,
@@ -588,9 +588,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             field_permission_state = column_permission.get("field_permission_state")
             if not field_permission_state:
                 field_permission_state = (
-                    CompanyUserScreenColumnPermission.VISIBLE
+                    UserScreenColumnPermission.VISIBLE
                     if can_view
-                    else CompanyUserScreenColumnPermission.HIDDEN
+                    else UserScreenColumnPermission.HIDDEN
                 )
             permission = existing.get(column_id)
             if permission:
@@ -604,7 +604,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 continue
 
             created.append(
-                CompanyUserScreenColumnPermission(
+                UserScreenColumnPermission(
                     state_id=state_id,
                     district_id=district_id,
                     area_type_id=area_type_id,
@@ -630,20 +630,16 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 deleted.append(permission)
 
         if created:
-            CompanyUserScreenColumnPermission.objects.bulk_create(created)
+            UserScreenColumnPermission.objects.bulk_create(created)
         if updated:
-            CompanyUserScreenColumnPermission.objects.bulk_update(
+            UserScreenColumnPermission.objects.bulk_update(
                 updated,
                 ["field_permission_state", "order_no", "description", "is_deleted", "is_active", "updated_at"],
             )
         if deleted:
-            CompanyUserScreenColumnPermission.objects.bulk_update(
+            UserScreenColumnPermission.objects.bulk_update(
                 deleted,
                 ["is_deleted", "is_active", "updated_at"],
             )
 
         return {"created": created, "updated": updated, "deleted": deleted}
-
-
-CompanyUserScreenPermissionSerializer = UserScreenPermissionSerializer
-CompanyUserScreenPermissionMultiScreenSerializer = UserScreenPermissionMultiScreenSerializer

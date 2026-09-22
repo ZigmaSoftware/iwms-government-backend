@@ -16,10 +16,6 @@ def generate_userscreenpermission_id():
     return f"USERSCRNPERM-{generate_unique_id()}"
 
 
-def generate_companyuserscreenpermission_id():
-    return generate_userscreenpermission_id()
-
-
 class LocalBodyType(models.TextChoices):
     CORPORATION = "corporation", "Corporation"
     MUNICIPALITY = "municipality", "Municipality"
@@ -136,7 +132,7 @@ class UserScreenPermission(BaseMaster):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "app_companyuserscreenpermission"
+        db_table = "app_userscreenpermission"
         ordering = ["order_no"]
         verbose_name = "User Screen Permission"
         verbose_name_plural = "User Screen Permissions"
@@ -177,6 +173,3 @@ class UserScreenPermission(BaseMaster):
                 name="uq_active_local_body_screen_permission",
             ),
         ]
-
-
-CompanyUserScreenPermission = UserScreenPermission

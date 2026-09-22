@@ -66,11 +66,10 @@ from .superadmin.screen_management.userscreen import UserScreen
 from .superadmin.screen_management.app_module import AppModule
 from .superadmin.screen_management.userscreenaction import UserScreenAction
 from .superadmin.screen_management.userscreencolumn import UserScreenColumn
-from .superadmin.screen_management.companyuserscreenpermission import (
-    CompanyUserScreenPermission,
+from .superadmin.screen_management.userscreenpermission import (
     UserScreenPermission,
 )
-from .superadmin.screen_management.companyuserscreencolumnpermission import CompanyUserScreenColumnPermission
+from .superadmin.screen_management.userscreencolumnpermission import UserScreenColumnPermission
 from .superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 
 
@@ -98,6 +97,7 @@ from .superadmin.audits.login_audit import LoginAudit
 from .superadmin.audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
 from .superadmin.audits.permission_audit import PermissionAuditLog
+from .superadmin.audits.staff_change_request import StaffChangeRequest
 
 
 # ============================================================
@@ -231,8 +231,7 @@ __all__ = [
     "UserScreenAction",
     "UserScreenColumn",
     "UserScreenPermission",
-    "CompanyUserScreenPermission",
-    "CompanyUserScreenColumnPermission",
+    "UserScreenColumnPermission",
     "DashboardWidgetPermission",
 
     # User Creation & Staff
@@ -292,6 +291,7 @@ __all__ = [
 
     # Audits
     "PermissionAuditLog",
+    "StaffChangeRequest",
 
     # Daily Trip Assignment
     "DailyTripAssignment",

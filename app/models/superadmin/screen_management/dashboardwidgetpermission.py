@@ -5,7 +5,7 @@ from app.models.superadmin.role_management.contractorUserType import ContractorU
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.staffUserType import StaffUserType
 from app.models.superadmin.role_management.userType import UserType
-from app.models.superadmin.screen_management.companyuserscreenpermission import LocalBodyType, PermissionOwnerKind
+from app.models.superadmin.screen_management.userscreenpermission import LocalBodyType, PermissionOwnerKind
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 

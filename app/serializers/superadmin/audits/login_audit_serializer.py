@@ -9,6 +9,7 @@ class LoginAuditSerializer(serializers.ModelSerializer):
         fields = [
             "unique_id",
             "user_unique_id",
+            "module_name",
             "username",
             "password",
             "ip_address",

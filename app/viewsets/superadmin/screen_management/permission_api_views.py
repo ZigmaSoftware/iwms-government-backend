@@ -5,13 +5,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
-from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
+from app.serializers.superadmin.screen_management.userscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
 from app.serializers.superadmin.screen_management.userscreencolumn_serializer import (
@@ -111,7 +111,7 @@ class UserPermissionsAPIView(APIView):
             is_active=True,
             is_deleted=False,
         ).select_related("mainscreen_id", "userscreen_id", "userscreenaction_id")
-        column_qs = CompanyUserScreenColumnPermission.objects.filter(
+        column_qs = UserScreenColumnPermission.objects.filter(
             is_active=True,
             is_deleted=False,
         ).select_related("userscreen_id", "column_id")
