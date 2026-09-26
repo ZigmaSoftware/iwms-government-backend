@@ -23,8 +23,9 @@ class CountrySeeder(BaseSeeder):
         continent_cache = {}
         for country_name, continent_name, currency, mob_code in self.COUNTRIES:
             if continent_name not in continent_cache:
-                continent_cache[continent_name] = Continent.objects.get(name=continent_name)
-            Country.objects.update_or_create(
+                continent_cache[continent_name] = self.pick_existing(Continent, name=continent_name)
+            self.upsert(
+                Country,
                 name=country_name,
                 continent_id=continent_cache[continent_name].unique_id,
                 defaults={

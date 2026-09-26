@@ -96,9 +96,7 @@ class _StateWasteComparisonBase(ViewSet):
         return None
 
     def _base_queryset(self, state_uid):
-        return DailyTripLog.objects.select_related(
-            "district"
-        ).prefetch_related("waste_types").filter(
+        return DailyTripLog.objects.filter(
             is_deleted=False,
             state_id=state_uid,
             log_status__in=[
@@ -112,14 +110,14 @@ class _StateWasteComparisonBase(ViewSet):
         collection records (a trip can legitimately span multiple waste
         types) — grouped by trip_assignment_id__daily_trip_log__<field> for
         each field in extra_group_by, joined back onto qs's own rows."""
-        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id", flat=True).distinct())
         wt_rows = bulk_waste_type_rows_for_trip_assignments(
             trip_assignment_ids, source=source, extra_group_by=extra_group_by,
         )
-        info_fields = ["trip_assignment_id_id", *extra_group_by]
+        info_fields = ["trip_assignment_id", *extra_group_by]
         info_by_assignment = {}
         for r in qs.values(*info_fields):
-            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+            info_by_assignment.setdefault(r["trip_assignment_id"], []).append(r)
         return wt_rows, info_by_assignment
 
     def _district_comparison(self, rows, weight_key):

@@ -14,6 +14,7 @@ from app.models.masters.ward import Ward
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 def generate_secondary_bin_collection_event_id():
@@ -41,70 +42,18 @@ class BinCollectionEvent(BaseMaster):
     )
 
 
-    trip_assignment_id = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.PROTECT,
-        db_column="trip_assignment_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-    )
-    trip_collection_point_id = models.ForeignKey(
-        DailyTripCollectionPoint,
-        on_delete=models.PROTECT,
-        db_column="trip_collection_point_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_event",
-    )
+    # Plain unique_id references (no DB relation); the properties below
+    # (`trip_assignment`, `bin`, `vehicle`, ...) resolve them.
+    trip_assignment_id = models.CharField(max_length=50, db_column="trip_assignment_id")
+    trip_collection_point_id = models.CharField(max_length=30, db_column="trip_collection_point_id", db_index=True)
 
-    collection_point_id = models.ForeignKey(
-        Collection_point,
-        on_delete=models.PROTECT,
-        db_column="collection_point_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-    )
-    bin_id = models.ForeignKey(
-        Bins,
-        on_delete=models.PROTECT,
-        db_column="bin_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-    )
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
-        on_delete=models.PROTECT,
-        db_column="location_node_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-        null=True,
-        blank=True,
-    )
-    waste_type_id = models.ForeignKey(
-        WasteType,
-        on_delete=models.PROTECT,
-        db_column="waste_type_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-    )
-    vehicle_id = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.PROTECT,
-        db_column="vehicle_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-        null=True,
-        blank=True,
-    )
-    vehicle_breakdown_id = models.ForeignKey(
-        "app.VehicleBreakdown",
-        on_delete=models.SET_NULL,
-        db_column="vehicle_breakdown_id",
-        to_field="unique_id",
-        related_name="secondary_bin_collection_events",
-        null=True,
-        blank=True,
-        help_text="Approved breakdown that re-routed this collection to a replacement vehicle.",
-    )
+    collection_point_id = models.CharField(max_length=30, db_column="collection_point_id", db_index=True)
+    bin_id = models.CharField(max_length=30, db_column="bin_id", db_index=True)
+    location_node_id = models.CharField(max_length=30, db_column="location_node_id", null=True, blank=True, db_index=True)
+    waste_type_id = models.CharField(max_length=100, db_column="waste_type_id", db_index=True)
+    vehicle_id = models.CharField(max_length=40, db_column="vehicle_id", null=True, blank=True, db_index=True)
+    # Approved breakdown that re-routed this collection to a replacement vehicle.
+    vehicle_breakdown_id = models.CharField(max_length=50, db_column="vehicle_breakdown_id", null=True, blank=True, db_index=True)
 
 
 
@@ -121,10 +70,7 @@ class BinCollectionEvent(BaseMaster):
     town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    ward = models.ForeignKey(
-        Ward, on_delete=models.PROTECT, related_name="bin_collection_events",
-        to_field="unique_id", db_column="ward_id", null=True, blank=True,
-    )
+    ward_id = models.CharField(max_length=30, db_column="ward_id", null=True, blank=True, db_index=True)
 
     collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     status = models.CharField(
@@ -156,11 +102,53 @@ class BinCollectionEvent(BaseMaster):
             # models.Index(fields=["panchayat_id", "created_at"]),
         ]
 
+    # ---- plain-reference lookups (request-cached) --------------------
+    @property
+    def trip_assignment(self):
+        return ref_cache.get(DailyTripAssignment, self.trip_assignment_id, "unique_id")
+
+    @property
+    def trip_collection_point(self):
+        return ref_cache.get(DailyTripCollectionPoint, self.trip_collection_point_id, "unique_id")
+
+    @property
+    def collection_point(self):
+        return ref_cache.get(Collection_point, self.collection_point_id, "unique_id")
+
+    @property
+    def bin(self):
+        return ref_cache.get(Bins, self.bin_id, "unique_id")
+
+    @property
+    def location_node(self):
+        from app.models.masters.hierarchy_tree import HierarchyNode
+
+        return ref_cache.get(HierarchyNode, self.location_node_id, "unique_id")
+
+    @property
+    def waste_type(self):
+        return ref_cache.get(WasteType, self.waste_type_id, "unique_id")
+
+    @property
+    def vehicle(self):
+        return ref_cache.get(VehicleCreation, self.vehicle_id, "unique_id")
+
+    @property
+    def vehicle_breakdown(self):
+        from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
+
+        return ref_cache.get(VehicleBreakdown, self.vehicle_breakdown_id, "unique_id")
+
+    @property
+    def ward(self):
+        return ref_cache.get(Ward, self.ward_id, "unique_id")
+
     def save(self, *args, **kwargs):
         # Inherit corporation / local-body scope from the parent trip
         # assignment on first write. `only_empty` preserves explicit values.
-        if self.trip_assignment_id_id and not self.corporation_id:
-            copy_flat_geo(self, self.trip_assignment_id, only_empty=True)
+        assignment = self.trip_assignment
+        if assignment and not self.corporation_id:
+            copy_flat_geo(self, assignment, only_empty=True)
         super().save(*args, **kwargs)
 
     def __str__(self):

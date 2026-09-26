@@ -1,12 +1,10 @@
 from django.db import models
 from django.utils import timezone
 
-from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.core_modules.daily_operations.waste_collection import WasteCollection
-from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 def generate_dthc_id():
@@ -56,21 +54,9 @@ class DailyTripHouseholdCollection(BaseMaster):
     )
 
 
-    trip_assignment_id = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.CASCADE,
-        db_column="trip_assignment_id",
-        to_field="unique_id",
-        related_name="trip_household_collections",
-    )
+    trip_assignment_id = models.CharField(max_length=50)
 
-    customer_id = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.PROTECT,
-        db_column="customer_id",
-        to_field="unique_id",
-        related_name="daily_trip_household_collections",
-    )
+    customer_id = models.CharField(max_length=30, db_index=True)
 
     collection_type = models.CharField(
         max_length=30,
@@ -80,13 +66,12 @@ class DailyTripHouseholdCollection(BaseMaster):
     )
 
     # Filled when the WasteCollection record is saved for this customer + trip
-    waste_collection_id = models.ForeignKey(
-        WasteCollection,
-        on_delete=models.SET_NULL,
-        db_column="waste_collection_id",
-        related_name="daily_trip_household_collections",
+    # — WasteCollection.unique_id as a plain string (no DB relation).
+    waste_collection_id = models.CharField(
+        max_length=30,
         null=True,
         blank=True,
+        db_index=True,
     )
 
     state_id = models.CharField(max_length=30, null=True, blank=True)
@@ -133,14 +118,12 @@ class DailyTripHouseholdCollection(BaseMaster):
     # carried over to a continuation trip. Deliberately does not affect
     # `status` (still Pending/etc.) — see the comment in approve_retrip for
     # why the completion-percentage math depends on that.
-    carried_to_assignment = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.SET_NULL,
+    # DailyTripAssignment.unique_id as a plain string (no DB relation).
+    carried_to_assignment_id = models.CharField(
+        max_length=50,
         null=True,
         blank=True,
-        to_field="unique_id",
-        db_column="carried_to_assignment_id",
-        related_name="carried_over_household_collections",
+        db_index=True,
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -160,16 +143,55 @@ class DailyTripHouseholdCollection(BaseMaster):
         ]
 
     def save(self, *args, **kwargs):
-        if self.customer_id_id:
-            copy_flat_geo(self, self.customer_id)
+        if self.customer_id:
+            copy_flat_geo(self, self.customer)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.trip_assignment_id_id}:customer:{self.customer_id_id}:{self.collection_type}"
+        return f"{self.trip_assignment_id}:customer:{self.customer_id}:{self.collection_type}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def trip_assignment(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+            self.trip_assignment_id,
+        )
+
+    @property
+    def customer(self):
+        return self._lookup(
+            "app.models.masters.customer_masters.customercreation.CustomerCreation",
+            self.customer_id,
+        )
+
+    @property
+    def waste_collection(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.waste_collection.WasteCollection",
+            self.waste_collection_id,
+        )
+
+    @property
+    def carried_to_assignment(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+            self.carried_to_assignment_id,
+        )
 
     def mark_collected(self, waste_collection, collected_at=None):
         from decimal import Decimal
-        self.waste_collection_id = waste_collection
+        self.waste_collection_id = getattr(
+            waste_collection, "unique_id", waste_collection
+        )
         self.collected_weight_kg = Decimal(str(waste_collection.total_quantity or 0))
         self.collected_at = collected_at or timezone.now()
         self.is_collected = True

@@ -168,12 +168,12 @@ class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
 
 class ComplaintTeamViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_team"
-    queryset = ComplaintTeam.objects.filter(is_deleted=False).select_related("department").order_by("team_code")
+    queryset = ComplaintTeam.objects.filter(is_deleted=False).order_by("team_code")
     serializer_class = ComplaintTeamSerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["team_code", "team_name", "department__department_name"]
+    search_fields = ["team_code", "team_name"]
     ordering_fields = ["team_code", "team_name", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "teams"
@@ -230,14 +230,12 @@ class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
 
 class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_category"
-    queryset = ComplaintCategory.objects.filter(is_deleted=False).select_related(
-        "default_priority", "default_team", "module"
-    ).order_by("sort_order")
+    queryset = ComplaintCategory.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintCategorySerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["category_code", "category_name", "module__module_name"]
+    search_fields = ["category_code", "category_name"]
     ordering_fields = ["sort_order", "category_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "categories"
@@ -268,13 +266,13 @@ class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["subcategory_code", "subcategory_name", "category__category_name"]
+    search_fields = ["subcategory_code", "subcategory_name"]
     ordering_fields = ["sort_order", "subcategory_code", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "subcategories"
 
     def get_queryset(self):
-        qs = ComplaintSubcategory.objects.filter(is_deleted=False).select_related("category").order_by("sort_order")
+        qs = ComplaintSubcategory.objects.filter(is_deleted=False).order_by("sort_order")
         category = self.request.query_params.get("category")
         if category:
             qs = qs.filter(category_id=category)
@@ -301,14 +299,12 @@ class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
 
 class ComplaintSlaRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_sla_rule"
-    queryset = ComplaintSlaRule.objects.filter(is_deleted=False).select_related(
-        "category", "priority"
-    ).order_by("unique_id")
+    queryset = ComplaintSlaRule.objects.filter(is_deleted=False).order_by("unique_id")
     serializer_class = ComplaintSlaRuleSerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["category__category_name", "priority__priority_name"]
+    search_fields = ["unique_id"]
     ordering_fields = ["unique_id", "is_active"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "sla-rules"

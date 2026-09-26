@@ -32,9 +32,7 @@ class _SoftDeleteMixin:
 
 class ComplaintRoutingRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_routing_rule"
-    queryset = ComplaintRoutingRule.objects.filter(is_deleted=False).select_related(
-        "category", "team"
-    ).order_by("unique_id")
+    queryset = ComplaintRoutingRule.objects.filter(is_deleted=False).order_by("unique_id")
     serializer_class = ComplaintRoutingRuleSerializer
     lookup_field = "unique_id"
     AUDIT_MODULE = "complaint-ticket"
@@ -65,15 +63,13 @@ class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["ticket__unique_id", "customer__customer_name"]
+    search_fields = ["ticket_id"]
     ordering_fields = ["submitted_at", "rating"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "feedback"
 
     def get_queryset(self):
-        qs = ComplaintFeedback.objects.filter(is_deleted=False).select_related(
-            "ticket", "customer"
-        ).order_by("-submitted_at")
+        qs = ComplaintFeedback.objects.filter(is_deleted=False).order_by("-submitted_at")
         ticket = self.request.query_params.get("ticket")
         if ticket:
             qs = qs.filter(ticket_id=ticket)

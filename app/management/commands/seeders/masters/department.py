@@ -36,7 +36,7 @@ class DepartmentSeeder(BaseSeeder):
                     defaults={
                         "department_name": dept_name,
                         "description": description,
-                        "corporation_id": corporation,
+                        "corporation_id": corporation.unique_id,
                         "is_active": True,
                         "is_deleted": False,
                     },

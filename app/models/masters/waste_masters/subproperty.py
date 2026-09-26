@@ -2,6 +2,7 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from .property import Property
+from app.utils import ref_cache
 
 
 
@@ -19,12 +20,8 @@ class SubProperty(BaseMaster):
         editable=False
     )
 
-    property_id = models.ForeignKey(
-        Property,
-        on_delete=models.PROTECT,
-        related_name="sub_properties",
-        to_field="unique_id"
-    )
+    # Plain Property unique_id (no DB relation).
+    property_id = models.CharField(max_length=40, db_column="property_id", db_index=True)
 
     sub_property_name = models.CharField(max_length=100)
 
@@ -39,8 +36,12 @@ class SubProperty(BaseMaster):
             )
         ]
 
+    @property
+    def property_ref(self):
+        return ref_cache.get(Property, self.property_id, "unique_id")
+
     def __str__(self):
-        return f"{self.sub_property_name} ({self.property_id.property_name})"  # FIXED
+        return f"{self.sub_property_name} ({getattr(self.property_ref, 'property_name', '')})"
 
     def delete(self, *args, **kwargs):
         self.is_deleted = True

@@ -86,7 +86,7 @@ def _best_routing_rule(ticket):
         is_deleted=False,
         is_active=True,
         category_id=ticket.category_id,
-    ).select_related("team", "user", "sla_rule")
+    )
 
     matching = [rule for rule in candidates if _routing_matches(rule, ticket)]
     if not matching:
@@ -141,19 +141,19 @@ def apply_routing_and_sla(ticket, save=True):
     if not ticket.assigned_team_id:
         routing_rule = _best_routing_rule(ticket)
         if routing_rule:
-            ticket.assigned_team = routing_rule.team
-            updated_fields.append("assigned_team")
+            ticket.assigned_team_id = routing_rule.team_id
+            updated_fields.append("assigned_team_id")
             if routing_rule.user_id and not ticket.assigned_user_id:
-                ticket.assigned_user = routing_rule.user
-                updated_fields.append("assigned_user")
-        elif ticket.category_id and ticket.category.default_team_id:
+                ticket.assigned_user_id = routing_rule.user_id
+                updated_fields.append("assigned_user_id")
+        elif ticket.category_id and ticket.category and ticket.category.default_team_id:
             # No routing rule matched — fall back to the category's default
             # team. This is what makes ComplaintRoutingRule optional: a
             # deployment only needs rules when a category must route to
             # different teams by area. Configuring the team on the Complaint
             # Type is enough for the common single-tenant case.
-            ticket.assigned_team = ticket.category.default_team
-            updated_fields.append("assigned_team")
+            ticket.assigned_team_id = ticket.category.default_team_id
+            updated_fields.append("assigned_team_id")
 
     # Prefer the most specific SLA rule that actually matches this ticket over
     # the one pinned on the routing rule.
@@ -216,39 +216,39 @@ def perform_escalation(ticket, target_team=None, reason=None, actor_user=None, b
     base_level = last_level or (current_team.escalation_level if current_team else 1)
     next_level = base_level + 1
 
-    ticket.assigned_team = target
-    ticket.assigned_staff = target.lead_staff
+    ticket.assigned_team_id = target.unique_id
+    ticket.assigned_staff_id = target.lead_staff_id
     old_status = ticket.status
     if escalated_status:
-        ticket.status = escalated_status
-        ticket.save(update_fields=["assigned_team", "assigned_staff", "status"])
+        ticket.status_id = escalated_status.unique_id
+        ticket.save(update_fields=["assigned_team_id", "assigned_staff_id", "status_id"])
     else:
-        ticket.save(update_fields=["assigned_team", "assigned_staff"])
+        ticket.save(update_fields=["assigned_team_id", "assigned_staff_id"])
 
     escalation = ComplaintEscalationHistory.objects.create(
-        ticket=ticket,
+        ticket_id=ticket.unique_id,
         escalation_level=next_level,
-        escalated_from_team=from_team,
-        escalated_to_team=target,
-        escalated_to_staff=target.lead_staff,
+        escalated_from_team_id=getattr(from_team, "unique_id", None),
+        escalated_to_team_id=getattr(target, "unique_id", None),
+        escalated_to_staff_id=getattr(target.lead_staff, "staff_unique_id", None),
         reason=reason,
         escalated_by_system=by_system,
     )
     ComplaintAssignmentHistory.objects.create(
-        ticket=ticket,
-        from_team=from_team,
-        to_team=target,
-        from_staff=from_staff,
-        to_staff=target.lead_staff,
-        assigned_by=actor_user,
+        ticket_id=ticket.unique_id,
+        from_team_id=getattr(from_team, "unique_id", None),
+        to_team_id=getattr(target, "unique_id", None),
+        from_staff_id=getattr(from_staff, "staff_unique_id", None),
+        to_staff_id=getattr(target.lead_staff, "staff_unique_id", None),
+        assigned_by_id=getattr(actor_user, "unique_id", None),
         assignment_reason=reason or ("SLA breach auto-escalation" if by_system else "Escalated"),
     )
     if escalated_status:
         ComplaintStatusHistory.objects.create(
-            ticket=ticket,
-            from_status=old_status,
-            to_status=escalated_status,
-            changed_by_user=actor_user,
+            ticket_id=ticket.unique_id,
+            from_status_id=getattr(old_status, "unique_id", None),
+            to_status_id=escalated_status.unique_id,
+            changed_by_user_id=getattr(actor_user, "unique_id", None),
             changed_by_system=by_system,
             remarks=f"Escalated to {target.team_name}" + (f": {reason}" if reason else ""),
             visible_to_citizen=True,

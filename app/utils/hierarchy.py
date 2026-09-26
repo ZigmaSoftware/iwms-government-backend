@@ -1,6 +1,9 @@
-from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
+from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyLevel, HierarchyNode
 from django.db.models import Q
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.utils.plain_ref import json_contains_any
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
@@ -36,8 +39,12 @@ def descendant_ids(node_or_id):
         HierarchyClosure.objects.filter(
             ancestor_id=node_id,
             is_deleted=False,
-            descendant__is_deleted=False,
-        ).values_list("descendant_id", flat=True)
+        )
+        # descendant_id is a plain unique_id; skip soft-deleted nodes.
+        .exclude(
+            descendant_id__in=HierarchyNode.objects.filter(is_deleted=True).values("unique_id")
+        )
+        .values_list("descendant_id", flat=True)
     )
 
 
@@ -126,15 +133,6 @@ def _staff_scope(user):
             staff_id=staff_id,
             is_active=True,
             is_deleted=False,
-        )
-        .prefetch_related(
-            "location_nodes",
-            "corporations",
-            "municipalities",
-            "town_panchayats",
-            "panchayat_unions",
-            "panchayats",
-            "wards",
         )
         .first()
     )
@@ -567,17 +565,28 @@ def sync_staff_data_scope(staff, source):
         staff_id=staff.staff_unique_id,
         is_deleted=False,
         defaults={
-            "state_id": getattr(source, "state_id", None),
-            "district_id": getattr(source, "district_id", None),
-            "area_type_id": getattr(source, "area_type_id", None),
+            # StaffDataScope's plain-id fields are named without the `_id`
+            # suffix (db_column carries it).
+            "state": getattr(source, "state_id", None),
+            "district": getattr(source, "district_id", None),
+            "area_type": getattr(source, "area_type_id", None),
             "is_active": True,
         },
     )
-    for _, source_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+    # Local-body / ward scope are plain JSON id lists (`<level>_ids`).
+    for level, source_field, _ in STAFF_LOCAL_BODY_M2M_LEVELS:
         value = getattr(source, source_field, None)
-        getattr(scope, m2m_field).set([value] if value else [])
+        setattr(scope, f"{level}_ids", [value] if value else [])
     source_wards = getattr(source, "wards", None)
-    scope.wards.set(source_wards.all() if source_wards is not None else [])
+    scope.ward_ids = (
+        list(source_wards.values_list("unique_id", flat=True))
+        if source_wards is not None
+        else []
+    )
+    scope.save(update_fields=[
+        *(f"{level}_ids" for level, _, _ in STAFF_LOCAL_BODY_M2M_LEVELS),
+        "ward_ids",
+    ])
     return scope, created
 
 
@@ -595,15 +604,12 @@ def flat_geo_fields_for_node(node):
     if not node:
         return {}
     node_id = _node_id(node)
-    links = HierarchyClosure.objects.filter(
+    ancestor_ids = HierarchyClosure.objects.filter(
         descendant_id=node_id, is_deleted=False
-    ).select_related("ancestor")
+    ).values("ancestor_id")
 
     fields = {}
-    for link in links:
-        ancestor = link.ancestor
-        if not ancestor or ancestor.is_deleted:
-            continue
+    for ancestor in HierarchyNode.objects.filter(unique_id__in=ancestor_ids, is_deleted=False):
         props = getattr(ancestor, "custom_properties", None) or {}
         source_type = props.get("source_type")
         source_id = props.get("source_id")
@@ -685,7 +691,8 @@ def _narrow_by_ward(queryset, scope):
     extra narrowing on top of the local-body/district scope, never a
     widening, so it's safe to apply speculatively across every scoped
     queryset in the app. Detects both conventions in use: a singular `ward`
-    FK (Bins, CustomerCreation, ...) and a plural `wards` M2M (TripPlan).
+    FK (Bins, ...), a plain-string `ward_id` column (CustomerCreation) and a
+    plural `wards` M2M (TripPlan).
     """
     ward_ids = list(scope.wards.values_list("unique_id", flat=True))
     if not ward_ids:
@@ -696,16 +703,33 @@ def _narrow_by_ward(queryset, scope):
         field = model._meta.get_field("ward")
     except Exception:
         field = None
+    if field is None:
+        # Plain-string `ward_id` column (CustomerCreation).
+        try:
+            model._meta.get_field("ward_id")
+            return queryset.filter(ward_id__in=ward_ids)
+        except Exception:
+            pass
     if field is not None:
         if field.many_to_many:
             return queryset.filter(ward__unique_id__in=ward_ids).distinct()
         return queryset.filter(ward_id__in=ward_ids)
 
     try:
-        model._meta.get_field("wards")
+        wards_field = model._meta.get_field("wards")
+    except Exception:
+        wards_field = None
+    if wards_field is not None:
+        return queryset.filter(wards__unique_id__in=ward_ids).distinct()
+
+    # Plain JSON list of ward unique_ids (Collection_point, ...).
+    try:
+        model._meta.get_field("ward_ids")
     except Exception:
         return queryset
-    return queryset.filter(wards__unique_id__in=ward_ids).distinct()
+    from app.utils.plain_ref import json_contains_any
+
+    return queryset.filter(json_contains_any("ward_ids", ward_ids))
 
 
 def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
@@ -818,13 +842,12 @@ def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):
 
     assignment_ids = (
         DailyTripAssignment.objects.filter(
-            wards__unique_id__in=effective_ward_ids,
+            json_contains_any("ward_ids", effective_ward_ids),
             is_deleted=False,
         )
         .values("unique_id")
-        .distinct()
     )
-    return queryset.filter(trip_assignment_id_id__in=assignment_ids)
+    return queryset.filter(trip_assignment_id__in=assignment_ids)
 
 
 def _single_local_body(scope):
@@ -1174,29 +1197,43 @@ def _expanded_descendants(scope):
     for level, ids in lb_ids_by_level_seen.items():
         if not ids:
             continue
-        m2m_field = next(f for lvl, _, f in STAFF_LOCAL_BODY_M2M_LEVELS if lvl == level)
-        rows = (
+        # `<level>_ids` is a plain JSON id list; staff are resolved in bulk.
+        ids_field = f"{level}_ids"
+        wanted = set(ids)
+        scope_rows = list(
             StaffDataScope.objects.filter(
+                json_contains_any(ids_field, list(wanted)),
                 is_active=True,
                 is_deleted=False,
-                **{f"{m2m_field}__unique_id__in": ids},
-            ).values(
-                f"{m2m_field}__unique_id",
-                "staff_id",
-                "staff__employee_name",
-                "staff__staff_config_name",
-                "staff__governmentusertype_id__name",
-            )
+            ).values_list(ids_field, "staff_id")
         )
-        for row in rows:
-            staff_by_lb.setdefault(row[f"{m2m_field}__unique_id"], []).append(
-                {
-                    "staff_unique_id": row["staff_id"],
-                    "employee_name": row["staff__employee_name"],
-                    "role": row["staff__governmentusertype_id__name"],
-                    "staff_config_name": row["staff__staff_config_name"],
-                }
+        staff_info = {
+            row["staff_unique_id"]: row
+            for row in StaffcreationOfficeDetails.objects.filter(
+                staff_unique_id__in={staff_id for _, staff_id in scope_rows}
+            ).values(
+                "staff_unique_id",
+                "employee_name",
+                "staff_config_name",
+                "governmentusertype_id",
             )
+        }
+        role_names = dict(
+            GovernmentStaffUserType.objects.filter(
+                unique_id__in={row["governmentusertype_id"] for row in staff_info.values()}
+            ).values_list("unique_id", "name")
+        )
+        for lb_ids, staff_id in scope_rows:
+            info = staff_info.get(staff_id, {})
+            for lb_id in wanted.intersection(lb_ids or []):
+                staff_by_lb.setdefault(lb_id, []).append(
+                    {
+                        "staff_unique_id": staff_id,
+                        "employee_name": info.get("employee_name"),
+                        "role": role_names.get(info.get("governmentusertype_id")),
+                        "staff_config_name": info.get("staff_config_name"),
+                    }
+                )
 
     district_names = dict(
         District.objects.filter(unique_id__in=district_ids).values_list(
@@ -1267,16 +1304,22 @@ def district_and_city_for_node(node_id, cache=None):
     if cache is not None and node_id in cache:
         return cache[node_id]
 
-    links = HierarchyClosure.objects.filter(
+    ancestor_ids = HierarchyClosure.objects.filter(
         descendant_id=node_id, is_deleted=False
-    ).select_related("ancestor", "ancestor__level")
+    ).values("ancestor_id")
+    ancestors = list(
+        HierarchyNode.objects.filter(unique_id__in=ancestor_ids, is_deleted=False)
+        .exclude(level_id__isnull=True)
+    )
+    level_names = dict(
+        HierarchyLevel.objects.filter(
+            unique_id__in={a.level_id for a in ancestors}
+        ).values_list("unique_id", "name")
+    )
 
     result = dict(empty)
-    for link in links:
-        ancestor = link.ancestor
-        if not ancestor or ancestor.is_deleted or not ancestor.level_id:
-            continue
-        level_name = ancestor.level.name
+    for ancestor in ancestors:
+        level_name = level_names.get(ancestor.level_id)
         if level_name == "District":
             result["district_id"] = ancestor.unique_id
             result["district_name"] = ancestor.name

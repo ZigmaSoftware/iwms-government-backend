@@ -41,7 +41,7 @@ class ValidateBinQrViewSet(viewsets.ViewSet):
         return Response(
             {
                 "bin": serialize_bin_brief(ctx.bin, request=request),
-                "collection_point": serialize_cp_brief(ctx.bin.collection_point_id),
+                "collection_point": serialize_cp_brief(ctx.bin.collection_point),
                 "trip_collection_point": serialize_trip_cp_brief(ctx.trip_cp),
                 "assignment": serialize_assignment_brief(ctx.assignment),
                 "trip_progress": progress_payload(ctx.assignment),

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db.models import Q
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation, StaffPersonalDetails
 from app.models.superadmin.role_management.userType import UserType
 
 
@@ -87,7 +87,7 @@ class StaffSerializer(serializers.ModelSerializer):
 
         # ---------- PHONE RESOLUTION ----------
         phone = None
-        if hasattr(instance, "personal_details"):
+        if getattr(instance, "personal_details", None) is not None:
             phone = instance.personal_details.contact_mobile
         elif customer_id:
             phone = customer_id.contact_no
@@ -99,7 +99,9 @@ class StaffSerializer(serializers.ModelSerializer):
             customer_qs = CustomerCreation.objects.filter(is_deleted=False)
 
             staff_exists = staff_qs.filter(
-                Q(personal_details__contact_mobile=phone)
+                staff_unique_id__in=StaffPersonalDetails.objects.filter(
+                    contact_mobile=phone
+                ).values("staff_id")
             ).exists()
             customer_exists = customer_qs.filter(
                 Q(contact_no=phone)

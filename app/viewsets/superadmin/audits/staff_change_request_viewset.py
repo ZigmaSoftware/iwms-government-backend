@@ -53,9 +53,7 @@ class StaffChangeRequestViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return None
 
     def get_queryset(self):
-        queryset = StaffChangeRequest.objects.select_related(
-            "requested_by", "decided_by"
-        )
+        queryset = StaffChangeRequest.objects.all()
         staff = self._current_staff()
         if staff is None:
             return queryset.none()
@@ -69,7 +67,7 @@ class StaffChangeRequestViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if getattr(self.request.user, "is_superuser", False):
             return queryset
 
-        return queryset.filter(requested_by=staff)
+        return queryset.filter(requested_by_id=staff.staff_unique_id)
 
     def create(self, request, *args, **kwargs):
         staff = self._current_staff()
@@ -83,7 +81,7 @@ class StaffChangeRequestViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         data = serializer.validated_data
 
         instance = StaffChangeRequest.objects.create(
-            requested_by=staff,
+            requested_by_id=staff.staff_unique_id,
             approver_id=staff.staff_head_id,
             field_name=data["field_name"],
             old_value=data["old_value"],
@@ -124,17 +122,17 @@ class StaffChangeRequestViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         with transaction.atomic():
             personal_details, _ = StaffPersonalDetails.objects.get_or_create(
-                staff=instance.requested_by
+                staff_id=instance.requested_by_id
             )
             setattr(personal_details, instance.field_name, instance.new_value)
             personal_details.save(update_fields=[instance.field_name, "updated_at"])
 
             instance.status = StaffChangeRequest.Status.APPROVED
-            instance.decided_by = decider
+            instance.decided_by_id = getattr(decider, "staff_unique_id", None)
             instance.decided_at = timezone.now()
             instance.decision_remarks = serializer.validated_data.get("decision_remarks")
             instance.save(update_fields=[
-                "status", "decided_by", "decided_at", "decision_remarks",
+                "status", "decided_by_id", "decided_at", "decision_remarks",
             ])
 
         self.log_audit(
@@ -159,10 +157,10 @@ class StaffChangeRequestViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         previous_data = self._serialize_instance(instance)
 
         instance.status = StaffChangeRequest.Status.REJECTED
-        instance.decided_by = decider
+        instance.decided_by_id = getattr(decider, "staff_unique_id", None)
         instance.decided_at = timezone.now()
         instance.decision_remarks = serializer.validated_data.get("decision_remarks")
-        instance.save(update_fields=["status", "decided_by", "decided_at", "decision_remarks"])
+        instance.save(update_fields=["status", "decided_by_id", "decided_at", "decision_remarks"])
 
         self.log_audit(
             request,

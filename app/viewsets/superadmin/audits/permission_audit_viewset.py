@@ -17,20 +17,11 @@ class PermissionAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     throttle_scope = "permission_audit"
     permission_classes = [IsAuthenticated]
 
-    queryset = PermissionAuditLog.objects.all().select_related(
-        "staffusertype",
-        "usertype",
-        "contractorusertype",
-        "governmentusertype",
-        "mainscreen",
-        "userscreen",
-        "userscreenaction",
-        "updated_by",
-    )
+    queryset = PermissionAuditLog.objects.all()
     serializer_class = PermissionAuditLogSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["mainscreen__mainscreen_name", "userscreen__userscreen_name", "action_type"]
+    search_fields = ["mainscreen_id", "userscreen_id", "action_type"]
     ordering_fields = ["timestamp", "action_type"]
 
     def get_queryset(self):

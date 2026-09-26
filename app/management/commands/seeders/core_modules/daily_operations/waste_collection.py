@@ -1,5 +1,6 @@
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
@@ -57,7 +58,9 @@ class WasteCollectionSeeder(BaseSeeder):
         assignments = list(
             DailyTripAssignment.objects.filter(
                 is_deleted=False,
-                trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
+                trip_plan_id__in=TripPlan.objects.filter(
+                    collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD
+                ).values("unique_id"),
             )
             # Today is reserved for the live driver_user/scheduler-demo trip,
             # which resets its own assignment's stops on every seed run.
@@ -74,8 +77,8 @@ class WasteCollectionSeeder(BaseSeeder):
         for assignment in assignments:
             day_offset = (today - assignment.trip_date).days
             stops = DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
-            ).select_related("customer_id").order_by("sequence")
+                trip_assignment_id=assignment.unique_id, is_deleted=False
+            ).order_by("sequence")
 
             for stop in stops:
                 if stop.is_collected:
@@ -83,14 +86,15 @@ class WasteCollectionSeeder(BaseSeeder):
 
                 outcome = _deterministic_outcome(stop.sequence, day_offset)
                 if outcome == "COLLECTED":
+                    stop_customer_id = stop.customer_id
                     if WasteCollection.objects.filter(
-                        customer=stop.customer_id, trip_assignment_id=assignment
+                        customer_id=stop_customer_id, trip_assignment_id=assignment.unique_id
                     ).exists():
                         continue
                     wet, dry, mixed, sanitary = WASTE_PRESETS[(stop.sequence + day_offset) % len(WASTE_PRESETS)]
                     WasteCollection.objects.create(
-                        customer=stop.customer_id,
-                        trip_assignment_id=assignment,
+                        customer_id=stop_customer_id,
+                        trip_assignment_id=assignment.unique_id,
                         collection_date=assignment.trip_date,
                         wet_waste=wet,
                         dry_waste=dry,

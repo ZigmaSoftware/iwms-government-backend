@@ -2,7 +2,7 @@ import re
 import csv
 import io
 
-from django.db.models import Q, Count, Prefetch
+from django.db.models import Q, Count
 from django.db.models.functions import Upper
 from rest_framework import filters, status
 from rest_framework.decorators import action
@@ -137,16 +137,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = (
         CustomerCreation.objects
         .filter(is_deleted=False)
-        .select_related(
-            "ward",
-            "property_ref", "sub_property",
-        )
-        .prefetch_related(
-            Prefetch(
-                "waste_types",
-                queryset=WasteType.objects.filter(is_deleted=False).order_by("waste_type_name"),
-            )
-        )
         .order_by("customer_name")
     )
 
@@ -168,7 +158,11 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if waste_type_param:
             waste_type_ids = [v for v in waste_type_param.split(",") if v]
             if waste_type_ids:
-                queryset = queryset.filter(waste_types__unique_id__in=waste_type_ids).distinct()
+                # waste_type_ids is a JSON list; match any of the requested ids.
+                waste_type_filter = Q()
+                for waste_type_id in waste_type_ids:
+                    waste_type_filter |= Q(waste_type_ids__contains=waste_type_id)
+                queryset = queryset.filter(waste_type_filter)
 
         ward_uid = params.get("ward") or params.get("ward_id")
         if ward_uid:
@@ -396,7 +390,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # ✅ filter by subproperty
         if subproperty_obj:
-            queryset = queryset.filter(sub_property=subproperty_obj)
+            queryset = queryset.filter(sub_property_id=subproperty_obj.unique_id)
 
         # ✅ APPLY DYNAMIC FILTERS (MAIN FIX)
         for param, value in request.query_params.items():

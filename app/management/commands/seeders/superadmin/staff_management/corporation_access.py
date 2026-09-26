@@ -110,20 +110,22 @@ class CorporationAccessSeeder(BaseSeeder):
                 # StaffDataScope scoped to this Corporation (state/district/
                 # area_type/corporation) — the enforced access boundary.
                 scope, _ = StaffDataScope.objects.update_or_create(
-                    staff=staff,
+                    staff_id=staff.staff_unique_id,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id,
-                        "district_id": corporation.district_id,
-                        "area_type_id": corporation.area_type_id,
+                        # StaffDataScope's plain-id fields are named without
+                        # the `_id` suffix (db_column carries it).
+                        "state": corporation.state_id,
+                        "district": corporation.district_id,
+                        "area_type": corporation.area_type_id,
                         "is_active": True,
+                        "corporation_ids": [corporation.unique_id],
+                        "municipality_ids": [],
+                        "town_panchayat_ids": [],
+                        "panchayat_union_ids": [],
+                        "panchayat_ids": [],
                     },
                 )
-                scope.corporations.set([corporation.unique_id])
-                scope.municipalities.clear()
-                scope.town_panchayats.clear()
-                scope.panchayat_unions.clear()
-                scope.panchayats.clear()
 
             corporation_admin = StaffcreationOfficeDetails.objects.filter(
                 username=f"{code}.corp.admin",
@@ -151,20 +153,22 @@ class CorporationAccessSeeder(BaseSeeder):
                     update_fields=["staff_head_id", "staff_head", "updated_at"]
                 )
                 scope, _ = StaffDataScope.objects.update_or_create(
-                    staff=staff,
+                    staff_id=staff.staff_unique_id,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id,
-                        "district_id": corporation.district_id,
-                        "area_type_id": corporation.area_type_id,
+                        # StaffDataScope's plain-id fields are named without
+                        # the `_id` suffix (db_column carries it).
+                        "state": corporation.state_id,
+                        "district": corporation.district_id,
+                        "area_type": corporation.area_type_id,
                         "is_active": True,
+                        "corporation_ids": [corporation.unique_id],
+                        "municipality_ids": [],
+                        "town_panchayat_ids": [],
+                        "panchayat_union_ids": [],
+                        "panchayat_ids": [],
                     },
                 )
-                scope.corporations.set([corporation.unique_id])
-                scope.municipalities.clear()
-                scope.town_panchayats.clear()
-                scope.panchayat_unions.clear()
-                scope.panchayats.clear()
                 linked += 1
             corporation_admin.staff_head_id = None
             corporation_admin.staff_head = None

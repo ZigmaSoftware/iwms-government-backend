@@ -17,21 +17,26 @@ class TripRetripRequestSerializer(serializers.ModelSerializer):
     scheduled_time = serializers.TimeField(source="assignment.scheduled_time", read_only=True)
     assignment_status = serializers.CharField(source="assignment.status", read_only=True)
     collection_type = serializers.SerializerMethodField()
-    vehicle_no = serializers.CharField(source="assignment.vehicle_id.vehicle_no", read_only=True)
+    vehicle_no = serializers.CharField(source="assignment.vehicle.vehicle_no", read_only=True)
     area_name = serializers.SerializerMethodField()
     requested_by_name = serializers.CharField(
         source="requested_by.employee_name", read_only=True
     )
     reviewed_by_name = serializers.CharField(source="reviewed_by.employee_name", read_only=True)
     live_pending = serializers.SerializerMethodField()
+    # Plain id columns, exposed under their original API names.
+    assignment = serializers.CharField(source="assignment_id", read_only=True)
+    requested_by = serializers.CharField(source="requested_by_id", read_only=True)
+    reviewed_by = serializers.CharField(source="reviewed_by_id", read_only=True)
+    new_assignment = serializers.CharField(source="new_assignment_id", read_only=True)
 
     class Meta:
         model = TripRetripRequest
-        fields = "__all__"
+        exclude = ["assignment_id", "requested_by_id", "reviewed_by_id", "new_assignment_id"]
         read_only_fields = ["unique_id", "created_at", "updated_at"]
 
     def get_collection_type(self, obj):
-        plan = getattr(obj.assignment, "trip_plan_id", None)
+        plan = getattr(obj.assignment, "trip_plan", None)
         return getattr(plan, "collection_type", None)
 
     def get_area_name(self, obj):

@@ -44,11 +44,10 @@ class Collection_point(BaseMaster):
     town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    wards = models.ManyToManyField(
-        Ward,
-        related_name="collection_points_multi",
-        blank=True,
-        help_text="Wards this collection point serves.",
+    # Ward unique_ids this collection point serves (no DB relation); the
+    # `wards` property below resolves them.
+    ward_ids = models.JSONField(
+        default=list, blank=True, help_text="Ward unique_ids this collection point serves."
     )
 
     cp_name = models.CharField(max_length=100)
@@ -65,6 +64,11 @@ class Collection_point(BaseMaster):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+
+    @property
+    def wards(self):
+        """Ward QuerySet for `ward_ids`."""
+        return Ward.objects.filter(unique_id__in=self.ward_ids or [])
 
     def clean(self):
         if not self.district_id:

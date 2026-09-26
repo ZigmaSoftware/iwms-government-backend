@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.ward_utils import FLAT_GEO_FIELDS
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
@@ -42,7 +43,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
             # driver_id.district_id is a plain unique_id string now (no DB
             # relation) — resolve the District row separately for filtering
             # candidates and for the log message.
-            district_id = template.driver_id.district_id if template.driver_id_id else None
+            district_id = template.driver.district_id if template.driver else None
             district = (
                 District.objects.filter(unique_id=district_id).first()
                 if district_id
@@ -56,7 +57,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 StaffcreationOfficeDetails.objects.filter(
                     district_id=district_id, is_deleted=False
                 )
-                .exclude(staff_unique_id__in=[template.driver_id_id, template.operator_id_id])
+                .exclude(staff_unique_id__in=[template.driver_id, template.operator_id])
                 .order_by("staff_unique_id")
             )
             if len(candidates) < 2:
@@ -75,14 +76,14 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
             }
             approver = template.approved_by
 
-            existing = AlternativeStaffTemplate.objects.filter(staff_template=template).first()
+            existing = AlternativeStaffTemplate.objects.filter(staff_template_id=template.unique_id).first()
             if existing:
-                existing.driver_id = alt_driver
-                existing.operator_id = alt_operator
+                existing.driver_id = alt_driver.staff_unique_id
+                existing.operator_id = alt_operator.staff_unique_id
                 existing.extra_operator_id = [extra_operator.staff_unique_id]
                 existing.change_reason = reason
                 existing.change_remarks = remarks
-                existing.approved_by = approver
+                existing.approved_by_id = ref_id(approver)
                 existing.from_date = existing.from_date or from_date
                 existing.to_date = existing.to_date or to_date
                 existing.approval_status = "APPROVED"
@@ -94,15 +95,15 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 continue
 
             AlternativeStaffTemplate.objects.create(
-                staff_template=template,
-                driver_id=alt_driver,
-                operator_id=alt_operator,
+                staff_template_id=template.unique_id,
+                driver_id=alt_driver.staff_unique_id,
+                operator_id=alt_operator.staff_unique_id,
                 extra_operator_id=[extra_operator.staff_unique_id],
                 from_date=from_date,
                 to_date=to_date,
                 change_reason=reason,
                 change_remarks=remarks,
-                approved_by=approver,
+                approved_by_id=ref_id(approver),
                 approval_status="APPROVED",
                 **geo_defaults,
             )

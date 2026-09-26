@@ -1,10 +1,6 @@
 from django.core.validators import RegexValidator
 from django.db import models
 from app.utils.base_models import BaseMaster
-from app.models.masters.waste_masters.property import Property
-from app.models.masters.waste_masters.subproperty import SubProperty
-from app.models.masters.waste_masters.wastetype import WasteType
-from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from app.utils.app_feature_grants import APP_MODULE_CHOICES
 from app.utils.customer_qr import (
@@ -13,6 +9,7 @@ from app.utils.customer_qr import (
     generate_qr_data as build_customer_qr_data,
     resolve_subproperty_type,
 )
+from app.utils import ref_cache
 
 
 def generate_customer_id():
@@ -65,7 +62,6 @@ class CustomerCreation(BaseMaster):
         "villa_no",
         "industry_name",
         "industry_type",
-        "sub_property",
         "sub_property_id",
     }
     QR_COMPARE_FIELDS = (
@@ -123,15 +119,7 @@ class CustomerCreation(BaseMaster):
     town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    ward = models.ForeignKey(
-        Ward,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="customers",
-        to_field="unique_id",
-        db_column="ward_id",
-    )
+    ward_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
 
     pincode = models.CharField(
         max_length=6,
@@ -211,24 +199,23 @@ class CustomerCreation(BaseMaster):
         help_text="List of {member_name, id_proof_type, id_no} dicts for family members",
     )
 
-    property_ref = models.ForeignKey(
-        Property,
-        on_delete=models.PROTECT,
-        related_name="customer_creation",
-        db_column="property"
-    )
-
-    sub_property = models.ForeignKey(
-        SubProperty,
-        on_delete=models.PROTECT,
-        related_name="customer_creation"
-    )
-
-    waste_types = models.ManyToManyField(
-        WasteType,
-        related_name="customer_creations",
+    # Property/SubProperty/WasteType/Ward are plain unique_id strings (no DB
+    # relation), same as the geo fields above. The `property_ref`/
+    # `sub_property`/`ward`/`waste_types` properties below resolve them.
+    property_id = models.CharField(max_length=40, db_index=True)
+    sub_property_id = models.CharField(max_length=40, db_index=True)
+    waste_type_ids = models.JSONField(
+        default=list,
         blank=True,
+        help_text="List of WasteType unique_ids",
     )
+
+    # BaseMaster's created_by/updated_by FKs replaced with the Account's
+    # account_id as a plain string.
+    created_by = None
+    updated_by = None
+    created_by_id = models.CharField(max_length=50, null=True, blank=True)
+    updated_by_id = models.CharField(max_length=50, null=True, blank=True)
 
     # =============================
     # AUTHENTICATION FIELDS
@@ -320,6 +307,43 @@ class CustomerCreation(BaseMaster):
         self.is_deleted = True
         self.is_active = False
         self.save(update_fields=["is_deleted", "is_active"])
+
+    # =============================
+    # PLAIN-STRING RELATION LOOKUPS
+    # =============================
+    def _lookup(self, model_path, value):
+        """Resolve a plain unique_id string into its row (request-cached)."""
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, "unique_id")
+
+    @property
+    def ward(self):
+        return self._lookup("app.models.masters.ward.Ward", self.ward_id)
+
+    @property
+    def property_ref(self):
+        return self._lookup(
+            "app.models.masters.waste_masters.property.Property", self.property_id
+        )
+
+    @property
+    def sub_property(self):
+        return self._lookup(
+            "app.models.masters.waste_masters.subproperty.SubProperty",
+            self.sub_property_id,
+        )
+
+    @property
+    def waste_types(self):
+        """WasteType QuerySet for `waste_type_ids`."""
+        from app.models.masters.waste_masters.wastetype import WasteType
+
+        return WasteType.objects.filter(unique_id__in=self.waste_type_ids or [])
 
 
     def generate_group_qr_id(self):

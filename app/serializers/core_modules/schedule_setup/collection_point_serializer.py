@@ -19,6 +19,7 @@ from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
 from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import BARE_TO_ID_GEO_FIELDS, normalize_flat_geo_attrs, validate_wards_for_flat_geo
+from app.utils import ref_cache
 
 
 class CollectionPointBinInputSerializer(serializers.Serializer):
@@ -56,31 +57,31 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
     panchayat_name = serializers.SerializerMethodField()
 
     def get_country_name(self, obj):
-        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Country, obj.country_id, "unique_id"), "name", None)
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
     bins = CollectionPointBinInputSerializer(many=True, write_only=True, required=False)
     bins_detail = serializers.SerializerMethodField()
@@ -135,7 +136,7 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
         read_only_fields = ["unique_id", "created_at", "updated_at"]
 
     def get_bins_detail(self, obj):
-        bins = obj.bin.filter(is_deleted=False)
+        bins = Bins.objects.filter(collection_point_id=obj.unique_id, is_deleted=False)
         return [{
             "unique_id": bin_obj.unique_id,
             "bin_name": bin_obj.bin_name,
@@ -144,8 +145,8 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
             "ward_id": bin_obj.ward_id,
             "ward_name": getattr(bin_obj.ward, "ward_name", None),
             "bin_qr": bin_obj.bin_qr.url if bin_obj.bin_qr else None,
-            "wastetype_id": bin_obj.wastetype_id_id,
-            "wastetype_name": getattr(bin_obj.wastetype_id, "waste_type_name", None),
+            "wastetype_id": bin_obj.wastetype_id,
+            "wastetype_name": getattr(bin_obj.wastetype, "waste_type_name", None),
             "is_active": bin_obj.is_active,
         } for bin_obj in bins]
 
@@ -159,33 +160,33 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
         if bins is None:
             return
         submitted_ids = {bin_data["unique_id"] for bin_data in bins if bin_data.get("unique_id")}
-        Bins.objects.filter(collection_point_id=collection_point).exclude(unique_id__in=submitted_ids).update(
+        Bins.objects.filter(collection_point_id=collection_point.unique_id).exclude(unique_id__in=submitted_ids).update(
             is_active=False, is_deleted=True,
         )
         for bin_data in bins:
             waste_type = WasteType.objects.get(unique_id=bin_data["wastetype_id"])
             unique_id = bin_data.get("unique_id")
             existing = (
-                Bins.objects.filter(unique_id=unique_id, collection_point_id=collection_point).first()
+                Bins.objects.filter(unique_id=unique_id, collection_point_id=collection_point.unique_id).first()
                 if unique_id else None
             )
             if existing:
-                existing.wastetype_id = waste_type
+                existing.wastetype_id = waste_type.unique_id
                 existing.bin_name = bin_data["bin_name"]
                 existing.bin_capacity = bin_data["bin_capacity"]
                 existing.bin_type = bin_data["bin_type"]
-                existing.ward = bin_data["ward_id"]
+                existing.ward_id = bin_data["ward_id"].unique_id
                 existing.is_active = bin_data.get("is_active", True)
                 existing.is_deleted = False
                 existing.save()
             else:
                 Bins.objects.create(
-                    collection_point_id=collection_point,
-                    wastetype_id=waste_type,
+                    collection_point_id=collection_point.unique_id,
+                    wastetype_id=waste_type.unique_id,
                     bin_name=bin_data["bin_name"],
                     bin_capacity=bin_data["bin_capacity"],
                     bin_type=bin_data["bin_type"],
-                    ward=bin_data["ward_id"],
+                    ward_id=bin_data["ward_id"].unique_id,
                     bin_image="default.png",
                     is_active=bin_data.get("is_active", True),
                 )
@@ -267,8 +268,9 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
                     )
         elif instance and "wards" in attrs:
             allowed_ward_ids = {ward.pk for ward in effective_wards}
-            invalid_existing_bin = instance.bin.filter(
-                Q(ward__isnull=True) | ~Q(ward_id__in=allowed_ward_ids),
+            invalid_existing_bin = Bins.objects.filter(
+                Q(ward_id__isnull=True) | ~Q(ward_id__in=allowed_ward_ids),
+                collection_point_id=instance.unique_id,
                 is_deleted=False,
             ).exists()
             if invalid_existing_bin:
@@ -311,5 +313,9 @@ class CollectionPointSerializer(GeoCoordinateSerializerMixin, serializers.ModelS
                     "panchayat_id",
                 ],
             )(self, attrs)
+
+        # Wards are stored as a plain list of unique_ids (no M2M).
+        if "wards" in attrs:
+            attrs["ward_ids"] = [ward.unique_id for ward in attrs.pop("wards")]
 
         return attrs

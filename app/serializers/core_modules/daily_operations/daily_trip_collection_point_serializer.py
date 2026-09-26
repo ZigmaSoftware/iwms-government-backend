@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from app.utils.plain_ref import ref_id
 from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
@@ -7,7 +8,6 @@ from app.models.core_modules.daily_operations.daily_trip_collection_point import
     DailyTripCollectionPoint,
 )
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display, hierarchy_payload
 
 
@@ -15,24 +15,32 @@ class DailyTripCollectionPointSerializer(
     
     serializers.ModelSerializer,
 ):
-    trip_assignment_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=DailyTripAssignment.objects.filter(is_deleted=False),
-    )
-    collection_point_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=Collection_point.objects.filter(is_deleted=False),
-    )
-    bin_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=Bins.objects.filter(is_deleted=False),
-    )
-    collected_by = UniqueIdOrPkField(
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
+    # Plain unique_id references (no DB relation); checked in validate_*.
+    trip_assignment_id = serializers.CharField()
+    collection_point_id = serializers.CharField()
+    bin_id = serializers.CharField()
+    collected_by = serializers.CharField(source="collected_by_id", required=False, allow_null=True)
+    carried_to_assignment = serializers.CharField(source="carried_to_assignment_id", read_only=True)
+
+    def validate_trip_assignment_id(self, value):
+        if not DailyTripAssignment.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with unique_id={value} does not exist.")
+        return value
+
+    def validate_collection_point_id(self, value):
+        if not Collection_point.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with unique_id={value} does not exist.")
+        return value
+
+    def validate_bin_id(self, value):
+        if not Bins.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with unique_id={value} does not exist.")
+        return value
+
+    def validate_collected_by(self, value):
+        if value and not Staffcreation.objects.filter(staff_unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with staff_unique_id={value} does not exist.")
+        return value or None
 
     trip_assignment = serializers.SerializerMethodField()
     collection_point = serializers.SerializerMethodField()
@@ -78,10 +86,10 @@ class DailyTripCollectionPointSerializer(
         validators = []
 
     def get_trip_assignment(self, obj):
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return None
-        trip_plan = getattr(assignment, "trip_plan_id", None)
+        trip_plan = getattr(assignment, "trip_plan", None)
         return {
             "unique_id": assignment.unique_id,
             "trip_date": assignment.trip_date,
@@ -93,7 +101,7 @@ class DailyTripCollectionPointSerializer(
         }
 
     def get_collection_point(self, obj):
-        cp = obj.collection_point_id
+        cp = obj.collection_point
         if not cp:
             return None
         return {
@@ -110,10 +118,10 @@ class DailyTripCollectionPointSerializer(
         return {"location_name": name, "location_level": level}
 
     def get_bin(self, obj):
-        bin_obj = obj.bin_id
+        bin_obj = obj.bin
         if not bin_obj:
             return None
-        waste_type = getattr(bin_obj, "wastetype_id", None)
+        waste_type = getattr(bin_obj, "wastetype", None)
         return {
             "unique_id": bin_obj.unique_id,
             "bin_name": bin_obj.bin_name,
@@ -137,31 +145,34 @@ class DailyTripCollectionPointSerializer(
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
-        assignment = attrs.get(
-            "trip_assignment_id",
-            getattr(instance, "trip_assignment_id", None),
-        )
+        assignment = DailyTripAssignment.objects.filter(
+            unique_id=attrs.get("trip_assignment_id", getattr(instance, "trip_assignment_id", None))
+        ).first()
         collection_point = attrs.get(
             "collection_point_id",
             getattr(instance, "collection_point_id", None),
         )
-        bin_obj = attrs.get("bin_id", getattr(instance, "bin_id", None))
+        bin_obj = Bins.objects.filter(
+            unique_id=attrs.get("bin_id", getattr(instance, "bin_id", None))
+        ).first()
 
         if assignment and assignment.status == DailyTripAssignment.STATUS_CANCELLED:
             raise serializers.ValidationError(
                 "Cannot add collection points to a cancelled trip assignment."
             )
 
-        if bin_obj and collection_point and bin_obj.collection_point_id != collection_point:
+        if bin_obj and collection_point and bin_obj.collection_point_id != getattr(
+            collection_point, "unique_id", collection_point
+        ):
             raise serializers.ValidationError(
                 {"bin_id": "Selected bin does not belong to the collection point."}
             )
 
         if assignment and collection_point:
             conflict = DailyTripCollectionPoint.objects.filter(
-                trip_assignment_id=assignment,
-                collection_point_id=collection_point,
-                bin_id=bin_obj,
+                trip_assignment_id=ref_id(assignment),
+                collection_point_id=ref_id(collection_point),
+                bin_id=ref_id(bin_obj),
                 is_deleted=False,
             )
             if instance:

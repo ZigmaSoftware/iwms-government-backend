@@ -1,5 +1,6 @@
 from django.db import models
 from app.models.masters.waste_masters.wastetype import WasteType
+from app.utils import ref_cache
 from app.utils.comfun import generate_unique_id
 
 def generate_daily_waste_comparison_id():
@@ -8,7 +9,8 @@ def generate_daily_waste_comparison_id():
 class DailyWasteComparison(models.Model):
     unique_id = models.CharField(max_length=30, primary_key=True, default=generate_daily_waste_comparison_id, editable=False)
     collection_date = models.DateField()
-    waste_type_id = models.ForeignKey(WasteType, on_delete=models.DO_NOTHING, db_column="waste_type_id", db_constraint=False)
+    # WasteType.unique_id (plain string, no DB relation).
+    waste_type_id = models.CharField(max_length=30, db_column="waste_type_id", db_index=True)
 
     # Plain unique_id references (no ForeignKey/DB relation) — see
     # docs/geo_hierarchy_fk_removal.md. Existence of the referenced row is
@@ -34,3 +36,7 @@ class DailyWasteComparison(models.Model):
         indexes = [
             models.Index(fields=["collection_date", "panchayat"]),
         ]
+
+    @property
+    def waste_type(self):
+        return ref_cache.get(WasteType, self.waste_type_id)

@@ -32,7 +32,7 @@ class ComplaintTeamSeeder(BaseSeeder):
         sanitation = created.get("SANITATION")
         sanitation_l2 = created.get("SANITATION_L2")
         if sanitation and sanitation_l2 and not sanitation.escalates_to_id:
-            sanitation.escalates_to = sanitation_l2
-            sanitation.save(update_fields=["escalates_to"])
+            sanitation.escalates_to_id = sanitation_l2.unique_id
+            sanitation.save(update_fields=["escalates_to_id"])
 
         self.log(f"---Complaint teams seeded ({len(self.TEAMS)} records)---")

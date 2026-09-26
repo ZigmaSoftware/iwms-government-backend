@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
@@ -42,14 +43,14 @@ def _customers_for_household_stop(stop, wards=None):
     from app.models.masters.customer_masters.customercreation import CustomerCreation
 
     is_bulk_stop = stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BULK
-    if stop.customer_id_id:
+    if stop.customer_id:
         return CustomerCreation.objects.filter(
-            unique_id=stop.customer_id_id,
+            unique_id=stop.customer_id,
             is_deleted=False,
             is_bulkwaste_generator=is_bulk_stop,
         )
 
-    geo_filter = _geo_filter_for(stop) or _geo_filter_for(stop.trip_plan_id)
+    geo_filter = _geo_filter_for(stop) or _geo_filter_for(stop.trip_plan)
     if not geo_filter:
         return CustomerCreation.objects.none()
 
@@ -82,8 +83,8 @@ def _create_daily_household_collections(assignment, stop):
     created_count = 0
     for offset, customer in enumerate(_customers_for_household_stop(stop, wards=assignment.wards), start=0):
         _, created = DailyTripHouseholdCollection.objects.get_or_create(
-            trip_assignment_id=assignment,
-            customer_id=customer,
+            trip_assignment_id=ref_id(assignment),
+            customer_id=ref_id(customer),
             collection_type=collection_type,
             defaults={
                 "sequence": stop.sequence + offset,
@@ -104,12 +105,12 @@ def sync_daily_assignment_stops_from_plan(assignment):
     after the assignment was first created) and never deletes or overwrites an
     existing daily stop or its collected data. Returns the number of new rows.
     """
-    if not assignment.trip_plan_id_id:
+    if not assignment.trip_plan_id:
         return 0
 
     plan_stops = TripPlanCollectionPoint.objects.filter(
         trip_plan_id=assignment.trip_plan_id,
-        collection_type=assignment.trip_plan_id.collection_type,
+        collection_type=getattr(assignment.trip_plan, "collection_type", None),
         is_active=True,
         is_deleted=False,
     ).order_by("sequence")
@@ -124,21 +125,27 @@ def sync_daily_assignment_stops_from_plan(assignment):
     )
     selected_ward_ids = list(assignment.wards.values_list("unique_id", flat=True))
     if selected_ward_ids:
+        from app.models.masters.customer_masters.customercreation import (
+            CustomerCreation as _CC,
+        )
+
         DailyTripHouseholdCollection.objects.filter(
-            trip_assignment_id=assignment,
+            trip_assignment_id=ref_id(assignment),
             is_collected=False,
             is_deleted=False,
-        ).exclude(customer_id__ward_id__in=selected_ward_ids).delete()
+        ).exclude(customer_id__in=_CC.objects.filter(
+            ward_id__in=selected_ward_ids
+        ).values("unique_id")).delete()
 
     added = 0
     for stop in plan_stops:
         if stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BIN:
-            if not stop.collection_point_id_id:
+            if not stop.collection_point_id:
                 continue
             _, created = DailyTripCollectionPoint.objects.get_or_create(
-                trip_assignment_id=assignment,
-                collection_point_id=stop.collection_point_id,
-                bin_id=stop.bin_id,
+                trip_assignment_id=ref_id(assignment),
+                collection_point_id=ref_id(stop.collection_point),
+                bin_id=ref_id(stop.bin),
                 defaults={
                     "sequence": stop.sequence,
                     "is_collected": False,
@@ -195,7 +202,7 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     4. Sync household_collected_weight_kg on the log.
     5. Auto-submit the log once all household stops are collected.
     """
-    if not instance.trip_assignment_id_id or instance.is_deleted:
+    if not instance.trip_assignment_id or instance.is_deleted:
         return
 
     from app.models.core_modules.daily_operations.daily_trip_household_collection import (
@@ -210,8 +217,8 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
     )
     # 1. Update / create the household collection entry
     dthc, _ = DailyTripHouseholdCollection.objects.get_or_create(
-        trip_assignment_id=instance.trip_assignment_id,
-        customer_id=instance.customer,
+        trip_assignment_id=ref_id(instance.trip_assignment_id),
+        customer_id=ref_id(instance.customer_id),
         collection_type=collection_type,
         defaults={"status": DailyTripHouseholdCollection.STATUS_PENDING},
     )
@@ -226,7 +233,7 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
         _describe_waste_collection(instance),
         data={
             "event": "household_collected",
-            "trip_assignment_id": str(instance.trip_assignment_id_id),
+            "trip_assignment_id": str(instance.trip_assignment_id),
             "wet_waste": instance.wet_waste,
             "dry_waste": instance.dry_waste,
             "mixed_waste": instance.mixed_waste,
@@ -237,7 +244,7 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
 
     # 2. Find or auto-create the trip log
     log = DailyTripLog.objects.filter(
-        trip_assignment_id=instance.trip_assignment_id_id,
+        trip_assignment_id=ref_id(instance.trip_assignment_id),
         is_deleted=False,
     ).first()
 
@@ -269,7 +276,7 @@ def sync_household_collection_on_waste_save(sender, instance, **kwargs):
         return
 
     all_hh = DailyTripHouseholdCollection.objects.filter(
-        trip_assignment_id=instance.trip_assignment_id,
+        trip_assignment_id=ref_id(instance.trip_assignment_id),
         is_deleted=False,
     )
     if all_hh.exists() and not all_hh.filter(is_collected=False).exists():
@@ -289,13 +296,13 @@ def sync_trip_log_on_bin_event_save(sender, instance, **kwargs):
     Without this, a partially-collected trip never gets a log row — the mobile
     scan flow only wrote one when progress was 100% complete.
     """
-    if not instance.trip_assignment_id_id or instance.is_deleted:
+    if not instance.trip_assignment_id or instance.is_deleted:
         return
 
     from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
     log = DailyTripLog.objects.filter(
-        trip_assignment_id=instance.trip_assignment_id_id,
+        trip_assignment_id=ref_id(instance.trip_assignment_id),
         is_deleted=False,
     ).first()
 
@@ -325,7 +332,7 @@ def sync_trip_log_on_bin_event_save(sender, instance, **kwargs):
         return
 
     cps = DailyTripCollectionPoint.objects.filter(
-        trip_assignment_id=instance.trip_assignment_id,
+        trip_assignment_id=ref_id(instance.trip_assignment_id),
         is_deleted=False,
     )
     unresolved = cps.exclude(

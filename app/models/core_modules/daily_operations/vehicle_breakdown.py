@@ -7,6 +7,7 @@ from app.models.core_modules.schedule_setup.alternative_staff_template import Al
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 def _generate_vehicle_breakdown_id():
@@ -68,73 +69,32 @@ class VehicleBreakdown(BaseMaster):
         db_index=True,
     )
 
-    # ── Trip Reference ───────────────────────────────────────────────
-    trip_assignment_id = models.OneToOneField(
-        DailyTripAssignment,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        db_column="trip_assignment_id",
-        related_name="vehicle_breakdown",
+    # ── References ───────────────────────────────────────────────────
+    # Plain id strings (no DB relation); the matching read-only properties
+    # below resolve the rows through ref_cache.
+    trip_assignment_id = models.CharField(
+        max_length=50, unique=True, db_column="trip_assignment_id"
+    )  # DailyTripAssignment.unique_id (one breakdown per trip)
+    breakdown_vehicle_id = models.CharField(
+        max_length=40, db_column="breakdown_vehicle_id", db_index=True
+    )  # VehicleCreation.unique_id
+    replacement_vehicle_id = models.CharField(
+        max_length=40, db_column="replacement_vehicle_id", null=True, blank=True, db_index=True
+    )  # VehicleCreation.unique_id
+    # Replacement staff (assigned later by the supervisor) — Staffcreation.staff_unique_id.
+    replacement_driver_id = models.CharField(
+        max_length=30, db_column="replacement_driver_id", null=True, blank=True, db_index=True
     )
-
-    # ── Vehicles ─────────────────────────────────────────────────────
-    breakdown_vehicle_id = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        db_column="breakdown_vehicle_id",
-        related_name="vehicle_breakdowns_as_broken",
+    replacement_operator_id = models.CharField(
+        max_length=30, db_column="replacement_operator_id", null=True, blank=True, db_index=True
     )
-    replacement_vehicle_id = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        db_column="replacement_vehicle_id",
-        related_name="vehicle_breakdowns_as_replacement",
-        null=True,
-        blank=True,
+    # AlternativeStaffTemplate created during approval.
+    alt_staff_template_id = models.CharField(
+        max_length=50, db_column="alt_staff_template_id", null=True, blank=True, db_index=True
     )
-
-    # ── Replacement Staff (assigned later by the supervisor) ──────────
-    replacement_driver_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        to_field="staff_unique_id",
-        db_column="replacement_driver_id",
-        related_name="vehicle_breakdowns_as_driver",
-        null=True,
-        blank=True,
-    )
-    replacement_operator_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        to_field="staff_unique_id",
-        db_column="replacement_operator_id",
-        related_name="vehicle_breakdowns_as_operator",
-        null=True,
-        blank=True,
-    )
-
-    # ── Created AlternativeStaffTemplate (set during approval) ───────
-    alt_staff_template_id = models.ForeignKey(
-        AlternativeStaffTemplate,
-        on_delete=models.SET_NULL,
-        to_field="unique_id",
-        db_column="alt_staff_template_id",
-        related_name="vehicle_breakdown",
-        null=True,
-        blank=True,
-    )
-
-    # ── Continuation trip created on verify (mirrors TripRetripRequest.new_assignment) ──
-    new_assignment = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.SET_NULL,
-        to_field="unique_id",
-        db_column="new_assignment_id",
-        related_name="breakdown_source",
-        null=True,
-        blank=True,
+    # Continuation trip created on verify (mirrors TripRetripRequest.new_assignment).
+    new_assignment_id = models.CharField(
+        max_length=50, db_column="new_assignment_id", null=True, blank=True, db_index=True
     )
 
     # ── Breakdown Details ─────────────────────────────────────────────
@@ -166,15 +126,9 @@ class VehicleBreakdown(BaseMaster):
         default=APPROVAL_PENDING,
         db_index=True,
     )
-    approved_by = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.SET_NULL,
-        to_field="staff_unique_id",
-        db_column="approved_by",
-        related_name="vehicle_breakdown_approvals",
-        null=True,
-        blank=True,
-    )
+    approved_by_id = models.CharField(
+        max_length=30, db_column="approved_by", null=True, blank=True, db_index=True
+    )  # Staffcreation.staff_unique_id
     approved_at = models.DateTimeField(null=True, blank=True)
     rejection_remarks = models.TextField(null=True, blank=True)
 
@@ -206,12 +160,52 @@ class VehicleBreakdown(BaseMaster):
             self.unique_id = _generate_vehicle_breakdown_id()
         # Inherit corporation / local-body scope from the parent trip
         # assignment on first write. `only_empty` preserves explicit values.
-        if self.trip_assignment_id_id and not self.corporation_id:
-            copy_flat_geo(self, self.trip_assignment_id, only_empty=True)
+        if self.trip_assignment_id and not self.corporation_id:
+            assignment = self.trip_assignment
+            if assignment is not None:
+                copy_flat_geo(self, assignment, only_empty=True)
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.unique_id
+
+    @property
+    def trip_assignment(self):
+        return ref_cache.get(DailyTripAssignment, self.trip_assignment_id, "unique_id")
+
+    @property
+    def breakdown_vehicle(self):
+        return ref_cache.get(VehicleCreation, self.breakdown_vehicle_id)
+
+    @property
+    def replacement_vehicle(self):
+        return ref_cache.get(VehicleCreation, self.replacement_vehicle_id)
+
+    @property
+    def replacement_driver(self):
+        return ref_cache.get(Staffcreation, self.replacement_driver_id)
+
+    @property
+    def replacement_operator(self):
+        return ref_cache.get(Staffcreation, self.replacement_operator_id)
+
+    @property
+    def alt_staff_template(self):
+        return ref_cache.get(AlternativeStaffTemplate, self.alt_staff_template_id)
+
+    @property
+    def new_assignment(self):
+        return ref_cache.get(DailyTripAssignment, self.new_assignment_id, "unique_id")
+
+    @property
+    def approved_by(self):
+        return ref_cache.get(Staffcreation, self.approved_by_id)
+
+    @property
+    def photos(self):
+        """Photos of this breakdown (VehicleBreakdownPhoto.breakdown_id is a
+        plain unique_id); replaces the reverse FK accessor."""
+        return VehicleBreakdownPhoto.objects.filter(breakdown_id=self.unique_id)
 
 
 def vehicle_breakdown_photo_upload_path(instance, filename):
@@ -219,15 +213,15 @@ def vehicle_breakdown_photo_upload_path(instance, filename):
 
 
 class VehicleBreakdownPhoto(models.Model):
-    breakdown = models.ForeignKey(
-        VehicleBreakdown,
-        on_delete=models.CASCADE,
-        to_field="unique_id",
-        db_column="breakdown_id",
-        related_name="photos",
-    )
+    breakdown_id = models.CharField(
+        max_length=50, db_column="breakdown_id", db_index=True
+    )  # VehicleBreakdown.unique_id
     photo = models.ImageField(upload_to=vehicle_breakdown_photo_upload_path)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.breakdown_id} photo #{self.pk}"
+
+    @property
+    def breakdown(self):
+        return ref_cache.get(VehicleBreakdown, self.breakdown_id)

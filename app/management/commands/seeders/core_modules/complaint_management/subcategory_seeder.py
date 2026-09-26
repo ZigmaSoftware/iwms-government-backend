@@ -103,7 +103,7 @@ class ComplaintSubcategorySeeder(BaseSeeder):
                 self.log(f"ComplaintCategory '{category_code}' not found - skipping.")
                 continue
             ComplaintSubcategory.objects.get_or_create(
-                category=category,
+                category_id=category.unique_id,
                 subcategory_code=sub_code,
                 defaults={
                     "subcategory_name": sub_name,

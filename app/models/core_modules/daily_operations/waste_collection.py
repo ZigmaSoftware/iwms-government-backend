@@ -1,10 +1,8 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
-from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.masters.ward import Ward
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 
@@ -35,22 +33,14 @@ class WasteCollection(BaseMaster):
         editable=False,
     )
 
-    #  Link one customer – all details fetched via relation
-    customer = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.PROTECT,
-        related_name="waste_collections"
-    )
+    # Link one customer — plain unique_id string (no DB relation), same as
+    # CustomerCreation's own geo convention.
+    customer_id = models.CharField(max_length=30, db_index=True)
 
-    # Optional link to the trip assignment that triggered this collection
-    trip_assignment_id = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="waste_collections",
-        db_column="trip_assignment_id",
-        null=True,
-        blank=True,
+    # Optional link to the trip assignment that triggered this collection —
+    # DailyTripAssignment.unique_id as a plain string (no DB relation).
+    trip_assignment_id = models.CharField(
+        max_length=50, null=True, blank=True, db_index=True,
     )
 
     # Geography (flat plain-string FKs, mirroring CustomerCreation/Ward — no
@@ -65,10 +55,7 @@ class WasteCollection(BaseMaster):
     town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    ward = models.ForeignKey(
-        Ward, on_delete=models.PROTECT, related_name="waste_collections",
-        to_field="unique_id", db_column="ward_id", null=True, blank=True,
-    )
+    ward_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
 
     #  Waste details
     wet_waste = models.FloatField(default=0.0)
@@ -92,6 +79,13 @@ class WasteCollection(BaseMaster):
         verbose_name = "Waste Collection"
         verbose_name_plural = "Waste Collections"
         ordering = ["-collection_date", "-collection_time"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer_id", "trip_assignment_id"],
+                condition=models.Q(is_deleted=False),
+                name="unique_customer_trip_not_deleted",
+            ),
+        ]
 
     def __str__(self):
         """Readable entry with linked customer and location."""
@@ -126,7 +120,7 @@ class WasteCollection(BaseMaster):
         if self.customer_id and not self.district_id:
             copy_flat_geo(self, self.customer, only_empty=True)
         if self.customer_id and not self.ward_id:
-            self.ward = getattr(self.customer, "ward", None)
+            self.ward_id = getattr(self.customer, "ward_id", None)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -134,3 +128,32 @@ class WasteCollection(BaseMaster):
         self.is_deleted = True
         self.is_active = False
         self.save(update_fields=["is_deleted", "is_active"])
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def customer(self):
+        return self._lookup(
+            "app.models.masters.customer_masters.customercreation.CustomerCreation",
+            self.customer_id,
+        )
+
+    @property
+    def trip_assignment(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+            self.trip_assignment_id,
+        )
+
+    @property
+    def ward(self):
+        return self._lookup(
+            "app.models.masters.ward.Ward", self.ward_id
+        )

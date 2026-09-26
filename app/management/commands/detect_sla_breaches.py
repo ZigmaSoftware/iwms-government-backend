@@ -15,6 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+from app.models.core_modules.complaint_management.status_master import ComplaintStatus
 from app.models.core_modules.complaint_management.comment import ComplaintComment
 from app.utils.complaint_ticket_routing import perform_escalation, _best_sla_rule
 
@@ -30,7 +31,8 @@ def run(logger=None):
         sla_breached=False,
         sla_due_at__isnull=False,
         sla_due_at__lt=now,
-    ).exclude(status__status_code__in=OPEN_STATUS_EXCLUDE).select_related("status", "assigned_team")
+    ).exclude(status_id__in=ComplaintStatus.objects.filter(
+        status_code__in=OPEN_STATUS_EXCLUDE, is_deleted=False).values("unique_id"))
 
     breached_count = 0
     escalated_count = 0
@@ -41,7 +43,7 @@ def run(logger=None):
             ticket.sla_breached_at = now
             ticket.save(update_fields=["sla_breached", "sla_breached_at"])
             ComplaintComment.objects.create(
-                ticket=ticket,
+                ticket_id=ticket.unique_id,
                 comment_text=f"SLA breached — resolution was due {ticket.sla_due_at}.",
                 is_internal=True,
             )

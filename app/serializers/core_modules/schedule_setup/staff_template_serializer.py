@@ -9,8 +9,8 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import BARE_TO_ID_GEO_FIELDS, normalize_flat_geo_attrs
+from app.utils import ref_cache
 
 
 class CommaSeparatedListField(serializers.ListField):
@@ -22,22 +22,24 @@ class CommaSeparatedListField(serializers.ListField):
 
 class StaffTemplateSerializer(serializers.ModelSerializer):
 
-    driver_id = UniqueIdOrPkField(
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False)
+    # Plain staff_unique_ids (no DB relation); checked in validate_*.
+    driver_id = serializers.CharField()
+    operator_id = serializers.CharField()
+    approved_by = serializers.CharField(
+        source="approved_by_id", required=False, allow_null=True
     )
 
-    operator_id = UniqueIdOrPkField(
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False)
-    )
+    @staticmethod
+    def _active_staff_id(value):
+        if not Staffcreation.objects.filter(staff_unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with staff_unique_id={value} does not exist.")
+        return value
 
-    approved_by = UniqueIdOrPkField(
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True
-    )
+    def validate_driver_id(self, value):
+        return self._active_staff_id(value)
+
+    def validate_operator_id(self, value):
+        return self._active_staff_id(value)
 
     # ---- Geo hierarchy: plain unique_id strings in, display refs out ----
     # StaffTemplate's own columns are literally named "<field>_id" (CharField,
@@ -61,9 +63,9 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
     panchayat_union = serializers.SerializerMethodField(read_only=True)
     panchayat = serializers.SerializerMethodField(read_only=True)
 
-    driver_name = serializers.CharField(source="driver_id.employee_name", read_only=True)
-    operator_name = serializers.CharField(source="operator_id.employee_name", read_only=True)
-    approved_by_name = serializers.CharField(source="approved_by.employee_name", read_only=True)
+    driver_name = serializers.CharField(source="driver.employee_name", read_only=True, default=None)
+    operator_name = serializers.CharField(source="operator.employee_name", read_only=True, default=None)
+    approved_by_name = serializers.CharField(source="approved_by.employee_name", read_only=True, default=None)
     extra_operator_names = serializers.SerializerMethodField(read_only=True)
     driver_designation = serializers.SerializerMethodField(read_only=True)
     operator_designation = serializers.SerializerMethodField(read_only=True)
@@ -95,7 +97,7 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
             return None
         model, default_label_attr = cls._GEO_REF_MODELS[field]
         label_attr = label_attr or default_label_attr
-        instance = model.objects.filter(unique_id=value).first()
+        instance = ref_cache.get(model, value, "unique_id")
         if not instance:
             return None
         return {"unique_id": instance.unique_id, label_attr: getattr(instance, label_attr, None)}
@@ -144,25 +146,21 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
         )
 
     def get_driver_designation(self, obj):
-        return self._staff_designation(getattr(obj, "driver_id", None))
+        return self._staff_designation(obj.driver)
 
     def get_operator_designation(self, obj):
-        return self._staff_designation(getattr(obj, "operator_id", None))
+        return self._staff_designation(obj.operator)
 
     def get_corporation_name(self, obj):
         # Prefer the template's own corporation; fall back to the driver's,
         # then the operator's (for older templates without geo assigned).
         template_corp_name = None
         if getattr(obj, "corporation_id", None):
-            template_corp_name = (
-                Corporation.objects.filter(unique_id=obj.corporation_id)
-                .values_list("corporation_name", flat=True)
-                .first()
-            )
+            template_corp_name = getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
         return (
             template_corp_name
-            or self._staff_corporation(getattr(obj, "driver_id", None))
-            or self._staff_corporation(getattr(obj, "operator_id", None))
+            or self._staff_corporation(obj.driver)
+            or self._staff_corporation(obj.operator)
         )
 
     def get_extra_operator_names(self, obj):
@@ -275,7 +273,9 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_approved_by(self, value):
-        if self.instance and self.instance.approved_by and self.instance.approved_by != value:
+        if value:
+            self._active_staff_id(value)
+        if self.instance and self.instance.approved_by_id and self.instance.approved_by_id != value:
             raise serializers.ValidationError("Approved by cannot be modified")
         return value
 
@@ -321,8 +321,8 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
             if len(extra_ids) != len(set(extra_ids)):
                 raise serializers.ValidationError({"extra_operator_id": "Duplicate users are not allowed."})
 
-            driver_id = getattr(driver, "staff_unique_id", None) if driver else None
-            operator_id = getattr(operator, "staff_unique_id", None) if operator else None
+            driver_id = driver or None
+            operator_id = operator or None
             if driver_id and driver_id in extra_ids:
                 raise serializers.ValidationError({"extra_operator_id": "Extra staff cannot include the primary driver."})
             if operator_id and operator_id in extra_ids:

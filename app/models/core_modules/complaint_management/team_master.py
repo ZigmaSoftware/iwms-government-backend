@@ -1,8 +1,7 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.department import Department
-from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.utils import ref_cache
 
 
 def generate_team_id():
@@ -21,27 +20,9 @@ class ComplaintTeam(BaseMaster):
 
     team_code = models.CharField(max_length=80, unique=True)
     team_name = models.CharField(max_length=150)
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_teams",
-    )
-    lead_staff = models.ForeignKey(
-        StaffcreationOfficeDetails,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="led_complaint_teams",
-    )
-    escalates_to = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="escalation_sources",
-    )
+    department_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    lead_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    escalates_to_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
     escalation_level = models.IntegerField(default=1)
     is_field_team = models.BooleanField(default=False)
 
@@ -52,3 +33,42 @@ class ComplaintTeam(BaseMaster):
 
     def __str__(self):
         return self.team_name
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def department(self):
+        return self._lookup(
+            "app.models.masters.department.Department", self.department_id
+        )
+
+    @property
+    def lead_staff(self):
+        return self._lookup(
+            "app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails",
+            self.lead_staff_id,
+            field="staff_unique_id",
+        )
+
+    @property
+    def escalates_to(self):
+        if not self.escalates_to_id:
+            return None
+        return type(self).objects.filter(unique_id=self.escalates_to_id).first()
+
+    @property
+    def escalation_sources(self):
+        return type(self).objects.filter(escalates_to_id=self.unique_id)
+
+    @property
+    def assigned_tickets(self):
+        from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+
+        return ComplaintTicket.objects.filter(assigned_team_id=self.unique_id)

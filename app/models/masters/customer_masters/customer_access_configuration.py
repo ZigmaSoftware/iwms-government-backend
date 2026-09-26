@@ -20,6 +20,7 @@ from app.models.superadmin.screen_management.app_module import AppModule
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_customer_access_configuration_id():
@@ -35,27 +36,16 @@ class CustomerAccessConfiguration(BaseMaster):
         editable=False,
     )
 
-    customer_id = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.CASCADE,
-        to_field="unique_id",
-        db_column="customer_id",
-        related_name="access_configuration",
-    )
+    # Plain CustomerCreation unique_id (no DB relation).
+    customer_id = models.CharField(max_length=30, db_column="customer_id", db_index=True)
 
-    # Apps this customer may sign into. No module ticked = mobile login refused.
-    app_modules = models.ManyToManyField(
-        AppModule,
-        related_name="customer_access_configurations",
-        blank=True,
-    )
+    # Apps this customer may sign into (AppModule unique_ids). No module
+    # ticked = mobile login refused.
+    app_module_ids = models.JSONField(default=list, blank=True)
 
-    # Citizen app screens this customer can see. UI gating only.
-    app_screens = models.ManyToManyField(
-        UserScreen,
-        related_name="customer_access_configurations",
-        blank=True,
-    )
+    # Citizen app screens this customer can see (UserScreen unique_ids). UI
+    # gating only.
+    app_screen_ids = models.JSONField(default=list, blank=True)
 
     description = models.CharField(max_length=255, blank=True, null=True)
 
@@ -73,7 +63,21 @@ class CustomerAccessConfiguration(BaseMaster):
         ]
 
     def __str__(self):
-        return f"{self.customer_id_id}"
+        return f"{self.customer_id}"
+
+    @property
+    def customer(self):
+        return ref_cache.get(CustomerCreation, self.customer_id, "unique_id")
+
+    @property
+    def app_modules(self):
+        """AppModule QuerySet for `app_module_ids`."""
+        return AppModule.objects.filter(unique_id__in=self.app_module_ids or [])
+
+    @property
+    def app_screens(self):
+        """UserScreen QuerySet for `app_screen_ids`."""
+        return UserScreen.objects.filter(unique_id__in=self.app_screen_ids or [])
 
     def delete(self, *args, **kwargs):
         self.is_active = False

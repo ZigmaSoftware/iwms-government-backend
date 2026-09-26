@@ -5,6 +5,7 @@ from app.models.core_modules.schedule_setup.collection_point import Collection_p
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.utils.bin_qr import generate_bin_qr_content
 from app.models.masters.ward import Ward
+from app.utils import ref_cache
 
 
 def generate_bin_id():
@@ -31,11 +32,11 @@ class Bins(BaseMaster):
 
 
 
-    collection_point_id = models.ForeignKey(
-        Collection_point,
-        on_delete=models.PROTECT,
-        related_name="bin",
-        db_column="collection_point_id"
+    # Collection_point / Ward / WasteType are plain unique_id strings (no DB
+    # relation); the `collection_point` / `ward` / `wastetype` properties
+    # below resolve them.
+    collection_point_id = models.CharField(
+        max_length=30, db_column="collection_point_id", db_index=True
     )
 
     country_id = models.CharField(max_length=30, null=True, blank=True)
@@ -47,22 +48,11 @@ class Bins(BaseMaster):
     town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    ward = models.ForeignKey(
-        Ward,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="bins",
-        to_field="unique_id",
-        db_column="ward_id",
+    ward_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="ward_id", db_index=True
     )
 
-    wastetype_id = models.ForeignKey(
-        WasteType,  
-        on_delete=models.PROTECT,
-        related_name="bin",
-        db_column="wastetype_id"
-    )
+    wastetype_id = models.CharField(max_length=100, db_column="wastetype_id", db_index=True)
 
     bin_name = models.CharField(max_length=100)
     bin_capacity = models.IntegerField()
@@ -75,6 +65,22 @@ class Bins(BaseMaster):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def _lookup(self, model, value):
+        """Resolve a plain unique_id into its row (request-cached)."""
+        return ref_cache.get(model, value)
+
+    @property
+    def collection_point(self):
+        return self._lookup(Collection_point, self.collection_point_id)
+
+    @property
+    def ward(self):
+        return self._lookup(Ward, self.ward_id)
+
+    @property
+    def wastetype(self):
+        return self._lookup(WasteType, self.wastetype_id)
+
     def _regenerate_qr_code(self):
         file_content = generate_bin_qr_content(self.unique_id)
         file_name = f"{self.unique_id}.png"
@@ -84,8 +90,8 @@ class Bins(BaseMaster):
         super().save(update_fields=["bin_qr"])
 
     def save(self, *args, **kwargs):
-        if self.collection_point_id:
-            cp = self.collection_point_id
+        cp = self.collection_point
+        if cp:
             self.country_id = cp.country_id
             self.state_id = cp.state_id
             self.district_id = cp.district_id

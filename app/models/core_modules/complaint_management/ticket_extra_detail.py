@@ -1,7 +1,7 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+from app.utils import ref_cache
 
 
 def generate_extra_detail_id():
@@ -18,11 +18,7 @@ class ComplaintTicketExtraDetail(BaseMaster):
         editable=False,
     )
 
-    ticket = models.ForeignKey(
-        ComplaintTicket,
-        on_delete=models.CASCADE,
-        related_name="extra_details",
-    )
+    ticket_id = models.CharField(db_index=True, max_length=30)
     field_key = models.CharField(max_length=100)
     field_value = models.TextField(blank=True, null=True)
     field_type = models.CharField(max_length=50, default="text")
@@ -37,3 +33,13 @@ class ComplaintTicketExtraDetail(BaseMaster):
 
     def __str__(self):
         return f"{self.field_key}={self.field_value}"
+
+    @property
+    def ticket(self):
+        if not self.ticket_id:
+            return None
+        from app.models.core_modules.complaint_management.ticket import (
+            ComplaintTicket,
+        )
+
+        return ref_cache.get(ComplaintTicket, self.ticket_id, "unique_id")

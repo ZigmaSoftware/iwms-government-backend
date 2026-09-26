@@ -89,8 +89,8 @@ def crew_payload(template, alt, trip_date, *, request=None, presence_cache=None)
         )
 
     return {
-        "driver": member(getattr(source, "driver_id", None), "Driver"),
-        "operator": member(getattr(source, "operator_id", None), "Operator"),
+        "driver": member(getattr(source, "driver", None), "Driver"),
+        "operator": member(getattr(source, "operator", None), "Operator"),
         "extra_operators": [m for m in (member(s, "Operator") for s in extras) if m],
         "is_alt_active": alt is not None,
         "template_code": getattr(template, "display_code", None),

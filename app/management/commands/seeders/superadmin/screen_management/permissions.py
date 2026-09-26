@@ -50,6 +50,7 @@ USER_SCREEN_MODELS = {
     "alternative-staff-templates": ("app", "AlternativeStaffTemplate"),
     "collection-points": ("app", "Collection_point"),
     "trip-plans": ("app", "TripPlan"),
+    "daily-trip-plans": ("app", "DailyTripAssignment"),
     "daily-trip-assignments": ("app", "DailyTripAssignment"),
     "daily-trip-collection-points": ("app", "DailyTripCollectionPoint"),
     "daily-trip-household-collections": ("app", "DailyTripHouseholdCollection"),
@@ -167,7 +168,7 @@ class PermissionSeeder(BaseSeeder):
         return MainScreen.objects.update_or_create(
             mainscreen_name=name,
             defaults={
-                "mainscreentype_id": mainscreentype,
+                "mainscreentype_id": getattr(mainscreentype, "pk", mainscreentype),
                 "icon_name": icon_name,
                 "order_no": order_no,
                 "description": description,
@@ -203,7 +204,7 @@ class PermissionSeeder(BaseSeeder):
         return UserScreen.objects.update_or_create(
             userscreen_name=userscreen_name,
             defaults={
-                "mainscreen_id": main_screen,
+                "mainscreen_id": getattr(main_screen, "pk", main_screen),
                 "folder_name": folder_name,
                 "icon_name": icon_name,
                 "order_no": order_no,
@@ -231,7 +232,7 @@ class PermissionSeeder(BaseSeeder):
 
     def _move_userscreen_orders_out_of_range(self, main_screen, reserved_count):
         screens = list(
-            UserScreen.objects.filter(mainscreen_id=main_screen)
+            UserScreen.objects.filter(mainscreen_id=getattr(main_screen, "pk", main_screen))
             .order_by("order_no", "unique_id")
         )
         if not screens:
@@ -250,7 +251,7 @@ class PermissionSeeder(BaseSeeder):
         active_user_screens,
     ):
         stale_user_screens = UserScreen.objects.filter(
-            mainscreen_id__mainscreentype_id=mainscreentype,
+            mainscreen_id__in=MainScreen.objects.filter(mainscreentype_id=mainscreentype).values("unique_id"),
         ).exclude(userscreen_name__in=active_user_screens)
         stale_userscreen_count = stale_user_screens.update(is_active=False, is_deleted=True)
 
@@ -435,16 +436,20 @@ class PermissionSeeder(BaseSeeder):
                 "order": 13,
                 "description": "Daily schedule execution and tracking",
                 "subitems": [
-                    ("daily-trip-assignments", "daily-trip-assignments", "daily-trip-assignments", 1, "Daily trip assignments"),
-                    ("daily-trip-collection-points", "daily-trip-collection-points", "daily-trip-collection-points", 2, "Daily trip tracking"),
-                    ("secondary-bin-collection-events", "secondary-bin-collection-events", "secondary-bin-collection-events", 3, "Secondary bin collection events"),
+                    # One permission row for the daily trip plan: its children
+                    # (daily-trip-assignments, daily-trip-collection-points) inherit
+                    # this grant — see PERMISSION_SCREEN_CHILDREN — so they have
+                    # no rows of their own.
+                    ("daily-trip-plans", "daily-trip-plans", "daily-trip-plans", 1, "Daily trip plans"),
+                    ("secondary-bin-collection-events", "secondary-bin-collection-events", "secondary-bin-collection-events", 2, "Secondary bin collection events"),
                     ("householdcollection-events", "householdcollection-events", "householdcollection-events", 4, "Household collection events"),
                     ("vehicle-breakdowns", "vehicle-breakdowns", "vehicle-breakdowns", 5, "Vehicle breakdowns"),
                     ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 6, "Daily trip logs"),
                     # Registered in base_urls.py and called by the mobile app,
                     # but never seeded — so no admin could grant them and every
                     # request to them was refused.
-                    ("wastecollections", "wastecollections", "wastecollections", 7, "Waste collections"),
+                    # wastecollections has no row of its own: it inherits the
+                    # householdcollection-events grant (PERMISSION_SCREEN_CHILDREN).
                     ("retrip-requests", "retrip-requests", "retrip-requests", 8, "Re-trip requests"),
                     ("staff-notifications", "staff-notifications", "staff-notifications", 9, "Staff notifications"),
                 ],
@@ -522,7 +527,7 @@ class PermissionSeeder(BaseSeeder):
             },
         ]
 
-        self._move_mainscreen_orders_out_of_range(megamenu, len(sidebar_modules))
+        self._move_mainscreen_orders_out_of_range(megamenu.pk, len(sidebar_modules))
 
         main_screens = {}
         created_main_screens = 0
@@ -536,7 +541,7 @@ class PermissionSeeder(BaseSeeder):
 
         for section in sidebar_modules:
             main_screen, created = self._get_or_create_main_screen(
-                megamenu,
+                megamenu.pk,
                 section["module"],
                 section["order"],
                 section["icon"],
@@ -564,7 +569,7 @@ class PermissionSeeder(BaseSeeder):
         self._seed_mobile_app_catalog()
 
         self._deactivate_removed_sidebar_screens(
-            megamenu,
+            megamenu.pk,
             active_modules,
             active_user_screens,
         )

@@ -1,11 +1,11 @@
 from django.db import models
-
 from app.utils.comfun import generate_unique_id
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.utils import ref_cache
 
 
 def generate_login_id():
@@ -27,54 +27,45 @@ class AuditLog(models.Model):
     # -------------------------------------------------
     # WHO performed the action
     # -------------------------------------------------
-    user_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        to_field="staff_unique_id",
+    user_id = models.CharField(
+        max_length=30,
         db_column="user_id",
-        related_name="audit_logs"
+        db_index=True,
     )
 
     # -------------------------------------------------
     # AS WHICH ROLE (snapshot at action time)
     # -------------------------------------------------
-    staffusertype_id = models.ForeignKey(
-        StaffUserType,
-        on_delete=models.PROTECT,
+    staffusertype_id = models.CharField(
+        max_length=30,
+        db_column="staffusertype_id",
+        db_index=True,
         null=True,
         blank=True,
-        db_column="staffusertype_id",
-        related_name="audit_logs"
     )
 
     # -------------------------------------------------
     # WHERE the action occurred
     # -------------------------------------------------
-    mainscreen_id = models.ForeignKey(
-        MainScreen,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    mainscreen_id = models.CharField(
+        max_length=30,
         db_column="mainscreen_id",
-        related_name="audit_logs"
+        db_index=True,
     )
 
-    userscreen_id = models.ForeignKey(
-        UserScreen,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    userscreen_id = models.CharField(
+        max_length=30,
         db_column="userscreen_id",
-        related_name="audit_logs"
+        db_index=True,
     )
 
     # -------------------------------------------------
     # WHAT action was performed
     # -------------------------------------------------
-    userscreenaction_id = models.ForeignKey(
-        UserScreenAction,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    userscreenaction_id = models.CharField(
+        max_length=30,
         db_column="userscreenaction_id",
-        related_name="audit_logs"
+        db_index=True,
     )
 
     # -------------------------------------------------
@@ -127,3 +118,32 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.unique_id} | {self.user_id} | {self.userscreenaction_id}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def user(self):
+        return self._lookup("app.models.superadmin.staff_management.staffcreation.Staffcreation", self.user_id, field="staff_unique_id")
+
+    @property
+    def staffusertype(self):
+        return self._lookup("app.models.superadmin.role_management.staffUserType.StaffUserType", self.staffusertype_id)
+
+    @property
+    def mainscreen(self):
+        return self._lookup("app.models.superadmin.screen_management.mainscreen.MainScreen", self.mainscreen_id)
+
+    @property
+    def userscreen(self):
+        return self._lookup("app.models.superadmin.screen_management.userscreen.UserScreen", self.userscreen_id)
+
+    @property
+    def userscreenaction(self):
+        return self._lookup("app.models.superadmin.screen_management.userscreenaction.UserScreenAction", self.userscreenaction_id)

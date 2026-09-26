@@ -10,6 +10,11 @@ from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
+from app.models.superadmin.role_management.userType import UserType
+from app.models.superadmin.role_management.staffUserType import StaffUserType
+from app.models.superadmin.role_management.contractorUserType import ContractorUserType
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.utils import ref_cache
 
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
@@ -44,42 +49,50 @@ SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "view"}
 
 
 class UserScreenPermissionSerializer(serializers.ModelSerializer):
-    userscreen_name = serializers.CharField(source="userscreen_id.userscreen_name", read_only=True)
-    userscreenaction_name = serializers.CharField(source="userscreenaction_id.action_name", read_only=True)
-    usertype_name = serializers.CharField(source="usertype_id.name", read_only=True)
+    userscreen_id = serializers.CharField()
+    userscreen_name = serializers.SerializerMethodField()
+    userscreenaction_id = serializers.CharField()
+    userscreenaction_name = serializers.SerializerMethodField()
+    usertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    usertype_name = serializers.SerializerMethodField()
+    staffusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     staffusertype_name = serializers.SerializerMethodField()
-    contractorusertype_name = serializers.CharField(
-        source="contractorusertype_id.name",
-        read_only=True,
-    )
+    contractorusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    contractorusertype_name = serializers.SerializerMethodField()
+    governmentusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     governmentusertype_name = serializers.SerializerMethodField()
-    mainscreen_name = serializers.CharField(source="mainscreen_id.mainscreen_name", read_only=True)
+    mainscreen_id = serializers.CharField()
+    mainscreen_name = serializers.SerializerMethodField()
 
     class Meta:
         model = UserScreenPermission
         fields = "__all__"
 
+    def get_userscreen_name(self, obj):
+        return getattr(obj.userscreen, "userscreen_name", None)
+
+    def get_userscreenaction_name(self, obj):
+        return getattr(obj.userscreenaction, "action_name", None)
+
+    def get_usertype_name(self, obj):
+        return getattr(obj.usertype, "name", None)
+
     def get_staffusertype_name(self, obj):
-        staffusertype = getattr(obj, "staffusertype_id", None)
-        if staffusertype:
-            return staffusertype.name
-        contractorusertype = getattr(obj, "contractorusertype_id", None)
-        if contractorusertype:
-            return contractorusertype.name
-        governmentusertype = getattr(obj, "governmentusertype_id", None)
-        if governmentusertype:
-            if hasattr(governmentusertype, "get_name_display"):
-                return governmentusertype.get_name_display()
-            return governmentusertype.name
-        return None
+        return getattr(obj.staffusertype, "name", None)
+
+    def get_contractorusertype_name(self, obj):
+        return getattr(obj.contractorusertype, "name", None)
 
     def get_governmentusertype_name(self, obj):
-        governmentusertype = getattr(obj, "governmentusertype_id", None)
-        if not governmentusertype:
-            return None
-        if hasattr(governmentusertype, "get_name_display"):
-            return governmentusertype.get_name_display()
-        return governmentusertype.name
+        govt = obj.governmentusertype
+        if govt is not None:
+            if hasattr(govt, "get_name_display"):
+                return govt.get_name_display()
+            return govt.name
+        return None
+
+    def get_mainscreen_name(self, obj):
+        return getattr(obj.mainscreen, "mainscreen_name", None)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -303,7 +316,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         valid_screen_ids = set(
             UserScreen.objects.filter(
                 unique_id__in=screen_ids,
-                mainscreen_id_id=mainscreen.unique_id,
+                mainscreen_id=mainscreen.unique_id,
                 is_deleted=False,
             ).values_list("unique_id", flat=True)
         )
@@ -360,7 +373,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             if column_ids is None:
                 continue
             screen_columns = UserScreenColumn.objects.filter(
-                userscreen_id_id=screen["userscreen_id"],
+                userscreen_id=screen["userscreen_id"],
                 is_active=True,
                 is_deleted=False,
             )
@@ -442,9 +455,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         created, updated, deleted = [], [], []
         created_columns, updated_columns, deleted_columns = [], [], []
 
-        existing_qs = UserScreenPermission.objects.select_related(
-            "userscreen_id", "userscreenaction_id"
-        ).filter(
+        existing_qs = UserScreenPermission.objects.filter(
             state_id=state_id,
             district_id=district_id,
             area_type_id=area_type_id,
@@ -453,10 +464,10 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             permission_owner_kind=permission_owner_kind,
             staff_id=staff_id,
             permission_type=permission_type,
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
         )
         existing_lookup = {
-            (obj.userscreen_id_id, obj.userscreenaction_id_id): obj
+            (obj.userscreen_id, obj.userscreenaction_id): obj
             for obj in existing_qs
         }
         incoming_action_keys = set()
@@ -500,9 +511,9 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     permission_type=permission_type,
                     permission_owner_kind=permission_owner_kind,
                     staff_id=staff_id,
-                    mainscreen_id_id=mainscreen_id,
-                    userscreen_id_id=screen_id,
-                    userscreenaction_id_id=action_id,
+                    mainscreen_id=mainscreen_id,
+                    userscreen_id=screen_id,
+                    userscreenaction_id=action_id,
                     order_no=order_no,
                     description=screen_desc,
                     is_deleted=False,
@@ -563,7 +574,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         description,
     ):
         existing = {
-            obj.column_id_id: obj
+            obj.column_id: obj
             for obj in UserScreenColumnPermission.objects.filter(
                 state_id=state_id,
                 district_id=district_id,
@@ -572,7 +583,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 local_body_id=local_body_id,
                 permission_owner_kind=permission_owner_kind,
                 staff_id=staff_id,
-                userscreen_id_id=userscreen_id,
+                userscreen_id=userscreen_id,
             )
         }
 
@@ -618,8 +629,8 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     local_body_id=local_body_id,
                     permission_owner_kind=permission_owner_kind,
                     staff_id=staff_id,
-                    userscreen_id_id=userscreen_id,
-                    column_id_id=column_id,
+                    userscreen_id=userscreen_id,
+                    column_id=column_id,
                     field_permission_state=field_permission_state,
                     order_no=order_no,
                     description=description,

@@ -2,6 +2,8 @@ from datetime import datetime, time, timedelta
 
 from django.utils import timezone
 
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
@@ -56,9 +58,12 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 status=TripPlan.Status.ACTIVE,
                 approval_status=TripPlan.ApprovalStatus.APPROVED,
             )
-            .exclude(staff_template_id__driver_id__username__in=DEMO_STAFF_USERNAMES)
-            .select_related("staff_template_id", "vehicle_id")
-            .prefetch_related("waste_types")
+            .exclude(staff_template_id__in=StaffTemplate.objects.filter(
+                driver_id__in=Staffcreation.objects.filter(
+                    username__in=DEMO_STAFF_USERNAMES
+                ).values("staff_unique_id")
+            ).values("unique_id"))
+
         )
 
         created_count = 0
@@ -66,8 +71,8 @@ class DailyTripAssignmentSeeder(BaseSeeder):
         for plan in plans:
             if not plan.district_id:
                 continue
-            template = plan.staff_template_id
-            if not template or not template.driver_id_id or not template.operator_id_id or not plan.vehicle_id_id:
+            template = plan.staff_template
+            if not template or not template.driver_id or not template.operator_id or not plan.vehicle_id:
                 skipped_incomplete += 1
                 continue
 
@@ -77,10 +82,10 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 trip_date = today - timedelta(days=day_offset)
 
                 assignment, created = DailyTripAssignment.objects.get_or_create(
-                    trip_plan_id=plan,
+                    trip_plan_id=plan.unique_id,
                     trip_date=trip_date,
                     defaults={
-                        "staff_template_id": template,
+                        "staff_template_id": template.unique_id,
                         "vehicle_id": plan.vehicle_id,
                         **{field: getattr(plan, field, None) for field in FLAT_GEO_FIELDS},
                         "scheduled_time": plan.scheduled_time,
@@ -88,13 +93,14 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                         "approval_status": DailyTripAssignment.APPROVAL_APPROVED,
                     },
                 )
-                assignment.waste_types.set(plan.waste_types.all())
-                assignment.wards.set(plan.wards.all())
+                assignment.waste_type_ids = list(plan.waste_type_ids or [])
+                assignment.ward_ids = list(plan.ward_ids or [])
+                assignment.save(update_fields=["waste_type_ids", "ward_ids"])
 
                 # Keep existing history aligned when the Trip Plan seeder
                 # changes a plan to a shared staff-template/vehicle pair.
                 expected_values = {
-                    "staff_template_id": template,
+                    "staff_template_id": template.unique_id,
                     "vehicle_id": plan.vehicle_id,
                     **{
                         field: getattr(plan, field, None)
@@ -111,8 +117,8 @@ class DailyTripAssignmentSeeder(BaseSeeder):
                 if created:
                     created_count += 1
 
-                if day_offset == 3 and alt_template and not assignment.alt_staff_template_id_id:
-                    assignment.alt_staff_template_id = alt_template
+                if day_offset == 3 and alt_template and not assignment.alt_staff_template_id:
+                    assignment.alt_staff_template_id = alt_template.unique_id
                     update_fields.append("alt_staff_template_id")
 
                 # Deliberately NOT mark_started()/mark_ended(): those guard

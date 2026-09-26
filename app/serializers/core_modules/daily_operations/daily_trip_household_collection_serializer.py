@@ -5,22 +5,16 @@ from app.models.core_modules.daily_operations.daily_trip_assignment import Daily
 from app.models.core_modules.daily_operations.daily_trip_household_collection import (
     DailyTripHouseholdCollection,
 )
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
 
 
 class DailyTripHouseholdCollectionSerializer(
-    
+
     serializers.ModelSerializer,
 ):
-    trip_assignment_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=DailyTripAssignment.objects.filter(is_deleted=False),
-    )
-    customer_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=CustomerCreation.objects.filter(is_deleted=False),
-    )
+    trip_assignment_id = serializers.CharField()
+    customer_id = serializers.CharField()
+    carried_to_assignment = serializers.CharField(source="carried_to_assignment_id", read_only=True)
 
     trip_assignment = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
@@ -64,10 +58,10 @@ class DailyTripHouseholdCollectionSerializer(
         ]
 
     def get_trip_assignment(self, obj):
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return None
-        trip_plan = getattr(assignment, "trip_plan_id", None)
+        trip_plan = getattr(assignment, "trip_plan", None)
         return {
             "unique_id": assignment.unique_id,
             "trip_date": str(assignment.trip_date),
@@ -78,7 +72,7 @@ class DailyTripHouseholdCollectionSerializer(
         }
 
     def get_customer(self, obj):
-        customer = obj.customer_id
+        customer = obj.customer
         if not customer:
             return None
         name, level = flat_geo_display(customer)
@@ -96,15 +90,29 @@ class DailyTripHouseholdCollectionSerializer(
         return {"location_name": name, "location_level": level}
 
     def get_ward_id(self, obj):
-        return getattr(getattr(obj, "customer_id", None), "ward_id", None)
+        return getattr(getattr(obj, "customer", None), "ward_id", None)
 
     def get_ward_name(self, obj):
-        ward = getattr(getattr(obj, "customer_id", None), "ward", None)
+        ward = getattr(getattr(obj, "customer", None), "ward", None)
         return getattr(ward, "ward_name", None)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        ward = getattr(instance.customer_id, "ward", None)
+        ward = getattr(instance.customer, "ward", None)
         data["ward_id"] = getattr(ward, "unique_id", None)
         data["ward_name"] = getattr(ward, "ward_name", None)
         return data
+
+    def validate_trip_assignment_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not DailyTripAssignment.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid trip assignment.")
+        return value
+
+    def validate_customer_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not CustomerCreation.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid customer.")
+        return value

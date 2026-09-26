@@ -180,18 +180,14 @@ class PermissionViewSet(ViewSet):
         queryset = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False
-        ).select_related(
-            "mainscreen_id",
-            "userscreen_id",
-            "userscreenaction_id",
         )
 
         permissions = {}
 
         for perm in queryset.order_by("order_no"):
-            main_name = perm.mainscreen_id.mainscreen_name
-            screen_name = perm.userscreen_id.userscreen_name
-            action_name = perm.userscreenaction_id.action_name
+            main_name = perm.mainscreen.mainscreen_name if perm.mainscreen else ""
+            screen_name = perm.userscreen.userscreen_name if perm.userscreen else ""
+            action_name = perm.userscreenaction.action_name if perm.userscreenaction else ""
 
             module_map = permissions.setdefault(main_name, {})
             action_list = module_map.setdefault(screen_name, [])
@@ -283,25 +279,21 @@ class PermissionViewSet(ViewSet):
         queryset = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False,
-            usertype_id_id=usertype_unique_id,
-        ).select_related(
-            "mainscreen_id",
-            "userscreen_id",
-            "userscreenaction_id",
+            usertype_id=usertype_unique_id,
         )
 
         # Handle staffusertype condition
         if staffusertype_unique_id:
             queryset = queryset.filter(
-                staffusertype_id_id=staffusertype_unique_id
+                staffusertype_id=staffusertype_unique_id
             )
         elif contractorusertype_unique_id:
             queryset = queryset.filter(
-                contractorusertype_id_id=contractorusertype_unique_id
+                contractorusertype_id=contractorusertype_unique_id
             )
         elif governmentusertype_unique_id:
             queryset = queryset.filter(
-                governmentusertype_id_id=governmentusertype_unique_id
+                governmentusertype_id=governmentusertype_unique_id
             )
         else:
             queryset = queryset.filter(
@@ -313,9 +305,9 @@ class PermissionViewSet(ViewSet):
         permissions = {}
 
         for perm in queryset.order_by("order_no"):
-            main_name = perm.mainscreen_id.mainscreen_name
-            screen_name = perm.userscreen_id.userscreen_name
-            action_name = perm.userscreenaction_id.action_name
+            main_name = perm.mainscreen.mainscreen_name if perm.mainscreen else ""
+            screen_name = perm.userscreen.userscreen_name if perm.userscreen else ""
+            action_name = perm.userscreenaction.action_name if perm.userscreenaction else ""
 
             module_map = permissions.setdefault(main_name, {})
             action_list = module_map.setdefault(screen_name, [])

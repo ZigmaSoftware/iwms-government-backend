@@ -26,8 +26,7 @@ class VehicleBreakdownSeeder(BaseSeeder):
         assignments = list(
             DailyTripAssignment.objects.filter(is_deleted=False)
             .exclude(status=DailyTripAssignment.STATUS_CANCELLED)
-            .exclude(vehicle_breakdown__isnull=False)
-            .select_related("vehicle_id", "trip_plan_id__vehicle_id")
+            .exclude(unique_id__in=VehicleBreakdown.objects.values("trip_assignment_id"))
             .order_by("-trip_date", "-scheduled_time")[: len(self.SCENARIOS)]
         )
         if not assignments:
@@ -45,7 +44,7 @@ class VehicleBreakdownSeeder(BaseSeeder):
 
         for idx, assignment in enumerate(assignments):
             reason, status, approval = self.SCENARIOS[idx % len(self.SCENARIOS)]
-            broken_vehicle = assignment.vehicle_id or getattr(assignment.trip_plan_id, "vehicle_id", None)
+            broken_vehicle = assignment.vehicle or getattr(assignment.trip_plan, "vehicle", None)
             if not broken_vehicle:
                 continue
             replacement = next(
@@ -70,11 +69,11 @@ class VehicleBreakdownSeeder(BaseSeeder):
                 lat, lon, location = 11.0, 78.0, f"State Highway km {12 + idx}"
 
             VehicleBreakdown.objects.create(
-                trip_assignment_id=assignment,
-                breakdown_vehicle_id=broken_vehicle,
-                replacement_vehicle_id=replacement,
-                replacement_driver_id=staff[idx % len(staff)],
-                replacement_operator_id=staff[(idx + 1) % len(staff)],
+                trip_assignment_id=assignment.unique_id,
+                breakdown_vehicle_id=broken_vehicle.unique_id,
+                replacement_vehicle_id=replacement.unique_id,
+                replacement_driver_id=staff[idx % len(staff)].staff_unique_id,
+                replacement_operator_id=staff[(idx + 1) % len(staff)].staff_unique_id,
                 breakdown_time=time(8 + (idx % 10), 15),
                 breakdown_lat=Decimal(str(lat)),
                 breakdown_lng=Decimal(str(lon)),
@@ -84,7 +83,7 @@ class VehicleBreakdownSeeder(BaseSeeder):
                 breakdown_remarks=f"Seeder demo breakdown ({reason.replace('_', ' ').title()}).",
                 status=status,
                 approval_status=approval,
-                approved_by=approver if approval == VehicleBreakdown.APPROVAL_APPROVED else None,
+                approved_by_id=approver.staff_unique_id if approver and approval == VehicleBreakdown.APPROVAL_APPROVED else None,
                 approved_at=timezone.now() if approval == VehicleBreakdown.APPROVAL_APPROVED else None,
                 rejection_remarks="Replacement vehicle unavailable." if approval == VehicleBreakdown.APPROVAL_REJECTED else None,
             )

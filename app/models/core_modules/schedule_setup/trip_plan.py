@@ -11,6 +11,7 @@ from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.ward import Ward
+from app.utils import ref_cache
 
 
 def generate_trip_plan_id():
@@ -74,42 +75,23 @@ class TripPlan(BaseMaster):
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     # A trip plan can span multiple wards within its selected local body
     # (e.g. one corporation route covering several wards in a single run).
-    wards = models.ManyToManyField(
-        Ward,
-        related_name="trip_plans_multi",
-        blank=True,
-        help_text="Wards covered by this trip plan.",
+    # Ward unique_ids covered by this trip plan (no DB relation).
+    ward_ids = models.JSONField(
+        default=list, blank=True, help_text="Ward unique_ids covered by this trip plan."
     )
     # ---- WHO -------------------------------------------------------
-    staff_template_id = models.ForeignKey(
-        StaffTemplate,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-        db_column="staff_template_id",
-    )
-    vehicle_id = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plans",
-    )
-    supervisor_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        to_field="staff_unique_id",
-        related_name="trip_plans",
-        null=True,
-        blank=True,
+    # Plain unique_ids (no DB relation); the `staff_template` / `vehicle` /
+    # `supervisor` properties below resolve them.
+    staff_template_id = models.CharField(max_length=20, db_column="staff_template_id", db_index=True)
+    vehicle_id = models.CharField(max_length=40, db_column="vehicle_id", db_index=True)
+    supervisor_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="supervisor_id", db_index=True
     )
 
     # ---- WHAT ------------------------------------------------------
     # Supports multiple waste types per trip plan (e.g. household + bulk)
-    waste_types = models.ManyToManyField(
-        WasteType,
-        related_name="trip_plans_multi",
-        blank=True,
-        help_text="Multiple waste types handled by this trip plan.",
+    waste_type_ids = models.JSONField(
+        default=list, blank=True, help_text="WasteType unique_ids handled by this trip plan."
     )
     collection_type = models.CharField(
         max_length=30,
@@ -171,16 +153,67 @@ class TripPlan(BaseMaster):
             models.Index(fields=["district_id"]),
         ]
 
+    # ---- plain-reference lookups -----------------------------------
+    def _lookup(self, model, **filters):
+        ((field, value),) = filters.items()
+        return ref_cache.get(model, value, field)
+
+    @property
+    def staff_template(self):
+        if not self.staff_template_id:
+            return None
+        return self._lookup(StaffTemplate, unique_id=self.staff_template_id)
+
+    @property
+    def vehicle(self):
+        if not self.vehicle_id:
+            return None
+        return self._lookup(VehicleCreation, unique_id=self.vehicle_id)
+
+    @property
+    def supervisor(self):
+        if not self.supervisor_id:
+            return None
+        return self._lookup(Staffcreation, staff_unique_id=self.supervisor_id)
+
+    @property
+    def plan_collection_points(self):
+        """TripPlanCollectionPoint rows for this plan (plain trip_plan_id);
+        replaces the reverse FK accessor CASCADE_SOFT_DELETE expects."""
+        from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
+            TripPlanCollectionPoint,
+        )
+
+        return TripPlanCollectionPoint.objects.filter(trip_plan_id=self.unique_id)
+
+    @property
+    def daily_trip_assignments(self):
+        """DailyTripAssignment rows generated from this plan (plain
+        trip_plan_id); replaces the reverse FK accessor."""
+        from app.models.core_modules.daily_operations.daily_trip_assignment import (
+            DailyTripAssignment,
+        )
+
+        return DailyTripAssignment.objects.filter(trip_plan_id=self.unique_id)
+
+    @property
+    def wards(self):
+        """Ward QuerySet for `ward_ids`."""
+        return Ward.objects.filter(unique_id__in=self.ward_ids or [])
+
+    @property
+    def waste_types(self):
+        """WasteType QuerySet for `waste_type_ids`."""
+        return WasteType.objects.filter(unique_id__in=self.waste_type_ids or [])
+
     def _generate_display_code(self):
         driver_name = "DRV"
-        if self.staff_template_id and self.staff_template_id.driver_id:
-            driver_name = (
-                self.staff_template_id.driver_id.employee_name[:6]
-                .upper().replace(" ", "")
-            )
+        template = self.staff_template
+        if template and template.driver:
+            driver_name = template.driver.employee_name[:6].upper().replace(" ", "")
         vehicle_no = "VEH"
-        if self.vehicle_id:
-            vehicle_no = self.vehicle_id.vehicle_no.upper().replace(" ", "")
+        if self.vehicle:
+            vehicle_no = self.vehicle.vehicle_no.upper().replace(" ", "")
 
         base = f"{driver_name}-{vehicle_no}"
         last = (

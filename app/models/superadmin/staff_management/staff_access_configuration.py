@@ -42,6 +42,7 @@ from app.models.superadmin.screen_management.userscreenaction import UserScreenA
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_staff_access_configuration_id():
@@ -57,35 +58,27 @@ class StaffAccessConfiguration(BaseMaster):
         editable=False,
     )
 
-    staff_id = models.ForeignKey(
-        StaffcreationOfficeDetails,
-        on_delete=models.CASCADE,
-        to_field="staff_unique_id",
-        db_column="staff_id",
-        related_name="access_configuration",
-    )
+    # StaffcreationOfficeDetails.staff_unique_id (plain string, no DB relation).
+    staff_id = models.CharField(max_length=30, db_column="staff_id", db_index=True)
 
-    # Mobile apps this staff member may sign into. No module ticked means the
-    # mobile login is refused — what they can do once inside comes from the
-    # ordinary screen permissions, which also govern web.
-    app_modules = models.ManyToManyField(
-        AppModule,
-        related_name="staff_access_configurations",
-        blank=True,
-    )
+    # Mobile apps this staff member may sign into (AppModule unique_ids). No
+    # module ticked means the mobile login is refused — what they can do once
+    # inside comes from the ordinary screen permissions, which also govern web.
+    app_module_ids = models.JSONField(default=list, blank=True)
 
-    # Geography, mirroring Staffcreation's own hierarchy. An empty selection
-    # at a level means "unrestricted at that level", matching how the rest of
-    # this codebase reads an empty scope.
-    states = models.ManyToManyField(State, related_name="staff_access_configurations", blank=True)
-    districts = models.ManyToManyField(District, related_name="staff_access_configurations", blank=True)
-    area_types = models.ManyToManyField(AreaType, related_name="staff_access_configurations", blank=True)
-    corporations = models.ManyToManyField(Corporation, related_name="staff_access_configurations", blank=True)
-    municipalities = models.ManyToManyField(Municipality, related_name="staff_access_configurations", blank=True)
-    town_panchayats = models.ManyToManyField(TownPanchayat, related_name="staff_access_configurations", blank=True)
-    panchayat_unions = models.ManyToManyField(PanchayatUnion, related_name="staff_access_configurations", blank=True)
-    panchayats = models.ManyToManyField(Panchayat, related_name="staff_access_configurations", blank=True)
-    wards = models.ManyToManyField(Ward, related_name="staff_access_configurations", blank=True)
+    # Geography, mirroring Staffcreation's own hierarchy, as plain JSON lists
+    # of unique_ids (read through the same-named properties below). An empty
+    # selection at a level means "unrestricted at that level", matching how
+    # the rest of this codebase reads an empty scope.
+    state_ids = models.JSONField(default=list, blank=True)
+    district_ids = models.JSONField(default=list, blank=True)
+    area_type_ids = models.JSONField(default=list, blank=True)
+    corporation_ids = models.JSONField(default=list, blank=True)
+    municipality_ids = models.JSONField(default=list, blank=True)
+    town_panchayat_ids = models.JSONField(default=list, blank=True)
+    panchayat_union_ids = models.JSONField(default=list, blank=True)
+    panchayat_ids = models.JSONField(default=list, blank=True)
+    ward_ids = models.JSONField(default=list, blank=True)
 
     enforce_strict_permissions = models.BooleanField(
         default=False,
@@ -113,7 +106,59 @@ class StaffAccessConfiguration(BaseMaster):
         ]
 
     def __str__(self):
-        return f"{self.staff_id_id}"
+        return f"{self.staff_id}"
+
+    @property
+    def staff(self):
+        return ref_cache.get(StaffcreationOfficeDetails, self.staff_id)
+
+    @property
+    def app_modules(self):
+        return AppModule.objects.filter(unique_id__in=self.app_module_ids or [])
+
+    @property
+    def states(self):
+        return State.objects.filter(unique_id__in=self.state_ids or [])
+
+    @property
+    def districts(self):
+        return District.objects.filter(unique_id__in=self.district_ids or [])
+
+    @property
+    def area_types(self):
+        return AreaType.objects.filter(unique_id__in=self.area_type_ids or [])
+
+    @property
+    def corporations(self):
+        return Corporation.objects.filter(unique_id__in=self.corporation_ids or [])
+
+    @property
+    def municipalities(self):
+        return Municipality.objects.filter(unique_id__in=self.municipality_ids or [])
+
+    @property
+    def town_panchayats(self):
+        return TownPanchayat.objects.filter(unique_id__in=self.town_panchayat_ids or [])
+
+    @property
+    def panchayat_unions(self):
+        return PanchayatUnion.objects.filter(unique_id__in=self.panchayat_union_ids or [])
+
+    @property
+    def panchayats(self):
+        return Panchayat.objects.filter(unique_id__in=self.panchayat_ids or [])
+
+    @property
+    def wards(self):
+        return Ward.objects.filter(unique_id__in=self.ward_ids or [])
+
+    @property
+    def granted_permissions(self):
+        """This configuration's screen grants (plain
+        staff_access_configuration_id); replaces the reverse FK accessor."""
+        return StaffAccessConfigurationPermission.objects.filter(
+            staff_access_configuration_id=self.unique_id
+        )
 
     def delete(self, *args, **kwargs):
         self.is_active = False
@@ -140,28 +185,14 @@ class StaffAccessConfigurationPermission(BaseMaster):
         editable=False,
     )
 
-    staff_access_configuration_id = models.ForeignKey(
-        StaffAccessConfiguration,
-        on_delete=models.CASCADE,
-        to_field="unique_id",
-        db_column="staff_access_configuration_id",
-        related_name="granted_permissions",
+    # Plain unique_id strings (no DB relation); read via the properties below.
+    staff_access_configuration_id = models.CharField(
+        max_length=60, db_column="staff_access_configuration_id", db_index=True
     )
-
-    mainscreen_id = models.ForeignKey(
-        MainScreen, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="mainscreen_id",
-        related_name="staff_access_configuration_permissions",
-    )
-    userscreen_id = models.ForeignKey(
-        UserScreen, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="userscreen_id",
-        related_name="staff_access_configuration_permissions",
-    )
-    userscreenaction_id = models.ForeignKey(
-        UserScreenAction, on_delete=models.PROTECT,
-        to_field="unique_id", db_column="userscreenaction_id",
-        related_name="staff_access_configuration_permissions",
+    mainscreen_id = models.CharField(max_length=30, db_column="mainscreen_id", db_index=True)
+    userscreen_id = models.CharField(max_length=30, db_column="userscreen_id", db_index=True)
+    userscreenaction_id = models.CharField(
+        max_length=30, db_column="userscreenaction_id", db_index=True
     )
 
     order_no = models.IntegerField(default=0)
@@ -184,7 +215,23 @@ class StaffAccessConfigurationPermission(BaseMaster):
         ]
 
     def __str__(self):
-        return f"{self.staff_access_configuration_id_id}:{self.userscreen_id_id}"
+        return f"{self.staff_access_configuration_id}:{self.userscreen_id}"
+
+    @property
+    def staff_access_configuration(self):
+        return ref_cache.get(StaffAccessConfiguration, self.staff_access_configuration_id)
+
+    @property
+    def mainscreen(self):
+        return ref_cache.get(MainScreen, self.mainscreen_id)
+
+    @property
+    def userscreen(self):
+        return ref_cache.get(UserScreen, self.userscreen_id)
+
+    @property
+    def userscreenaction(self):
+        return ref_cache.get(UserScreenAction, self.userscreenaction_id)
 
     def delete(self, *args, **kwargs):
         self.is_active = False

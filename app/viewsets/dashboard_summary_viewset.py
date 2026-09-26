@@ -9,8 +9,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
+from app.utils.plain_ref import json_contains_any, ref_q, ref_value
+from app.utils.base_models import Account
 from app.models.core_modules.attendance.daily_attendance_reg import DailyAttendanceReg
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+from app.models.core_modules.complaint_management.status_master import ComplaintStatus
 from app.models.core_modules.daily_operations.daily_trip_assignment import (
     DailyTripAssignment,
 )
@@ -34,6 +37,7 @@ from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from app.models.masters.waste_masters.bins import Bins
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.ward import Ward
@@ -109,6 +113,21 @@ def _model_has_field(model, name):
         return True
     except Exception:
         return False
+
+
+def _plan_ids(*collection_types):
+    """TripPlan unique_ids of the given collection type(s). DailyTripAssignment
+    .trip_plan_id is a plain unique_id, so plan-type filters use this subquery
+    instead of joining `trip_plan_id__collection_type`."""
+    return TripPlan.objects.filter(collection_type__in=collection_types).values("unique_id")
+
+
+def _assignment_ids(*collection_types):
+    """DailyTripAssignment unique_ids whose plan is of the given type(s) — for
+    models whose trip_assignment_id is a plain unique_id (no join)."""
+    return DailyTripAssignment.objects.filter(
+        trip_plan_id__in=_plan_ids(*collection_types)
+    ).values("unique_id")
 
 
 def _active(qs):
@@ -298,8 +317,10 @@ class DashboardSummaryViewSet(ViewSet):
             DailyTripHouseholdCollection.objects.filter(
                 is_deleted=False,
                 collection_type=DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD,
-                trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
-            ),
+            ).filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_plan_id__in=_plan_ids(TripPlan.COLLECTION_TYPE_HOUSEHOLD),
+            )),
             params,
         )
         if target_date:
@@ -307,7 +328,10 @@ class DashboardSummaryViewSet(ViewSet):
             # `created_at` is just when the row was inserted (e.g. all at
             # once during seeding), not the day it represents. The real
             # business date lives on the parent assignment.
-            stops_qs = stops_qs.filter(trip_assignment_id__trip_date=target_date)
+            stops_qs = stops_qs.filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_date=target_date,
+            ))
         # One customer can have multiple stop rows for a date after trip
         # re-planning. Count unique households and resolve one final status
         # per household so the coverage buckets cannot exceed the total.
@@ -369,7 +393,7 @@ class DashboardSummaryViewSet(ViewSet):
             params,
             include_ward=False,
         )
-        attendance_filter = Q(staff__in=staff, punch_type="IN")
+        attendance_filter = Q(staff_id__in=staff.values("staff_unique_id"), punch_type="IN")
         if target_date:
             attendance_filter &= Q(recognition_date=target_date)
         attendance = DailyAttendanceReg.objects.filter(attendance_filter)
@@ -386,11 +410,13 @@ class DashboardSummaryViewSet(ViewSet):
         household_qs = self._apply_dashboard_geo(
             WasteCollection.objects.filter(is_deleted=False).filter(
                 Q(trip_assignment_id__isnull=True)
-                | Q(
-                    trip_assignment_id__trip_plan_id__collection_type__in=[
+                # WasteCollection.trip_assignment_id is a plain unique_id.
+                | ref_q(
+                    "trip_assignment_id", DailyTripAssignment, "unique_id",
+                    trip_plan_id__in=_plan_ids(
                         TripPlan.COLLECTION_TYPE_HOUSEHOLD,
                         TripPlan.COLLECTION_TYPE_BULK,
-                    ]
+                    ),
                 )
             ),
             params,
@@ -399,7 +425,7 @@ class DashboardSummaryViewSet(ViewSet):
             BinCollectionEvent.objects.filter(
                 is_deleted=False,
                 status=BinCollectionEvent.STATUS_COLLECTED,
-                trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_BIN,
+                trip_assignment_id__in=_assignment_ids(TripPlan.COLLECTION_TYPE_BIN),
             ),
             params,
         )
@@ -414,7 +440,10 @@ class DashboardSummaryViewSet(ViewSet):
             sanitary_kg=Sum("sanitary_waste"),
         )
         bin_rows = (
-            bin_qs.values("waste_type_id", "waste_type_id__waste_type_name")
+            bin_qs.annotate(
+                waste_type_name=ref_value("waste_type_id", WasteType, "waste_type_name")
+            )
+            .values("waste_type_id", "waste_type_name")
             .annotate(total_kg=Sum("collected_weight_kg"))
         )
         household_total = _round(totals["total_kg"])
@@ -470,7 +499,7 @@ class DashboardSummaryViewSet(ViewSet):
             add_weight(
                 row["total_kg"],
                 waste_type_id=row["waste_type_id"],
-                waste_type_name=row["waste_type_id__waste_type_name"] or "",
+                waste_type_name=row["waste_type_name"] or "",
             )
 
         waste_type_breakdown = []
@@ -531,7 +560,7 @@ class DashboardSummaryViewSet(ViewSet):
         events = self._apply_dashboard_geo(
             BinCollectionEvent.objects.filter(
                 is_deleted=False,
-                trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_BIN,
+                trip_assignment_id__in=_assignment_ids(TripPlan.COLLECTION_TYPE_BIN),
             ),
             params,
         )
@@ -566,45 +595,58 @@ class DashboardSummaryViewSet(ViewSet):
             DailyTripHouseholdCollection.objects.filter(
                 is_deleted=False,
                 collection_type=DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD,
-                trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
-            ),
+            ).filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_plan_id__in=_plan_ids(TripPlan.COLLECTION_TYPE_HOUSEHOLD),
+            )),
             params,
         )
         bin_events = self._apply_dashboard_geo(
             BinCollectionEvent.objects.filter(
                 is_deleted=False,
                 status=BinCollectionEvent.STATUS_COLLECTED,
-                trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_BIN,
+                trip_assignment_id__in=_assignment_ids(TripPlan.COLLECTION_TYPE_BIN),
             ),
             params,
         )
         if target_date:
             assignments = assignments.filter(trip_date=target_date)
             logs = logs.filter(trip_date=target_date)
-            household_rows = household_rows.filter(trip_assignment_id__trip_date=target_date)
+            household_rows = household_rows.filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_date=target_date,
+            ))
             bin_events = bin_events.filter(collection_date=target_date)
 
         trip_totals = {
-            row["trip_plan_id__collection_type"]: row["count"]
-            for row in assignments.values("trip_plan_id__collection_type").annotate(
+            row["plan_type"]: row["count"]
+            for row in assignments.annotate(
+                plan_type=ref_value("trip_plan_id", TripPlan, "collection_type")
+            ).values("plan_type").annotate(
                 count=Count("unique_id", distinct=True)
             )
         }
         trip_completed = {
-            row["trip_assignment_id__trip_plan_id__collection_type"]: row["count"]
-            for row in logs.values(
-                "trip_assignment_id__trip_plan_id__collection_type"
-            ).annotate(count=Count("unique_id", distinct=True))
+            row["plan_type"]: row["count"]
+            # DailyTripLog -> assignment -> plan are plain unique_ids: resolve the
+            # assignment's plan id by subquery, then the plan's type by subquery.
+            for row in logs.annotate(
+                _plan_id=ref_value("trip_assignment_id", DailyTripAssignment, "trip_plan_id"),
+            ).annotate(
+                plan_type=ref_value("_plan_id", TripPlan, "collection_type"),
+            ).values("plan_type").annotate(count=Count("unique_id", distinct=True))
         }
         household_collected = household_rows.filter(
             status=DailyTripHouseholdCollection.STATUS_COLLECTED,
         )
         household_ward_ids = set(
-            household_collected.exclude(customer_id__ward__isnull=True)
-            .values_list("customer_id__ward", flat=True)
+            household_collected.exclude(customer_id__isnull=True)
+            .annotate(_ward_id=ref_value("customer_id", CustomerCreation, "ward_id"))
+            .exclude(_ward_id__isnull=True)
+            .values_list("_ward_id", flat=True)
         )
         bin_ward_ids = set(
-            bin_events.exclude(ward__isnull=True).values_list("ward", flat=True)
+            bin_events.exclude(ward_id__isnull=True).values_list("ward_id", flat=True)
         )
 
         def trip_metrics(collection_type):
@@ -656,14 +698,19 @@ class DashboardSummaryViewSet(ViewSet):
             params,
             include_ward=False,
         )
-        resolved_q = Q(status__is_final=True) | Q(status__status_code__icontains="resolved") | Q(
-            status__status_name__icontains="resolved"
+        # status is a plain unique_id string — resolve status rows first.
+        from app.models.core_modules.complaint_management.status_master import ComplaintStatus
+        _status_ids = lambda **kw: ComplaintStatus.objects.filter(
+            is_deleted=False, **kw).values("unique_id")
+        resolved_q = Q(status_id__in=_status_ids(is_final=True)) | Q(
+            status_id__in=_status_ids(status_code__icontains="resolved")) | Q(
+            status_id__in=_status_ids(status_name__icontains="resolved")
         )
         in_progress_q = (
-            Q(status__status_code__icontains="progress")
-            | Q(status__status_name__icontains="progress")
-            | Q(status__status_code__icontains="assigned")
-            | Q(status__status_name__icontains="assigned")
+            Q(status_id__in=_status_ids(status_code__icontains="progress"))
+            | Q(status_id__in=_status_ids(status_name__icontains="progress"))
+            | Q(status_id__in=_status_ids(status_code__icontains="assigned"))
+            | Q(status_id__in=_status_ids(status_name__icontains="assigned"))
         )
         counts = qs.aggregate(
             total=Count("unique_id"),
@@ -713,7 +760,7 @@ class DashboardSummaryViewSet(ViewSet):
 
     def _vehicle_performance(self, params, target_date=None):
         _qs = self._apply_dashboard_geo(
-            VehicleCreation.objects.select_related("vehicle_type").filter(
+            VehicleCreation.objects.filter(
                 is_deleted=False,
             ),
             params,
@@ -737,33 +784,57 @@ class DashboardSummaryViewSet(ViewSet):
 
         waste_agg = (
             DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id__vehicle_id__in=v_ids,
                 is_collected=True,
-            )
+            ).filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                vehicle_id__in=v_ids,
+            ))
         )
         if target_date:
             # Same fix as _household_summary — filter on the assignment's
             # real trip_date, not the row's insert timestamp.
-            waste_agg = waste_agg.filter(trip_assignment_id__trip_date=target_date)
-        waste_agg = waste_agg.values(
-            "trip_assignment_id__vehicle_id"
-        ).annotate(
-            total_kg=Sum("collected_weight_kg"),
-            stop_count=Count("unique_id"),
-        )
-        waste_map = {
-            r["trip_assignment_id__vehicle_id"]: r
-            for r in waste_agg
+            waste_agg = waste_agg.filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_date=target_date,
+            ))
+        per_assignment_kg = {
+            r["trip_assignment_id"]: r
+            for r in waste_agg.values("trip_assignment_id").annotate(
+                total_kg=Sum("collected_weight_kg"),
+                stop_count=Count("unique_id"),
+            )
         }
+        _vehicle_by_assignment = dict(
+            DailyTripAssignment.objects.filter(unique_id__in=list(
+                per_assignment_kg
+            )).values_list("unique_id", "vehicle_id")
+        )
+        waste_agg = [
+            {"trip_assignment_id__vehicle_id": _vehicle_by_assignment.get(ta_id), **vals}
+            for ta_id, vals in per_assignment_kg.items()
+        ]
+        waste_map = {}
+        for r in waste_agg:
+            waste_map.setdefault(r["trip_assignment_id__vehicle_id"], {
+                "total_kg": 0, "stop_count": 0,
+            })
+            waste_map[r["trip_assignment_id__vehicle_id"]]["total_kg"] = (
+                (waste_map[r["trip_assignment_id__vehicle_id"]]["total_kg"] or 0)
+                + (r["total_kg"] or 0)
+            )
+            waste_map[r["trip_assignment_id__vehicle_id"]]["stop_count"] = (
+                (waste_map[r["trip_assignment_id__vehicle_id"]]["stop_count"] or 0)
+                + (r["stop_count"] or 0)
+            )
 
+        # vehicle_type_id is a plain unique_id; resolve names in one query.
+        vehicle_type_names = dict(
+            VehicleTypeCreation.objects.values_list("unique_id", "vehicleType")
+        )
         return [
             {
                 "registration_no": v.vehicle_no,
-                "vehicle_type": (
-                    v.vehicle_type.vehicleType
-                    if getattr(v, "vehicle_type_id", None) and v.vehicle_type
-                    else ""
-                ),
+                "vehicle_type": vehicle_type_names.get(v.vehicle_type_id, ""),
                 "ward_name": "",
                 "trips": trip_map.get(v.unique_id, 0),
                 "waste_tons": round(
@@ -788,9 +859,7 @@ class DashboardSummaryViewSet(ViewSet):
         ]
 
     def _trip_performance(self, params, target_date=None):
-        qs = DailyTripAssignment.objects.filter(is_deleted=False).select_related(
-            "vehicle_id", "trip_plan_id"
-        )
+        qs = DailyTripAssignment.objects.filter(is_deleted=False)
         qs = self._apply_dashboard_geo(qs, params)
         if target_date:
             qs = qs.filter(trip_date=target_date)
@@ -820,12 +889,12 @@ class DashboardSummaryViewSet(ViewSet):
         return [
             {
                 "trip_id": (
-                    a.trip_plan_id.display_code
-                    if a.trip_plan_id
+                    a.trip_plan.display_code
+                    if a.trip_plan
                     else a.unique_id
                 ),
                 "vehicle_no": (
-                    a.vehicle_id.vehicle_no if a.vehicle_id else ""
+                    a.vehicle.vehicle_no if a.vehicle else ""
                 ),
                 "ward_name": "",
                 "start_time": (
@@ -850,7 +919,7 @@ class DashboardSummaryViewSet(ViewSet):
         qs = DailyTripAssignment.objects.filter(
             is_deleted=False,
             staff_template_id__isnull=False,
-        ).select_related("staff_template_id", "vehicle_id")
+        )
         qs = self._apply_dashboard_geo(qs, params)
         if target_date:
             qs = qs.filter(trip_date=target_date)
@@ -936,18 +1005,27 @@ class DashboardSummaryViewSet(ViewSet):
         )
 
         collection_qs = DailyTripHouseholdCollection.objects.filter(
-            customer_id__ward__in=ward_ids,
             is_deleted=False,
             collection_type=DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD,
-            trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
+        ).filter(
+            ref_q("customer_id", CustomerCreation, "unique_id", ward_id__in=ward_ids),
+            ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_plan_id__in=_plan_ids(TripPlan.COLLECTION_TYPE_HOUSEHOLD),
+            ),
         )
         if target_date:
             # Same fix as _household_summary — filter on the assignment's
             # real trip_date, not the row's insert timestamp.
-            collection_qs = collection_qs.filter(trip_assignment_id__trip_date=target_date)
+            collection_qs = collection_qs.filter(ref_q(
+                "trip_assignment_id", DailyTripAssignment, "unique_id",
+                trip_date=target_date,
+            ))
 
         agg = (
-            collection_qs.values("customer_id__ward")
+            collection_qs.annotate(
+                _ward_id=ref_value("customer_id", CustomerCreation, "ward_id")
+            ).values("_ward_id")
             .annotate(
                 collected=Count("customer_id", filter=Q(is_collected=True), distinct=True),
                 missed=Count(
@@ -966,56 +1044,59 @@ class DashboardSummaryViewSet(ViewSet):
                 household_kg=Sum("collected_weight_kg"),
             )
         )
-        ward_data = {r["customer_id__ward"]: r for r in agg}
+        ward_data = {r["_ward_id"]: r for r in agg}
 
         customer_agg = (
-            self._apply_dashboard_geo(_active(CustomerCreation.objects.filter(ward__in=ward_ids)), params)
-            .values("ward")
+            self._apply_dashboard_geo(_active(CustomerCreation.objects.filter(ward_id__in=ward_ids)), params)
+            .values("ward_id")
             .annotate(total_customers=Count("unique_id"))
         )
-        customer_data = {r["ward"]: r for r in customer_agg}
+        customer_data = {r["ward_id"]: r for r in customer_agg}
 
         bin_master_agg = (
-            self._apply_dashboard_geo(_active(Bins.objects.filter(ward__in=ward_ids)), params)
-            .values("ward")
+            self._apply_dashboard_geo(_active(Bins.objects.filter(ward_id__in=ward_ids)), params)
+            .values("ward_id")
             .annotate(total_bins=Count("unique_id"))
         )
-        bin_master_data = {r["ward"]: r for r in bin_master_agg}
+        bin_master_data = {r["ward_id"]: r for r in bin_master_agg}
 
         # Bin (secondary collection point) stats per ward — BinCollectionEvent
         # carries its own `ward` FK directly (set by the seeder / ScanBinViewSet),
         # so this is a straight aggregate, no join through customers needed.
         bin_qs = BinCollectionEvent.objects.filter(
-            ward__in=ward_ids,
+            ward_id__in=ward_ids,
             is_deleted=False,
-            trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_BIN,
+            trip_assignment_id__in=_assignment_ids(TripPlan.COLLECTION_TYPE_BIN),
         )
         if target_date:
             bin_qs = bin_qs.filter(collection_date=target_date)
-        bin_agg = bin_qs.values("ward").annotate(
+        bin_agg = bin_qs.values("ward_id").annotate(
             bin_kg=Sum("collected_weight_kg"),
             bin_collected=Count("bin_id", filter=Q(status=BinCollectionEvent.STATUS_COLLECTED), distinct=True),
         )
-        bin_data = {r["ward"]: r for r in bin_agg}
+        bin_data = {r["ward_id"]: r for r in bin_agg}
 
         # Expected capacity, split by collection type — the combined
         # max_vehicle_capacity_kg of whichever bin/household TripPlan serves
         # this specific ward (TripPlan.wards is set to exactly one ward per
         # plan — see TripPlanSeeder), so each ward's card can show separate
         # household and bin current/target ratios.
-        plan_agg = (
-            TripPlan.objects.filter(wards__in=ward_ids, is_deleted=False)
-            .values("wards__unique_id", "collection_type")
-            .annotate(target_kg=Sum("max_vehicle_capacity_kg"))
-        )
+        # TripPlan.ward_ids is a plain JSON list; sum capacity per ward here.
+        plan_rows = TripPlan.objects.filter(
+            json_contains_any("ward_ids", ward_ids), is_deleted=False
+        ).values_list("ward_ids", "collection_type", "max_vehicle_capacity_kg")
         household_target = {}
         bin_target = {}
-        for r in plan_agg:
-            ward_id = r["wards__unique_id"]
-            if r["collection_type"] == TripPlan.COLLECTION_TYPE_HOUSEHOLD:
-                household_target[ward_id] = float(r["target_kg"] or 0)
-            elif r["collection_type"] == TripPlan.COLLECTION_TYPE_BIN:
-                bin_target[ward_id] = float(r["target_kg"] or 0)
+        wanted_ward_ids = set(ward_ids)
+        for plan_ward_ids, collection_type, capacity in plan_rows:
+            if collection_type == TripPlan.COLLECTION_TYPE_HOUSEHOLD:
+                target = household_target
+            elif collection_type == TripPlan.COLLECTION_TYPE_BIN:
+                target = bin_target
+            else:
+                continue
+            for ward_id in set(plan_ward_ids or []) & wanted_ward_ids:
+                target[ward_id] = target.get(ward_id, 0.0) + float(capacity or 0)
 
         # Trip/driver/operator details for the hover tooltip — a ward
         # typically has 2 DailyTripAssignments (its bin route + household
@@ -1026,45 +1107,72 @@ class DashboardSummaryViewSet(ViewSet):
         # leave it empty by default on every page load. Instead, always
         # surface the MOST RECENT assignment per (ward, collection type),
         # regardless of which date the rest of the card is showing.
-        assignment_rows = (
-            DailyTripAssignment.objects.filter(wards__in=ward_ids, is_deleted=False)
+        # DailyTripAssignment's ward_ids / trip_plan_id / vehicle_id /
+        # staff_template_id are plain unique_ids; resolve display values with
+        # one bulk query each instead of joins.
+        assignment_rows = list(
+            DailyTripAssignment.objects.filter(
+                json_contains_any("ward_ids", ward_ids), is_deleted=False
+            )
             .order_by("-trip_date", "-scheduled_time")
             .values(
                 "unique_id",
-                "wards__unique_id",
-                "trip_plan_id__collection_type",
+                "ward_ids",
+                "trip_plan_id",
                 "trip_date",
                 "actual_start_time",
                 "scheduled_time",
-                "vehicle_id__vehicle_no",
-                "staff_template_id__driver_id__employee_name",
-                "staff_template_id__operator_id__employee_name",
+                "vehicle_id",
+                "staff_template_id",
             )
         )
+        plan_types = dict(
+            TripPlan.objects.filter(
+                unique_id__in={r["trip_plan_id"] for r in assignment_rows}
+            ).values_list("unique_id", "collection_type")
+        )
+        vehicle_nos = dict(
+            VehicleCreation.objects.filter(
+                unique_id__in={r["vehicle_id"] for r in assignment_rows if r["vehicle_id"]}
+            ).values_list("unique_id", "vehicle_no")
+        )
+        crews = {
+            uid: (driver, operator)
+            for uid, driver, operator in StaffTemplate.objects.filter(
+                unique_id__in={r["staff_template_id"] for r in assignment_rows}
+            ).values_list("unique_id", "driver_id", "operator_id")
+        }
+        staff_names = dict(
+            StaffcreationOfficeDetails.objects.filter(
+                staff_unique_id__in={sid for crew in crews.values() for sid in crew if sid}
+            ).values_list("staff_unique_id", "employee_name")
+        )
 
+        wanted_ward_ids = set(ward_ids)
         trips_by_ward = {}
         seen_ward_types = set()
         for r in assignment_rows:
-            ward_id = r["wards__unique_id"]
-            collection_type = r["trip_plan_id__collection_type"]
-            if not ward_id:
-                continue
-            key = (ward_id, collection_type)
-            if key in seen_ward_types:
-                # Already recorded the most recent trip for this ward +
-                # collection type (rows are ordered newest-first).
-                continue
-            seen_ward_types.add(key)
+            collection_type = plan_types.get(r["trip_plan_id"])
+            driver_id, operator_id = crews.get(r["staff_template_id"], (None, None))
             trip_time = r["actual_start_time"] or r["scheduled_time"]
-            trips_by_ward.setdefault(ward_id, []).append({
-                "trip_id": r["unique_id"],
-                "collection_type": collection_type,
-                "driver_name": r["staff_template_id__driver_id__employee_name"] or "-",
-                "operator_name": r["staff_template_id__operator_id__employee_name"] or "-",
-                "vehicle_no": r["vehicle_id__vehicle_no"] or "-",
-                "trip_date": r["trip_date"].isoformat() if r["trip_date"] else None,
-                "trip_time": trip_time.strftime("%H:%M") if trip_time else None,
-            })
+            for ward_id in r["ward_ids"] or []:
+                if ward_id not in wanted_ward_ids:
+                    continue
+                key = (ward_id, collection_type)
+                if key in seen_ward_types:
+                    # Already recorded the most recent trip for this ward +
+                    # collection type (rows are ordered newest-first).
+                    continue
+                seen_ward_types.add(key)
+                trips_by_ward.setdefault(ward_id, []).append({
+                    "trip_id": r["unique_id"],
+                    "collection_type": collection_type,
+                    "driver_name": staff_names.get(driver_id) or "-",
+                    "operator_name": staff_names.get(operator_id) or "-",
+                    "vehicle_no": vehicle_nos.get(r["vehicle_id"]) or "-",
+                    "trip_date": r["trip_date"].isoformat() if r["trip_date"] else None,
+                    "trip_time": trip_time.strftime("%H:%M") if trip_time else None,
+                })
 
         result = []
         for w in ward_list:
@@ -1112,11 +1220,13 @@ class DashboardSummaryViewSet(ViewSet):
         household_qs = self._apply_dashboard_geo(
             WasteCollection.objects.filter(is_deleted=False).filter(
                 Q(trip_assignment_id__isnull=True)
-                | Q(
-                    trip_assignment_id__trip_plan_id__collection_type__in=[
+                # WasteCollection.trip_assignment_id is a plain unique_id.
+                | ref_q(
+                    "trip_assignment_id", DailyTripAssignment, "unique_id",
+                    trip_plan_id__in=_plan_ids(
                         TripPlan.COLLECTION_TYPE_HOUSEHOLD,
                         TripPlan.COLLECTION_TYPE_BULK,
-                    ]
+                    ),
                 )
             ),
             params,
@@ -1125,7 +1235,7 @@ class DashboardSummaryViewSet(ViewSet):
             BinCollectionEvent.objects.filter(
                 is_deleted=False,
                 status=BinCollectionEvent.STATUS_COLLECTED,
-                trip_assignment_id__trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_BIN,
+                trip_assignment_id__in=_assignment_ids(TripPlan.COLLECTION_TYPE_BIN),
             ),
             params,
         )
@@ -1234,7 +1344,8 @@ class DashboardSummaryViewSet(ViewSet):
         }
 
     def _apply_breakdown_geo(self, qs, params):
-        prefix = "trip_assignment_id__"
+        # VehicleBreakdown copies its assignment's flat geo block on save.
+        prefix = ""
         for key, value in params.items():
             if key == "local_body_type":
                 if value in LOCAL_BODY_MODELS:
@@ -1270,21 +1381,9 @@ class DashboardSummaryViewSet(ViewSet):
     def _critical_alerts(self, params):
         complaints = self._apply_dashboard_geo(
             ComplaintTicket.objects.filter(is_deleted=False)
-            .exclude(status__is_final=True)
-            .select_related(
-                "status",
-                "priority",
-                "category",
-                "category__module",
-                "subcategory",
-                "source",
-                "customer",
-                "created_by",
-                "created_by__user",
-                "assigned_team",
-                "assigned_staff",
+            .exclude(
+                ref_q("status_id", ComplaintStatus, is_final=True)
             )
-            .prefetch_related("extra_details", "waste_types")
             .order_by("-created"),
             params,
             include_ward=False,
@@ -1294,22 +1393,6 @@ class DashboardSummaryViewSet(ViewSet):
                 is_deleted=False,
             )
             .exclude(status=VehicleBreakdown.STATUS_REJECTED)
-            .select_related(
-                "trip_assignment_id",
-                "trip_assignment_id__trip_plan_id",
-                "breakdown_vehicle_id",
-                "replacement_driver_id",
-                "replacement_operator_id",
-                "replacement_vehicle_id",
-                "created_by",
-                "created_by__user",
-                "trip_assignment_id__staff_template_id",
-                "trip_assignment_id__staff_template_id__driver_id",
-                "trip_assignment_id__staff_template_id__operator_id",
-                "trip_assignment_id__alt_staff_template_id",
-                "trip_assignment_id__alt_staff_template_id__driver_id",
-                "trip_assignment_id__alt_staff_template_id__operator_id",
-            )
             .order_by("-created_at"),
             params,
         )[:10]
@@ -1329,34 +1412,19 @@ class DashboardSummaryViewSet(ViewSet):
         }
 
         def raised_person_name(row, fallback):
-            account = getattr(row, "created_by", None)
-            user = getattr(account, "user", None)
-            account_staff_name = (
-                StaffcreationOfficeDetails.objects.filter(pk=account.staff_id)
-                .values_list("employee_name", flat=True)
-                .first()
-                if account and account.staff_id
-                else ""
-            )
-            user_staff_model = (
-                user._meta.get_field("staff_id").remote_field.model
-                if user and getattr(user, "staff_id_id", None)
+            account_id = getattr(row, "created_by", None)
+            account = (
+                Account.objects.select_related("user", "staff").filter(pk=account_id).first()
+                if account_id
                 else None
             )
-            user_staff_name = (
-                user_staff_model.objects.filter(pk=user.staff_id_id)
-                .values_list("employee_name", flat=True)
-                .first()
-                if user_staff_model
-                else ""
-            )
-            user_customer_name = (
-                CustomerCreation.objects.filter(pk=user.customer_id_id)
-                .values_list("customer_name", flat=True)
-                .first()
-                if user and getattr(user, "customer_id_id", None)
-                else ""
-            )
+            user = getattr(account, "user", None)
+            account_staff = getattr(account, "staff", None)
+            account_staff_name = getattr(account_staff, "employee_name", "") or ""
+            user_staff = user.staff if user else None
+            user_staff_name = getattr(user_staff, "employee_name", "") or ""
+            user_customer = user.customer if user else None
+            user_customer_name = getattr(user_customer, "customer_name", "") or ""
             return (
                 account_staff_name
                 or user_staff_name
@@ -1381,26 +1449,13 @@ class DashboardSummaryViewSet(ViewSet):
                 assignment = (
                     DailyTripAssignment.objects.filter(
                         Q(unique_id=trip_reference)
-                        | Q(trip_plan_id__display_code=trip_reference),
+                        | ref_q("trip_plan_id", TripPlan, display_code=trip_reference),
                         is_deleted=False,
-                    )
-                    .select_related(
-                        "trip_plan_id",
-                        "staff_template_id",
-                        "staff_template_id__driver_id",
-                        "staff_template_id__operator_id",
-                        "alt_staff_template_id",
-                        "alt_staff_template_id__driver_id",
-                        "alt_staff_template_id__operator_id",
-                        "vehicle_id",
                     )
                     .first()
                 )
-            assignment_plan = getattr(assignment, "trip_plan_id", None)
-            assignment_template = (
-                getattr(assignment, "alt_staff_template_id", None)
-                or getattr(assignment, "staff_template_id", None)
-            )
+            assignment_plan = getattr(assignment, "trip_plan", None)
+            assignment_template = getattr(assignment, "effective_template", None)
             collection_type = (
                 assignment_plan.get_collection_type_display()
                 if assignment_plan
@@ -1468,38 +1523,46 @@ class DashboardSummaryViewSet(ViewSet):
                         for value in (
                             row.location_text or "",
                             local_body_name or "",
-                            getattr(row.district, "name", "") or "",
+                            (
+                                District.objects.filter(unique_id=row.district_id)
+                                .values_list("name", flat=True)
+                                .first()
+                                if row.district_id
+                                else ""
+                            ) or "",
                         )
                         if value
                     ),
                     "trip": trip_reference,
                     "vehicle": (
                         context.get("vehicle_reference")
-                        or getattr(getattr(assignment, "vehicle_id", None), "vehicle_no", "")
+                        or getattr(getattr(assignment, "vehicle", None), "vehicle_no", "")
                         or ""
                     ),
                     "driver": (
                         context.get("driver_reference")
-                        or getattr(getattr(assignment_template, "driver_id", None), "employee_name", "")
+                        or getattr(getattr(assignment_template, "driver", None), "employee_name", "")
                         or ""
                     ),
                     "operator": (
                         context.get("operator_reference")
-                        or getattr(getattr(assignment_template, "operator_id", None), "employee_name", "")
+                        or getattr(getattr(assignment_template, "operator", None), "employee_name", "")
                         or ""
                     ),
                     "remarks": context.get("other_reference") or "",
                 }
             )
         for row in breakdowns:
-            assignment = row.trip_assignment_id
-            trip_plan = getattr(assignment, "trip_plan_id", None)
-            template = assignment.alt_staff_template_id or assignment.staff_template_id
+            assignment = row.trip_assignment
+            if assignment is None:
+                continue
+            trip_plan = assignment.trip_plan
+            template = assignment.effective_template
             alerts.append(
                 {
                     "id": row.unique_id,
                     "kind": "vehicle_breakdown",
-                    "title": f"{row.get_breakdown_reason_display()} · {row.breakdown_vehicle_id.vehicle_no}",
+                    "title": f"{row.get_breakdown_reason_display()} · {getattr(row.breakdown_vehicle, 'vehicle_no', '')}",
                     "status": row.get_status_display(),
                     "severity": "critical" if row.status == VehicleBreakdown.STATUS_REPORTED else "warning",
                     "created": row.created_at.isoformat() if row.created_at else None,
@@ -1516,12 +1579,12 @@ class DashboardSummaryViewSet(ViewSet):
                     "assigned_to": "",
                     "location": row.breakdown_location or "",
                     "trip": getattr(trip_plan, "display_code", "") or assignment.unique_id,
-                    "vehicle": row.breakdown_vehicle_id.vehicle_no,
-                    "replacement_vehicle": getattr(row.replacement_vehicle_id, "vehicle_no", "") or "",
-                    "driver": getattr(getattr(template, "driver_id", None), "employee_name", "") or "",
-                    "operator": getattr(getattr(template, "operator_id", None), "employee_name", "") or "",
-                    "replacement_driver": getattr(row.replacement_driver_id, "employee_name", "") or "",
-                    "replacement_operator": getattr(row.replacement_operator_id, "employee_name", "") or "",
+                    "vehicle": getattr(row.breakdown_vehicle, "vehicle_no", ""),
+                    "replacement_vehicle": getattr(row.replacement_vehicle, "vehicle_no", "") or "",
+                    "driver": getattr(getattr(template, "driver", None), "employee_name", "") or "",
+                    "operator": getattr(getattr(template, "operator", None), "employee_name", "") or "",
+                    "replacement_driver": getattr(row.replacement_driver, "employee_name", "") or "",
+                    "replacement_operator": getattr(row.replacement_operator, "employee_name", "") or "",
                     "trip_date": assignment.trip_date.isoformat() if assignment.trip_date else "",
                     "scheduled_time": str(assignment.scheduled_time) if assignment.scheduled_time else "",
                     "breakdown_time": str(row.breakdown_time) if row.breakdown_time else "",
@@ -1537,7 +1600,6 @@ class DashboardSummaryViewSet(ViewSet):
     def _recent_grievances(self, params):
         qs = self._apply_dashboard_geo(
             ComplaintTicket.objects.filter(is_deleted=False)
-            .select_related("status", "priority", "category")
             .order_by("-created"),
             params,
             include_ward=False,

@@ -4,6 +4,8 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
@@ -25,10 +27,10 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "bin_collection_event"
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
-    permission_resource = "BinCollectionEvent"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    permission_resource = "SecondaryBinCollectionEvent"
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "bin_id__bin_name"]
+    search_fields = ["unique_id", "bin_id=app.models.masters.waste_masters.bins.Bins.bin_name"]
     ordering_fields = ["collection_date", "status"]
 
     AUDIT_MODULE = "transport-masters"
@@ -36,32 +38,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = (
-            BinCollectionEvent.objects.select_related(
-                "trip_assignment_id",
-                "trip_assignment_id__trip_plan_id",
-                "trip_assignment_id__trip_plan_id__vehicle_id",
-                "trip_assignment_id__vehicle_id",
-                "trip_assignment_id__state",
-                "trip_assignment_id__district",
-                "trip_assignment_id__area_type",
-                "trip_assignment_id__corporation",
-                "trip_assignment_id__municipality",
-                "trip_assignment_id__town_panchayat",
-                "trip_assignment_id__panchayat_union",
-                "trip_assignment_id__panchayat",
-                "trip_assignment_id__staff_template_id",
-                "trip_assignment_id__staff_template_id__driver_id",
-                "trip_assignment_id__staff_template_id__operator_id",
-                "trip_assignment_id__alt_staff_template_id",
-                "trip_assignment_id__alt_staff_template_id__driver_id",
-                "trip_assignment_id__alt_staff_template_id__operator_id",
-                "trip_assignment_id__alt_staff_template_id__approved_by",
-                "trip_collection_point_id",
-                "collection_point_id",
-                "bin_id",
-                "bin_id__wastetype_id",
-                "location_node",
-            )
+            BinCollectionEvent.objects
             .filter(is_deleted=False)
         )
 
@@ -82,7 +59,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if bin_id:
             queryset = queryset.filter(bin_id=bin_id)
         if panchayat:
-            queryset = queryset.filter(location_node__unique_id=panchayat)
+            queryset = queryset.filter(location_node_id=panchayat)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
         if date_from:
@@ -90,13 +67,11 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if date_to:
             queryset = queryset.filter(collection_date__lte=date_to)
         if ward_id:
-            queryset = queryset.filter(ward__unique_id=ward_id)
+            queryset = queryset.filter(ward_id=ward_id)
 
-        queryset = filter_flat_geo_queryset_by_params(
-            queryset,
-            params,
-            prefix="trip_assignment_id__",
-        )
+        # Events carry their own flat geo columns (copied from the assignment
+        # on save), so filter on those directly — no join to the assignment.
+        queryset = filter_flat_geo_queryset_by_params(queryset, params)
         queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
@@ -148,8 +123,8 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             ]
         ).exists()
         total_weight = children.aggregate(total=Sum("collected_weight_kg"))["total"] or 0
-        vehicle_capacity = getattr(getattr(assignment, "vehicle_id", None), "capacity", None)
-        trip_capacity = getattr(getattr(assignment, "trip_plan_id", None), "max_vehicle_capacity_kg", None)
+        vehicle_capacity = getattr(getattr(assignment, "vehicle", None), "capacity", None)
+        trip_capacity = getattr(getattr(assignment, "trip_plan", None), "max_vehicle_capacity_kg", None)
         capacity = vehicle_capacity or trip_capacity
         exceeds_capacity = (
             bool(capacity)
@@ -169,7 +144,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
         log, created = DailyTripLog.objects.get_or_create(
-            trip_assignment_id=assignment,
+            trip_assignment_id=ref_id(assignment),
             defaults={
                 "collected_weight_kg": stored_weight,
                 "log_status": log_status,
@@ -213,18 +188,18 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         Falls back to get_or_create by (assignment, collection_point) if the direct FK isn't
         resolved (defensive — trip_collection_point_id is NOT NULL in the model).
         """
-        trip_cp = getattr(event, "trip_collection_point_id", None)
+        trip_cp = event.trip_collection_point
 
         if not trip_cp:
-            assignment = getattr(event, "trip_assignment_id", None)
-            collection_point = getattr(event, "collection_point_id", None)
+            assignment = event.trip_assignment
+            collection_point = event.collection_point
             if not assignment or not collection_point:
                 return
             trip_cp, _ = DailyTripCollectionPoint.objects.get_or_create(
-                trip_assignment_id=assignment,
-                collection_point_id=collection_point,
+                trip_assignment_id=ref_id(assignment),
+                collection_point_id=ref_id(collection_point),
                 defaults={
-                    "bin_id": getattr(event, "bin_id", None),
+                    "bin_id": ref_id(getattr(event, "bin_id", None)),
                 },
             )
 
@@ -242,7 +217,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_longitude",
             "updated_at",
         ])
-        assignment = trip_cp.trip_assignment_id
+        assignment = trip_cp.trip_assignment
         assignment.mark_completed_if_all_cps_collected()
         self._upsert_trip_log_for_assignment(assignment)
 
@@ -260,7 +235,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         latest_remaining = (
             BinCollectionEvent.objects.filter(
-                trip_collection_point_id=trip_cp, is_deleted=False
+                trip_collection_point_id=ref_id(trip_cp), is_deleted=False
             )
             .order_by("-created_at")
             .first()
@@ -284,7 +259,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_longitude",
             "updated_at",
         ])
-        assignment = trip_cp.trip_assignment_id
+        assignment = trip_cp.trip_assignment
         assignment.mark_completed_if_all_cps_collected()
         self._upsert_trip_log_for_assignment(assignment)
 
@@ -310,7 +285,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
         self.log_audit(

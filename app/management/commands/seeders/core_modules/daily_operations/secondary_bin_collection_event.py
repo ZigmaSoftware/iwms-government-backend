@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
@@ -53,7 +54,9 @@ class BinCollectionEventSeeder(BaseSeeder):
         assignments = list(
             DailyTripAssignment.objects.filter(
                 is_deleted=False,
-                trip_plan_id__collection_type=TripPlan.COLLECTION_TYPE_BIN,
+                trip_plan_id__in=TripPlan.objects.filter(
+                    collection_type=TripPlan.COLLECTION_TYPE_BIN
+                ).values("unique_id"),
             )
             # Today is reserved for the live driver_user/scheduler-demo trip,
             # which resets its own assignment's stops/events on every seed
@@ -70,28 +73,28 @@ class BinCollectionEventSeeder(BaseSeeder):
         created = 0
         for assignment in assignments:
             day_offset = _day_offset(assignment)
-            operator = assignment.staff_template_id.operator_id if assignment.staff_template_id_id else None
+            operator = getattr(assignment.staff_template, "operator", None)
 
             trip_cps = list(
                 DailyTripCollectionPoint.objects.filter(
-                    trip_assignment_id=assignment, is_deleted=False
-                ).select_related("collection_point_id", "bin_id", "bin_id__wastetype_id").order_by("sequence")
+                    trip_assignment_id=ref_id(assignment), is_deleted=False
+                ).order_by("sequence")
             )
             for tcp in trip_cps:
-                if not tcp.bin_id_id or not tcp.collection_point_id_id:
+                if not tcp.bin_id or not tcp.collection_point_id:
                     continue
 
                 already = BinCollectionEvent.objects.filter(
-                    trip_assignment_id=assignment,
-                    trip_collection_point_id=tcp,
-                    bin_id=tcp.bin_id,
+                    trip_assignment_id=ref_id(assignment),
+                    trip_collection_point_id=ref_id(tcp),
+                    bin_id=ref_id(tcp.bin),
                     collection_date=assignment.trip_date,
                 ).exists()
                 if already:
                     continue
 
                 outcome = _deterministic_outcome(tcp.sequence, day_offset)
-                cp = tcp.collection_point_id
+                cp = tcp.collection_point
                 weight = None
 
                 if outcome == BinCollectionEvent.STATUS_COLLECTED:
@@ -100,7 +103,7 @@ class BinCollectionEventSeeder(BaseSeeder):
                     # daily aggregate stays comfortably under any seeded
                     # vehicle's capacity (bin_capacity is a volume figure,
                     # not a literal kg ceiling).
-                    fill_basis = Decimal(min(tcp.bin_id.bin_capacity, 200))
+                    fill_basis = Decimal(min(tcp.bin.bin_capacity, 200))
                     weight = (fill_basis * factor).quantize(Decimal("0.01"))
                     reason = ""
                     if operator:
@@ -115,13 +118,13 @@ class BinCollectionEventSeeder(BaseSeeder):
                     tcp.mark_status(status=cp_status, reason=reason, latitude=cp.latitude, longitude=cp.longitude)
 
                 BinCollectionEvent.objects.create(
-                    trip_assignment_id=assignment,
-                    trip_collection_point_id=tcp,
-                    collection_point_id=cp,
-                    bin_id=tcp.bin_id,
-                    ward=cp.wards.first(),
-                    waste_type_id=tcp.bin_id.wastetype_id,
-                    vehicle_id=assignment.vehicle_id,
+                    trip_assignment_id=ref_id(assignment),
+                    trip_collection_point_id=ref_id(tcp),
+                    collection_point_id=ref_id(cp),
+                    bin_id=ref_id(tcp.bin),
+                    ward_id=ref_id(cp.wards.first()),
+                    waste_type_id=ref_id(tcp.bin.wastetype),
+                    vehicle_id=ref_id(assignment.vehicle),
                     collected_weight_kg=weight,
                     status=outcome,
                     status_reason=reason,

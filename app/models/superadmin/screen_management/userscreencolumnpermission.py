@@ -1,15 +1,11 @@
 from django.db import models
 from django.db.models import Q, UniqueConstraint
-
-from app.models.superadmin.role_management.contractorUserType import ContractorUserType
-from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.models.superadmin.role_management.staffUserType import StaffUserType
-from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
 from app.models.superadmin.screen_management.userscreenpermission import LocalBodyType, PermissionOwnerKind
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_userscreencolumnpermission_id():
@@ -43,39 +39,31 @@ class UserScreenColumnPermission(BaseMaster):
         editable=False,
     )
 
-    usertype_id = models.ForeignKey(
-        UserType,
-        on_delete=models.PROTECT,
-        related_name="userscreen_column_permissions",
-        to_field="unique_id",
+    usertype_id = models.CharField(
+        max_length=30,
         db_column="usertype_id",
+        db_index=True,
         null=True,
         blank=True,
     )
-    staffusertype_id = models.ForeignKey(
-        StaffUserType,
-        on_delete=models.PROTECT,
-        related_name="userscreen_column_permissions",
-        to_field="unique_id",
+    staffusertype_id = models.CharField(
+        max_length=30,
         db_column="staffusertype_id",
+        db_index=True,
         null=True,
         blank=True,
     )
-    contractorusertype_id = models.ForeignKey(
-        ContractorUserType,
-        on_delete=models.PROTECT,
-        related_name="userscreen_column_permissions",
-        to_field="unique_id",
+    contractorusertype_id = models.CharField(
+        max_length=35,
         db_column="contractorusertype_id",
+        db_index=True,
         null=True,
         blank=True,
     )
-    governmentusertype_id = models.ForeignKey(
-        GovernmentStaffUserType,
-        on_delete=models.PROTECT,
-        related_name="userscreen_column_permissions",
-        to_field="unique_id",
+    governmentusertype_id = models.CharField(
+        max_length=40,
         db_column="governmentusertype_id",
+        db_index=True,
         null=True,
         blank=True,
     )
@@ -97,19 +85,15 @@ class UserScreenColumnPermission(BaseMaster):
     )
     staff_id = models.CharField(max_length=60, null=True, blank=True)
 
-    userscreen_id = models.ForeignKey(
-        UserScreen,
-        on_delete=models.PROTECT,
-        related_name="column_permissions",
-        to_field="unique_id",
+    userscreen_id = models.CharField(
+        max_length=30,
         db_column="userscreen_id",
+        db_index=True,
     )
-    column_id = models.ForeignKey(
-        UserScreenColumn,
-        on_delete=models.PROTECT,
-        related_name="userscreen_permissions",
-        to_field="unique_id",
+    column_id = models.CharField(
+        max_length=30,
         db_column="column_id",
+        db_index=True,
     )
 
     field_permission_state = models.CharField(
@@ -180,3 +164,36 @@ class UserScreenColumnPermission(BaseMaster):
 
     def __str__(self):
         return f"{self.userscreen_id} - {self.column_id}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def usertype(self):
+        return self._lookup("app.models.superadmin.role_management.userType.UserType", self.usertype_id)
+
+    @property
+    def staffusertype(self):
+        return self._lookup("app.models.superadmin.role_management.staffUserType.StaffUserType", self.staffusertype_id)
+
+    @property
+    def contractorusertype(self):
+        return self._lookup("app.models.superadmin.role_management.contractorUserType.ContractorUserType", self.contractorusertype_id)
+
+    @property
+    def governmentusertype(self):
+        return self._lookup("app.models.superadmin.role_management.governmentStaffUserType.GovernmentStaffUserType", self.governmentusertype_id)
+
+    @property
+    def userscreen(self):
+        return self._lookup("app.models.superadmin.screen_management.userscreen.UserScreen", self.userscreen_id)
+
+    @property
+    def column(self):
+        return self._lookup("app.models.superadmin.screen_management.userscreencolumn.UserScreenColumn", self.column_id)

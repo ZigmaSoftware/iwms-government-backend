@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.models.superadmin.audits.vehicle_trip_audit import VehicleTripAudit
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
@@ -70,7 +71,7 @@ class VehicleTripAuditSerializer(serializers.ModelSerializer):
             )
 
         vehicle = attrs.get("vehicle") or (instance.vehicle if instance else None)
-        if vehicle and vehicle != trip.vehicle_id:
+        if vehicle and ref_id(vehicle) != trip.vehicle_id:
             raise serializers.ValidationError("Vehicle does not match daily trip assignment")
 
         return attrs

@@ -8,20 +8,18 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.masters.department import Department
+from app.models.masters.designation import Designation
 from app.serializers.superadmin.staff_management.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
-from rest_framework import viewsets
+from app.utils import ref_cache
 
 
 class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "staffcreation"
-    queryset = Staffcreation.objects.select_related(
-        "personal_details",
-        "staffusertype_id",
-        "contractorusertype_id",
-    ).all()
+    queryset = Staffcreation.objects.filter(is_deleted=False).all()
     serializer_class = StaffcreationSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     permission_resource = "StaffCreation"
@@ -39,11 +37,7 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     ordering_fields = ["staff_unique_id", "employee_name", "created_at"]
 
     def get_queryset(self):
-        queryset = Staffcreation.objects.filter(is_deleted=False).select_related(
-            "personal_details",
-            "staffusertype_id",
-            "contractorusertype_id",
-        )
+        queryset = Staffcreation.objects.filter(is_deleted=False)
 
         employee_name = self.request.query_params.get("employee_name", None)
         active_status = self.request.query_params.get("active_status", None)
@@ -66,10 +60,10 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(active_status=active_status == "1")
 
         if staffusertype_id:
-            queryset = queryset.filter(staffusertype_id__unique_id=staffusertype_id)
+            queryset = queryset.filter(staffusertype_id=staffusertype_id)
 
         if contractorusertype_id:
-            queryset = queryset.filter(contractorusertype_id__unique_id=contractorusertype_id)
+            queryset = queryset.filter(contractorusertype_id=contractorusertype_id)
 
         if login_enabled in ["0", "1", "true", "false", "True", "False"]:
             queryset = queryset.filter(login_enabled=str(login_enabled).lower() in ["1", "true"])
@@ -134,7 +128,9 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             head_suffix = self.GOVT_HEAD_ROLE_SUFFIX.get(role_suffix)
             if head_suffix:
                 queryset = queryset.filter(
-                    governmentusertype_id__name=f"govt_{level}_{head_suffix}"
+                    governmentusertype_id=GovernmentStaffUserType.objects.filter(
+                        name=f"govt_{level}_{head_suffix}"
+                    ).values_list("unique_id", flat=True).first()
                 )
             elif role_suffix == "admin":
                 queryset = queryset.none()
@@ -144,10 +140,10 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             {
                 "unique_id": staff.staff_unique_id,
                 "employee_name": staff.employee_name,
-                "department_id": getattr(staff.department_id, "unique_id", None),
-                "department_name": getattr(staff.department_id, "department_name", None),
-                "staffusertype_id": getattr(staff.staffusertype_id, "unique_id", None),
-                "contractorusertype_id": getattr(staff.contractorusertype_id, "unique_id", None),
+                "department_id": staff.department_id,
+                "department_name": getattr(staff.department_ref, "department_name", None),
+                "staffusertype_id": staff.staffusertype_id,
+                "contractorusertype_id": staff.contractorusertype_id,
             }
             for staff in queryset[:200]
         ]

@@ -12,6 +12,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils import ref_cache
 
 
 class UniqueIdOrPkField(serializers.SlugRelatedField):
@@ -39,29 +40,36 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
 
     # Write fields — accept IDs from frontend
 
-    vehicle_type_id = UniqueIdOrPkField(
-        source="vehicle_type",
-        slug_field="unique_id",
-        queryset=VehicleTypeCreation.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
-    fuel_type_id = UniqueIdOrPkField(
-        source="fuel_type",
-        slug_field="unique_id",
-        queryset=Fuel.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
+    # Plain unique_id strings (no DB relation); checked in validate_*.
+    vehicle_type_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    fuel_type_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
-    vehicle_type_name = serializers.CharField(
-        source="vehicle_type.vehicleType",
-        read_only=True
-    )
-    fuel_type_name = serializers.CharField(
-        source="fuel_type.fuel_type",
-        read_only=True
-    )
+    vehicle_type_name = serializers.SerializerMethodField()
+    fuel_type_name = serializers.SerializerMethodField()
+
+    def get_vehicle_type_name(self, obj):
+        if not obj.vehicle_type_id:
+            return None
+        return getattr(ref_cache.get(VehicleTypeCreation, obj.vehicle_type_id), "vehicleType", None)
+
+    def get_fuel_type_name(self, obj):
+        if not obj.fuel_type_id:
+            return None
+        return getattr(ref_cache.get(Fuel, obj.fuel_type_id), "fuel_type", None)
+
+    def validate_vehicle_type_id(self, value):
+        if not value:
+            return None
+        if not VehicleTypeCreation.objects.filter(pk=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
+
+    def validate_fuel_type_id(self, value):
+        if not value:
+            return None
+        if not Fuel.objects.filter(pk=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
 
     # Government hierarchy — mirrors Collection Point's location fields
     # (see app/serializers/core_modules/schedule_setup/collection_point_serializer.py).
@@ -85,31 +93,31 @@ class VehicleCreationSerializer(serializers.ModelSerializer):
     panchayat_name = serializers.SerializerMethodField()
 
     def get_country_name(self, obj):
-        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Country, obj.country_id, "unique_id"), "name", None)
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
     class Meta:
         model = VehicleCreation

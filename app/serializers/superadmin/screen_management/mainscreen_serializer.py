@@ -1,13 +1,13 @@
 from django.db import transaction
 from rest_framework import serializers
 from app.models.superadmin.screen_management.mainscreen import MainScreen
+from app.models.superadmin.screen_management.mainscreentype import MainScreenType
+from app.utils import ref_cache
 from app.validators.superadmin.screen_management.order_no_validators import validate_unique_order_no
 
 class MainScreenSerializer(serializers.ModelSerializer):
-    mainscreentype_name = serializers.CharField(
-        source="mainscreentype_id.type_name",
-        read_only=True
-    )
+    mainscreentype_id = serializers.CharField()
+    mainscreentype_name = serializers.SerializerMethodField()
     # Backend is source of truth for ordering; allow clients to omit this.
     order_no = serializers.IntegerField(required=False, allow_null=True)
     # UI no longer sends icon_name; derive it from mainscreen_name if omitted.
@@ -62,3 +62,6 @@ class MainScreenSerializer(serializers.ModelSerializer):
         )
 
         return data
+
+    def get_mainscreentype_name(self, obj):
+        return getattr(obj.mainscreentype, "type_name", None)

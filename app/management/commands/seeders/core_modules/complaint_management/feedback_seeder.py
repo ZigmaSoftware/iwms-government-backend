@@ -20,9 +20,9 @@ class ComplaintFeedbackSeeder(BaseSeeder):
                 continue
 
             ComplaintFeedback.objects.update_or_create(
-                ticket=ticket,
+                ticket_id=ticket.unique_id,
                 defaults={
-                    "customer": ticket.customer,
+                    "customer_id": ticket.customer_id,
                     "rating": rating,
                     "feedback_text": text,
                     "is_issue_solved": solved,

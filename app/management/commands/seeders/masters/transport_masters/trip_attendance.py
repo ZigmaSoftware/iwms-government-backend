@@ -7,6 +7,7 @@ from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.district import District
 from app.models.masters.transport_masters.trip_attendance import TripAttendance
+from app.utils.plain_ref import ref_id
 
 
 class TripAttendanceSeeder(BaseSeeder):
@@ -26,7 +27,6 @@ class TripAttendanceSeeder(BaseSeeder):
             trip = (
                 DailyTripAssignment.objects.filter(district_id=district_uid)
                 .order_by("-trip_date", "-created_at")
-                .select_related("staff_template_id", "vehicle_id")
                 .first()
             )
             if not trip:
@@ -37,7 +37,7 @@ class TripAttendanceSeeder(BaseSeeder):
                 trip.status = DailyTripAssignment.STATUS_IN_PROGRESS
                 trip.save(update_fields=["status"])
 
-            staff_template = trip.staff_template_id
+            staff_template = trip.staff_template
             if not staff_template:
                 self.log(f"'{district_name}' trip missing staff template — skipping.")
                 continue
@@ -48,14 +48,14 @@ class TripAttendanceSeeder(BaseSeeder):
                 point = district_obj.coordinates[0]
                 lat, lon = point["latitude"], point["longitude"]
 
-            for idx, staff in enumerate([staff_template.operator_id, staff_template.driver_id]):
+            for idx, staff in enumerate([staff_template.operator, staff_template.driver]):
                 if not staff:
                     continue
                 attendance_time = timezone.now() - timedelta(minutes=50 + (idx * 10))
                 _, was_created = TripAttendance.objects.get_or_create(
-                    daily_trip_assignment=trip,
-                    staff=staff,
-                    vehicle=trip.vehicle_id,
+                    daily_trip_assignment_id=trip.unique_id,
+                    staff_id=staff.staff_unique_id,
+                    vehicle_id=ref_id(trip.vehicle_id),
                     attendance_time=attendance_time,
                     defaults={
                         "latitude": f"{lat:.7f}",

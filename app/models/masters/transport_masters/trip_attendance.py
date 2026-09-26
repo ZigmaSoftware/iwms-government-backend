@@ -4,6 +4,7 @@ from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 def generate_trip_attendance_id():
     return f"TRIPATT-{generate_unique_id()}"    
 
@@ -32,29 +33,11 @@ class TripAttendance(models.Model):
         editable=False,
     )
 
-    daily_trip_assignment = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.PROTECT,
-        related_name="attendances",
-        db_column="trip_instance_id",
-        to_field="unique_id"
-    )
-
-    staff = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        related_name="trip_attendance",
-        db_column="staff_id",
-        to_field="staff_unique_id"
-    )
-
-    vehicle = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.PROTECT,
-        related_name="trip_attendance",
-        db_column="vehicle_id",
-        to_field="unique_id"
-    )
+    # Plain unique_id references (no DB relation); the
+    # `daily_trip_assignment` / `staff` / `vehicle` properties resolve them.
+    daily_trip_assignment_id = models.CharField(max_length=50, db_column="trip_instance_id")
+    staff_id = models.CharField(max_length=30, db_column="staff_id", db_index=True)
+    vehicle_id = models.CharField(max_length=40, db_column="vehicle_id", db_index=True)
 
     # Flat geo scope block — copied from the linked DailyTripAssignment on
     # save so every attendance row is attributable to a corporation / local
@@ -93,9 +76,21 @@ class TripAttendance(models.Model):
         verbose_name = "Trip Attendance"
         verbose_name_plural = "Trip Attendances"
         indexes = [
-            models.Index(fields=["daily_trip_assignment", "staff"]),
+            models.Index(fields=["daily_trip_assignment_id", "staff_id"]),
             models.Index(fields=["attendance_time"]),
         ]
+
+    @property
+    def daily_trip_assignment(self):
+        return ref_cache.get(DailyTripAssignment, self.daily_trip_assignment_id, "unique_id")
+
+    @property
+    def staff(self):
+        return ref_cache.get(Staffcreation, self.staff_id, "staff_unique_id")
+
+    @property
+    def vehicle(self):
+        return ref_cache.get(VehicleCreation, self.vehicle_id)
 
     def save(self, *args, **kwargs):
         # Inherit the corporation / local-body scope from the parent trip

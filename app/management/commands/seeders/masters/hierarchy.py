@@ -28,8 +28,10 @@ class AdministrativeHierarchySeeder(BaseSeeder):
                 area_type_cache[area_type_name] = area_type
 
             area_type = area_type_cache[area_type_name]
+            # area_type is a plain unique_id CharField (no FK) — pass the id,
+            # not the instance (which would be stored as str(instance)).
             obj, created = AdministrativeHierarchy.objects.get_or_create(
-                area_type=area_type,
+                area_type=area_type.unique_id,
                 level_name=level_name,
             )
             action = "Created" if created else "Exists"

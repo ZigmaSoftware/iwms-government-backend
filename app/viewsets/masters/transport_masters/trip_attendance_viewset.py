@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.transport_masters.trip_attendance import TripAttendance
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.serializers.masters.transport_masters.trip_attendance_serializer import (
@@ -101,8 +102,8 @@ class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
             )
 
         role = (
-            user.staffusertype_id.name.lower()
-            if user and user.staffusertype_id
+            user.staffusertype.name.lower()
+            if user and user.staffusertype
             else None
         )
 
@@ -114,36 +115,38 @@ class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
         if data.get("daily_trip_assignment_id") and not data.get("vehicle_id"):
             trip = DailyTripAssignment.objects.filter(
                 unique_id=data["daily_trip_assignment_id"]
-            ).select_related("vehicle_id").first()
+            ).first()
             if trip and trip.vehicle_id:
-                data["vehicle_id"] = trip.vehicle_id.unique_id
+                data["vehicle_id"] = trip.vehicle_id
         if not data.get("daily_trip_assignment_id"):
             trip = (
                 DailyTripAssignment.objects
                 .filter(
-                    staff_template_id__operator_id_id=user.unique_id,
+                    staff_template_id__in=StaffTemplate.objects.filter(
+                        operator_id=user.unique_id
+                    ).values("unique_id"),
                     status__in=[
                         DailyTripAssignment.STATUS_IN_PROGRESS,
                         DailyTripAssignment.STATUS_SCHEDULED,
                     ],
                 )
                 .order_by("-created_at")
-                .select_related("vehicle_id")
                 .first()
             )
             if not trip:
                 trip = (
                     DailyTripAssignment.objects
                     .filter(
-                        staff_template_id__driver_id_id=user.unique_id,
+                        staff_template_id__in=StaffTemplate.objects.filter(
+                            driver_id=user.unique_id
+                        ).values("unique_id"),
                         status__in=[
                             DailyTripAssignment.STATUS_IN_PROGRESS,
                             DailyTripAssignment.STATUS_SCHEDULED,
                         ],
                     )
                     .order_by("-created_at")
-                    .select_related("vehicle_id")
-                    .first()
+                        .first()
                 )
             if not trip:
                 return Response(
@@ -151,7 +154,7 @@ class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             data["daily_trip_assignment_id"] = trip.unique_id
-            data["vehicle_id"] = trip.vehicle_id.unique_id if trip.vehicle_id else None
+            data["vehicle_id"] = trip.vehicle_id or None
 
         if role in {"operator", "driver"}:
             if data.get("staff_id") and data.get("staff_id") != user.unique_id:
@@ -196,8 +199,8 @@ class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
             )
 
         role = (
-            user.staffusertype_id.name.lower()
-            if user and user.staffusertype_id
+            user.staffusertype.name.lower()
+            if user and user.staffusertype
             else None
         )
 

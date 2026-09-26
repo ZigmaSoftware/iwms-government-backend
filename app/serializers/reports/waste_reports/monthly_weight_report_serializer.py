@@ -2,6 +2,7 @@ from rest_framework import serializers
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
 from app.models.masters.district import District
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
@@ -29,7 +30,7 @@ class MonthlyWeightReportSerializer(serializers.ModelSerializer):
     location_name = serializers.SerializerMethodField()
     location_level = serializers.SerializerMethodField()
     waste_type_name = serializers.CharField(
-        source="waste_type_id.waste_type_name", read_only=True
+        source="waste_type.waste_type_name", read_only=True, default=None
     )
 
     class Meta:
@@ -54,6 +55,12 @@ class MonthlyWeightReportSerializer(serializers.ModelSerializer):
             "collection_points_covered",
         ]
         read_only_fields = ["unique_id"]
+
+    def validate_waste_type_id(self, value):
+        value = getattr(value, "unique_id", value)
+        if not WasteType.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError("Invalid waste type.")
+        return value
 
     def get_location_name(self, obj):
         name, _level = flat_geo_display(obj)
