@@ -134,11 +134,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         payloads = self._normalize_permission_payloads(request.data)
         results = []
 
+        account = self._account_for_request_user()
+
         with transaction.atomic():
             for payload in payloads:
                 serializer = UserScreenPermissionMultiScreenSerializer(
                     data=payload,
-                    context={"update_only": update_only},
+                    context={"update_only": update_only, "updated_by": account},
                 )
                 serializer.is_valid(raise_exception=True)
                 results.append(serializer.save())
@@ -188,10 +190,12 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         payload["districtId"] = scope.get("district_id")
         payload["areaTypeId"] = scope.get("area_type_id")
 
+        account = self._account_for_request_user()
+
         with transaction.atomic():
             serializer = UserScreenPermissionMultiScreenSerializer(
                 data=payload,
-                context={"update_only": update_only},
+                context={"update_only": update_only, "updated_by": account},
             )
             serializer.is_valid(raise_exception=True)
             result = serializer.save()

@@ -42,6 +42,7 @@ class UserScreenViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     data["order_no"] = (last.order_no if last else 0) + 1
 
         serializer = self.get_serializer(data=data)
+        print("serializer", serializer)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)

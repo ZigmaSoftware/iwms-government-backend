@@ -450,7 +450,8 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         screens = validated_data["screens"]
         desc = (validated_data.get("description") or "").strip()
         update_only = bool(self.context.get("update_only", False))
-
+        updated_by = self.context.get("updated_by")
+        
         created, updated, deleted = [], [], []
         created_columns, updated_columns, deleted_columns = [], [], []
 
@@ -484,11 +485,13 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     permission.is_active = True
                     permission.order_no = order_no
                     permission.description = screen_desc
+                    permission.updated_by = updated_by
                     permission.save(update_fields=[
                         "is_deleted",
                         "is_active",
                         "order_no",
                         "description",
+                        "updated_by",
                         "updated_at",
                     ])
                     updated.append(permission)
@@ -515,6 +518,8 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                     description=screen_desc,
                     is_deleted=False,
                     is_active=True,
+                    created_by=updated_by,
+                    updated_by=updated_by,
                 )
                 created.append(permission)
 
@@ -540,7 +545,8 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             if key not in incoming_action_keys and not permission.is_deleted:
                 permission.is_deleted = True
                 permission.is_active = False
-                permission.save(update_fields=["is_deleted", "is_active", "updated_at"])
+                permission.updated_by = updated_by
+                permission.save(update_fields=["is_deleted", "is_active", "updated_by", "updated_at"])
                 deleted.append(permission)
 
         return {
