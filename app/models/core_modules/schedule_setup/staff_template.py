@@ -3,6 +3,7 @@ from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.utils import ref_cache
 
 
 
@@ -46,23 +47,11 @@ class StaffTemplate(BaseMaster):
         editable=False
     )
 
-    # ---------------- DRIVER ROLE ----------------
-    driver_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        related_name="driver_templates",
-        db_column="driver_id",
-        to_field="staff_unique_id"
-    )
-
-    # ---------------- OPERATOR ROLE ----------------
-    operator_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        related_name="operator_templates",
-        db_column="operator_id",
-        to_field="staff_unique_id"
-    )
+    # ---------------- DRIVER / OPERATOR ROLES ----------------
+    # Plain staff_unique_ids (no DB relation); the `driver` / `operator`
+    # properties below resolve the staff rows.
+    driver_id = models.CharField(max_length=30, db_column="driver_id", db_index=True)
+    operator_id = models.CharField(max_length=30, db_column="operator_id", db_index=True)
 
     extra_operator_id = models.JSONField(
         default=list,
@@ -93,14 +82,8 @@ class StaffTemplate(BaseMaster):
     )
 
     # ---------------- AUDIT FIELDS ----------------
-    approved_by = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        related_name="stafftemplate_approved",
-        db_column="approved_by",
-        to_field="staff_unique_id",
-        null=True,
-        blank=True
+    approved_by_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="approved_by", db_index=True
     )
 
     approval_status = models.CharField(
@@ -128,6 +111,34 @@ class StaffTemplate(BaseMaster):
         ordering = ["-created_at"]
 
     # ------------------------------------------------------------------
+    # PLAIN-STRING STAFF LOOKUPS
+    # ------------------------------------------------------------------
+    def _staff(self, staff_unique_id):
+        return ref_cache.get(Staffcreation, staff_unique_id, "staff_unique_id")
+
+    @property
+    def driver(self):
+        return self._staff(self.driver_id)
+
+    @property
+    def operator(self):
+        return self._staff(self.operator_id)
+
+    @property
+    def approved_by(self):
+        return self._staff(self.approved_by_id)
+
+    @property
+    def alternative_templates(self):
+        """AlternativeStaffTemplate rows for this template (plain
+        staff_template_id, no DB relation)."""
+        from app.models.core_modules.schedule_setup.alternative_staff_template import (
+            AlternativeStaffTemplate,
+        )
+
+        return AlternativeStaffTemplate.objects.filter(staff_template_id=self.unique_id)
+
+    # ------------------------------------------------------------------
     # DISPLAY CODE GENERATION (Enterprise Safe)
     # ------------------------------------------------------------------
     def _generate_display_code(self):
@@ -143,8 +154,8 @@ class StaffTemplate(BaseMaster):
                 return staff.employee_name
             return fallback
 
-        driver_name = resolve_staff_name(self.driver_id, "DRV")[:4].upper()
-        operator_name = resolve_staff_name(self.operator_id, "OPR")[:4].upper()
+        driver_name = resolve_staff_name(self.driver, "DRV")[:4].upper()
+        operator_name = resolve_staff_name(self.operator, "OPR")[:4].upper()
 
         base_code = f"{driver_name}-{operator_name}"
 

@@ -5,22 +5,25 @@ from app.models.masters.waste_masters.subproperty import SubProperty
 from app.serializers.masters.waste_masters.subproperty_serializer import SubPropertySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 SUB_PROPERTY_CACHE_SCOPES = ("sub_property_list", "sub_property_detail")
 
 class SubPropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "sub_property"
     queryset = SubProperty.objects.filter(is_deleted=False)\
-        .select_related("property_id")\
         .order_by("sub_property_name")
 
     serializer_class = SubPropertySerializer
     AUDIT_MODULE = "waste-types"
     AUDIT_ENDPOINT = "subproperties"
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["sub_property_name", "property_id__property_name"]
+    search_fields = [
+        "sub_property_name",
+        "property_id=app.models.masters.waste_masters.property.Property.property_name",
+    ]
     ordering_fields = ["sub_property_name", "is_active"]
 
     @cache_api("sub_property_list", vary_on_user=False)

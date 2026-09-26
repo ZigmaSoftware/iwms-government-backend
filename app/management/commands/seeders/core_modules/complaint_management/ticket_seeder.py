@@ -93,7 +93,7 @@ class ComplaintTicketSeeder(BaseSeeder):
             customer = customers[min(customer_index, len(customers) - 1)]
             category = ComplaintCategory.objects.filter(category_code=category_code, is_deleted=False).first()
             subcategory = ComplaintSubcategory.objects.filter(
-                category=category,
+                category_id=category.unique_id,
                 subcategory_code=subcategory_code,
                 is_deleted=False,
             ).first() if category else None
@@ -117,14 +117,14 @@ class ComplaintTicketSeeder(BaseSeeder):
             ticket, _ = ComplaintTicket.objects.update_or_create(
                 idempotency_key=key,
                 defaults={
-                    "source": source,
-                    "customer": customer,
+                    "source_id": source.unique_id if source else None,
+                    "customer_id": customer.unique_id,
                     "wa_phone": customer.contact_no,
                     "profile_name": customer.customer_name,
-                    "category": category,
-                    "subcategory": subcategory,
-                    "priority": priority,
-                    "status": status,
+                    "category_id": category.unique_id,
+                    "subcategory_id": subcategory.unique_id if subcategory else None,
+                    "priority_id": priority.unique_id,
+                    "status_id": status.unique_id,
                     "title": title,
                     "description": description,
                     "location_text": location_text,
@@ -140,8 +140,8 @@ class ComplaintTicketSeeder(BaseSeeder):
                     "town_panchayat_id": customer.town_panchayat_id,
                     "panchayat_union_id": customer.panchayat_union_id,
                     "panchayat_id": customer.panchayat_id,
-                    "assigned_team": team,
-                    "assigned_staff": getattr(team, "lead_staff", None) if team else None,
+                    "assigned_team_id": team.unique_id if team else None,
+                    "assigned_staff_id": getattr(team, "lead_staff_id", None) if team else None,
                     "resolved_at": now if status.status_code in ("RESOLVED", "CLOSED") else None,
                     "closed_at": now if status.status_code == "CLOSED" else None,
                     "is_active": True,
@@ -150,8 +150,8 @@ class ComplaintTicketSeeder(BaseSeeder):
             )
 
             ComplaintStatusHistory.objects.get_or_create(
-                ticket=ticket,
-                to_status=status,
+                ticket_id=ticket.unique_id,
+                to_status_id=status.unique_id,
                 remarks=f"Seeded as {status.status_name}",
                 defaults={
                     "from_status": None,
@@ -162,10 +162,10 @@ class ComplaintTicketSeeder(BaseSeeder):
                 },
             )
             ComplaintComment.objects.get_or_create(
-                ticket=ticket,
+                ticket_id=ticket.unique_id,
                 comment_text=f"Seed note: {description}",
                 defaults={
-                    "comment_by_customer": customer,
+                    "comment_by_customer_id": customer.unique_id,
                     "is_internal": False,
                     "is_sensitive": False,
                     "is_active": True,

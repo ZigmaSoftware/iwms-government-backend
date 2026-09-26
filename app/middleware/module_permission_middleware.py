@@ -166,7 +166,7 @@ MODULE_RESOURCE_ALLOWLIST = {
     "process-items": set(),
     "customer-masters": {
         "CustomerCreation",
-        "WasteCollection",
+        "HouseholdCollectionEvent",
         "FeedBack",
         "UserChargeRule",
         "CustomerAccessConfiguration",
@@ -204,13 +204,13 @@ MODULE_RESOURCE_ALLOWLIST = {
         "DailyTripAssignment",
         "DailyTripCollectionPoint",
         "DailyTripHouseholdCollection",
-        "BinCollectionEvent",
+        "SecondaryBinCollectionEvent",
         "VehicleBreakdown",
         "DailyTripLog",
         # Registered in base_urls.py and called by the mobile app, but never
         # listed here — so every request to them was refused with
         # "Resource not allowed" regardless of what the role was granted.
-        "WasteCollection",
+        "HouseholdCollectionEvent",
         "TripRetripRequest",
         "StaffNotification",
     },
@@ -268,7 +268,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "StaffAccessConfiguration": ("staff-access-configuration",),
     "StaffAccessDashboard": ("staff-access-dashboard",),
     "CustomerCreation": ("customercreations",),
-    "WasteCollection": ("wastecollections",),
+    "HouseholdCollectionEvent": ("householdcollection-events", "wastecollections"),
     "TripRetripRequest": ("retrip-requests",),
     "StaffNotification": ("staff-notifications",),
     "AppModule": ("app-modules",),
@@ -301,10 +301,10 @@ RESOURCE_PERMISSION_ALIASES = {
         "daily-trip-household-collections",
         "householdcollection-events",
     ),
-    "BinCollectionEvent": (
+    "SecondaryBinCollectionEvent": (
+        "secondary-bin-collection-events",
         "bin-collection-events",
         "bin-collection-event",
-        "secondary-bin-collection-events",
     ),
     "VehicleBreakdown": ("vehicle-breakdowns",),
     "DailyTripLog": ("daily-trip-logs",),
@@ -323,6 +323,15 @@ RESOURCE_PERMISSION_ALIASES = {
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
     "userscreenpermissions": ("UserScreenPermission", "UserScreenPermission"),
     "DashboardWidgetPermission": ("userscreenpermissions", "dashboard-widget-permissions"),
+}
+
+# Parent screen -> child resources. Only the parent is shown in the permission
+# UI; each child inherits every action granted on its parent (merged with any
+# grant of its own). Keep in sync with PERMISSION_SCREEN_CHILDREN in the
+# frontend's utils/permissions.ts.
+PERMISSION_SCREEN_CHILDREN = {
+    "staff-user-type": ("ContractorUserType", "GovernmentStaffUserType"),
+    "daily-trip-plans": ("DailyTripAssignment", "DailyTripCollectionPoint"),
 }
 
 
@@ -722,6 +731,18 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         return {}
 
     def _resolve_allowed_actions(self, permissions_map, resource_name, route_resource=None):
+        own = self._resolve_own_actions(permissions_map, resource_name, route_resource)
+        inherited = [
+            action
+            for parent, children in PERMISSION_SCREEN_CHILDREN.items()
+            if resource_name in children
+            for action in self._resolve_own_actions(permissions_map, parent)
+        ]
+        if not inherited:
+            return own
+        return list(dict.fromkeys([*own, *inherited]))
+
+    def _resolve_own_actions(self, permissions_map, resource_name, route_resource=None):
         if not permissions_map:
             return []
 

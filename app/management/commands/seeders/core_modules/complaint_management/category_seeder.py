@@ -48,9 +48,9 @@ class ComplaintCategorySeeder(BaseSeeder):
                 category_code=code,
                 defaults={
                     "category_name": name,
-                    "default_priority": priority,
-                    "default_team": team,
-                    "module": module,
+                    "default_priority_id": priority.unique_id if priority else None,
+                    "default_team_id": team.unique_id if team else None,
+                    "module_id": module.unique_id if module else None,
                     "requires_location": req_loc,
                     "requires_media": req_media,
                     "requires_address_change_detail": req_addr,

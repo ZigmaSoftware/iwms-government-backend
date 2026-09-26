@@ -61,3 +61,36 @@ class Ward(BaseMaster):
 
     def __str__(self):
         return self.ward_name
+
+    @property
+    def bins(self):
+        """Bins in this ward (Bins.ward_id is a plain unique_id string);
+        replaces the reverse FK accessor CASCADE_SOFT_DELETE expects."""
+        from app.models.masters.waste_masters.bins import Bins
+
+        return Bins.objects.filter(ward_id=self.unique_id)
+
+    @property
+    def bin_collection_events(self):
+        """BinCollectionEvent rows in this ward (plain ward_id)."""
+        from app.models.core_modules.daily_operations.secondary_bin_collection_event import (
+            BinCollectionEvent,
+        )
+
+        return BinCollectionEvent.objects.filter(ward_id=self.unique_id)
+
+    @property
+    def waste_collections(self):
+        """WasteCollection rows in this ward (plain ward_id)."""
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
+
+        return WasteCollection.objects.filter(ward_id=self.unique_id)
+
+    @property
+    def customers(self):
+        """CustomerCreation rows in this ward. CustomerCreation.ward_id is a
+        plain unique_id string (no DB relation), so this replaces the reverse
+        FK accessor that CASCADE_SOFT_DELETE above expects."""
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+
+        return CustomerCreation.objects.filter(ward_id=self.unique_id)

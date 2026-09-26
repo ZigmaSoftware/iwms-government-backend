@@ -4,13 +4,11 @@ from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateA
 
 
 class StaffTemplateAuditLogSerializer(serializers.ModelSerializer):
-    performed_by = serializers.SlugRelatedField(
-        slug_field="staff_unique_id",
-        read_only=True,
-    )
+    performed_by = serializers.CharField(source="performed_by_id", read_only=True)
     performed_by_name = serializers.CharField(
         source="performed_by.employee_name",
         read_only=True,
+        default=None,
     )
 
     class Meta:

@@ -3,6 +3,7 @@ from app.models.superadmin.common_masters.continent import Continent
 from app.models.superadmin.common_masters.country import Country
 from app.models.superadmin.common_masters.state import State
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils import ref_cache
 
 class StateSerializer(serializers.ModelSerializer):
     continent_id = serializers.CharField(required=False, allow_null=True)
@@ -15,10 +16,10 @@ class StateSerializer(serializers.ModelSerializer):
     label = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def get_continent_name(self, obj):
-        return Continent.objects.filter(unique_id=obj.continent_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Continent, obj.continent_id, "unique_id"), "name", None)
 
     def get_country_name(self, obj):
-        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Country, obj.country_id, "unique_id"), "name", None)
 
     class Meta:
         model = State

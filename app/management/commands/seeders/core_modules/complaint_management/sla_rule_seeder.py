@@ -26,15 +26,15 @@ class ComplaintSlaRuleSeeder(BaseSeeder):
                 priority.priority_code, (120, 4320, 1440)
             )
             ComplaintSlaRule.objects.get_or_create(
-                category=category,
-                subcategory=None,
-                priority=priority,
-                source=None,
+                category_id=category.unique_id,
+                subcategory_id=None,
+                priority_id=priority.unique_id,
+                source_id=None,
                 defaults={
                     "assign_within_minutes": assign_within,
                     "resolve_within_minutes": resolve_within,
                     "escalation_after_minutes": escalate_after,
-                    "escalation_team": category.default_team.escalates_to if category.default_team else None,
+                    "escalation_team_id": category.default_team.escalates_to_id if category.default_team else None,
                     "is_active": True,
                     "is_deleted": False,
                 },

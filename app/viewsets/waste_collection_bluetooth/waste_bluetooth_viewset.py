@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum
 from datetime import datetime, timedelta
+from app.utils.plain_ref import ref_id
 from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
     WasteCollectionMain,
     WasteCollectionSub,
@@ -138,8 +139,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         dthc = (
             DailyTripHouseholdCollection.objects
             .filter(
-                trip_assignment_id=assignment,
-                customer_id=customer,
+                trip_assignment_id=assignment.unique_id,
+                customer_id=customer.unique_id,
                 is_deleted=False,
             )
             .first()
@@ -147,14 +148,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if dthc is None:
             last_seq = (
                 DailyTripHouseholdCollection.objects
-                .filter(trip_assignment_id=assignment)
+                .filter(trip_assignment_id=assignment.unique_id)
                 .order_by("-sequence")
                 .values_list("sequence", flat=True)
                 .first()
             )
             dthc = DailyTripHouseholdCollection.objects.create(
-                trip_assignment_id=assignment,
-                customer_id=customer,
+                trip_assignment_id=assignment.unique_id,
+                customer_id=customer.unique_id,
                 collection_type=DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD,
                 sequence=(last_seq or 0) + 1,
                 status=DailyTripHouseholdCollection.STATUS_PENDING,
@@ -203,18 +204,18 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if reason:
             body += f' ("{reason}")'
         send_push_to_customer(
-            dthc.customer_id,
+            dthc.customer,
             title,
             body,
-            data={"event": "household_status", "status": dthc.status, "trip_assignment_id": str(dthc.trip_assignment_id_id)},
+            data={"event": "household_status", "status": dthc.status, "trip_assignment_id": str(dthc.trip_assignment_id)},
         )
 
         return Response({
             "status": "success",
             "data": {
                 "unique_id": dthc.unique_id,
-                "customer_id": dthc.customer_id_id,
-                "trip_assignment_id": dthc.trip_assignment_id_id,
+                "customer_id": dthc.customer_id,
+                "trip_assignment_id": dthc.trip_assignment_id,
                 "collection_status": dthc.status,
                 "reason": dthc.status_reason,
             },
@@ -480,18 +481,22 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         dthc = (
             DailyTripHouseholdCollection.objects
             .filter(
-                customer_id=customer,
+                customer_id=customer.unique_id,
                 is_deleted=False,
-                trip_assignment_id__trip_date=today,
-                trip_assignment_id__is_deleted=False,
             )
-            .exclude(trip_assignment_id__status=DailyTripAssignment.STATUS_CANCELLED)
-            .select_related("trip_assignment_id")
+            .filter(
+                trip_assignment_id__in=DailyTripAssignment.objects.filter(
+                    is_deleted=False,
+                    trip_date=today,
+                ).exclude(status=DailyTripAssignment.STATUS_CANCELLED).values("unique_id")
+            )
             .order_by("is_collected", "trip_assignment_id")  # prefer a pending stop
             .first()
         )
         if dthc:
-            return dthc.trip_assignment_id
+            return DailyTripAssignment.objects.filter(
+                unique_id=dthc.trip_assignment_id, is_deleted=False
+            ).first()
 
         try:
             from app.viewsets.operator_mobile.helpers import (
@@ -528,7 +533,7 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         # (or same day, when there is no trip) rather than piling up rows that
         # would double-count in the trip-log aggregate.
         existing_qs = WasteCollection.objects.filter(
-            customer=customer, is_deleted=False
+            customer_id=ref_id(customer), is_deleted=False
         )
         if trip_assignment is not None:
             existing_qs = existing_qs.filter(trip_assignment_id=trip_assignment)

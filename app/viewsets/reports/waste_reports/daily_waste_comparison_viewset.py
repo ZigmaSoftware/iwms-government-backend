@@ -31,6 +31,7 @@ from django.db.models.functions import Coalesce
 from rest_framework import viewsets
 from rest_framework.response import Response
 
+from app.utils.plain_ref import json_contains_any
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.models.masters.corporation import Corporation
 from app.models.masters.municipality import Municipality
@@ -115,15 +116,13 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     throttle_scope = "daily_waste_comparison"
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
-    queryset = DailyWasteComparison.objects.select_related(
-        "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id"
-    )
+    queryset = DailyWasteComparison.objects.all()
     serializer_class = DailyWasteComparisonSerializer
     lookup_field = "unique_id"
 
     def list(self, request):
         # ── base queryset: only confirmed trip logs ──────────────────────
-        queryset = DailyTripLog.objects.prefetch_related("waste_types").filter(
+        queryset = DailyTripLog.objects.filter(
             is_deleted=False,
             log_status__in=[
                 DailyTripLog.LOG_STATUS_SUBMITTED,
@@ -167,7 +166,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
                 })
 
         if waste_type_param:
-            queryset = queryset.filter(waste_types=waste_type_param)
+            queryset = queryset.filter(json_contains_any("waste_type_ids", [waste_type_param]))
 
         # ── choose weight source ─────────────────────────────────────────
         source = request.query_params.get("source", "bin").lower()
@@ -204,7 +203,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         # ── per-waste-type weight, computed separately (a trip can now
         # legitimately appear under more than one waste type) ─────────────
         trip_assignment_ids = list(
-            queryset.values_list("trip_assignment_id_id", flat=True).distinct()
+            queryset.values_list("trip_assignment_id", flat=True).distinct()
         )
         wt_rows = bulk_waste_type_rows_for_trip_assignments(
             trip_assignment_ids, source=source, extra_group_by=("trip_date",),
@@ -212,11 +211,11 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         # Map (trip_date, local_body_field, local_body_id) -> waste type weight,
         # by joining wt_rows back onto the per-trip-log local-body/date info.
         trip_log_info = queryset.values(
-            "trip_assignment_id_id", "trip_date", *group_fields,
+            "trip_assignment_id", "trip_date", *group_fields,
         )
         info_by_assignment = {}
         for r in trip_log_info:
-            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+            info_by_assignment.setdefault(r["trip_assignment_id"], []).append(r)
 
         # If waste_type_id filter is supplied, keep only matching wt_rows.
         if waste_type_param:
@@ -252,7 +251,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         if not waste_type_param:
             classified_assignment_ids = {r["trip_assignment_id"] for r in wt_rows}
             for row in trip_log_info:
-                assignment_id = row["trip_assignment_id_id"]
+                assignment_id = row["trip_assignment_id"]
                 if assignment_id in classified_assignment_ids:
                     continue
                 local_body_field, local_body_id = self._local_body_from_row(row)
@@ -436,7 +435,7 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         trip_assignment has no BinCollectionEvent/WasteCollection detail rows
         at all, so that weight isn't silently dropped from the waste-type
         breakdown/table."""
-        unclassified_qs = queryset.exclude(trip_assignment_id_id__in=classified_assignment_ids)
+        unclassified_qs = queryset.exclude(trip_assignment_id__in=classified_assignment_ids)
         group_fields = [f"{field}_id" for field in LOCAL_BODY_FIELDS]
 
         if source == "household":

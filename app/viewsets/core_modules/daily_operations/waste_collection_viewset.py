@@ -1,6 +1,7 @@
 from django.db import transaction
 
 from rest_framework import filters, viewsets
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 from app.serializers.core_modules.daily_operations.waste_collection_serializer import WasteCollectionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -9,17 +10,16 @@ from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
 
 class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "waste_collection"
-    # NOTE: CustomerCreation's own state/district/.../panchayat and this
-    # model's record-level geography are plain unique_id CharFields now (no
-    # DB relation), so they are no longer valid select_related paths.
-    queryset = WasteCollection.objects.filter(is_deleted=False).select_related(
-        "customer__property_ref", "customer__sub_property",
-    ).order_by("-collection_date","-collection_time")
+    # The "Household collection events" screen in the permission UI.
+    permission_resource = "HouseholdCollectionEvent"
+    # NOTE: customer/trip-assignment/ward are plain unique_id CharFields now
+    # (no DB relation), so no select_related paths exist.
+    queryset = WasteCollection.objects.filter(is_deleted=False).order_by("-collection_date","-collection_time")
     serializer_class = WasteCollectionSerializer
     lookup_field = "unique_id"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "customer__customer_name"]
+    search_fields = ["unique_id"]
     ordering_fields = ["collection_date", "collection_time", "status", "total_quantity"]
 
     AUDIT_MODULE = "schedule-masters"
@@ -33,23 +33,23 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
         ward_id = params.get("ward_id") or params.get("ward_ids")
         collection_date = params.get("date") or params.get("collection_date")
         if ward_id:
-            queryset = queryset.filter(ward__unique_id=ward_id)
+            queryset = queryset.filter(ward_id=ward_id)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
         return queryset
 
     @transaction.atomic
     def perform_destroy(self, instance):
-        trip_assignment = instance.trip_assignment_id
-        customer = instance.customer
+        trip_assignment_id = instance.trip_assignment_id
+        customer_id = instance.customer_id
 
         super().perform_destroy(instance)
 
-        if trip_assignment is None or customer is None:
+        if trip_assignment_id is None or customer_id is None:
             return
-        self._resync_household_collection_after_delete(trip_assignment, customer)
+        self._resync_household_collection_after_delete(trip_assignment_id, customer_id)
 
-    def _resync_household_collection_after_delete(self, trip_assignment, customer):
+    def _resync_household_collection_after_delete(self, trip_assignment_id, customer_id):
         """
         Called after a WasteCollection is soft-deleted. The linked
         DailyTripHouseholdCollection row (and DailyTripLog.household_collected_weight_kg)
@@ -64,8 +64,8 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
         from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
         dthc = DailyTripHouseholdCollection.objects.filter(
-            trip_assignment_id=trip_assignment,
-            customer_id=customer,
+            trip_assignment_id=ref_id(trip_assignment_id),
+            customer_id=ref_id(customer_id),
             is_deleted=False,
         ).first()
         if dthc is None:
@@ -73,8 +73,8 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
 
         latest_remaining = (
             WasteCollection.objects.filter(
-                trip_assignment_id=trip_assignment,
-                customer=customer,
+                trip_assignment_id=ref_id(trip_assignment_id),
+                customer_id=customer_id,
                 is_deleted=False,
             )
             .order_by("-collection_date", "-collection_time")
@@ -99,7 +99,7 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
             ])
 
         log = DailyTripLog.objects.filter(
-            trip_assignment_id=trip_assignment, is_deleted=False
+            trip_assignment_id=ref_id(trip_assignment_id), is_deleted=False
         ).first()
         if log is None:
             return
@@ -112,7 +112,7 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
             # stale non-zero total — reset explicitly in that case.
             from decimal import Decimal
             still_has_any = WasteCollection.objects.filter(
-                trip_assignment_id=trip_assignment, is_deleted=False
+                trip_assignment_id=ref_id(trip_assignment_id), is_deleted=False
             ).exists()
             if not still_has_any:
                 log.household_collected_weight_kg = Decimal("0")

@@ -18,14 +18,7 @@ from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 
 class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "staff_access_configuration"
-    queryset = Staffcreation.objects.select_related(
-        "personal_details",
-        "department_id",
-        "designation_id",
-        "staffusertype_id",
-        "contractorusertype_id",
-        "governmentusertype_id",
-    ).all()
+    queryset = Staffcreation.objects.all()
     serializer_class = StaffAccessConfigurationSerializer
     lookup_field = "staff_unique_id"
     permission_resource = "StaffAccessConfiguration"
@@ -153,7 +146,7 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             )
 
         config = StaffAccessConfiguration.objects.filter(
-            staff_id_id=staff_id, is_deleted=False
+            staff_id=staff_id, is_deleted=False
         ).first()
 
         if request.method == "GET":
@@ -168,10 +161,12 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         module_ids = request.data.get("app_module_ids") or []
         if config is None:
-            config = StaffAccessConfiguration.objects.create(staff_id=staff)
-        config.app_modules.set(
+            config = StaffAccessConfiguration.objects.create(staff_id=staff.staff_unique_id)
+        config.app_module_ids = list(
             AppModule.objects.filter(unique_id__in=module_ids, is_deleted=False)
+            .values_list("unique_id", flat=True)
         )
+        config.save(update_fields=["app_module_ids", "updated_at"])
 
         # Keep the landing app (Staffcreation.app_module, the "Mobile App"
         # dropdown on the Staff Creation form) in step with the ticks.
@@ -264,12 +259,12 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         screens = []
         for row in UserScreen.objects.filter(
             userscreen_name__in=wanted, is_deleted=False
-        ).select_related("mainscreen_id"):
+        ):
             screens.append({
                 "userScreenId": row.unique_id,
                 "userScreenName": row.userscreen_name,
-                "mainScreenId": row.mainscreen_id_id,
-                "mainScreenName": row.mainscreen_id.mainscreen_name,
+                "mainScreenId": row.mainscreen_id,
+                "mainScreenName": row.mainscreen.mainscreen_name if row.mainscreen else "",
                 "actions": [
                     {"actionId": action_rows[a].unique_id, "actionName": a}
                     for a in sorted(wanted[row.userscreen_name])
@@ -282,13 +277,18 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="scope-admins")
     def scope_admins(self, request):
         """Admins the caller may place above a new staff account."""
-        queryset = Staffcreation.objects.select_related(
-            "governmentusertype_id",
-        ).filter(
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        admin_type_ids = GovernmentStaffUserType.objects.filter(
+            name__endswith="_admin",
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+        
+        queryset = Staffcreation.objects.filter(
             active_status=True,
             login_enabled=True,
             is_deleted=False,
-            governmentusertype_id__name__endswith="_admin",
+            governmentusertype_id__in=list(admin_type_ids),
         )
         if not getattr(request.user, "is_superuser", False):
             scoped_ids = filter_staff_queryset_by_requester_scope(
@@ -313,14 +313,6 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 staff_id__in=queryset.values_list("staff_unique_id", flat=True),
                 is_active=True,
                 is_deleted=False,
-            )
-            .prefetch_related(
-                "corporations",
-                "municipalities",
-                "town_panchayats",
-                "panchayat_unions",
-                "panchayats",
-                "wards",
             )
         }
         results = []
@@ -369,8 +361,8 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "id": admin.staff_unique_id,
                 "name": admin.employee_name,
                 "username": admin.username or "",
-                "role": admin.governmentusertype_id.get_name_display(),
-                "roleLevel": admin.governmentusertype_id.level,
+                "role": admin.governmentusertype.get_name_display() if admin.governmentusertype else admin.governmentusertype_id,
+                "roleLevel": admin.governmentusertype.level if admin.governmentusertype else "",
                 "scope": {
                     "stateId": scope.state,
                     "districtId": scope.district,

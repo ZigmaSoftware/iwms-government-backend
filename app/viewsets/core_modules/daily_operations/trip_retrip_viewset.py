@@ -16,6 +16,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.utils.plain_ref import ref_q
 from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 from app.serializers.core_modules.daily_operations.trip_retrip_serializer import (
     TripRetripRequestSerializer,
@@ -32,15 +35,6 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = (
             TripRetripRequest.objects.filter(is_deleted=False)
-            .select_related(
-                "assignment",
-                "assignment__trip_plan_id",
-                "assignment__vehicle_id",
-                "assignment__panchayat",
-                "requested_by",
-                "reviewed_by",
-                "new_assignment",
-            )
             .order_by("-created_at")
         )
 
@@ -55,7 +49,15 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
         if mine and str(mine).lower() in ("1", "true", "yes"):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
             qs = (
-                qs.filter(assignment__trip_plan_id__supervisor_id=staff_uid)
+                qs.filter(
+                    ref_q(
+                        "assignment_id",
+                        DailyTripAssignment,
+                        trip_plan_id__in=TripPlan.objects.filter(
+                            supervisor_id=staff_uid
+                        ).values("unique_id"),
+                    )
+                )
                 if staff_uid
                 else qs.none()
             )
@@ -124,7 +126,7 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 def _is_staff_record(user):
-    """`reviewed_by` is a Staffcreation FK; an Account login is not one."""
+    """`reviewed_by_id` holds a Staffcreation id; an Account login is not one."""
     from app.models.superadmin.staff_management.staffcreation import Staffcreation
 
     return isinstance(user, Staffcreation)

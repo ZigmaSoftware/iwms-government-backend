@@ -15,6 +15,7 @@ from app.models.masters.ward import Ward
 from app.models.superadmin.screen_management.userscreencolumnpermission import (
     UserScreenColumnPermission,
 )
+from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
@@ -163,12 +164,19 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         if not staff_head_id:
             return None
 
-        queryset = Staffcreation.objects.select_related("governmentusertype_id").filter(
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        admin_type_ids = GovernmentStaffUserType.objects.filter(
+            name__endswith="_admin",
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+
+        queryset = Staffcreation.objects.filter(
             staff_unique_id=staff_head_id,
             active_status=True,
             login_enabled=True,
             is_deleted=False,
-            governmentusertype_id__name__endswith="_admin",
+            governmentusertype_id__in=list(admin_type_ids),
         )
         request = self.context.get("request")
         requester = getattr(request, "user", None)
@@ -222,7 +230,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             "panchayat_union": 2,
             "panchayat": 2,
         }
-        admin_level = scope_admin.governmentusertype_id.level
+        admin_level = getattr(scope_admin.governmentusertype, "level", None)
         if rank.get(role.level, 99) < rank.get(admin_level, 99):
             raise serializers.ValidationError({
                 "loginConfig": {
@@ -236,18 +244,9 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
     def _validate_scope_under_admin(self, scope_admin, child):
         parent = (
             StaffDataScope.objects.filter(
-                staff=scope_admin,
+                staff_id=scope_admin.staff_unique_id,
                 is_active=True,
                 is_deleted=False,
-            )
-            .prefetch_related(
-                "location_nodes",
-                "corporations",
-                "municipalities",
-                "town_panchayats",
-                "panchayat_unions",
-                "panchayats",
-                "wards",
             )
             .first()
         )
@@ -386,11 +385,13 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
 
         account_status = (login_config.get("accountStatus") or "").upper()
         if account_status:
-            staff_payload["active_status"] = account_status not in {
+            # accountStatus is the login toggle; only fall back to it for the
+            # staff's own status when basicInfo didn't send active_status.
+            staff_payload.setdefault("active_status", account_status not in {
                 "INACTIVE",
                 "DISABLED",
                 "SUSPENDED",
-            }
+            })
             staff_payload["login_enabled"] = account_status in {
                 "ACTIVE",
                 "APPROVED",
@@ -551,27 +552,27 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             })
 
         scope, _ = StaffDataScope.objects.update_or_create(
-            staff=staff,
+            staff_id=staff.staff_unique_id,
             is_deleted=False,
             defaults={
                 "state": state_id,
                 "district": district_id,
                 "area_type": area_type_id,
                 "is_active": True,
+                "location_node_ids": list(location_node_ids),
+                "corporation_ids": list(local_body_ids_by_model[0][1]),
+                "municipality_ids": list(local_body_ids_by_model[1][1]),
+                "town_panchayat_ids": list(local_body_ids_by_model[2][1]),
+                "panchayat_union_ids": list(local_body_ids_by_model[3][1]),
+                "panchayat_ids": list(local_body_ids_by_model[4][1]),
+                "ward_ids": list(ward_ids),
             },
         )
-        scope.location_nodes.set(location_node_ids)
-        scope.corporations.set(local_body_ids_by_model[0][1])
-        scope.municipalities.set(local_body_ids_by_model[1][1])
-        scope.town_panchayats.set(local_body_ids_by_model[2][1])
-        scope.panchayat_unions.set(local_body_ids_by_model[3][1])
-        scope.panchayats.set(local_body_ids_by_model[4][1])
-        scope.wards.set(ward_ids)
         return scope
 
     def _local_body_filters(self, staff):
         scope = (
-            StaffDataScope.objects.filter(staff=staff, is_active=True, is_deleted=False)
+            StaffDataScope.objects.filter(staff_id=staff.staff_unique_id, is_active=True, is_deleted=False)
             .first()
         )
         access_scope = self._access_scope_payload(scope)
@@ -601,55 +602,62 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         if not filters:
             return []
 
+        # Grants left on retired (soft-deleted) screens are not shown.
+        active_screens = UserScreen.objects.filter(is_deleted=False).values("unique_id")
         permissions = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False,
+            userscreen_id__in=active_screens,
             **filters,
-        ).select_related("mainscreen_id", "userscreen_id", "userscreenaction_id")
+        )
         columns = UserScreenColumnPermission.objects.filter(
             is_active=True,
             is_deleted=False,
+            userscreen_id__in=active_screens,
             **filters,
-        ).select_related("userscreen_id", "userscreen_id__mainscreen_id", "column_id")
+        )
 
         modules = {}
         for permission in permissions.order_by(
-            "mainscreen_id__order_no",
-            "userscreen_id__order_no",
+            "mainscreen_id",
+            "userscreen_id",
             "order_no",
         ):
             module = modules.setdefault(
-                permission.mainscreen_id_id,
+                permission.mainscreen_id,
                 {
-                    "mainScreenId": permission.mainscreen_id_id,
-                    "mainScreenName": permission.mainscreen_id.mainscreen_name,
+                    "mainScreenId": permission.mainscreen_id,
+                    "mainScreenName": permission.mainscreen.mainscreen_name if permission.mainscreen else "",
                     "userScreens": {},
                 },
             )
             screen = module["userScreens"].setdefault(
-                permission.userscreen_id_id,
+                permission.userscreen_id,
                 {
-                    "userScreenId": permission.userscreen_id_id,
-                    "userScreenName": permission.userscreen_id.userscreen_name,
+                    "userScreenId": permission.userscreen_id,
+                    "userScreenName": permission.userscreen.userscreen_name if permission.userscreen else "",
                     "actionIds": [],
                     "actions": [],
                     "columns": [],
                 },
             )
-            action = permission.userscreenaction_id
-            if action.unique_id not in screen["actionIds"]:
+            action = permission.userscreenaction
+            if action and action.unique_id not in screen["actionIds"]:
                 screen["actionIds"].append(action.unique_id)
-            action_name = action.variable_name or action.action_name
+            action_name = action.variable_name or action.action_name if action else None
             if action_name and action_name not in screen["actions"]:
                 screen["actions"].append(action_name)
 
         for column_permission in columns.order_by(
-            "userscreen_id__mainscreen_id__order_no",
-            "userscreen_id__order_no",
+            "userscreen_id",
             "order_no",
         ):
-            userscreen = column_permission.userscreen_id
-            mainscreen = userscreen.mainscreen_id
+            userscreen = column_permission.userscreen
+            if not userscreen:
+                continue
+            mainscreen = userscreen.mainscreen
+            if not mainscreen:
+                continue
             module = modules.setdefault(
                 mainscreen.unique_id,
                 {
@@ -668,15 +676,25 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                     "columns": [],
                 },
             )
-            column = column_permission.column_id
-            screen["columns"].append({
-                "columnId": column.unique_id,
-                "fieldName": column.field_name,
-                "displayName": column.display_name,
-                "canView": column_permission.can_view,
-                "fieldPermissionState": column_permission.field_permission_state,
-                "orderNo": column_permission.order_no,
+            column = column_permission.column
+            if column:
+                screen["columns"].append({
+                    "columnId": column.unique_id,
+                    "fieldName": column.field_name,
+                    "displayName": column.display_name,
+                    "canView": column_permission.can_view,
+                    "fieldPermissionState": column_permission.field_permission_state,
+                    "orderNo": column_permission.order_no,
+                })
+
+        payload = []
+        for module in modules.values():
+            payload.append({
+                "mainScreenId": module["mainScreenId"],
+                "mainScreenName": module["mainScreenName"],
+                "userScreens": list(module["userScreens"].values()),
             })
+        return payload
 
         payload = []
         for module in modules.values():
@@ -706,16 +724,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
 
     def _data_scope_payload(self, staff):
         scope = (
-            StaffDataScope.objects.filter(staff=staff, is_active=True, is_deleted=False)
-            .prefetch_related(
-                "location_nodes",
-                "corporations",
-                "municipalities",
-                "town_panchayats",
-                "panchayat_unions",
-                "panchayats",
-                "wards",
-            )
+            StaffDataScope.objects.filter(staff_id=staff.staff_unique_id, is_active=True, is_deleted=False)
             .first()
         )
         if not scope:
@@ -789,7 +798,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
 
     def _configuration_payload(self, staff):
         staff_payload = StaffcreationSerializer(staff, context=self.context).data
-        usertype_id = getattr(staff, "user_type_id_id", None) or staff_payload.get("user_type_id")
+        usertype_id = getattr(staff, "user_type_id", None) or staff_payload.get("user_type_id")
         permissions = self._permission_payload(staff)
         dashboard_permissions = self._dashboard_payload(staff)
         data_scope = self._data_scope_payload(staff)

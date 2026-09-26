@@ -2,6 +2,7 @@ from django.db import models
 
 from app.utils.base_models import BaseMaster
 from app.models.masters.district_leader_login import generate_district_leader_id
+from app.utils import ref_cache
 
 
 class DistrictLeaderLogin(BaseMaster):
@@ -25,15 +26,18 @@ class DistrictLeaderLogin(BaseMaster):
 
     # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
     # the static district_id (kept temporarily for zero-downtime migration).
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
-        on_delete=models.SET_NULL,
-        related_name="district_leader_logins",
-        to_field="unique_id",
-        db_column="location_node_id",
-        null=True,
-        blank=True,
+    location_node_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="location_node_id", db_index=True
     )
+
+    @property
+    def location_node(self):
+        """HierarchyNode for `location_node_id` (plain unique_id, no DB relation)."""
+        from app.models.masters.hierarchy_tree import HierarchyNode
+
+        if not self.location_node_id:
+            return None
+        return ref_cache.get(HierarchyNode, self.location_node_id, "unique_id")
 
 
 

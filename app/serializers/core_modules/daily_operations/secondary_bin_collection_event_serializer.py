@@ -23,33 +23,25 @@ from app.serializers.core_modules.schedule_setup.alternative_staff_template_seri
     AlternativeStaffTemplateSerializer,
 )
 from app.serializers.core_modules.schedule_setup.staff_template_serializer import StaffTemplateSerializer
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.serializers.masters.waste_masters.wastetype_serializer import (
     WasteTypeSerializer,
 )
 from app.utils.hierarchy import flat_geo_display
+from app.utils import ref_cache
 
 
 class BinCollectionEventSerializer(serializers.ModelSerializer):
-    ward_id = serializers.SlugRelatedField(
-        source="ward", slug_field="unique_id", queryset=Ward.objects.filter(is_deleted=False),
-        required=False, allow_null=True,
-    )
-    ward_name = serializers.CharField(source="ward.ward_name", read_only=True, allow_null=True)
-    trip_assignment_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=DailyTripAssignment.objects.filter(is_deleted=False),
-    )
-    trip_collection_point_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=DailyTripCollectionPoint.objects.filter(is_deleted=False),
-    )
-    bin_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=Bins.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
+    # Plain unique_id references (no DB relation); resolved in validate().
+    ward_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    ward_name = serializers.SerializerMethodField()
+    trip_assignment_id = serializers.CharField(required=False, allow_null=True)
+    trip_collection_point_id = serializers.CharField()
+    bin_id = serializers.CharField(required=False, allow_null=True)
+    collection_point_id = serializers.CharField(read_only=True)
+    vehicle_breakdown_id = serializers.CharField(read_only=True)
+
+    def get_ward_name(self, obj):
+        return getattr(obj.ward, "ward_name", None)
 
     # Geo scope — writable. Explicit selections from the form are persisted;
     # when left blank the model's save() inherits them from the trip assignment.
@@ -74,25 +66,25 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
     panchayat_union_name = serializers.SerializerMethodField()
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     bin = serializers.SerializerMethodField()
     waste_type = serializers.SerializerMethodField()
@@ -184,21 +176,25 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        trip_cp = attrs.get(
-            "trip_collection_point_id",
-            getattr(self.instance, "trip_collection_point_id", None),
-        )
-        assignment = attrs.get(
-            "trip_assignment_id",
-            getattr(self.instance, "trip_assignment_id", None),
-        )
-        bin_obj = attrs.get("bin_id", getattr(self.instance, "bin_id", None))
+        def resolve(model, key, active=True):
+            value = attrs.get(key, getattr(self.instance, key, None))
+            if not value:
+                return None
+            qs = model.objects.filter(unique_id=value)
+            if active:
+                qs = qs.filter(is_deleted=False)
+            obj = qs.first()
+            if obj is None:
+                raise serializers.ValidationError({key: f"Object with unique_id={value} does not exist."})
+            return obj
+
+        trip_cp = resolve(DailyTripCollectionPoint, "trip_collection_point_id")
+        assignment = resolve(DailyTripAssignment, "trip_assignment_id")
+        bin_obj = resolve(Bins, "bin_id")
 
         if trip_cp:
-            assignment = trip_cp.trip_assignment_id
-            bin_obj = trip_cp.bin_id
-            attrs["trip_assignment_id"] = assignment
-            attrs["bin_id"] = bin_obj
+            assignment = trip_cp.trip_assignment
+            bin_obj = trip_cp.bin
             attrs["collection_point_id"] = trip_cp.collection_point_id
 
         if not assignment:
@@ -216,35 +212,39 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         if status in {BinCollectionEvent.STATUS_NOT_COLLECTED, BinCollectionEvent.STATUS_COLLECT_LATER}:
             attrs["collected_weight_kg"] = None
 
-        if trip_cp and trip_cp.trip_assignment_id != assignment:
+        if trip_cp and trip_cp.trip_assignment_id != getattr(assignment, "unique_id", None):
             raise serializers.ValidationError(
                 "Trip collection point does not belong to the selected assignment."
             )
 
-        collection_point = attrs.get("collection_point_id")
+        collection_point = trip_cp.collection_point if trip_cp else None
         attrs["collection_date"] = (
             attrs.get("collection_date")
             or getattr(assignment, "trip_date", None)
         )
-        ward = attrs.get("ward", getattr(self.instance, "ward", None))
-        if not ward and assignment:
-            assignment_wards = assignment.wards.all()
-            if assignment_wards.count() == 1:
-                ward = assignment_wards.first()
-                attrs["ward"] = ward
-        if ward and assignment and not assignment.wards.filter(unique_id=ward.unique_id).exists():
+        ward_id = attrs.get("ward_id", getattr(self.instance, "ward_id", None)) or None
+        if not ward_id and assignment and len(assignment.ward_ids or []) == 1:
+            ward_id = assignment.ward_ids[0]
+        if ward_id and not Ward.objects.filter(unique_id=ward_id, is_deleted=False).exists():
+            raise serializers.ValidationError({"ward_id": f"Object with unique_id={ward_id} does not exist."})
+        if ward_id and assignment and ward_id not in (assignment.ward_ids or []):
             raise serializers.ValidationError({"ward_id": "Ward must belong to the selected trip assignment."})
-        if ward and collection_point and not collection_point.wards.filter(unique_id=ward.unique_id).exists():
+        if ward_id and collection_point and ward_id not in (collection_point.ward_ids or []):
             raise serializers.ValidationError({"ward_id": "Ward is not served by the selected collection point."})
+        attrs["ward_id"] = ward_id
+
+        # Store plain unique_ids (no DB relations).
+        attrs["trip_assignment_id"] = assignment.unique_id
+        attrs["trip_collection_point_id"] = getattr(trip_cp, "unique_id", None)
+        attrs["bin_id"] = bin_obj.unique_id
 
         # These are intentionally not serializer fields. They are derived only
         # to satisfy the current model while the API exposes nested objects.
-        if hasattr(BinCollectionEvent, "waste_type_id"):
-            attrs["waste_type_id"] = getattr(bin_obj, "wastetype_id", None)
-        if hasattr(BinCollectionEvent, "vehicle_id"):
-            attrs["vehicle_id"] = self._resolve_vehicle(assignment)
-        if hasattr(BinCollectionEvent, "vehicle_breakdown_id"):
-            attrs["vehicle_breakdown_id"] = self._resolve_approved_breakdown(assignment)
+        attrs["waste_type_id"] = bin_obj.wastetype_id
+        attrs["vehicle_id"] = getattr(self._resolve_vehicle(assignment), "unique_id", None)
+        attrs["vehicle_breakdown_id"] = getattr(
+            self._resolve_approved_breakdown(assignment), "unique_id", None
+        )
 
         return attrs
 
@@ -255,40 +255,38 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             breakdown = assignment.vehicle_breakdown
         except Exception:
             return None
-        if breakdown.approval_status != VehicleBreakdown.APPROVAL_APPROVED:
+        if breakdown is None or breakdown.approval_status != VehicleBreakdown.APPROVAL_APPROVED:
             return None
         return breakdown
 
     def _resolve_vehicle(self, assignment):
-        return getattr(assignment, "vehicle_id", None) or getattr(
-            getattr(assignment, "trip_plan_id", None),
-            "vehicle_id",
+        return getattr(assignment, "vehicle", None) or getattr(
+            getattr(assignment, "trip_plan", None),
+            "vehicle",
             None,
         )
 
     def _resolve_effective_staff_template(self, assignment):
-        return getattr(assignment, "alt_staff_template_id", None) or getattr(
-            assignment,
-            "staff_template_id",
+        return getattr(assignment, "alt_staff_template", None) or getattr(assignment, "staff_template",
             None,
         )
 
     def _resolve_alternative_staff_template(self, obj):
-        return getattr(obj.trip_assignment_id, "alt_staff_template_id", None)
+        return getattr(obj.trip_assignment, "alt_staff_template", None)
 
     def get_bin(self, obj):
-        if not obj.bin_id:
+        if not obj.bin:
             return None
-        return BinsSerializer(obj.bin_id, context=self.context).data
+        return BinsSerializer(obj.bin, context=self.context).data
 
     def get_waste_type(self, obj):
-        waste_type = getattr(getattr(obj, "bin_id", None), "wastetype_id", None)
+        waste_type = getattr(obj.bin, "wastetype", None)
         if not waste_type:
             return None
         return WasteTypeSerializer(waste_type, context=self.context).data
 
     def get_trip_plan(self, obj):
-        trip_plan = getattr(obj.trip_assignment_id, "trip_plan_id", None)
+        trip_plan = getattr(obj.trip_assignment, "trip_plan", None)
         if not trip_plan:
             return None
         return {
@@ -297,13 +295,13 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         }
 
     def get_vehicle(self, obj):
-        vehicle = self._resolve_vehicle(obj.trip_assignment_id)
+        vehicle = self._resolve_vehicle(obj.trip_assignment)
         if not vehicle:
             return None
         return VehicleCreationSerializer(vehicle, context=self.context).data
 
     def get_staff_template(self, obj):
-        staff_template = getattr(obj.trip_assignment_id, "staff_template_id", None)
+        staff_template = getattr(obj.trip_assignment, "staff_template", None)
         if not staff_template:
             return None
         return StaffTemplateSerializer(staff_template, context=self.context).data
@@ -318,12 +316,12 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         ).data
 
     def get_effective_staff_template(self, obj):
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         staff_template = self._resolve_effective_staff_template(assignment)
         if not staff_template:
             return None
 
-        if getattr(assignment, "alt_staff_template_id", None):
+        if getattr(assignment, "alt_staff_template", None):
             return AlternativeStaffTemplateSerializer(
                 staff_template,
                 context=self.context,
@@ -373,8 +371,8 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         # `panchayat` FK attname `panchayat_id` also yields the raw id).
         panchayat_uid = (
             obj.panchayat_id
-            or getattr(obj.collection_point_id, "panchayat_id", None)
-            or getattr(obj.trip_assignment_id, "panchayat_id", None)
+            or getattr(obj.collection_point, "panchayat_id", None)
+            or getattr(obj.trip_assignment, "panchayat_id", None)
         )
         if not panchayat_uid:
             return None
@@ -386,30 +384,30 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         # Prefer the event's own geo; fall back to the collection point, then the trip assignment.
         name, _ = flat_geo_display(obj)
         if not name:
-            name, _ = flat_geo_display(obj.collection_point_id)
+            name, _ = flat_geo_display(obj.collection_point)
         if not name:
-            name, _ = flat_geo_display(obj.trip_assignment_id)
+            name, _ = flat_geo_display(obj.trip_assignment)
         return name
 
     def get_location_level(self, obj):
         _, level = flat_geo_display(obj)
         if not level:
-            _, level = flat_geo_display(obj.collection_point_id)
+            _, level = flat_geo_display(obj.collection_point)
         if not level:
-            _, level = flat_geo_display(obj.trip_assignment_id)
+            _, level = flat_geo_display(obj.trip_assignment)
         return level
 
     def get_collection_point(self, obj):
-        cp = obj.collection_point_id
+        cp = obj.collection_point
         if not cp:
             return None
         return {"unique_id": getattr(cp, "unique_id", None), "cp_name": getattr(cp, "cp_name", None)}
 
     def get_breakdown_info(self, obj):
-        breakdown = getattr(obj, "vehicle_breakdown_id", None)
+        breakdown = obj.vehicle_breakdown
         if not breakdown:
             return None
-        replacement_vehicle = getattr(breakdown, "replacement_vehicle_id", None)
+        replacement_vehicle = getattr(breakdown, "replacement_vehicle", None)
         return {
             "unique_id": breakdown.unique_id,
             "status": breakdown.status,

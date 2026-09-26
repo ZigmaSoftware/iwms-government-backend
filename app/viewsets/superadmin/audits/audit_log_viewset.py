@@ -13,12 +13,5 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return (
             AuditLog.objects
-            .select_related(
-                "user_id",
-                "staffusertype_id",
-                "mainscreen_id",
-                "userscreen_id",
-                "userscreenaction_id",
-            )
             .order_by("-timestamp")
         )

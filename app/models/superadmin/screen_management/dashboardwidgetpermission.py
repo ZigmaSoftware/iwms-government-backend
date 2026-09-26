@@ -1,13 +1,9 @@
 from django.db import models
 from django.db.models import Q, UniqueConstraint
-
-from app.models.superadmin.role_management.contractorUserType import ContractorUserType
-from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.models.superadmin.role_management.staffUserType import StaffUserType
-from app.models.superadmin.role_management.userType import UserType
 from app.models.superadmin.screen_management.userscreenpermission import LocalBodyType, PermissionOwnerKind
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_dashboardwidgetpermission_id():
@@ -22,39 +18,31 @@ class DashboardWidgetPermission(BaseMaster):
         default=generate_dashboardwidgetpermission_id,
         editable=False,
     )
-    usertype_id = models.ForeignKey(
-        UserType,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    usertype_id = models.CharField(
+        max_length=30,
         db_column="usertype_id",
-        related_name="dashboard_widget_permissions",
+        db_index=True,
         null=True,
         blank=True,
     )
-    staffusertype_id = models.ForeignKey(
-        StaffUserType,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    staffusertype_id = models.CharField(
+        max_length=30,
         db_column="staffusertype_id",
-        related_name="dashboard_widget_permissions",
+        db_index=True,
         null=True,
         blank=True,
     )
-    contractorusertype_id = models.ForeignKey(
-        ContractorUserType,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    contractorusertype_id = models.CharField(
+        max_length=35,
         db_column="contractorusertype_id",
-        related_name="dashboard_widget_permissions",
+        db_index=True,
         null=True,
         blank=True,
     )
-    governmentusertype_id = models.ForeignKey(
-        GovernmentStaffUserType,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
+    governmentusertype_id = models.CharField(
+        max_length=40,
         db_column="governmentusertype_id",
-        related_name="dashboard_widget_permissions",
+        db_index=True,
         null=True,
         blank=True,
     )
@@ -117,3 +105,28 @@ class DashboardWidgetPermission(BaseMaster):
 
     def __str__(self):
         return f"{self.widget_name} ({self.staffusertype_id or self.contractorusertype_id or self.governmentusertype_id})"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def usertype(self):
+        return self._lookup("app.models.superadmin.role_management.userType.UserType", self.usertype_id)
+
+    @property
+    def staffusertype(self):
+        return self._lookup("app.models.superadmin.role_management.staffUserType.StaffUserType", self.staffusertype_id)
+
+    @property
+    def contractorusertype(self):
+        return self._lookup("app.models.superadmin.role_management.contractorUserType.ContractorUserType", self.contractorusertype_id)
+
+    @property
+    def governmentusertype(self):
+        return self._lookup("app.models.superadmin.role_management.governmentStaffUserType.GovernmentStaffUserType", self.governmentusertype_id)

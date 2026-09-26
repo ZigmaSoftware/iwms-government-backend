@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
@@ -103,13 +104,14 @@ def run_for_date(target_date=None, logger=None, force=False):
                 continue
 
             assignment = DailyTripAssignment.objects.create(
-                trip_plan_id=plan,
+                trip_plan_id=plan.unique_id,
                 trip_date=today,
                 **defaults,
             )
 
-            if not assignment.waste_types.exists():
-                assignment.waste_types.set(plan.waste_types.all())
+            if not assignment.waste_type_ids:
+                assignment.waste_type_ids = list(plan.waste_type_ids or [])
+                assignment.save(update_fields=["waste_type_ids"])
 
             created_count += 1
             # Build the operational child records from the master stop list.
@@ -124,7 +126,7 @@ def run_for_date(target_date=None, logger=None, force=False):
             stops = (
                 TripPlanCollectionPoint.objects
                 .filter(
-                    trip_plan_id=plan,
+                    trip_plan_id=plan.unique_id,
                     collection_type=plan.collection_type,
                     is_active=True,
                     is_deleted=False,
@@ -133,12 +135,12 @@ def run_for_date(target_date=None, logger=None, force=False):
             )
             for stop in stops:
                 if stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BIN:
-                    if not stop.collection_point_id_id:
+                    if not stop.collection_point_id:
                         continue
                     DailyTripCollectionPoint.objects.get_or_create(
-                        trip_assignment_id=assignment,
-                        collection_point_id=stop.collection_point_id,
-                        bin_id=stop.bin_id,
+                        trip_assignment_id=ref_id(assignment),
+                        collection_point_id=ref_id(stop.collection_point),
+                        bin_id=ref_id(stop.bin),
                         defaults={
                             "sequence": stop.sequence,
                             "status": DailyTripCollectionPoint.STATUS_PENDING,
@@ -152,10 +154,10 @@ def run_for_date(target_date=None, logger=None, force=False):
 
             # Count the actual child rows now present for this assignment.
             cp_created = DailyTripCollectionPoint.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
+                trip_assignment_id=ref_id(assignment), is_deleted=False
             ).count()
             hh_created = DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
+                trip_assignment_id=ref_id(assignment), is_deleted=False
             ).count()
 
             details.append(

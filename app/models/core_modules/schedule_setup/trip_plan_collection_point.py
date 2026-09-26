@@ -8,6 +8,7 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 def generate_tpcp_id():
@@ -34,13 +35,9 @@ class TripPlanCollectionPoint(BaseMaster):
         editable=False,
     )
 
-    trip_plan_id = models.ForeignKey(
-        TripPlan,
-        on_delete=models.CASCADE,
-        to_field="unique_id",
-        related_name="plan_collection_points",
-        db_column="trip_plan_id",
-    )
+    # Plain unique_id references (no DB relation); the `trip_plan` /
+    # `collection_point` / `bin` / `customer` properties resolve them.
+    trip_plan_id = models.CharField(max_length=30, db_column="trip_plan_id")
 
     collection_type = models.CharField(
         max_length=30,
@@ -50,34 +47,14 @@ class TripPlanCollectionPoint(BaseMaster):
     )
 
     # --- Bin Collection fields (required when collection_type == bin_collection) ---
-    collection_point_id = models.ForeignKey(
-        Collection_point,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plan_cps",
-        db_column="collection_point_id",
-        null=True,
-        blank=True,
+    collection_point_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="collection_point_id", db_index=True
     )
-    bin_id = models.ForeignKey(
-        Bins,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plan_cps",
-        db_column="bin_id",
-        null=True,
-        blank=True,
-    )
+    bin_id = models.CharField(max_length=30, null=True, blank=True, db_column="bin_id", db_index=True)
 
     # --- Household Collection fields (required when collection_type == household_collection) ---
-    customer_id = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.PROTECT,
-        to_field="unique_id",
-        related_name="trip_plan_cps",
-        db_column="customer_id",
-        null=True,
-        blank=True,
+    customer_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="customer_id", db_index=True
     )
 
     state_id = models.CharField(max_length=30, null=True, blank=True)
@@ -111,6 +88,25 @@ class TripPlanCollectionPoint(BaseMaster):
             ),
         ]
 
+    def _lookup(self, model, value):
+        return ref_cache.get(model, value, "unique_id")
+
+    @property
+    def trip_plan(self):
+        return self._lookup(TripPlan, self.trip_plan_id)
+
+    @property
+    def collection_point(self):
+        return self._lookup(Collection_point, self.collection_point_id)
+
+    @property
+    def bin(self):
+        return self._lookup(Bins, self.bin_id)
+
+    @property
+    def customer(self):
+        return self._lookup(CustomerCreation, self.customer_id)
+
     def clean(self):
         # A stop's type must match its plan's declared collection_type - a
         # plan generates exactly one category of daily work (see
@@ -119,34 +115,28 @@ class TripPlanCollectionPoint(BaseMaster):
         # stops. (Whether a bulk stop may be added manually is enforced at
         # the API/serializer layer; the auto-generated bulk placeholder row
         # is still valid here.)
-        if self.trip_plan_id_id and self.collection_type != self.trip_plan_id.collection_type:
+        if self.trip_plan and self.collection_type != self.trip_plan.collection_type:
             raise ValidationError(
                 {"collection_type": "Stop type must match the trip plan's collection type."}
             )
         if self.collection_type == self.COLLECTION_TYPE_BIN:
-            if not self.collection_point_id_id:
+            if not self.collection_point_id:
                 raise ValidationError({"collection_point_id": "Collection point is required for bin collection."})
-            if not self.bin_id_id:
+            if not self.bin_id:
                 raise ValidationError({"bin_id": "Bin is required for bin collection."})
         elif self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK}:
-            if not self.customer_id_id and not self.district_id and not self.trip_plan_id_id:
+            if not self.customer_id and not self.district_id and not self.trip_plan_id:
                 raise ValidationError(
                     {"customer_id": "Select a customer or assign collection to a geographic area."}
                 )
 
     def save(self, *args, **kwargs):
-        if self.collection_point_id_id:
-            copy_flat_geo(self, self.collection_point_id)
-        elif self.customer_id_id:
-            copy_flat_geo(self, self.customer_id)
-        elif self.trip_plan_id_id:
-            copy_flat_geo(self, self.trip_plan_id)
+        source = self.collection_point or self.customer or self.trip_plan
+        if source:
+            copy_flat_geo(self, source)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        if self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK} and self.customer_id_id:
-            return f"{self.trip_plan_id_id} -> customer:{self.customer_id_id} (seq {self.sequence})"
-        return (
-            f"{self.trip_plan_id_id} -> "
-            f"{self.collection_point_id_id} (seq {self.sequence})"
-        )
+        if self.collection_type in {self.COLLECTION_TYPE_HOUSEHOLD, self.COLLECTION_TYPE_BULK} and self.customer_id:
+            return f"{self.trip_plan_id} -> customer:{self.customer_id} (seq {self.sequence})"
+        return f"{self.trip_plan_id} -> {self.collection_point_id} (seq {self.sequence})"

@@ -11,8 +11,8 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import BARE_TO_ID_GEO_FIELDS, FLAT_GEO_FIELDS, normalize_flat_geo_attrs
+from app.utils import ref_cache
 
 
 
@@ -48,31 +48,38 @@ class CommaSeparatedListField(serializers.ListField):
 class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
 
 
-    staff_template = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=StaffTemplate.objects.all(),
-    )
-    driver = UniqueIdOrPkField(
-        source="driver_id",
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False),
-    )
-    operator = UniqueIdOrPkField(
-        source="operator_id",
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False),
-    )
+    # Plain unique_id references (no DB relation); checked in validate_*.
+    staff_template = serializers.CharField(source="staff_template_id")
+    driver = serializers.CharField(source="driver_id")
+    operator = serializers.CharField(source="operator_id")
     # requested_by = UniqueIdOrPkField(
     #     slug_field="staff_unique_id",
     #     queryset=Staffcreation.objects.filter(is_deleted=False),
     #     required=False,
     # )
-    approved_by = UniqueIdOrPkField(
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
+    approved_by = serializers.CharField(
+        source="approved_by_id", required=False, allow_null=True
     )
+
+    @staticmethod
+    def _active_staff_id(value):
+        if not Staffcreation.objects.filter(staff_unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with staff_unique_id={value} does not exist.")
+        return value
+
+    def validate_staff_template(self, value):
+        if not StaffTemplate.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError(f"Object with unique_id={value} does not exist.")
+        return value
+
+    def validate_driver(self, value):
+        return self._active_staff_id(value)
+
+    def validate_operator(self, value):
+        return self._active_staff_id(value)
+
+    def validate_approved_by(self, value):
+        return self._active_staff_id(value) if value else None
     extra_operator = CommaSeparatedListField(
         source="extra_operator_id",
         child=serializers.CharField(),
@@ -126,7 +133,7 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
             return None
         model, default_label_attr = cls._GEO_REF_MODELS[field]
         label_attr = label_attr or default_label_attr
-        instance = model.objects.filter(unique_id=value).first()
+        instance = ref_cache.get(model, value, "unique_id")
         if not instance:
             return None
         return {"unique_id": instance.unique_id, label_attr: getattr(instance, label_attr, None)}
@@ -175,41 +182,38 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
         )
 
     def get_driver_designation(self, obj):
-        return self._staff_designation(getattr(obj, "driver_id", None))
+        return self._staff_designation(obj.driver)
 
     def get_operator_designation(self, obj):
-        return self._staff_designation(getattr(obj, "operator_id", None))
+        return self._staff_designation(obj.operator)
 
     def get_corporation_name(self, obj):
         template_corp_name = None
         if getattr(obj, "corporation_id", None):
-            template_corp_name = (
-                Corporation.objects.filter(unique_id=obj.corporation_id)
-                .values_list("corporation_name", flat=True)
-                .first()
-            )
+            template_corp_name = getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
         return (
             template_corp_name
-            or self._staff_corporation(getattr(obj, "driver_id", None))
-            or self._staff_corporation(getattr(obj, "operator_id", None))
+            or self._staff_corporation(obj.driver)
+            or self._staff_corporation(obj.operator)
         )
     staff_template_display_code = serializers.CharField(
         source="staff_template.display_code",
         read_only=True,
+        default=None,
     )
     display_code = serializers.CharField(read_only=True)
 
     def get_driver_name(self, obj):
-        staff = getattr(obj, "driver_id", None)
-        if staff and hasattr(staff, 'employee_name') and staff.employee_name:
+        staff = obj.driver
+        if staff and getattr(staff, "employee_name", None):
             return staff.employee_name
-        return getattr(staff, "staff_unique_id", None)
+        return obj.driver_id
 
     def get_operator_name(self, obj):
-        staff = getattr(obj, "operator_id", None)
-        if staff and hasattr(staff, 'employee_name') and staff.employee_name:
+        staff = obj.operator
+        if staff and getattr(staff, "employee_name", None):
             return staff.employee_name
-        return getattr(staff, "staff_unique_id", None)
+        return obj.operator_id
 
     def get_extra_operator_names(self, obj):
         extra_ids = getattr(obj, "extra_operator_id", None) or []
@@ -305,8 +309,13 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
                 {"to_date": "to_date must be on or after from_date."}
             )
 
-        staff_template = attrs.get(
-            "staff_template", getattr(instance, "staff_template", None)
+        staff_template_uid = attrs.get(
+            "staff_template_id", getattr(instance, "staff_template_id", None)
+        )
+        staff_template = (
+            StaffTemplate.objects.filter(unique_id=staff_template_uid).first()
+            if staff_template_uid
+            else None
         )
         # `normalize_flat_geo_attrs` is shared with still-FK-based callers and
         # works in terms of the bare geo-level names ("state", "corporation",
@@ -344,7 +353,7 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
 
         if staff_template and from_date and to_date:
             overlap_qs = AlternativeStaffTemplate.objects.filter(
-                staff_template=staff_template,
+                staff_template_id=staff_template.unique_id,
                 from_date__lte=to_date,
                 to_date__gte=from_date,
             )
@@ -385,8 +394,8 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
                     {"extra_operator": "Duplicate users are not allowed."}
                 )
 
-            driver_id = getattr(driver, "staff_unique_id", None) if driver else None
-            operator_id = getattr(operator, "staff_unique_id", None) if operator else None
+            driver_id = driver or None
+            operator_id = operator or None
 
             if driver_id and driver_id in extra_ids:
                 raise serializers.ValidationError(

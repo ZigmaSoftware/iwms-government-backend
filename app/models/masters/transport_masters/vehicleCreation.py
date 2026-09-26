@@ -3,6 +3,7 @@ from django.db import models
 from app.models.masters.transport_masters.fuel import Fuel
 from .vehicleTypeCreation import VehicleTypeCreation
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_vehicle_creation_id():
@@ -31,12 +32,26 @@ class VehicleCreation(models.Model):
         editable=False,
     )
 
-    fuel_type = models.ForeignKey(
-        Fuel, on_delete=models.SET_NULL, null=True, blank=True
+    # Plain Fuel / VehicleTypeCreation unique_ids (no DB relation); the
+    # `fuel_type` / `vehicle_type` properties below resolve them.
+    fuel_type_id = models.CharField(
+        max_length=40, null=True, blank=True, db_column="fuel_type_id", db_index=True
     )
-    vehicle_type = models.ForeignKey(
-        VehicleTypeCreation, on_delete=models.SET_NULL, null=True, blank=True
+    vehicle_type_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="vehicle_type_id", db_index=True
     )
+
+    @property
+    def fuel_type(self):
+        if not self.fuel_type_id:
+            return None
+        return ref_cache.get(Fuel, self.fuel_type_id)
+
+    @property
+    def vehicle_type(self):
+        if not self.vehicle_type_id:
+            return None
+        return ref_cache.get(VehicleTypeCreation, self.vehicle_type_id)
 
     # Government hierarchy the vehicle belongs to (mirrors Collection_point's
     # flat geo block — see app/models/core_modules/schedule_setup/collection_point.py).

@@ -11,7 +11,7 @@ class StaffPersonalSeeder:
             contact_email = f"{staff.employee_name.replace(' ', '').lower()}@example.com"
 
             staff_personal, created = StaffPersonalDetails.objects.get_or_create(
-                staff=staff,
+                staff_id=staff.staff_unique_id,
                 defaults={
                     "staff_unique_id": staff.staff_unique_id,
                     "gender": "Male",

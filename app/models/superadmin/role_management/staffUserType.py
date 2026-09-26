@@ -1,7 +1,7 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from .userType import UserType
+from app.utils import ref_cache
 
 
 
@@ -29,11 +29,10 @@ class StaffUserType(BaseMaster):
         editable=False
     )
 
-    usertype_id = models.ForeignKey(
-        UserType,
-        on_delete=models.PROTECT,
-        related_name="staffusertypes",
-        to_field="unique_id"
+    usertype_id = models.CharField(
+        max_length=30,
+        db_column="usertype_id",
+        db_index=True,
     )
 
     name = models.CharField(
@@ -52,8 +51,21 @@ class StaffUserType(BaseMaster):
             )
         ]
 
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def usertype(self):
+        return self._lookup("app.models.superadmin.role_management.userType.UserType", self.usertype_id)
+
     def __str__(self):
-        return f"{self.usertype_id.name} → {self.name}"
+        return f"{self.usertype.name if self.usertype else 'Unknown'} → {self.name}"
 
     def delete(self, *args, **kwargs):
         self.is_active = False

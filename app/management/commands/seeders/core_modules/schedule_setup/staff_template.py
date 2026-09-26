@@ -70,12 +70,12 @@ class StaffTemplateSeeder(BaseSeeder):
                     extra_operator = operators[combo_idx % len(operators)]
 
                     _, created = StaffTemplate.objects.update_or_create(
-                        driver_id=driver,
-                        operator_id=operator,
+                        driver_id=driver.staff_unique_id,
+                        operator_id=operator.staff_unique_id,
                         defaults={
                             **geo_defaults,
                             "extra_operator_id": [extra_operator.staff_unique_id],
-                            "approved_by": approver,
+                            "approved_by_id": approver.staff_unique_id if approver else None,
                             "approval_status": StaffTemplate.ApprovalStatus.APPROVED,
                             "status": StaffTemplate.Status.ACTIVE,
                             "is_active": True,

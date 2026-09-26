@@ -23,6 +23,7 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.models.masters.hierarchy_tree import HierarchyNode
+from app.utils import ref_cache
 
 
 def generate_hierarchy_assignment_id():
@@ -38,13 +39,8 @@ class HierarchyAssignment(BaseMaster):
         editable=False,
     )
 
-    node = models.ForeignKey(
-        HierarchyNode,
-        on_delete=models.CASCADE,
-        related_name="assignments",
-        to_field="unique_id",
-        db_column="node_id",
-    )
+    # Plain HierarchyNode unique_id (no DB relation).
+    node_id = models.CharField(max_length=30, db_column="node_id")
 
     # Logical master identity. entity_type is a free string key; entity_id is
     # that master's unique_id. The admin API for managing these assignments
@@ -62,12 +58,16 @@ class HierarchyAssignment(BaseMaster):
     class Meta:
         db_table = "hierarchy_assignment"
         ordering = ["entity_type", "entity_id"]
-        unique_together = ("node", "entity_type", "entity_id")
+        unique_together = ("node_id", "entity_type", "entity_id")
         indexes = [
             models.Index(fields=["entity_type", "entity_id"]),
-            models.Index(fields=["node"]),
-            models.Index(fields=["entity_type", "node"]),
+            models.Index(fields=["node_id"]),
+            models.Index(fields=["entity_type", "node_id"]),
         ]
+
+    @property
+    def node(self):
+        return ref_cache.get(HierarchyNode, self.node_id, "unique_id")
 
     def __str__(self):
         return f"{self.entity_type}:{self.entity_id} -> {self.node_id}"

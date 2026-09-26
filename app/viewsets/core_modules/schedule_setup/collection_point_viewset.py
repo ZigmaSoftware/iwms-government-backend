@@ -6,6 +6,7 @@ from app.serializers.core_modules.schedule_setup.collection_point_serializer imp
 from rest_framework.response import Response
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.plain_ref import json_contains_any
 from app.utils.pagination import LimitOffsetWithPage
 
 # TripPlanSerializer embeds Collection_point details (cp_name, ward names,
@@ -34,7 +35,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT ="collection-point"
 
     def get_queryset(self):
-        queryset = Collection_point.objects.prefetch_related("wards").filter(is_deleted=False)
+        queryset = Collection_point.objects.filter(is_deleted=False)
 
         for field in (
             "country_id",
@@ -56,7 +57,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             or self.request.query_params.get("ward_id")
         )
         if ward_uid:
-            queryset = queryset.filter(wards__unique_id=ward_uid)
+            queryset = queryset.filter(json_contains_any("ward_ids", [ward_uid]))
 
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 

@@ -1,17 +1,8 @@
-from django.conf import settings
 from django.db import models
 from django.db.models import Max
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
-from app.models.core_modules.complaint_management.source_master import ComplaintSource
-from app.models.core_modules.complaint_management.language_master import ComplaintLanguage
-from app.models.core_modules.complaint_management.category_master import ComplaintCategory
-from app.models.core_modules.complaint_management.subcategory_master import ComplaintSubcategory
-from app.models.core_modules.complaint_management.priority_master import ComplaintPriority
-from app.models.core_modules.complaint_management.status_master import ComplaintStatus
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
+from app.utils import ref_cache
 
 
 def generate_ticket_unique_id():
@@ -48,20 +39,8 @@ class ComplaintTicket(BaseMaster):
         editable=False,
     )
 
-    source = models.ForeignKey(
-        ComplaintSource,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="tickets",
-    )
-    customer = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_tickets",
-    )
+    source_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    customer_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
     wa_phone = models.CharField(max_length=20, null=True, blank=True)
     email = models.EmailField(max_length=254, null=True, blank=True)
     profile_name = models.CharField(max_length=150, null=True, blank=True)
@@ -71,41 +50,14 @@ class ComplaintTicket(BaseMaster):
         ("transgender", "Transgender"),
     ]
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, null=True, blank=True)
-    language = models.ForeignKey(
-        ComplaintLanguage,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="tickets",
-    )
+    language_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
 
-    category = models.ForeignKey(
-        ComplaintCategory,
-        on_delete=models.PROTECT,
-        related_name="tickets",
-    )
-    waste_types = models.ManyToManyField(
-        "app.WasteType",
-        blank=True,
-        related_name="complaint_tickets",
-    )
-    subcategory = models.ForeignKey(
-        ComplaintSubcategory,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="tickets",
-    )
-    priority = models.ForeignKey(
-        ComplaintPriority,
-        on_delete=models.PROTECT,
-        related_name="tickets",
-    )
-    status = models.ForeignKey(
-        ComplaintStatus,
-        on_delete=models.PROTECT,
-        related_name="tickets",
-    )
+    category_id = models.CharField(db_index=True, max_length=30)
+    # WasteType unique_ids (plain JSON list, no join table); read via `waste_types`.
+    waste_type_ids = models.JSONField(default=list, blank=True)
+    subcategory_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    priority_id = models.CharField(db_index=True, max_length=30)
+    status_id = models.CharField(db_index=True, max_length=30)
 
     title = models.CharField(max_length=250, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
@@ -147,27 +99,9 @@ class ComplaintTicket(BaseMaster):
                 return field, obj, getattr(obj, name_attr, None)
         return None, None, None
 
-    assigned_team = models.ForeignKey(
-        ComplaintTeam,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_tickets",
-    )
-    assigned_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_complaint_tickets",
-    )
-    assigned_staff = models.ForeignKey(
-        StaffcreationOfficeDetails,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_complaint_tickets_staff",
-    )
+    assigned_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    assigned_user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
+    assigned_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
 
     sla_due_at = models.DateTimeField(null=True, blank=True)
     first_response_due_at = models.DateTimeField(null=True, blank=True)
@@ -177,13 +111,7 @@ class ComplaintTicket(BaseMaster):
     sla_breached_at = models.DateTimeField(null=True, blank=True)
 
     reopened_count = models.IntegerField(default=0)
-    parent_ticket = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="child_tickets",
-    )
+    parent_ticket_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
     # Not DB-unique: the public grievance duplicate check only rejects a
     # resubmission within the 6-hour cooldown window, so the same device can
     # legitimately produce more than one row with this key over time.
@@ -205,3 +133,162 @@ class ComplaintTicket(BaseMaster):
 
     def __str__(self):
         return self.ticket_no
+
+    # =============================
+    # PLAIN-STRING RELATION LOOKUPS
+    # =============================
+    # All relation columns above are plain unique_id strings (no DB
+    # relation), same as Ward/CustomerCreation. Properties below resolve
+    # them so existing `ticket.<name>` attribute access keeps working.
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def source(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.source_master.ComplaintSource",
+            self.source_id,
+        )
+
+    @property
+    def customer(self):
+        return self._lookup(
+            "app.models.masters.customer_masters.customercreation.CustomerCreation",
+            self.customer_id,
+        )
+
+    @property
+    def language(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.language_master.ComplaintLanguage",
+            self.language_id,
+        )
+
+    @property
+    def category(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.category_master.ComplaintCategory",
+            self.category_id,
+        )
+
+    @property
+    def subcategory(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.subcategory_master.ComplaintSubcategory",
+            self.subcategory_id,
+        )
+
+    @property
+    def priority(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.priority_master.ComplaintPriority",
+            self.priority_id,
+        )
+
+    @property
+    def status(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.status_master.ComplaintStatus",
+            self.status_id,
+        )
+
+    @property
+    def assigned_team(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
+            self.assigned_team_id,
+        )
+
+    @property
+    def assigned_user(self):
+        return self._lookup("app.models.superadmin_masters.auth_user.User", self.assigned_user_id)
+
+    @property
+    def assigned_staff(self):
+        return self._lookup(
+            "app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails",
+            self.assigned_staff_id,
+            field="staff_unique_id",
+        )
+
+    @property
+    def parent_ticket(self):
+        if not self.parent_ticket_id:
+            return None
+        return type(self).objects.filter(unique_id=self.parent_ticket_id).first()
+
+    @property
+    def child_tickets(self):
+        return type(self).objects.filter(parent_ticket_id=self.unique_id)
+
+    @property
+    def assignment_history(self):
+        """Reverse helper replacing the old `related_name` (history.ticket_id
+        is now a plain unique_id string)."""
+        from app.models.core_modules.complaint_management.assignment_history import (
+            ComplaintAssignmentHistory,
+        )
+
+        return ComplaintAssignmentHistory.objects.filter(ticket_id=self.unique_id)
+
+    @property
+    def comments(self):
+        """Reverse helper replacing the old `related_name` (comment.ticket_id
+        is now a plain unique_id string)."""
+        from app.models.core_modules.complaint_management.comment import (
+            ComplaintComment,
+        )
+
+        return ComplaintComment.objects.filter(ticket_id=self.unique_id)
+
+    @property
+    def escalation_history(self):
+        """Reverse helper replacing the old `related_name`
+        (history.ticket_id is now a plain unique_id string)."""
+        from app.models.core_modules.complaint_management.escalation_history import (
+            ComplaintEscalationHistory,
+        )
+
+        return ComplaintEscalationHistory.objects.filter(ticket_id=self.unique_id)
+
+    @property
+    def status_history(self):
+        """Reverse helper replacing the old `related_name`
+        (history.ticket_id is now a plain unique_id string)."""
+        from app.models.core_modules.complaint_management.status_history import (
+            ComplaintStatusHistory,
+        )
+
+        return ComplaintStatusHistory.objects.filter(ticket_id=self.unique_id)
+
+    @property
+    def attachments(self):
+        """Reverse helper replacing the old `related_name`
+        (attachment.ticket_id is now a plain unique_id string)."""
+        from app.models.core_modules.complaint_management.ticket_attachment import (
+            ComplaintAttachment,
+        )
+
+        return ComplaintAttachment.objects.filter(ticket_id=self.unique_id)
+
+    @property
+    def waste_types(self):
+        from app.models.masters.waste_masters.wastetype import WasteType
+
+        return WasteType.objects.filter(unique_id__in=self.waste_type_ids or [])
+
+    @property
+    def extra_details(self):
+        """Reverse helper replacing the old `related_name`
+        (detail.ticket_id is now a plain unique_id string)."""
+        from app.models.core_modules.complaint_management.ticket_extra_detail import (
+            ComplaintTicketExtraDetail,
+        )
+
+        return ComplaintTicketExtraDetail.objects.filter(ticket_id=self.unique_id)

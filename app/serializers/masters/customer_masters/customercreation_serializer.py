@@ -18,6 +18,7 @@ from app.models.masters.waste_masters.wastetype import WasteType
 from app.validators.unique_name_validator import unique_name_validator
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
+from app.utils import ref_cache
 from app.utils.hierarchy import (
     BARE_TO_ID_GEO_FIELDS,
     FLAT_GEO_FIELDS,
@@ -39,83 +40,78 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     # columns are literally named "<field>_id" (matching Corporation/District/
     # etc.'s convention), so these need no `source=` override. Display names
     # resolved via explicit lookups, mirroring CorporationSerializer/DistrictSerializer.
-    state_id = serializers.CharField(required=False, allow_null=True)
+    state_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     state_name = serializers.SerializerMethodField()
 
-    district_id = serializers.CharField(required=False, allow_null=True)
+    district_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     district_name = serializers.SerializerMethodField()
 
-    area_type_id = serializers.CharField(required=False, allow_null=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     area_type_name = serializers.SerializerMethodField()
 
-    corporation_id = serializers.CharField(required=False, allow_null=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     corporation_name = serializers.SerializerMethodField()
 
-    municipality_id = serializers.CharField(required=False, allow_null=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     municipality_name = serializers.SerializerMethodField()
 
-    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     town_panchayat_name = serializers.SerializerMethodField()
 
-    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     panchayat_union_name = serializers.SerializerMethodField()
 
-    panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     panchayat_name = serializers.SerializerMethodField()
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
-    ward_id = serializers.SlugRelatedField(
-        source="ward",
-        queryset=Ward.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        required=True,
-        allow_null=False,
-    )
-    ward_name = serializers.CharField(source="ward.ward_name", read_only=True)
+    # ward/property/sub-property/waste types are plain unique_id strings too
+    # (no DB relation); existence is checked in the validate_* methods below.
+    ward_id = serializers.CharField(required=True, allow_null=False, allow_blank=True)
+    ward_name = serializers.SerializerMethodField()
 
-    property_id = serializers.SlugRelatedField(
-        source="property_ref",
-        queryset=Property.objects.all(),
-        slug_field="unique_id",
-    )
-    sub_property_id = serializers.SlugRelatedField(
-        source="sub_property",
-        queryset=SubProperty.objects.all(),
-        slug_field="unique_id",
-    )
-    waste_type_ids = serializers.SlugRelatedField(
-        source="waste_types",
-        queryset=WasteType.objects.filter(is_deleted=False),
-        slug_field="unique_id",
-        many=True,
+    property_id = serializers.CharField()
+    sub_property_id = serializers.CharField()
+    waste_type_ids = serializers.ListField(
+        child=serializers.CharField(),
         required=False,
+        allow_empty=True,
     )
-    property_name = serializers.CharField(source="property_ref.property_name", read_only=True)
-    sub_property_name = serializers.CharField(source="sub_property.sub_property_name", read_only=True)
+    property_name = serializers.SerializerMethodField()
+    sub_property_name = serializers.SerializerMethodField()
     waste_types = serializers.SerializerMethodField(read_only=True)
+
+    def get_ward_name(self, obj):
+        return getattr(obj.ward, "ward_name", None)
+
+    def get_property_name(self, obj):
+        return getattr(obj.property_ref, "property_name", None)
+
+    def get_sub_property_name(self, obj):
+        return getattr(obj.sub_property, "sub_property_name", None)
 
     apartment_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     block_no = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -237,6 +233,30 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def validate_property_id(self, value):
+        if not Property.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid property.")
+        return value
+
+    def validate_sub_property_id(self, value):
+        if not SubProperty.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid sub property.")
+        return value
+
+    def validate_waste_type_ids(self, value):
+        value = list(dict.fromkeys(v for v in value if v))
+        found = set(
+            WasteType.objects.filter(
+                unique_id__in=value, is_deleted=False
+            ).values_list("unique_id", flat=True)
+        )
+        missing = [v for v in value if v not in found]
+        if missing:
+            raise serializers.ValidationError(
+                f"Invalid waste type(s): {', '.join(missing)}"
+            )
+        return value
+
     def validate_password(self, value):
         if value and not PASSWORD_PATTERN.match(value):
             raise serializers.ValidationError(PASSWORD_RULE_MESSAGE)
@@ -268,6 +288,11 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
 
         instance = getattr(self, "instance", None)
 
+        # The form sends "" for geo levels that don't apply; store NULL.
+        for real in (*BARE_TO_ID_GEO_FIELDS.values(), "ward_id"):
+            if attrs.get(real) == "":
+                attrs[real] = None
+
         # `normalize_flat_geo_attrs`/`validate_wards_for_flat_geo` are shared
         # with still-FK-based callers (StaffTemplate/TripPlan) and operate in
         # terms of the bare geo-level names ("state", "corporation", ...).
@@ -284,14 +309,21 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         if geo_errors:
             raise serializers.ValidationError(geo_errors)
 
-        ward = bare_attrs.get("ward") or getattr(instance, "ward", None)
-        if not ward:
+        ward_uid = (
+            bare_attrs.get("ward_id")
+            if "ward_id" in bare_attrs
+            else getattr(instance, "ward_id", None)
+        )
+        if not ward_uid:
             geo_is_being_changed = any(
                 field in bare_attrs for field in FLAT_GEO_FIELDS
             )
             if not instance or not self.partial or geo_is_being_changed:
                 raise serializers.ValidationError({"ward_id": "Ward is required."})
         else:
+            ward = Ward.objects.filter(unique_id=ward_uid, is_deleted=False).first()
+            if not ward:
+                raise serializers.ValidationError({"ward_id": "Invalid ward."})
             ward_error = validate_wards_for_flat_geo([ward], bare_attrs, instance)
             if ward_error:
                 raise serializers.ValidationError({"ward_id": ward_error})
@@ -320,7 +352,12 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         #             {"detail": "Customer with the same name and mobile already exists."}
         #         )
 
-        sub_property = attrs.get("sub_property") or getattr(instance, "sub_property", None)
+        sub_property_uid = attrs.get("sub_property_id") or getattr(instance, "sub_property_id", None)
+        sub_property = (
+            SubProperty.objects.filter(unique_id=sub_property_uid).first()
+            if sub_property_uid
+            else None
+        )
 
         if sub_property:
             sub_name = (sub_property.sub_property_name or "").lower()
@@ -349,5 +386,5 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
                 "unique_id": waste_type.unique_id,
                 "waste_type_name": waste_type.waste_type_name,
             }
-            for waste_type in obj.waste_types.all()
+            for waste_type in obj.waste_types.filter(is_deleted=False).order_by("waste_type_name")
         ]

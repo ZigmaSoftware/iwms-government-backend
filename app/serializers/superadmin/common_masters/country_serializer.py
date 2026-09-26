@@ -2,12 +2,13 @@ from rest_framework import serializers
 from app.models.superadmin.common_masters.continent import Continent
 from app.models.superadmin.common_masters.country import Country
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils import ref_cache
 
 class CountrySerializer(serializers.ModelSerializer):
     continent_name = serializers.SerializerMethodField()
 
     def get_continent_name(self, obj):
-        return Continent.objects.filter(unique_id=obj.continent_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Continent, obj.continent_id, "unique_id"), "name", None)
 
     class Meta:
         model = Country

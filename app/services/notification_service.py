@@ -22,9 +22,9 @@ def notify(ticket, event_type, message, *, staff=None, user=None):
     if not staff and not user:
         return None
     return ComplaintNotification.objects.create(
-        ticket=ticket,
-        recipient_staff=staff,
-        recipient_user=user,
+        ticket_id=getattr(ticket, "unique_id", ticket),
+        recipient_staff_id=getattr(staff, "staff_unique_id", None) if staff else None,
+        recipient_user_id=getattr(user, "unique_id", None) if user else None,
         event_type=event_type,
         title=EVENT_TITLES.get(event_type, "Grievance update"),
         message=message,

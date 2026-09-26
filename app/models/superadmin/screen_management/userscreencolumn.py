@@ -2,6 +2,7 @@ from django.db import models
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_userscreencolumn_id():
@@ -17,12 +18,10 @@ class UserScreenColumn(BaseMaster):
         editable=False,
     )
 
-    userscreen_id = models.ForeignKey(
-        UserScreen,
-        on_delete=models.CASCADE,
-        related_name="screen_columns",
-        to_field="unique_id",
+    userscreen_id = models.CharField(
+        max_length=30,
         db_column="userscreen_id",
+        db_index=True,
     )
 
     field_name = models.CharField(max_length=100)
@@ -76,6 +75,19 @@ class UserScreenColumn(BaseMaster):
 
     def __str__(self):
         return f"{self.userscreen_id} - {self.field_name}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def userscreen(self):
+        return self._lookup("app.models.superadmin.screen_management.userscreen.UserScreen", self.userscreen_id)
 
     def delete(self, *args, **kwargs):
         self.is_active = False

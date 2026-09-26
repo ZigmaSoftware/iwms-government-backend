@@ -42,7 +42,8 @@ class CollectionPointSeeder(BaseSeeder):
                         "is_deleted": False,
                     },
                 )
-                cp.wards.set([ward])
+                cp.ward_ids = [ward.unique_id]
+                cp.save(update_fields=["ward_ids"])
                 if created:
                     count += 1
 

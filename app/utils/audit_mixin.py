@@ -143,12 +143,21 @@ class AuditViewSetMixin:
         return None
 
     @staticmethod
-    def _model_has_field(model, field_name):
+    def _model_field(model, field_name):
         try:
-            model._meta.get_field(field_name)
-            return True
+            return model._meta.get_field(field_name)
         except Exception:
-            return False
+            return None
+
+    @classmethod
+    def _model_has_field(cls, model, field_name):
+        return cls._model_field(model, field_name) is not None
+
+    @staticmethod
+    def _account_field_value(field, account):
+        if account is None:
+            return None
+        return account if getattr(field, "is_relation", False) else account.pk
 
     def _audit_save_kwargs(self, *, create=False):
         model = getattr(getattr(self, "serializer_class", None), "Meta", None)
@@ -164,10 +173,19 @@ class AuditViewSetMixin:
             return {}
 
         kwargs = {}
-        if create and self._model_has_field(model, "created_by"):
-            kwargs["created_by"] = account
-        if self._model_has_field(model, "updated_by"):
-            kwargs["updated_by"] = account
+        # Audit actor fields may be real FKs on legacy models or plain string
+        # account-id columns on FK-free models. Stamp the shape each field uses.
+        if create:
+            field = self._model_field(model, "created_by")
+            if field is not None:
+                kwargs["created_by"] = self._account_field_value(field, account)
+            elif self._model_has_field(model, "created_by_id"):
+                kwargs["created_by_id"] = account.pk
+        field = self._model_field(model, "updated_by")
+        if field is not None:
+            kwargs["updated_by"] = self._account_field_value(field, account)
+        elif self._model_has_field(model, "updated_by_id"):
+            kwargs["updated_by_id"] = account.pk
         return kwargs
 
     def get_audit_object_id(self, instance):

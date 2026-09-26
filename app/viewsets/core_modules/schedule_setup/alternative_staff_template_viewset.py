@@ -2,6 +2,7 @@ from rest_framework import filters, viewsets, status, serializers
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAuthenticated
 
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
@@ -34,23 +35,21 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     throttle_scope = "alternative_staff_template"
 
-    # driver_id__corporation/operator_id__corporation (Staffcreation's own
-    # geo columns) are plain unique_id CharFields now — not select_related-able.
-    queryset = AlternativeStaffTemplate.objects.select_related(
-        "staff_template",
-        "driver_id",
-        "driver_id__designation_id",
-        "operator_id",
-        "operator_id__designation_id",
-    )
+    # staff_template / driver / operator / approved_by are plain unique_ids
+    # now (no DB relation) — nothing to select_related.
+    queryset = AlternativeStaffTemplate.objects.all()
     serializer_class = AlternativeStaffTemplateSerializer
 
     #  CRITICAL: single source of truth for middleware
     permission_resource = "AlternativeStaffTemplate"
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "driver_id__employee_name", "operator_id__employee_name"]
+    search_fields = [
+        "unique_id",
+        "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+    ]
     ordering_fields = ["from_date", "to_date", "approval_status"]
 
     AUDIT_MODULE = "user-creations"
@@ -79,18 +78,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
-        # state/district/area_type/corporation/municipality/town_panchayat/
-        # panchayat_union/panchayat are plain unique_id CharFields now (no DB
-        # relation) — not select_related-able.
-        return qs.select_related(
-            "staff_template",
-            "driver_id",
-            "driver_id__designation_id",
-            "operator_id",
-            "operator_id__designation_id",
-            # "requested_by",
-            "approved_by",
-        )
+        return qs
 
     @cache_api("alternative_staff_template_list", vary_on_user=True)
     def list(self, request, *args, **kwargs):
@@ -193,14 +181,14 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data.get("approval_status") != "APPROVED"
             and new_data.get("approval_status") == "APPROVED"
         ):
-            for staff in (instance.driver_id, instance.operator_id):
+            for staff in (instance.driver, instance.operator):
                 notify_staff(
                     staff,
                     StaffNotification.TYPE_TEAM_SUBSTITUTED,
                     title="You've been added to a team",
                     body=(
                         f"You've been substituted onto team "
-                        f"{instance.staff_template.display_code}"
+                        f"{getattr(instance.staff_template, 'display_code', instance.staff_template_id)}"
                         + (
                             f" from {instance.from_date} to {instance.to_date}."
                             if instance.from_date and instance.to_date
@@ -246,7 +234,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             entity_type=StaffTemplateAuditLog.EntityType.ALTERNATIVE_TEMPLATE,
             entity_id=str(entity_id),
             action=action,
-            performed_by=user,
+            performed_by_id=getattr(user, "staff_unique_id", None),
             performed_role=self._resolve_performed_role(user),
             change_remarks=remarks if isinstance(remarks, str) else None,
         )

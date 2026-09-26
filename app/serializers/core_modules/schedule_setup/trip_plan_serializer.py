@@ -18,7 +18,7 @@ from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.waste_masters.wastetype import WasteType
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
+from app.utils import ref_cache
 
 _GEO_LOOKUP_MODELS = {
     "state": (State, "name"),
@@ -57,9 +57,10 @@ class TripPlanSerializer(serializers.ModelSerializer):
     town_panchayat_id = serializers.CharField(required=False, allow_null=True)
     panchayat_union_id = serializers.CharField(required=False, allow_null=True)
     panchayat_id = serializers.CharField(required=False, allow_null=True)
-    staff_template_id = UniqueIdOrPkField(slug_field="unique_id", queryset=StaffTemplate.objects.filter(is_deleted=False), write_only=True)
-    vehicle_id = UniqueIdOrPkField(slug_field="unique_id", queryset=VehicleCreation.objects.filter(is_deleted=False), write_only=True)
-    supervisor_id = UniqueIdOrPkField(slug_field="staff_unique_id", queryset=Staffcreation.objects.filter(is_deleted=False), write_only=True, required=False, allow_null=True)
+    # Plain unique_ids (no DB relation); checked in validate_*.
+    staff_template_id = serializers.CharField(write_only=True)
+    vehicle_id = serializers.CharField(write_only=True)
+    supervisor_id = serializers.CharField(write_only=True, required=False, allow_null=True)
     # Multiple waste types support
     waste_type_ids = serializers.SlugRelatedField(
         slug_field="unique_id",
@@ -120,7 +121,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
         if not value:
             return None
         model, label_attr = _GEO_LOOKUP_MODELS[field]
-        name = model.objects.filter(unique_id=value).values_list(label_attr, flat=True).first()
+        name = getattr(ref_cache.get(model, value, "unique_id"), label_attr, None)
         return {"unique_id": value, label_attr: name}
 
     def get_state(self, obj):
@@ -147,25 +148,42 @@ class TripPlanSerializer(serializers.ModelSerializer):
     def get_panchayat(self, obj):
         return self._ref(obj, "panchayat")
 
+    def validate_staff_template_id(self, value):
+        if not StaffTemplate.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with unique_id={value} does not exist.")
+        return value
+
+    def validate_vehicle_id(self, value):
+        if not VehicleCreation.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with unique_id={value} does not exist.")
+        return value
+
+    def validate_supervisor_id(self, value):
+        if not value:
+            return None
+        if not Staffcreation.objects.filter(staff_unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f"Object with staff_unique_id={value} does not exist.")
+        return value
+
     def get_staff_template(self, obj):
-        st = obj.staff_template_id
+        st = obj.staff_template
         if not st:
             return None
         return {
             "unique_id": st.unique_id,
             "display_code": st.display_code,
-            "driver": getattr(getattr(st, "driver_id", None), "employee_name", None),
-            "operator": getattr(getattr(st, "operator_id", None), "employee_name", None),
+            "driver": getattr(getattr(st, "driver", None), "employee_name", None),
+            "operator": getattr(getattr(st, "operator", None), "employee_name", None),
         }
 
     def get_vehicle(self, obj):
-        vehicle = obj.vehicle_id
+        vehicle = obj.vehicle
         if not vehicle:
             return None
         return {"unique_id": vehicle.unique_id, "vehicle_no": vehicle.vehicle_no, "capacity": vehicle.capacity}
 
     def get_supervisor(self, obj):
-        supervisor = obj.supervisor_id
+        supervisor = obj.supervisor
         if not supervisor:
             return None
         return {"unique_id": supervisor.staff_unique_id, "employee_name": supervisor.employee_name}
@@ -183,20 +201,24 @@ class TripPlanSerializer(serializers.ModelSerializer):
         ]
 
     def get_plan_collection_points(self, obj):
-        stops = obj.plan_collection_points.filter(is_deleted=False).select_related("collection_point_id", "bin_id", "customer_id").prefetch_related("collection_point_id__wards")
-        return [{
-            "unique_id": stop.unique_id,
-            "collection_type": stop.collection_type,
-            "collection_point_id": stop.collection_point_id_id,
-            "collection_point": {"unique_id": stop.collection_point_id.unique_id, "cp_name": stop.collection_point_id.cp_name} if stop.collection_point_id else None,
-            "collection_point_wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in stop.collection_point_id.wards.all()] if stop.collection_point_id else [],
-            "bin_id": stop.bin_id_id,
-            "bin": {"unique_id": stop.bin_id.unique_id, "bin_name": stop.bin_id.bin_name} if stop.bin_id else None,
-            "customer_id": stop.customer_id_id,
-            "customer": {"unique_id": stop.customer_id.unique_id, "customer_name": stop.customer_id.customer_name, "ward_id": stop.customer_id.ward_id, "ward_name": getattr(stop.customer_id.ward, "ward_name", None)} if stop.customer_id else None,
-            "sequence": stop.sequence,
-            "is_active": stop.is_active,
-        } for stop in stops]
+        stops = obj.plan_collection_points.filter(is_deleted=False)
+        rows = []
+        for stop in stops:
+            cp, bin_obj, customer = stop.collection_point, stop.bin, stop.customer
+            rows.append({
+                "unique_id": stop.unique_id,
+                "collection_type": stop.collection_type,
+                "collection_point_id": stop.collection_point_id,
+                "collection_point": {"unique_id": cp.unique_id, "cp_name": cp.cp_name} if cp else None,
+                "collection_point_wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in cp.wards] if cp else [],
+                "bin_id": stop.bin_id,
+                "bin": {"unique_id": bin_obj.unique_id, "bin_name": bin_obj.bin_name} if bin_obj else None,
+                "customer_id": stop.customer_id,
+                "customer": {"unique_id": customer.unique_id, "customer_name": customer.customer_name, "ward_id": customer.ward_id, "ward_name": getattr(customer.ward, "ward_name", None)} if customer else None,
+                "sequence": stop.sequence,
+                "is_active": stop.is_active,
+            })
+        return rows
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
@@ -257,10 +279,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
             )
             if plan_location != target_location:
                 return False
-            plan_ward_ids = {
-                str(ward_id)
-                for ward_id in plan.wards.values_list("unique_id", flat=True)
-            }
+            plan_ward_ids = {str(ward_id) for ward_id in plan.ward_ids or []}
             return plan_ward_ids == target_ward_ids
 
         other_plans = TripPlan.objects.filter(is_deleted=False, status=TripPlan.Status.ACTIVE)
@@ -271,7 +290,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
             other_plans = other_plans.exclude(unique_id=instance.unique_id)
         same_type_plans = other_plans.filter(
             collection_type=collection_type,
-        ).prefetch_related("wards")
+        )
         if staff_template and any(
             has_same_location(plan)
             for plan in same_type_plans.filter(staff_template_id=staff_template)
@@ -379,18 +398,24 @@ class TripPlanSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"collection_points": "Collection point does not belong to the selected hierarchy level."})
                 if wards and not cp.wards.filter(unique_id__in=[ward.unique_id for ward in wards]).exists():
                     raise serializers.ValidationError({"collection_points": "Collection point does not serve any selected ward."})
-                if not bin_obj or bin_obj.collection_point_id != cp:
+                if not bin_obj or bin_obj.collection_point_id != cp.unique_id:
                     raise serializers.ValidationError({"collection_points": "Selected bin does not belong to the collection point."})
                 reserved_bins = TripPlanCollectionPoint.objects.filter(
-                    bin_id=bin_obj,
-                    trip_plan_id__is_deleted=False,
+                    bin_id=bin_obj.unique_id,
+                    trip_plan_id__in=TripPlan.objects.filter(is_deleted=False).values("unique_id"),
                 )
                 if instance:
-                    reserved_bins = reserved_bins.exclude(trip_plan_id=instance)
+                    reserved_bins = reserved_bins.exclude(trip_plan_id=instance.unique_id)
                 if reserved_bins.exists():
                     raise serializers.ValidationError(
                         {"collection_points": "This bin is already assigned to another Trip Plan."}
                     )
+
+        # Wards / waste types are stored as plain unique_id lists (no M2M).
+        if "wards" in attrs:
+            attrs["ward_ids"] = [ward.unique_id for ward in attrs.pop("wards")]
+        if "waste_types" in attrs:
+            attrs["waste_type_ids"] = [wt.unique_id for wt in attrs.pop("waste_types")]
 
         return attrs
 
@@ -403,7 +428,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
         # sequence numbers and collide with the freshly created stops. Nothing
         # FKs to TripPlanCollectionPoint (daily-trip children are cloned to their
         # own tables at assignment time), so deleting the master rows is safe.
-        TripPlanCollectionPoint.objects.filter(trip_plan_id=trip_plan).delete()
+        TripPlanCollectionPoint.objects.filter(trip_plan_id=trip_plan.unique_id).delete()
         for stop in stops:
             collection_type = stop.get("collection_type") or trip_plan.collection_type
             if collection_type in {
@@ -412,43 +437,31 @@ class TripPlanSerializer(serializers.ModelSerializer):
             }:
                 customer_id = stop.get("customer_id")
                 TripPlanCollectionPoint.objects.create(
-                    trip_plan_id=trip_plan,
+                    trip_plan_id=trip_plan.unique_id,
                     collection_type=collection_type,
-                    customer_id=CustomerCreation.objects.get(unique_id=customer_id) if customer_id else None,
+                    customer_id=CustomerCreation.objects.get(unique_id=customer_id).unique_id if customer_id else None,
                     sequence=stop["sequence"],
                     is_active=stop.get("is_active", True),
                 )
             else:
                 TripPlanCollectionPoint.objects.create(
-                    trip_plan_id=trip_plan,
+                    trip_plan_id=trip_plan.unique_id,
                     collection_type=collection_type,
-                    collection_point_id=Collection_point.objects.get(unique_id=stop["collection_point_id"]),
-                    bin_id=Bins.objects.get(unique_id=stop["bin_id"]),
+                    collection_point_id=Collection_point.objects.get(unique_id=stop["collection_point_id"]).unique_id,
+                    bin_id=Bins.objects.get(unique_id=stop["bin_id"]).unique_id,
                     sequence=stop["sequence"],
                     is_active=stop.get("is_active", True),
                 )
 
     def create(self, validated_data):
         stops = validated_data.pop("collection_points", None)
-        waste_types = validated_data.pop("waste_types", None)
-        wards = validated_data.pop("wards", None)
         trip_plan = super().create(validated_data)
-        if waste_types is not None:
-            trip_plan.waste_types.set(waste_types)
-        if wards is not None:
-            trip_plan.wards.set(wards)
         self._sync_stops(trip_plan, stops)
         return trip_plan
 
     def update(self, instance, validated_data):
         stops = validated_data.pop("collection_points", None)
-        waste_types = validated_data.pop("waste_types", None)
-        wards = validated_data.pop("wards", None)
         trip_plan = super().update(instance, validated_data)
-        if waste_types is not None:
-            trip_plan.waste_types.set(waste_types)
-        if wards is not None:
-            trip_plan.wards.set(wards)
         self._sync_stops(trip_plan, stops)
 
         # A Trip Plan can be edited after its Daily Trip Assignment was
@@ -461,7 +474,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
             from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
 
             assignments = DailyTripAssignment.objects.filter(
-                trip_plan_id=trip_plan,
+                trip_plan_id=trip_plan.unique_id,
                 is_deleted=False,
             ).exclude(status=DailyTripAssignment.STATUS_CANCELLED)
             for assignment in assignments:

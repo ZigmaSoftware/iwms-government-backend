@@ -17,9 +17,11 @@ under a "Country".
 """
 
 from django.db import models
+from django.db.models import OuterRef, Subquery
 
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_hierarchy_level_id():
@@ -63,8 +65,21 @@ class HierarchyLevel(BaseMaster):
         return f"{self.name} (order {self.order})"
 
 
+class HierarchyNodeManager(models.Manager):
+    """Orders nodes by their level's `order`, then name, via a subquery
+    (level_id is a plain unique_id string, so there is no join to follow)."""
+
+    def get_queryset(self):
+        level_order = Subquery(
+            HierarchyLevel.objects.filter(unique_id=OuterRef("level_id")).values("order")[:1]
+        )
+        return super().get_queryset().alias(level_order=level_order).order_by("level_order", "name")
+
+
 class HierarchyNode(BaseMaster):
     """An actual entry in the hierarchy, e.g. India, Tamil Nadu, Erode."""
+
+    objects = HierarchyNodeManager()
 
     unique_id = models.CharField(
         max_length=30,
@@ -74,23 +89,10 @@ class HierarchyNode(BaseMaster):
         editable=False,
     )
 
-    level = models.ForeignKey(
-        HierarchyLevel,
-        on_delete=models.PROTECT,
-        related_name="nodes",
-        to_field="unique_id",
-        db_column="level_id",
-    )
-
-    parent = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="children",
-        to_field="unique_id",
-        db_column="parent_id",
-    )
+    # Plain HierarchyLevel / parent HierarchyNode unique_ids (no DB
+    # relation); the `level` / `parent` / `children` properties resolve them.
+    level_id = models.CharField(max_length=30, db_column="level_id")
+    parent_id = models.CharField(max_length=30, null=True, blank=True, db_column="parent_id")
 
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=100, blank=True, null=True)
@@ -99,12 +101,28 @@ class HierarchyNode(BaseMaster):
 
     class Meta:
         db_table = "hierarchy_tree_node"
-        ordering = ["level__order", "name"]
-        unique_together = ("parent", "name")
+        # Default ordering is level order then name; applied by
+        # HierarchyNodeManager because level_id is a plain unique_id (no join).
+        ordering = ["name"]
+        unique_together = ("parent_id", "name")
         indexes = [
-            models.Index(fields=["parent"]),
-            models.Index(fields=["level"]),
+            models.Index(fields=["parent_id"]),
+            models.Index(fields=["level_id"]),
         ]
+
+    @property
+    def level(self):
+        return ref_cache.get(HierarchyLevel, self.level_id, "unique_id")
+
+    @property
+    def parent(self):
+        if not self.parent_id:
+            return None
+        return ref_cache.get(HierarchyNode, self.parent_id, "unique_id")
+
+    @property
+    def children(self):
+        return HierarchyNode.objects.filter(parent_id=self.unique_id)
 
     def __str__(self):
         return self.name
@@ -126,31 +144,27 @@ class HierarchyClosure(BaseMaster):
         editable=False,
     )
 
-    ancestor = models.ForeignKey(
-        HierarchyNode,
-        on_delete=models.CASCADE,
-        related_name="descendant_links",
-        to_field="unique_id",
-        db_column="ancestor_id",
-    )
-
-    descendant = models.ForeignKey(
-        HierarchyNode,
-        on_delete=models.CASCADE,
-        related_name="ancestor_links",
-        to_field="unique_id",
-        db_column="descendant_id",
-    )
+    # Plain HierarchyNode unique_ids (no DB relation).
+    ancestor_id = models.CharField(max_length=30, db_column="ancestor_id")
+    descendant_id = models.CharField(max_length=30, db_column="descendant_id")
 
     depth = models.PositiveIntegerField()
 
     class Meta:
         db_table = "hierarchy_tree_closure"
-        unique_together = ("ancestor", "descendant")
+        unique_together = ("ancestor_id", "descendant_id")
         indexes = [
-            models.Index(fields=["ancestor", "depth"]),
-            models.Index(fields=["descendant", "depth"]),
+            models.Index(fields=["ancestor_id", "depth"]),
+            models.Index(fields=["descendant_id", "depth"]),
         ]
+
+    @property
+    def ancestor(self):
+        return ref_cache.get(HierarchyNode, self.ancestor_id, "unique_id")
+
+    @property
+    def descendant(self):
+        return ref_cache.get(HierarchyNode, self.descendant_id, "unique_id")
 
     def __str__(self):
         return f"{self.ancestor_id} -> {self.descendant_id} (depth {self.depth})"

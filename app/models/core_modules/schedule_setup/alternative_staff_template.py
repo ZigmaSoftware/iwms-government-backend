@@ -2,6 +2,7 @@ from django.db import models
 from django.db.models import Max
 from app.utils.comfun import generate_unique_id
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.utils import ref_cache
 
 
 def generate_alternative_staff_template_id():
@@ -35,12 +36,8 @@ class AlternativeStaffTemplate(models.Model):
     # BUSINESS RELATIONSHIPS
     # ------------------------------------------------------------------
 
-    staff_template = models.ForeignKey(
-        'app.StaffTemplate',
-        on_delete=models.PROTECT,
-        db_column='staff_template_id',
-        related_name='alternative_templates'
-    )
+    # Plain StaffTemplate unique_id (no DB relation).
+    staff_template_id = models.CharField(max_length=20, db_column='staff_template_id')
 
 
 
@@ -54,21 +51,9 @@ class AlternativeStaffTemplate(models.Model):
     # STAFF ASSIGNMENT
     # ------------------------------------------------------------------
 
-    driver_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        db_column="driver_id",
-        to_field="staff_unique_id",
-        related_name='alt_driver_templates'
-    )
-
-    operator_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        db_column="operator_id",
-        to_field="staff_unique_id",
-        related_name='alt_operator_templates'
-    )
+    # Plain staff_unique_ids (no DB relation); `driver` / `operator` resolve them.
+    driver_id = models.CharField(max_length=30, db_column="driver_id", db_index=True)
+    operator_id = models.CharField(max_length=30, db_column="operator_id", db_index=True)
 
     extra_operator_id = models.JSONField(
         default=list,
@@ -77,6 +62,31 @@ class AlternativeStaffTemplate(models.Model):
         db_column='extra_operator_id',
         help_text="List of extra operator IDs"
     )
+
+    # Same accessors as StaffTemplate.driver / .operator, so crew helpers can
+    # read either template type the same way.
+    def _staff(self, staff_unique_id):
+        return ref_cache.get(Staffcreation, staff_unique_id, "staff_unique_id")
+
+    @property
+    def driver(self):
+        return self._staff(self.driver_id)
+
+    @property
+    def operator(self):
+        return self._staff(self.operator_id)
+
+    @property
+    def approved_by(self):
+        return self._staff(self.approved_by_id)
+
+    @property
+    def staff_template(self):
+        from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+
+        if not self.staff_template_id:
+            return None
+        return ref_cache.get(StaffTemplate, self.staff_template_id, "unique_id")
 
     # ------------------------------------------------------------------
     # GEO HIERARCHY (WHERE)
@@ -113,13 +123,8 @@ class AlternativeStaffTemplate(models.Model):
     #     related_name='alt_staff_requested'
     # )
 
-    approved_by = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        db_column='approved_by',
-        related_name='alt_staff_approved',
-        null=True,
-        blank=True
+    approved_by_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column='approved_by', db_index=True
     )
 
     approval_status = models.CharField(
@@ -154,7 +159,7 @@ class AlternativeStaffTemplate(models.Model):
         ordering = ['-created_at']
 
         indexes = [
-            models.Index(fields=['staff_template']),
+            models.Index(fields=['staff_template_id']),
             models.Index(fields=['approval_status']),
             models.Index(fields=['display_code']),
         ]
@@ -185,8 +190,8 @@ class AlternativeStaffTemplate(models.Model):
                 return staff.employee_name
             return fallback
 
-        driver_name = resolve_staff_name(self.driver_id, "DRV")[:4].upper()
-        operator_name = resolve_staff_name(self.operator_id, "OPR")[:4].upper()
+        driver_name = resolve_staff_name(self.driver, "DRV")[:4].upper()
+        operator_name = resolve_staff_name(self.operator, "OPR")[:4].upper()
         staff_base = f"{driver_name}-{operator_name}"
 
         matching_alt_templates = AlternativeStaffTemplate.objects.filter(
@@ -201,8 +206,9 @@ class AlternativeStaffTemplate(models.Model):
         )
 
         existing_base_codes = []
-        if self.staff_template:
-            StaffTemplate = self.staff_template.__class__
+        if self.staff_template_id:
+            from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+
             existing_base_codes.extend(
                 StaffTemplate.objects
                 .filter(display_code__startswith=f"{staff_base}-")
@@ -262,15 +268,15 @@ class AlternativeStaffTemplate(models.Model):
         try:
             prev = (
                 AlternativeStaffTemplate.objects
-                .only("driver_id", "operator_id", "staff_template")
+                .only("driver_id", "operator_id", "staff_template_id")
                 .get(pk=self.pk)
             )
         except AlternativeStaffTemplate.DoesNotExist:
             return False
 
         return (
-            prev.driver_id_id != self.driver_id_id
-            or prev.operator_id_id != self.operator_id_id
+            prev.driver_id != self.driver_id
+            or prev.operator_id != self.operator_id
             or prev.staff_template_id != self.staff_template_id
         )
 

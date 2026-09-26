@@ -103,8 +103,8 @@ class SchedulerDemoSeeder(BaseSeeder):
             defaults={
                 "state_id": corporation.state_id,
                 "area_type_id": corporation.area_type_id,
-                "staff_template_id": template,
-                "vehicle_id": vehicle,
+                "staff_template_id": template.unique_id,
+                "vehicle_id": vehicle.unique_id,
                 "scheduled_time": time(7, 0),
                 "max_vehicle_capacity_kg": 5000,
                 "approval_status": TripPlan.ApprovalStatus.APPROVED,
@@ -114,7 +114,8 @@ class SchedulerDemoSeeder(BaseSeeder):
                 "repeat_days": [0, 1, 2, 3, 4, 5, 6],  # runs every day
             },
         )
-        plan.waste_types.set([waste_type])
+        plan.waste_type_ids = [waste_type.unique_id]
+        plan.save(update_fields=["waste_type_ids"])
         verb = "Created" if created else "Refreshed"
         self.log(f"{verb} demo TripPlan {plan.display_code} ({plan.unique_id}) on {corporation.corporation_name}.")
 
@@ -137,14 +138,14 @@ class SchedulerDemoSeeder(BaseSeeder):
         stop_count = 0
         for seq, cp in enumerate(cps, start=1):
             bin_obj = Bins.objects.filter(
-                collection_point_id=cp, is_deleted=False, is_active=True
+                collection_point_id=cp.unique_id, is_deleted=False, is_active=True
             ).first()
             TripPlanCollectionPoint.objects.update_or_create(
-                trip_plan_id=plan,
+                trip_plan_id=plan.unique_id,
                 collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
-                collection_point_id=cp,
+                collection_point_id=cp.unique_id,
                 defaults={
-                    "bin_id": bin_obj,
+                    "bin_id": bin_obj.unique_id if bin_obj else None,
                     "sequence": seq,
                     "is_active": True,
                     "is_deleted": False,
@@ -156,7 +157,7 @@ class SchedulerDemoSeeder(BaseSeeder):
         # ---- 4. Clear today's generated data so the scheduler shows effect -
         # We HARD-clean only this demo plan's assignment for today, so a fresh
         # `generate_daily_trips` run visibly creates new records each time.
-        existing_today = DailyTripAssignment.objects.filter(trip_plan_id=plan, trip_date=today)
+        existing_today = DailyTripAssignment.objects.filter(trip_plan_id=plan.unique_id, trip_date=today)
         removed = existing_today.count()
         existing_today.delete()  # cascades to DailyTripCollectionPoint via FK
         if removed:

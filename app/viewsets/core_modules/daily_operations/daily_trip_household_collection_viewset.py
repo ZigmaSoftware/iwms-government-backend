@@ -31,12 +31,7 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
 
     def get_queryset(self):
         queryset = (
-            DailyTripHouseholdCollection.objects.select_related(
-                "trip_assignment_id",
-                "trip_assignment_id__trip_plan_id",
-                "customer_id",
-                "waste_collection_id",
-            )
+            DailyTripHouseholdCollection.objects
             .filter(is_deleted=False)
         )
 
@@ -51,9 +46,9 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
         search = params.get("search")
 
         if assignment:
-            queryset = queryset.filter(trip_assignment_id__unique_id=assignment)
+            queryset = queryset.filter(trip_assignment_id=assignment)
         if customer:
-            queryset = queryset.filter(customer_id__unique_id=customer)
+            queryset = queryset.filter(customer_id=customer)
         if status_value:
             queryset = queryset.filter(status=status_value)
         if collection_type:
@@ -63,13 +58,35 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
                 is_collected=str(is_collected).lower() in {"1", "true", "yes"}
             )
         if trip_date:
-            queryset = queryset.filter(trip_assignment_id__trip_date=trip_date)
-        if ward_id:
-            queryset = queryset.filter(customer_id__ward__unique_id=ward_id)
-        if search:
+            from app.models.core_modules.daily_operations.daily_trip_assignment import (
+                DailyTripAssignment,
+            )
+
             queryset = queryset.filter(
-                Q(customer_id__customer_name__icontains=search)
-                | Q(trip_assignment_id__unique_id__icontains=search)
+                trip_assignment_id__in=DailyTripAssignment.objects.filter(
+                    trip_date=trip_date, is_deleted=False
+                ).values("unique_id")
+            )
+        if ward_id:
+            from app.models.masters.customer_masters.customercreation import (
+                CustomerCreation,
+            )
+
+            queryset = queryset.filter(
+                customer_id__in=CustomerCreation.objects.filter(
+                    ward_id=ward_id, is_deleted=False
+                ).values("unique_id")
+            )
+        if search:
+            from app.models.masters.customer_masters.customercreation import (
+                CustomerCreation as _Customer,
+            )
+
+            queryset = queryset.filter(
+                Q(customer_id__in=_Customer.objects.filter(
+                    customer_name__icontains=search, is_deleted=False
+                ).values("unique_id"))
+                | Q(trip_assignment_id__icontains=search)
             )
 
         queryset = filter_flat_geo_queryset_by_params(queryset, params)

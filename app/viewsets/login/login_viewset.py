@@ -11,6 +11,13 @@ from app.models.superadmin.audits.login_audit import LoginAudit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
 from app.utils.hierarchy import staff_scope_payload
+from app.utils import ref_cache
+from app.models.masters.district import District
+from app.models.masters.panchayat import Panchayat
+from app.models.superadmin.common_masters.state import State
+from app.models.superadmin.role_management.contractorUserType import ContractorUserType
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.staffUserType import StaffUserType
 
 
 def _client_ip(request):
@@ -98,12 +105,15 @@ class LoginViewSet(ViewSet):
             target = profile_object or user
             name = getattr(target, "employee_name", None) or getattr(user, "username", None)
             staff_config_name = getattr(target, "staff_config_name", None) or getattr(user, "staff_config_name", None)
+            # *usertype_id fields are plain unique_id strings; resolve the row.
             if user_type == "contractor":
-                role_type = getattr(target, "contractorusertype_id", None) or getattr(user, "contractorusertype_id", None)
+                role_model, role_field = ContractorUserType, "contractorusertype_id"
             elif user_type == "government":
-                role_type = getattr(target, "governmentusertype_id", None) or getattr(user, "governmentusertype_id", None)
+                role_model, role_field = GovernmentStaffUserType, "governmentusertype_id"
             else:
-                role_type = getattr(target, "staffusertype_id", None) or getattr(user, "staffusertype_id", None)
+                role_model, role_field = StaffUserType, "staffusertype_id"
+            role_type_id = getattr(target, role_field, None) or getattr(user, role_field, None)
+            role_type = ref_cache.get(role_model, role_type_id) if role_type_id else None
 
             if role_type:
                 role = role_type.name
@@ -220,7 +230,8 @@ class LoginViewSet(ViewSet):
             )
         elif user_type == "panchayat_leader":
             leader_source = profile_object or user
-            panchayat = getattr(leader_source, "panchayat_id", None)
+            panchayat_id = getattr(leader_source, "panchayat_id", None)
+            panchayat = ref_cache.get(Panchayat, panchayat_id) if panchayat_id else None
             profile_payload.update(
                 {
                     "panchayat_leader_unique_id": getattr(leader_source, "unique_id", None),
@@ -231,7 +242,8 @@ class LoginViewSet(ViewSet):
             )
         elif user_type == "district_leader":
             leader_source = profile_object or user
-            district = getattr(leader_source, "district_id", None)
+            district_id = getattr(leader_source, "district_id", None)
+            district = ref_cache.get(District, district_id) if district_id else None
             profile_payload.update(
                 {
                     "district_leader_unique_id": getattr(leader_source, "unique_id", None),
@@ -242,7 +254,8 @@ class LoginViewSet(ViewSet):
             )
         elif user_type == "state_leader":
             leader_source = profile_object or user
-            state = getattr(leader_source, "state_id", None)
+            state_id = getattr(leader_source, "state_id", None)
+            state = ref_cache.get(State, state_id) if state_id else None
             profile_payload.update(
                 {
                     "state_leader_unique_id": getattr(leader_source, "unique_id", None),

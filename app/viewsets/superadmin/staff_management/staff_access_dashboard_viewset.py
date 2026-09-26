@@ -17,11 +17,19 @@ from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
+from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.masters.ward import Ward
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.utils import ref_cache
+from app.utils.plain_ref import json_contains_any
 from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.screen_management.userscreenpermission import (
     UserScreenPermission,
 )
-from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails, StaffPersonalDetails
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_requester_scope,
@@ -38,34 +46,33 @@ SCOPE_CONFIG = {
         "scope_m2m": None,
         "geo_field": "district",
         "label": "District",
-        "relations": ("state_id",),
     },
     "corporation": {
         "model": Corporation,
         "name": "corporation_name",
         "staff_field": "corporation",
         "scope_m2m": "corporations",
+        "scope_ids_field": "corporation_ids",
         "geo_field": "corporation",
         "label": "Corporation",
-        "relations": ("state_id", "district_id", "area_type_id"),
     },
     "panchayat_union": {
         "model": PanchayatUnion,
         "name": "union_name",
         "staff_field": "panchayat_union",
         "scope_m2m": "panchayat_unions",
+        "scope_ids_field": "panchayat_union_ids",
         "geo_field": "panchayat_union",
         "label": "Panchayat Union",
-        "relations": ("state_id", "district_id", "area_type_id"),
     },
     "panchayat": {
         "model": Panchayat,
         "name": "panchayat_name",
         "staff_field": "panchayat",
         "scope_m2m": "panchayats",
+        "scope_ids_field": "panchayat_ids",
         "geo_field": "panchayat",
         "label": "Panchayat",
-        "relations": ("state_id", "district_id", "area_type_id"),
     },
 }
 
@@ -224,15 +231,9 @@ class StaffAccessDashboardViewSet(ViewSet):
                 None,
             )
         staff = (
-            StaffcreationOfficeDetails.objects.select_related(
-                "governmentusertype_id",
+            StaffcreationOfficeDetails.objects.filter(
+                staff_unique_id=staff_id, is_deleted=False
             )
-            .prefetch_related(
-                "data_scopes__corporations",
-                "data_scopes__panchayat_unions",
-                "data_scopes__panchayats",
-            )
-            .filter(staff_unique_id=staff_id, is_deleted=False)
             .first()
         )
         if not staff:
@@ -305,18 +306,19 @@ class StaffAccessDashboardViewSet(ViewSet):
         # state/district/area_type/corporation/panchayat_union/panchayat are
         # now plain unique_id CharFields on StaffcreationOfficeDetails (no DB
         # relation), so they can no longer be select_related.
-        queryset = StaffcreationOfficeDetails.objects.select_related(
-            "governmentusertype_id",
-        ).prefetch_related(
-            "data_scopes__corporations",
-            "data_scopes__panchayat_unions",
-            "data_scopes__panchayats",
-            "data_scopes__wards",
-        ).filter(
+        # Get government user type IDs ending with "_admin"
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        admin_type_ids = GovernmentStaffUserType.objects.filter(
+            name__endswith="_admin",
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+        
+        queryset = StaffcreationOfficeDetails.objects.filter(
             active_status=True,
             login_enabled=True,
             is_deleted=False,
-            governmentusertype_id__name__endswith="_admin",
+            governmentusertype_id__in=list(admin_type_ids),
         )
         if getattr(request.user, "is_superuser", False):
             return queryset.order_by("employee_name")
@@ -341,9 +343,15 @@ class StaffAccessDashboardViewSet(ViewSet):
         ).first()
         if selected:
             return selected
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        admin_type_ids = GovernmentStaffUserType.objects.filter(
+            name__endswith="_admin",
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
         if StaffcreationOfficeDetails.objects.filter(
             staff_unique_id=admin_id,
-            governmentusertype_id__name__endswith="_admin",
+            governmentusertype_id__in=list(admin_type_ids),
         ).exists():
             raise PermissionDenied("The selected admin is outside your access.")
         raise ValidationError({"admin_id": "Unknown admin."})
@@ -503,12 +511,13 @@ class StaffAccessDashboardViewSet(ViewSet):
                 item for item in hierarchy if item["level"] == "ward"
             )
             hierarchy = effective_hierarchy
+        govt_type = admin.governmentusertype
         return {
             "id": admin.staff_unique_id,
             "name": admin.employee_name,
             "username": admin.username or "",
-            "role": admin.governmentusertype_id.get_name_display(),
-            "role_level": admin.governmentusertype_id.level,
+            "role": govt_type.get_name_display() if govt_type else admin.governmentusertype_id,
+            "role_level": govt_type.level if govt_type else "",
             "hierarchy": hierarchy,
             "hierarchy_label": " → ".join(item["name"] for item in hierarchy),
             "default_scope": default_scope,
@@ -576,9 +585,9 @@ class StaffAccessDashboardViewSet(ViewSet):
 
     def _scope_queryset(self, request, scope_type, selected_admin=None):
         config = SCOPE_CONFIG[scope_type]
-        queryset = _active(config["model"].objects.all()).select_related(
-            *config["relations"]
-        )
+        # state_id/district_id/area_type_id on the geo models are plain
+        # unique_id CharFields (no DB relation), so nothing to select_related.
+        queryset = _active(config["model"].objects.all())
         scope_field_map = {
             "state_id": "state_id",
             "district_id": (
@@ -641,16 +650,10 @@ class StaffAccessDashboardViewSet(ViewSet):
         # state/district/area_type/corporation/panchayat_union/panchayat are
         # now plain unique_id CharFields on StaffcreationOfficeDetails (no DB
         # relation), so they can no longer be select_related.
-        queryset = StaffcreationOfficeDetails.objects.select_related(
-            "personal_details",
-            "staffusertype_id",
-            "contractorusertype_id",
-            "governmentusertype_id",
-            "user_type_id",
-        ).prefetch_related(
-            "data_scopes__corporations",
-            "data_scopes__panchayat_unions",
-            "data_scopes__panchayats",
+        queryset = StaffcreationOfficeDetails.objects.filter(
+            active_status=True,
+            login_enabled=True,
+            is_deleted=False,
         )
         queryset = filter_staff_queryset_by_requester_scope(queryset, request.user)
         if selected_admin:
@@ -658,20 +661,18 @@ class StaffAccessDashboardViewSet(ViewSet):
                 staff_unique_id__in=self._admin_descendant_ids(selected_admin)
             )
         if scope_id:
-            data_scope_lookup = (
-                {"data_scopes__district_id": scope_id}
+            # StaffDataScope keeps local bodies as plain JSON id lists
+            # (`corporation_ids`, ...) and the district as a plain string.
+            scoped_staff = StaffDataScope.objects.filter(
+                Q(district=scope_id)
                 if config["scope_m2m"] is None
-                else {
-                    f"data_scopes__{config['scope_m2m']}__unique_id": scope_id
-                }
-            )
+                else json_contains_any(config["scope_ids_field"], [scope_id]),
+                is_active=True,
+                is_deleted=False,
+            ).values("staff_id")
             queryset = queryset.filter(
                 Q(**{f"{config['staff_field']}_id": scope_id})
-                | Q(
-                    **data_scope_lookup,
-                    data_scopes__is_active=True,
-                    data_scopes__is_deleted=False,
-                )
+                | Q(staff_unique_id__in=scoped_staff)
             )
         status_values = set(_multi_values(request.query_params, "status"))
         if not status_values or "all" in status_values or status_values == {
@@ -704,8 +705,12 @@ class StaffAccessDashboardViewSet(ViewSet):
                 | Q(staff_unique_id__icontains=search)
                 | Q(username__icontains=search)
                 | Q(office_email__icontains=search)
-                | Q(personal_details__contact_mobile__icontains=search)
-                | Q(personal_details__contact_email__icontains=search)
+                | Q(
+                    staff_unique_id__in=StaffPersonalDetails.objects.filter(
+                        Q(contact_mobile__icontains=search)
+                        | Q(contact_email__icontains=search)
+                    ).values("staff_id")
+                )
             )
         ordering = request.query_params.get("ordering", "employee_name")
         if ordering not in ALLOWED_ORDERING:
@@ -852,12 +857,7 @@ class StaffAccessDashboardViewSet(ViewSet):
                 ).values_list("name", flat=True).first()
                 districts[scope.district_id] = district_name
         staff = filter_staff_queryset_by_requester_scope(
-            StaffcreationOfficeDetails.objects.select_related(
-                "staffusertype_id",
-                "contractorusertype_id",
-                "governmentusertype_id",
-                "user_type_id",
-            ),
+            StaffcreationOfficeDetails.objects.all(),
             request.user,
         )
         roles = {}
@@ -868,9 +868,12 @@ class StaffAccessDashboardViewSet(ViewSet):
                 "governmentusertype_id",
                 "user_type_id",
             ):
-                role = getattr(item, field, None)
-                if role:
-                    roles[str(role.pk)] = getattr(role, "name", str(role))
+                role_id = getattr(item, field, None)
+                if role_id:
+                    # Resolve the role name using the property accessor
+                    role_obj = getattr(item, field.replace("_id", ""), None)
+                    if role_obj:
+                        roles[role_id] = role_obj.name
         config = SCOPE_CONFIG[selected_scope_type]
         admins = [
             admin
@@ -916,9 +919,7 @@ class StaffAccessDashboardViewSet(ViewSet):
                     "name": item.employee_name,
                     "username": item.username,
                     "email": item.office_email,
-                    "phone": getattr(item.personal_details, "contact_mobile", None)
-                    if hasattr(item, "personal_details")
-                    else None,
+                    "phone": getattr(item.personal_details, "contact_mobile", None),
                     "role": _role_name(item),
                     "active": item.active_status,
                     "login_enabled": item.login_enabled,
@@ -1029,21 +1030,15 @@ class StaffAccessDashboardViewSet(ViewSet):
             return empty
 
         geo_field = config["geo_field"]
+        # VehicleCreation.vehicle_type_id is a plain unique_id; one lookup.
+        vehicle_type_names = dict(
+            VehicleTypeCreation.objects.values_list("unique_id", "vehicleType")
+        )
         trips = DailyTripAssignment.objects.filter(
             is_deleted=False,
             trip_date__range=(date_from, date_to),
             **{f"{geo_field}_id": selected_scope.unique_id},
-        ).select_related(
-            "trip_plan_id",
-            "vehicle_id",
-            "vehicle_id__vehicle_type",
-            "staff_template_id",
-            "staff_template_id__driver_id",
-            "staff_template_id__operator_id",
-            "alt_staff_template_id",
-            "alt_staff_template_id__driver_id",
-            "alt_staff_template_id__operator_id",
-        ).prefetch_related("wards", "waste_types")
+        )
         trips = filter_flat_geo_queryset_by_requester_scope(trips, request.user)
 
         trip_statuses = set(
@@ -1065,12 +1060,34 @@ class StaffAccessDashboardViewSet(ViewSet):
             trips = trips.filter(staff_template_id=team_id)
         ward_id = request.query_params.get("ward_id")
         if ward_id:
-            trips = trips.filter(wards__unique_id=ward_id)
-        trips = list(trips.distinct().order_by("-trip_date", "-scheduled_time"))
+            trips = trips.filter(json_contains_any("ward_ids", [ward_id]))
+        trips = list(trips.order_by("-trip_date", "-scheduled_time"))
+
+        # Plain unique_id references: load every referenced plan / vehicle /
+        # template / ward / waste type once for the whole page.
+        ref_cache.prime(TripPlan, {t.trip_plan_id for t in trips}, "unique_id")
+        ref_cache.prime(VehicleCreation, {t.vehicle_id for t in trips}, "unique_id")
+        ref_cache.prime(StaffTemplate, {t.staff_template_id for t in trips}, "unique_id")
+        ref_cache.prime(
+            AlternativeStaffTemplate, {t.alt_staff_template_id for t in trips}, "unique_id"
+        )
+        ward_names = dict(
+            Ward.objects.filter(
+                unique_id__in={w for t in trips for w in (t.ward_ids or [])}
+            ).values_list("unique_id", "ward_name")
+        )
+        waste_type_rows = {
+            wt.unique_id: wt
+            for wt in WasteType.objects.filter(
+                unique_id__in={w for t in trips for w in (t.waste_type_ids or [])}
+            )
+        }
 
         all_extra_ids = set()
         for trip in trips:
-            template = trip.alt_staff_template_id or trip.staff_template_id
+            template = trip.effective_template
+            if template is None:
+                continue
             all_extra_ids.update(str(value) for value in (template.extra_operator_id or []))
         extra_staff = {
             staff.staff_unique_id: staff
@@ -1103,12 +1120,14 @@ class StaffAccessDashboardViewSet(ViewSet):
                 "assignment_role": "Unsupported assignment role."
             })
         for trip in trips:
-            regular = trip.staff_template_id
-            template = trip.alt_staff_template_id or regular
+            regular = trip.staff_template
+            template = trip.effective_template
             substituted = trip.alt_staff_template_id is not None
+            if template is None or regular is None:
+                continue
             members = [
-                ("driver", template.driver_id),
-                ("operator", template.operator_id),
+                ("driver", template.driver),
+                ("operator", template.operator),
             ]
             members.extend(
                 ("additional_operator", extra_staff.get(str(staff_id)))
@@ -1138,7 +1157,7 @@ class StaffAccessDashboardViewSet(ViewSet):
                         "effective_team_code": template.display_code,
                         "is_substitute": substituted,
                         "trip_assignment_id": trip.unique_id,
-                        "trip_plan_code": trip.trip_plan_id.display_code,
+                        "trip_plan_code": getattr(trip.trip_plan, "display_code", None),
                         "trip_date": trip.trip_date.isoformat(),
                         "scheduled_time": trip.scheduled_time.isoformat(),
                         "actual_start_time": (
@@ -1153,46 +1172,46 @@ class StaffAccessDashboardViewSet(ViewSet):
                         ),
                         "trip_status": trip.status,
                         "approval_status": trip.approval_status,
-                        "vehicle_id": trip.vehicle_id_id,
+                        "vehicle_id": trip.vehicle_id,
                         "vehicle_no": (
-                            trip.vehicle_id.vehicle_no if trip.vehicle_id else None
+                            trip.vehicle.vehicle_no if trip.vehicle else None
                         ),
                         "vehicle_type": (
-                            trip.vehicle_id.vehicle_type.vehicleType
-                            if trip.vehicle_id and trip.vehicle_id.vehicle_type
+                            vehicle_type_names.get(trip.vehicle.vehicle_type_id)
+                            if trip.vehicle_id
                             else None
                         ),
                         "vehicle_capacity": (
-                            float(trip.vehicle_id.capacity)
-                            if trip.vehicle_id and trip.vehicle_id.capacity is not None
+                            float(trip.vehicle.capacity)
+                            if trip.vehicle and trip.vehicle.capacity is not None
                             else None
                         ),
                         "vehicle_active": (
-                            trip.vehicle_id.is_active if trip.vehicle_id else None
+                            trip.vehicle.is_active if trip.vehicle else None
                         ),
-                        "wards": [ward.ward_name for ward in trip.wards.all()],
+                        "wards": [ward_names[w] for w in (trip.ward_ids or []) if w in ward_names],
                         "waste_types": [
                             getattr(waste_type, "wasteType", str(waste_type))
-                            for waste_type in trip.waste_types.all()
+                            for waste_type in (
+                                waste_type_rows[w] for w in (trip.waste_type_ids or []) if w in waste_type_rows
+                            )
                         ],
                     }
                 )
-            if trip.vehicle_id_id:
-                vehicle_trip_counts[trip.vehicle_id_id] += 1
+            if trip.vehicle_id:
+                vehicle_trip_counts[trip.vehicle_id] += 1
             team_trip_counts[regular.unique_id] += 1
 
         vehicles = VehicleCreation.objects.filter(
             is_deleted=False,
             **{f"{geo_field}_id": selected_scope.unique_id},
-        ).select_related("vehicle_type")
+        )
         vehicles = filter_flat_geo_queryset_by_requester_scope(vehicles, request.user)
         vehicle_rows = [
             {
                 "vehicle_id": vehicle.unique_id,
                 "registration_no": vehicle.vehicle_no,
-                "vehicle_type": (
-                    vehicle.vehicle_type.vehicleType if vehicle.vehicle_type else ""
-                ),
+                "vehicle_type": vehicle_type_names.get(vehicle.vehicle_type_id, ""),
                 "capacity": float(vehicle.capacity or 0),
                 "trips": vehicle_trip_counts.get(vehicle.unique_id, 0),
                 "status": "Active" if vehicle.is_active else "Inactive",
@@ -1202,12 +1221,12 @@ class StaffAccessDashboardViewSet(ViewSet):
         trip_rows = [
             {
                 "trip_id": trip.unique_id,
-                "trip_plan_code": trip.trip_plan_id.display_code,
-                "vehicle_no": trip.vehicle_id.vehicle_no if trip.vehicle_id else "",
-                "team_code": trip.staff_template_id.display_code,
+                "trip_plan_code": getattr(trip.trip_plan, "display_code", None),
+                "vehicle_no": trip.vehicle.vehicle_no if trip.vehicle else "",
+                "team_code": getattr(trip.staff_template, "display_code", None),
                 "trip_date": trip.trip_date.isoformat(),
                 "start_time": trip.scheduled_time.isoformat(),
-                "wards": [ward.ward_name for ward in trip.wards.all()],
+                "wards": [ward_names[w] for w in (trip.ward_ids or []) if w in ward_names],
                 "status": trip.status,
             }
             for trip in trips
@@ -1217,9 +1236,9 @@ class StaffAccessDashboardViewSet(ViewSet):
                 "team_id": team_id_value,
                 "team_name": next(
                     (
-                        trip.staff_template_id.display_code
+                        getattr(trip.staff_template, "display_code", team_id_value)
                         for trip in trips
-                        if trip.staff_template_id_id == team_id_value
+                        if trip.staff_template_id == team_id_value
                     ),
                     team_id_value,
                 ),

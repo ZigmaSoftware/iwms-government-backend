@@ -5,27 +5,30 @@ from app.models.masters.transport_masters.trip_attendance import TripAttendance
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.utils.plain_ref import ref_id
 
 
 class TripAttendanceSerializer(serializers.ModelSerializer):
 
-    daily_trip_assignment_id = serializers.SlugRelatedField(
-        source="daily_trip_assignment",
-        slug_field="unique_id",
-        queryset=DailyTripAssignment.objects.all()
-    )
+    # Plain unique_id references (no DB relation); checked in validate_*.
+    daily_trip_assignment_id = serializers.CharField()
+    staff_id = serializers.CharField()
+    vehicle_id = serializers.CharField()
 
-    staff_id = serializers.SlugRelatedField(
-        source="staff",
-        slug_field="staff_unique_id",
-        queryset=Staffcreation.objects.all()
-    )
+    def validate_daily_trip_assignment_id(self, value):
+        if not DailyTripAssignment.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError(f'Object with unique_id={value} does not exist.')
+        return value
 
-    vehicle_id = serializers.SlugRelatedField(
-        source="vehicle",
-        slug_field="unique_id",
-        queryset=VehicleCreation.objects.all()
-    )
+    def validate_staff_id(self, value):
+        if not Staffcreation.objects.filter(staff_unique_id=value).exists():
+            raise serializers.ValidationError(f'Object with staff_unique_id={value} does not exist.')
+        return value
+
+    def validate_vehicle_id(self, value):
+        if not VehicleCreation.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError(f'Object with unique_id={value} does not exist.')
+        return value
 
     class Meta:
         model = TripAttendance
@@ -45,12 +48,14 @@ class TripAttendanceSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
-        trip = attrs.get("daily_trip_assignment") if "daily_trip_assignment" in attrs else getattr(instance, "daily_trip_assignment", None)
-        staff = attrs.get("staff") if "staff" in attrs else getattr(instance, "staff", None)
-        vehicle = attrs.get("vehicle") if "vehicle" in attrs else getattr(instance, "vehicle", None)
-
         if instance:
             return attrs
+
+        trip = DailyTripAssignment.objects.filter(
+            unique_id=attrs.get("daily_trip_assignment_id")
+        ).first()
+        staff = Staffcreation.objects.filter(staff_unique_id=attrs.get("staff_id")).first()
+        vehicle_id = attrs.get("vehicle_id")
 
         if not trip or not staff:
             return attrs
@@ -61,21 +66,21 @@ class TripAttendanceSerializer(serializers.ModelSerializer):
                 "Attendance allowed only for in-progress trips"
             )
 
-        if not trip.staff_template_id:
+        if not trip.staff_template:
             raise serializers.ValidationError(
                 "Trip has no staff template assigned"
             )
 
         # Staff must belong to trip
         if staff.staff_unique_id not in [
-            trip.staff_template_id.operator_id_id,
-            trip.staff_template_id.driver_id_id,
+            trip.staff_template.operator_id,
+            trip.staff_template.driver_id,
         ]:
             raise serializers.ValidationError(
                 "Staff is not assigned to this trip"
             )
 
-        if staff.staffusertype_id and staff.staffusertype_id.name.lower() not in [
+        if staff.staffusertype and staff.staffusertype.name.lower() not in [
             "operator",
             "driver",
         ]:
@@ -83,7 +88,7 @@ class TripAttendanceSerializer(serializers.ModelSerializer):
                 "Attendance allowed only for operator or driver"
             )
 
-        if vehicle != trip.vehicle_id:
+        if vehicle_id != trip.vehicle_id:
             raise serializers.ValidationError(
                 "Vehicle does not match daily trip assignment"
             )
@@ -91,7 +96,7 @@ class TripAttendanceSerializer(serializers.ModelSerializer):
         # Trip attendance cooldown enforcement (create only)
         last = (
             TripAttendance.objects
-            .filter(daily_trip_assignment=trip, staff=staff)
+            .filter(daily_trip_assignment_id=trip.unique_id, staff_id=staff.staff_unique_id)
             .order_by("-attendance_time")
             .first()
         )

@@ -8,6 +8,8 @@ from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
+from app.utils.plain_ref import ref_id
 
 
 def generate_daily_trip_cp_id():
@@ -37,21 +39,12 @@ class DailyTripCollectionPoint(BaseMaster):
     )
 
 
-    trip_assignment_id = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.CASCADE,
-        db_column="trip_assignment_id",
-        to_field="unique_id",
-        related_name="trip_collection_points",
-    )
+    # Plain unique_id references (no DB relation); `trip_assignment` /
+    # `collection_point` / `bin` / `collected_by` / `carried_to_assignment`
+    # properties resolve them.
+    trip_assignment_id = models.CharField(max_length=50, db_column="trip_assignment_id")
 
-    collection_point_id = models.ForeignKey(
-        Collection_point,
-        on_delete=models.PROTECT,
-        db_column="collection_point_id",
-        to_field="unique_id",
-        related_name="daily_trip_cps",
-    )
+    collection_point_id = models.CharField(max_length=30, db_column="collection_point_id", db_index=True)
     state_id = models.CharField(max_length=30, null=True, blank=True)
     district_id = models.CharField(max_length=30, null=True, blank=True)
     area_type_id = models.CharField(max_length=30, null=True, blank=True)
@@ -61,26 +54,14 @@ class DailyTripCollectionPoint(BaseMaster):
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
-    bin_id = models.ForeignKey(
-        Bins,
-        on_delete=models.PROTECT,
-        db_column="bin_id",
-        to_field="unique_id",
-        related_name="daily_trip_cps",
-    )
+    bin_id = models.CharField(max_length=30, db_column="bin_id", db_index=True)
 
     sequence = models.PositiveIntegerField(default=1)
     
     is_collected = models.BooleanField(default=False, db_index=True)
     collected_at = models.DateTimeField(null=True, blank=True)
-    collected_by = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.SET_NULL,
-        db_column="collected_by",
-        to_field="staff_unique_id",
-        related_name="collected_trip_cps",
-        null=True,
-        blank=True,
+    collected_by_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="collected_by", db_index=True
     )
     collected_weight_kg = models.DecimalField(
         max_digits=10,
@@ -113,14 +94,8 @@ class DailyTripCollectionPoint(BaseMaster):
     # carried over to a continuation trip. Deliberately does not affect
     # `status` (still Pending/etc.) — see the comment in approve_retrip for
     # why the completion-percentage math depends on that.
-    carried_to_assignment = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        to_field="unique_id",
-        db_column="carried_to_assignment_id",
-        related_name="carried_over_collection_points",
+    carried_to_assignment_id = models.CharField(
+        max_length=50, null=True, blank=True, db_column="carried_to_assignment_id", db_index=True
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -139,17 +114,38 @@ class DailyTripCollectionPoint(BaseMaster):
             ),
         ]
 
+    @property
+    def trip_assignment(self):
+        return ref_cache.get(DailyTripAssignment, self.trip_assignment_id, "unique_id")
+
+    @property
+    def collection_point(self):
+        return ref_cache.get(Collection_point, self.collection_point_id, "unique_id")
+
+    @property
+    def bin(self):
+        return ref_cache.get(Bins, self.bin_id, "unique_id")
+
+    @property
+    def collected_by(self):
+        return ref_cache.get(Staffcreation, self.collected_by_id, "staff_unique_id")
+
+    @property
+    def carried_to_assignment(self):
+        return ref_cache.get(DailyTripAssignment, self.carried_to_assignment_id, "unique_id")
+
     def save(self, *args, **kwargs):
-        if self.collection_point_id_id:
-            copy_flat_geo(self, self.collection_point_id)
+        cp = self.collection_point
+        if cp:
+            copy_flat_geo(self, cp)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.trip_assignment_id_id}:{self.collection_point_id_id}"
+        return f"{self.trip_assignment_id}:{self.collection_point_id}"
 
     def mark_collected(self, weight_kg, collected_by, collected_at=None):
         self.collected_weight_kg = weight_kg
-        self.collected_by = collected_by
+        self.collected_by_id = ref_id(collected_by)
         self.collected_at = collected_at or timezone.now()
         self.is_collected = True
         self.status = self.STATUS_COLLECTED
@@ -158,7 +154,7 @@ class DailyTripCollectionPoint(BaseMaster):
         self.status_longitude = None
         self.save(update_fields=[
             "collected_weight_kg",
-            "collected_by",
+            "collected_by_id",
             "collected_at",
             "is_collected",
             "status",
@@ -172,7 +168,7 @@ class DailyTripCollectionPoint(BaseMaster):
         # than something that happens invisibly the instant the last stop is
         # scanned — this call only updates whether every stop is resolved,
         # it no longer ends the trip itself.
-        self.trip_assignment_id.mark_completed_if_all_cps_collected(auto_end=False)
+        self.trip_assignment.mark_completed_if_all_cps_collected(auto_end=False)
 
     def mark_status(self, status, reason, latitude=None, longitude=None):
         self.status = status
@@ -181,7 +177,7 @@ class DailyTripCollectionPoint(BaseMaster):
         self.status_longitude = longitude
         self.is_collected = False
         self.collected_at = None
-        self.collected_by = None
+        self.collected_by_id = None
         if status in {self.STATUS_SKIPPED, self.STATUS_MISSED}:
             self.collected_weight_kg = None
         self.save(update_fields=[
@@ -191,8 +187,8 @@ class DailyTripCollectionPoint(BaseMaster):
             "status_longitude",
             "is_collected",
             "collected_at",
-            "collected_by",
+            "collected_by_id",
             "collected_weight_kg",
             "updated_at",
         ])
-        self.trip_assignment_id.mark_completed_if_all_cps_collected(auto_end=False)
+        self.trip_assignment.mark_completed_if_all_cps_collected(auto_end=False)

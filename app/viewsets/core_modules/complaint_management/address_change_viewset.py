@@ -60,9 +60,7 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "address-change"
 
     def get_queryset(self):
-        qs = ComplaintAddressChangeRequest.objects.filter(is_deleted=False).select_related(
-            "ticket", "customer"
-        ).order_by("-created")
+        qs = ComplaintAddressChangeRequest.objects.filter(is_deleted=False).order_by("-created")
         ticket = self.request.query_params.get("ticket")
         if ticket:
             qs = qs.filter(ticket_id=ticket)
@@ -92,10 +90,10 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def verify(self, request, unique_id=None):
         req = self.get_object()
         req.verification_status = ComplaintAddressChangeRequest.VerificationStatus.VERIFIED
-        req.verified_by = request.user if request.user.is_authenticated else None
+        req.verified_by_id = getattr(request.user, "unique_id", None) if request.user.is_authenticated else None
         req.verified_at = timezone.now()
         req.verification_remarks = request.data.get("verification_remarks")
-        req.save(update_fields=["verification_status", "verified_by", "verified_at", "verification_remarks"])
+        req.save(update_fields=["verification_status", "verified_by_id", "verified_at", "verification_remarks"])
         return Response(self.get_serializer(req).data)
 
     # ----------------------------------------------------------
@@ -143,7 +141,7 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     setattr(customer, f"{customer_field}_id", value)
         customer.save()
 
-        req.approved_by = request.user if request.user.is_authenticated else None
+        req.approved_by_id = getattr(request.user, "unique_id", None) if request.user.is_authenticated else None
         req.approved_at = timezone.now()
         req.save()
 
@@ -153,14 +151,14 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         route_warning = None
         if resolved:
             old_status = ticket.status
-            ticket.status = resolved
+            ticket.status_id = resolved.unique_id
             ticket.resolved_at = timezone.now()
-            ticket.save(update_fields=["status", "resolved_at"])
+            ticket.save(update_fields=["status_id", "resolved_at"])
             ComplaintStatusHistory.objects.create(
-                ticket=ticket,
-                from_status=old_status,
-                to_status=resolved,
-                changed_by_user=request.user if request.user.is_authenticated else None,
+                ticket_id=ticket.unique_id,
+                from_status_id=getattr(old_status, "unique_id", None),
+                to_status_id=resolved.unique_id,
+                changed_by_user_id=getattr(request.user, "unique_id", None) if request.user.is_authenticated else None,
                 remarks="Address change approved",
             )
 
@@ -205,13 +203,13 @@ class ComplaintAddressChangeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         rejected = _resolve_status("REJECTED")
         if rejected:
             old_status = ticket.status
-            ticket.status = rejected
-            ticket.save(update_fields=["status"])
+            ticket.status_id = rejected.unique_id
+            ticket.save(update_fields=["status_id"])
             ComplaintStatusHistory.objects.create(
-                ticket=ticket,
-                from_status=old_status,
-                to_status=rejected,
-                changed_by_user=request.user if request.user.is_authenticated else None,
+                ticket_id=ticket.unique_id,
+                from_status_id=getattr(old_status, "unique_id", None),
+                to_status_id=rejected.unique_id,
+                changed_by_user_id=getattr(request.user, "unique_id", None) if request.user.is_authenticated else None,
                 remarks=f"Address change rejected: {req.rejection_reason or ''}",
             )
         return Response(self.get_serializer(req).data)

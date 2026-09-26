@@ -9,21 +9,36 @@ from app.models.superadmin.screen_management.userscreenpermission import LocalBo
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
+from app.utils import ref_cache
 from app.serializers.superadmin.screen_management.userscreenpermission_serializer import (
     _resolve_local_body_model,
 )
 
 
 class UserScreenColumnPermissionAllFieldsSerializer(serializers.ModelSerializer):
-    column_name = serializers.CharField(source="column_id.field_name", read_only=True)
-    display_name = serializers.CharField(source="column_id.display_name", read_only=True)
-    data_type = serializers.CharField(source="column_id.data_type", read_only=True)
-    userscreen_name = serializers.CharField(source="userscreen_id.userscreen_name", read_only=True)
+    userscreen_id = serializers.CharField()
+    column_id = serializers.CharField()
+    column_name = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    data_type = serializers.SerializerMethodField()
+    userscreen_name = serializers.SerializerMethodField()
     can_view = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = UserScreenColumnPermission
         fields = "__all__"
+
+    def get_column_name(self, obj):
+        return getattr(obj.column, "field_name", None)
+
+    def get_display_name(self, obj):
+        return getattr(obj.column, "display_name", None)
+
+    def get_data_type(self, obj):
+        return getattr(obj.column, "data_type", None)
+
+    def get_userscreen_name(self, obj):
+        return getattr(obj.userscreen, "userscreen_name", None)
 
 
 # ---------------------------------------------------------------------------
@@ -39,14 +54,17 @@ class UserScreenColumnPermissionSerializer(serializers.ModelSerializer):
     """
 
     userscreencolumnpermission_id = serializers.CharField(source="unique_id", read_only=True)
-    userscreencolumn_id = serializers.CharField(source="column_id_id", read_only=True)
+    userscreencolumn_id = serializers.CharField(source="column_id", read_only=True)
     column_name = serializers.SerializerMethodField()
     is_active = serializers.BooleanField(source="can_view", read_only=True)
-    userscreen_name = serializers.CharField(source="userscreen_id.userscreen_name", read_only=True)
+    userscreen_name = serializers.SerializerMethodField()
 
     def get_column_name(self, obj):
-        col = obj.column_id
+        col = obj.column
         return (col.display_name or col.field_name) if col else ""
+
+    def get_userscreen_name(self, obj):
+        return getattr(obj.userscreen, "userscreen_name", None)
 
     class Meta:
         model = UserScreenColumnPermission
@@ -139,7 +157,7 @@ class UserScreenColumnPermissionWriteSerializer(serializers.Serializer):
         if userscreen_id and column_id:
             if not UserScreenColumn.objects.filter(
                 unique_id=column_id,
-                userscreen_id_id=userscreen_id,
+                userscreen_id=userscreen_id,
                 is_deleted=False,
             ).exists():
                 raise serializers.ValidationError(

@@ -17,10 +17,6 @@ class UserChargeRuleViewSet(viewsets.ModelViewSet):
     queryset = (
         UserChargeRule.objects
         .filter(is_deleted=False)
-        .select_related(
-            "property_id",
-            "subproperty_id",
-        )
         .order_by("unique_id")
     )
 

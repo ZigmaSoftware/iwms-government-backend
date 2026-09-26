@@ -162,14 +162,14 @@ class RecognizeViewSet(ViewSet):
         today = timezone.localdate()
         last = (
             DailyAttendanceReg.objects
-            .filter(staff=staff, recognition_date=today)
+            .filter(staff_id=staff.staff_unique_id, recognition_date=today)
             .order_by("-records")
             .first()
         )
         punch_type = "OUT" if last and last.punch_type == "IN" else "IN"
         last_in = (
             DailyAttendanceReg.objects
-            .filter(staff=staff, recognition_date=today, punch_type="IN")
+            .filter(staff_id=staff.staff_unique_id, recognition_date=today, punch_type="IN")
             .order_by("-records")
             .first()
         )
@@ -178,7 +178,7 @@ class RecognizeViewSet(ViewSet):
             worked_seconds = max(int((now - last_in.records).total_seconds()), 0)
 
         created = DailyAttendanceReg.objects.create(
-            staff=staff,
+            staff_id=staff.staff_unique_id,
             emp_id=staff.emp_id,
             emp_id_raw=staff_unique_id,
             name=staff.employee_name,

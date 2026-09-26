@@ -1,6 +1,9 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.utils.plain_ref import ref_value
+from app.utils.plain_ref import ref_id
 from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
@@ -8,38 +11,28 @@ from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
 from app.utils.hierarchy import flat_geo_display
 from app.utils.waste_images import capture_images_for_customer
 
 
 class DailyTripLogSerializer(serializers.ModelSerializer):
-    trip_assignment_id = UniqueIdOrPkField(
-        slug_field="unique_id",
-        queryset=DailyTripAssignment.objects.select_related(
-            "trip_plan_id",
-            "trip_plan_id__vehicle_id",
-            "staff_template_id",
-            "staff_template_id__driver_id",
-            "staff_template_id__operator_id",
-            "alt_staff_template_id",
-            "alt_staff_template_id__driver_id",
-            "alt_staff_template_id__operator_id",
-        ).prefetch_related("waste_types").filter(is_deleted=False),
-        write_only=True,
-    )
+    # Plain unique_id references (no DB relation); validated below.
+    trip_assignment_id = serializers.CharField(write_only=True)
     bin_ids = serializers.SlugRelatedField(
+        source="bins",
         slug_field="unique_id",
         queryset=Bins.objects.all(),  # allow historical refs to soft-deleted bins
         many=True,
         required=False,
     )
     extra_operator_ids = serializers.SlugRelatedField(
+        source="extra_operators",
         slug_field="staff_unique_id",
         queryset=Staffcreation.objects.filter(is_deleted=False),
         many=True,
         required=False,
     )
+    verified_by = serializers.CharField(source="verified_by_id", read_only=True)
 
     trip_assignment = serializers.SerializerMethodField(read_only=True)
     staff_template = serializers.SerializerMethodField(read_only=True)
@@ -124,10 +117,10 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         ]
 
     def get_trip_assignment(self, obj):
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return None
-        trip_plan = getattr(assignment, "trip_plan_id", None)
+        trip_plan = getattr(assignment, "trip_plan", None)
         return {
             "unique_id": assignment.unique_id,
             "status": assignment.status,
@@ -140,14 +133,14 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     def get_wards_detail(self, obj):
         return [
             {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
-            for ward in obj.trip_assignment_id.wards.all()
-        ] if obj.trip_assignment_id else []
+            for ward in obj.trip_assignment.wards.all()
+        ] if obj.trip_assignment else []
 
     def get_staff_template(self, obj):
         # Fall back to trip assignment's templates for records created before the migration
-        assignment = obj.trip_assignment_id
-        template = obj.staff_template_id or getattr(assignment, "staff_template_id", None)
-        alt = obj.alt_staff_template_id or getattr(assignment, "alt_staff_template_id", None)
+        assignment = obj.trip_assignment
+        template = obj.staff_template or getattr(assignment, "staff_template", None)
+        alt = obj.alt_staff_template or getattr(assignment, "alt_staff_template", None)
         if not template and not alt:
             return None
         result = {
@@ -158,15 +151,15 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
             result["base"] = {
                 "unique_id": template.unique_id,
                 "display_code": template.display_code,
-                "driver": self._staff_dict(getattr(template, "driver_id", None)),
-                "operator": self._staff_dict(getattr(template, "operator_id", None)),
+                "driver": self._staff_dict(getattr(template, "driver", None)),
+                "operator": self._staff_dict(getattr(template, "operator", None)),
             }
         if alt:
             result["alt"] = {
                 "unique_id": alt.unique_id,
                 "display_code": alt.display_code,
-                "driver": self._staff_dict(getattr(alt, "driver_id", None)),
-                "operator": self._staff_dict(getattr(alt, "operator_id", None)),
+                "driver": self._staff_dict(getattr(alt, "driver", None)),
+                "operator": self._staff_dict(getattr(alt, "operator", None)),
             }
         return result
 
@@ -183,18 +176,15 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         """
         from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 
-        # `new_assignment` has no `to_field="unique_id"` (unlike
-        # `carried_to_assignment` below), so its plain `_id` attribute is the
-        # integer PK, not the unique_id string every stop's
-        # `carried_to_assignment_id` actually holds — go through the relation
-        # (`new_assignment__unique_id`) to key this map the same way.
+        # new_assignment_id holds the continuation's unique_id, the same
+        # value every carried stop's `carried_to_assignment_id` holds.
         rows = TripRetripRequest.objects.filter(
-            assignment=assignment,
+            assignment_id=ref_id(assignment),
             status=TripRetripRequest.STATUS_APPROVED,
-            new_assignment__isnull=False,
-        ).values("new_assignment__unique_id", "review_remarks", "reason")
+            new_assignment_id__isnull=False,
+        ).values("new_assignment_id", "review_remarks", "reason")
         return {
-            row["new_assignment__unique_id"]: (row["review_remarks"] or row["reason"] or "")
+            row["new_assignment_id"]: (row["review_remarks"] or row["reason"] or "")
             for row in rows
         }
 
@@ -202,14 +192,13 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         from django.db.models import Sum
         from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return []
         retrip_remarks = self._retrip_remarks_by_new_assignment(assignment)
         cps = (
             assignment.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id", "bin_id", "bin_id__wastetype_id")
             .order_by("sequence")
         )
         cp_ids = [tcp.unique_id for tcp in cps]
@@ -219,7 +208,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 BinCollectionEvent.objects.filter(
                     trip_collection_point_id__in=cp_ids, is_deleted=False
                 )
-                .values("trip_collection_point_id", "waste_type_id", "waste_type_id__waste_type_name")
+                .annotate(waste_type_name=ref_value("waste_type_id", WasteType, "waste_type_name"))
+                .values("trip_collection_point_id", "waste_type_id", "waste_type_name")
                 .annotate(total_weight=Sum("collected_weight_kg"))
             )
             for row in event_rows:
@@ -228,13 +218,13 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 breakdown_by_cp.setdefault(row["trip_collection_point_id"], []).append(
                     {
                         "waste_type_id": row["waste_type_id"],
-                        "waste_type_name": row["waste_type_id__waste_type_name"],
+                        "waste_type_name": row["waste_type_name"],
                         "collected_weight_kg": str(row["total_weight"]),
                     }
                 )
         return [
             {
-                "unique_id": tcp.collection_point_id.unique_id,
+                "unique_id": tcp.collection_point.unique_id,
                 # The DailyTripCollectionPoint (stop) id — distinct from
                 # "unique_id" above, which is the Collection_point MASTER's
                 # id. `proceed-next-trip`'s `collection_point_ids` expects
@@ -242,7 +232,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 # see retrip_service.approve_retrip), so the web UI's carry-
                 # over checkbox must key off this field, not "unique_id".
                 "trip_collection_point_id": tcp.unique_id,
-                "cp_name": tcp.collection_point_id.cp_name,
+                "cp_name": tcp.collection_point.cp_name,
                 "sequence": tcp.sequence,
                 "is_collected": tcp.is_collected,
                 "status": tcp.status,
@@ -252,7 +242,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                     if tcp.collected_weight_kg is not None
                     else None
                 ),
-                "waste_type_name": getattr(getattr(tcp.bin_id, "wastetype_id", None), "waste_type_name", None),
+                "waste_type_name": getattr(getattr(tcp.bin_id, "wastetype", None), "waste_type_name", None),
                 "waste_type_breakdown": breakdown_by_cp.get(tcp.unique_id, []),
                 "carried_to_assignment": tcp.carried_to_assignment_id,
                 "carried_to_assignment_remarks": retrip_remarks.get(tcp.carried_to_assignment_id),
@@ -265,7 +255,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return "Not Started"
 
@@ -281,7 +271,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         bin_stops = [cp for cp in assignment.trip_collection_points.all() if not cp.is_deleted]
         hh_stops = list(
             DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
+                trip_assignment_id=assignment.unique_id, is_deleted=False
             )
         )
         total = len(bin_stops) + len(hh_stops)
@@ -303,20 +293,19 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         )
         from app.utils.waste_type_breakdown import HOUSEHOLD_WASTE_TYPE_NAMES
 
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return []
         retrip_remarks = self._retrip_remarks_by_new_assignment(assignment)
         hh_list = (
             DailyTripHouseholdCollection.objects
-            .filter(trip_assignment_id=assignment, is_deleted=False)
-            .select_related("customer_id", "waste_collection_id")
+            .filter(trip_assignment_id=assignment.unique_id, is_deleted=False)
             .order_by("sequence")
         )
         result = []
         for hh in hh_list:
-            customer = hh.customer_id
-            wc = hh.waste_collection_id
+            customer = hh.customer
+            wc = hh.waste_collection
             waste_type_breakdown = []
             for column, label in HOUSEHOLD_WASTE_TYPE_NAMES.items():
                 value = getattr(wc, column, None) if wc else None
@@ -356,14 +345,14 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         household's WasteCollectionSub photos)."""
         from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 
-        assignment_id = obj.trip_assignment_id_id
+        assignment_id = obj.trip_assignment
         if not assignment_id:
             return []
         request = self.context.get("request")
         images = []
         seen = set()
         collections = WasteCollection.objects.filter(
-            trip_assignment_id=assignment_id, is_deleted=False
+            trip_assignment_id=ref_id(assignment_id), is_deleted=False
         )
         for collection in collections:
             for img in capture_images_for_customer(
@@ -387,7 +376,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         # (falling back to its assignment) — these are now plain unique_id
         # strings (no DB relation), so resolve display names with a lookup
         # instead of attribute-chaining a live FK.
-        source = obj if obj.district_id or obj.panchayat_id or obj.corporation_id else obj.trip_assignment_id
+        source = obj if obj.district_id or obj.panchayat_id or obj.corporation_id else obj.trip_assignment
         if not source:
             source = obj
         name, level = flat_geo_display(source)
@@ -410,7 +399,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         }
 
     def get_collection_point(self, obj):
-        cp = obj.collection_point_id
+        cp = obj.collection_point
         return None if not cp else {"unique_id": cp.unique_id, "cp_name": cp.cp_name}
 
     def get_waste_types_detail(self, obj):
@@ -418,7 +407,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
 
     def get_waste_type_breakdown(self, obj):
         from app.utils.waste_type_breakdown import waste_type_breakdown_for_assignment
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return []
         return waste_type_breakdown_for_assignment(assignment)
@@ -433,16 +422,16 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         }
 
     def get_driver(self, obj):
-        return self._staff_dict(obj.driver_id)
+        return self._staff_dict(obj.driver)
 
     def get_operator(self, obj):
-        return self._staff_dict(obj.operator_id)
+        return self._staff_dict(obj.operator)
 
     def get_extra_operators(self, obj):
-        return [self._staff_dict(staff) for staff in obj.extra_operator_ids.all()]
+        return [self._staff_dict(staff) for staff in obj.extra_operators]
 
     def get_vehicle(self, obj):
-        vehicle = obj.vehicle_id
+        vehicle = obj.vehicle
         if not vehicle:
             return None
         return {
@@ -458,7 +447,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "bin_name": bin_obj.bin_name,
                 "bin_status": getattr(bin_obj, "bin_status", None),
             }
-            for bin_obj in obj.bin_ids.all()
+            for bin_obj in obj.bins
         ]
 
     def get_verified_by_name(self, obj):
@@ -472,15 +461,24 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         if instance and instance.log_status == DailyTripLog.LOG_STATUS_VERIFIED:
             raise serializers.ValidationError("Verified trip logs are read-only.")
 
-        assignment = attrs.get(
+        assignment_uid = attrs.get(
             "trip_assignment_id",
             getattr(instance, "trip_assignment_id", None),
         )
+        assignment = (
+            DailyTripAssignment.objects.filter(unique_id=assignment_uid, is_deleted=False).first()
+            if assignment_uid
+            else None
+        )
+        if assignment_uid and assignment is None:
+            raise serializers.ValidationError(
+                {"trip_assignment_id": f"Object with unique_id={assignment_uid} does not exist."}
+            )
         if assignment and assignment.status == DailyTripAssignment.STATUS_CANCELLED:
             raise serializers.ValidationError("Cannot create a log for a cancelled trip.")
 
         if assignment and not instance:
-            if DailyTripLog.objects.filter(trip_assignment_id=assignment, is_deleted=False).exists():
+            if DailyTripLog.objects.filter(trip_assignment_id=ref_id(assignment), is_deleted=False).exists():
                 raise serializers.ValidationError("A log already exists for this trip assignment.")
 
         start_time = attrs.get("actual_start_time", getattr(instance, "actual_start_time", None))
@@ -488,6 +486,11 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         if start_time and end_time and end_time <= start_time:
             raise serializers.ValidationError("actual_end_time must be after actual_start_time.")
 
+        # Bins / extra operators are stored as plain unique_id lists.
+        if "bins" in attrs:
+            attrs["bin_ids"] = [b.unique_id for b in attrs.pop("bins")]
+        if "extra_operators" in attrs:
+            attrs["extra_operator_ids"] = [st.staff_unique_id for st in attrs.pop("extra_operators")]
         return attrs
 
 

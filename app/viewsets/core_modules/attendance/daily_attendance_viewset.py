@@ -62,7 +62,7 @@ class DailyAttendanceRegViewSet(ViewSet):
             )
 
         records = DailyAttendanceReg.objects.filter(
-            models.Q(staff__staff_unique_id=emp_id) | models.Q(staff__emp_id=emp_id),
+            models.Q(staff_id=emp_id) | models.Q(emp_id=emp_id),
             recognition_date__month=int(month),
             recognition_date__year=int(year),
         ).order_by("recognition_date", "recognition_time")
@@ -146,7 +146,7 @@ class DailyAttendanceRegViewSet(ViewSet):
         records = (
             DailyAttendanceReg.objects
             .filter(
-                models.Q(staff__staff_unique_id=emp_id) | models.Q(staff__emp_id=emp_id),
+                models.Q(staff_id=emp_id) | models.Q(emp_id=emp_id),
                 recognition_date=today,
             )
             .order_by("records")
@@ -197,7 +197,7 @@ class DailyAttendanceRegViewSet(ViewSet):
             )
 
         records = DailyAttendanceReg.objects.filter(
-            models.Q(staff__staff_unique_id=emp_id) | models.Q(staff__emp_id=emp_id),
+            models.Q(staff_id=emp_id) | models.Q(emp_id=emp_id),
             recognition_date__month=int(month),
             recognition_date__year=int(year),
         )

@@ -1,6 +1,7 @@
 from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
@@ -53,7 +54,9 @@ class SupervisorUserSeeder(BaseSeeder):
             DailyTripAssignment.objects.filter(
                 trip_date=today,
                 is_deleted=False,
-                staff_template_id__driver_id=driver,
+                staff_template_id__in=StaffTemplate.objects.filter(
+                    driver_id=driver.staff_unique_id
+                ).values("unique_id"),
             )
         )
         if not assignments:
@@ -98,16 +101,16 @@ class SupervisorUserSeeder(BaseSeeder):
 
         # Make this supervisor responsible for the trip plan(s) behind
         # driver_user's assignments today.
-        plan_ids = {a.trip_plan_id_id for a in assignments if a.trip_plan_id_id}
+        plan_ids = {a.trip_plan_id for a in assignments if a.trip_plan_id}
         updated = TripPlan.objects.filter(unique_id__in=plan_ids).update(
-            supervisor_id=supervisor
+            supervisor_id=supervisor.staff_unique_id
         )
 
         # Make the supervisor lead every complaint team so complaints routed to
         # those teams surface in the supervisor grievance view (the ticket
         # queryset scopes to assigned_staff / team lead / department).
         teams = ComplaintTeam.objects.filter(is_deleted=False).update(
-            lead_staff=supervisor
+            lead_staff_id=supervisor.staff_unique_id
         )
 
         self.log(

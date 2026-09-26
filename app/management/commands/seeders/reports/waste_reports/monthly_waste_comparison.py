@@ -30,10 +30,12 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
         for idx, panchayat in enumerate(panchayats):
             collection_date = today - timedelta(days=idx)
 
+            # Geo columns are plain unique_id CharFields — pass the id, not
+            # the instance (which would be stored as str(instance)).
             already_exists = DailyWasteComparison.objects.filter(
-                panchayat=panchayat,
+                panchayat=panchayat.unique_id,
                 collection_date=collection_date,
-                waste_type_id=waste_type,
+                waste_type_id=waste_type.unique_id,
             ).exists()
             if already_exists:
                 self.log(f"Record for '{panchayat.panchayat_name}' on {collection_date} exists — skipping.")
@@ -42,12 +44,12 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
             actual = Decimal("480.00") - (Decimal("20.00") * Decimal(idx))
 
             DailyWasteComparison.objects.create(
-                panchayat=panchayat,
+                panchayat=panchayat.unique_id,
                 district=panchayat.district_id,
                 state=panchayat.state_id,
                 area_type=panchayat.area_type_id,
                 collection_date=collection_date,
-                waste_type_id=waste_type,
+                waste_type_id=waste_type.unique_id,
                 actual_weight_kg=actual,
                 total_trips=2 + idx,
                 collection_points_covered=3 + idx,

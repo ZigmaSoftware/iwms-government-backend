@@ -16,6 +16,7 @@ from rest_framework.viewsets import ViewSet
 
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+from app.models.masters.waste_masters.wastetype import WasteType
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
 
 
@@ -88,7 +89,7 @@ class LocalBodyDashboardViewSet(ViewSet):
         base_qs = DailyTripLog.objects.filter(
             panchayat_id=panchayat_uid,
             is_deleted=False,
-        ).select_related("collection_point_id").prefetch_related("waste_types")
+        )
 
         monthly_data = self._monthly_report(base_qs, panchayat, month, sort)
         daily_data   = self._daily_data(base_qs, panchayat, month)
@@ -130,14 +131,14 @@ class LocalBodyDashboardViewSet(ViewSet):
 
         # Per-waste-type weight, computed from the actual collection records
         # (a trip can legitimately span more than one waste type).
-        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id", flat=True).distinct())
         wt_rows = bulk_waste_type_rows_for_trip_assignments(
             trip_assignment_ids, source="all", extra_group_by=("trip_date",),
         )
-        trip_log_info = qs.values("trip_assignment_id_id", "trip_date")
+        trip_log_info = qs.values("trip_assignment_id", "trip_date")
         info_by_assignment = {}
         for r in trip_log_info:
-            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+            info_by_assignment.setdefault(r["trip_assignment_id"], []).append(r)
 
         bucket_totals = {}  # (year, month, waste_type_id) -> accumulator
         for wt_row in wt_rows:
@@ -294,14 +295,14 @@ class LocalBodyDashboardViewSet(ViewSet):
 
         # Per-date × per-waste-type breakdown, from actual collection records
         # (a trip can legitimately span more than one waste type).
-        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id", flat=True).distinct())
         wt_rows = bulk_waste_type_rows_for_trip_assignments(
             trip_assignment_ids, source="all", extra_group_by=("trip_date",),
         )
-        trip_log_info = qs.values("trip_assignment_id_id", "trip_date", "collection_point_id")
+        trip_log_info = qs.values("trip_assignment_id", "trip_date", "collection_point_id")
         info_by_assignment = {}
         for r in trip_log_info:
-            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+            info_by_assignment.setdefault(r["trip_assignment_id"], []).append(r)
 
         breakdown_totals = {}  # (date, waste_type_name) -> accumulator
         for wt_row in wt_rows:
@@ -364,16 +365,23 @@ class LocalBodyDashboardViewSet(ViewSet):
         waste_types = sorted(wt_totals.values(), key=lambda x: x["collected_weight_kg"], reverse=True)
 
         # Individual daily rows for the table — one row per trip log
-        rows_raw = (
-            qs.prefetch_related("waste_types")
-            .order_by("-trip_date")[:300]
+        rows_raw = list(qs.order_by("-trip_date")[:300])
+        # waste_type_ids is a plain JSON id list — resolve every name in one query.
+        waste_type_names_by_id = dict(
+            WasteType.objects.filter(
+                unique_id__in={wt_id for log in rows_raw for wt_id in (log.waste_type_ids or [])}
+            ).values_list("unique_id", "waste_type_name")
         )
 
         daily_rows = []
         for log in rows_raw:
             actual_kg = Decimal(str(log.collected_weight_kg or 0))
             variance  = actual_kg - agreed_per_day
-            waste_type_names = [wt.waste_type_name for wt in log.waste_types.all()]
+            waste_type_names = [
+                waste_type_names_by_id[wt_id]
+                for wt_id in (log.waste_type_ids or [])
+                if wt_id in waste_type_names_by_id
+            ]
             daily_rows.append({
                 "unique_id":                   log.unique_id,
                 "date":                        str(log.trip_date),
@@ -384,7 +392,7 @@ class LocalBodyDashboardViewSet(ViewSet):
                 "variance_percent":            float(_var_pct(actual_kg, agreed_per_day)),
                 "report_status":               _status(actual_kg, agreed_per_day),
                 "total_trips":                 1,
-                "collection_points_covered":   1 if log.collection_point_id_id else 0,
+                "collection_points_covered":   1 if log.collection_point_id else 0,
             })
 
         # Daily KPIs — use agreed_per_day × distinct trip dates (not sum of per-row agreed)

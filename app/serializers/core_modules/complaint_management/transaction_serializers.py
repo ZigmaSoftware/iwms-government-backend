@@ -11,6 +11,13 @@ from app.models.core_modules.complaint_management.escalation_history import Comp
 from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
 from app.models.core_modules.complaint_management.reopen_history import ComplaintReopenHistory
 from app.models.core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
+from app.models.core_modules.complaint_management.source_master import ComplaintSource
+from app.models.core_modules.complaint_management.language_master import ComplaintLanguage
+from app.models.core_modules.complaint_management.category_master import ComplaintCategory
+from app.models.core_modules.complaint_management.subcategory_master import ComplaintSubcategory
+from app.models.core_modules.complaint_management.priority_master import ComplaintPriority
+from app.models.core_modules.complaint_management.status_master import ComplaintStatus
+from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.models.superadmin.common_masters.state import State
@@ -21,6 +28,8 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.utils import ref_cache
+from app.utils.base_models import Account
 
 
 class ComplaintTicketSerializer(serializers.ModelSerializer):
@@ -40,6 +49,10 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     category_code = serializers.CharField(source="category.category_code", read_only=True)
     waste_type_names = serializers.SerializerMethodField()
     waste_type_name = serializers.SerializerMethodField()
+    # WasteType unique_ids, stored in the plain `waste_type_ids` JSON list.
+    waste_types = serializers.ListField(
+        child=serializers.CharField(), source="waste_type_ids", required=False
+    )
     subcategory_name = serializers.CharField(source="subcategory.subcategory_name", read_only=True)
     priority_code = serializers.CharField(source="priority.priority_code", read_only=True)
     status_code = serializers.CharField(source="status.status_code", read_only=True)
@@ -76,20 +89,98 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = [
             "unique_id", "ticket_no", "resolved_at", "closed_at", "reopened_count",
-            "sla_breached", "sla_breached_at",
+            "sla_breached", "sla_breached_at", "waste_type_ids",
         ]
+
+    def validate_waste_types(self, value):
+        from app.models.masters.waste_masters.wastetype import WasteType
+
+        ids = list(dict.fromkeys(str(v) for v in value if v))
+        known = set(WasteType.objects.filter(unique_id__in=ids).values_list("unique_id", flat=True))
+        unknown = [v for v in ids if v not in known]
+        if unknown:
+            raise serializers.ValidationError(f"Invalid waste type(s): {', '.join(unknown)}")
+        return ids
 
     def get_waste_type_names(self, obj):
         return [w.waste_type_name for w in obj.waste_types.all()]
 
+    # ---- plain unique_id validators (no DB relation) --------------------
+    def validate_source_id(self, value):
+        if value and not ComplaintSource.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid source.")
+        return value
+
+    def validate_customer_id(self, value):
+        if value and not CustomerCreation.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid customer.")
+        return value
+
+    def validate_language_id(self, value):
+        if value and not ComplaintLanguage.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid language.")
+        return value
+
+    def validate_category_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintCategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid category.")
+        return value
+
+    def validate_subcategory_id(self, value):
+        if value and not ComplaintSubcategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid subcategory.")
+        return value
+
+    def validate_priority_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintPriority.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid priority.")
+        return value
+
+    def validate_status_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintStatus.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid status.")
+        return value
+
+    def validate_assigned_team_id(self, value):
+        if value and not ComplaintTeam.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid team.")
+        return value
+
+    def validate_assigned_staff_id(self, value):
+        if value and not StaffcreationOfficeDetails.objects.filter(
+            staff_unique_id=value
+        ).exists():
+            raise serializers.ValidationError("Invalid staff.")
+        return value
+
+    def validate_assigned_user_id(self, value):
+        if not value:
+            return value
+        from django.contrib.auth import get_user_model
+
+        if not get_user_model().objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid user.")
+        return value
+
+    def validate_parent_ticket_id(self, value):
+        if value and not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid parent ticket.")
+        return value
+
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_reporter_type(self, obj):
         return "Customer" if obj.customer_id or self._matched_customer_name(obj) else "Public Grievance"
@@ -125,34 +216,19 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
         return cache[cache_key]
 
     def get_raised_by_name(self, obj):
-        account = getattr(obj, "created_by", None)
-        user = getattr(account, "user", None)
-        account_staff_name = (
-            StaffcreationOfficeDetails.objects.filter(pk=account.staff_id)
-            .values_list("employee_name", flat=True)
-            .first()
-            if account and account.staff_id
-            else ""
-        )
-        user_staff_model = (
-            user._meta.get_field("staff_id").remote_field.model
-            if user and getattr(user, "staff_id_id", None)
+        account_id = getattr(obj, "created_by", None)
+        account = (
+            Account.objects.select_related("user", "staff").filter(pk=account_id).first()
+            if account_id
             else None
         )
-        user_staff_name = (
-            user_staff_model.objects.filter(pk=user.staff_id_id)
-            .values_list("employee_name", flat=True)
-            .first()
-            if user_staff_model
-            else ""
-        )
-        user_customer_name = (
-            CustomerCreation.objects.filter(pk=user.customer_id_id)
-            .values_list("customer_name", flat=True)
-            .first()
-            if user and getattr(user, "customer_id_id", None)
-            else ""
-        )
+        user = getattr(account, "user", None)
+        account_staff = getattr(account, "staff", None)
+        account_staff_name = getattr(account_staff, "employee_name", "") or ""
+        user_staff = user.staff if user else None
+        user_staff_name = getattr(user_staff, "employee_name", "") or ""
+        user_customer = user.customer if user else None
+        user_customer_name = getattr(user_customer, "customer_name", "") or ""
         return (
             account_staff_name
             or user_staff_name
@@ -172,13 +248,13 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
         for field, value in values.items():
             cleaned = str(value or "").strip()
             row = ComplaintTicketExtraDetail.objects.filter(
-                ticket=ticket,
+                ticket_id=ticket.unique_id,
                 field_key=field,
                 is_deleted=False,
             ).first()
             if cleaned:
                 ComplaintTicketExtraDetail.objects.update_or_create(
-                    ticket=ticket,
+                    ticket_id=ticket.unique_id,
                     field_key=field,
                     is_deleted=False,
                     defaults={
@@ -339,6 +415,24 @@ class ComplaintStatusHistorySerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["unique_id"]
 
+    def validate_ticket_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ticket.")
+        return value
+
+    def validate_to_status_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        from app.models.core_modules.complaint_management.status_master import (
+            ComplaintStatus,
+        )
+
+        if not ComplaintStatus.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid status.")
+        return value
+
 
 class ComplaintAssignmentHistorySerializer(serializers.ModelSerializer):
     to_team_name = serializers.CharField(source="to_team.team_name", read_only=True)
@@ -351,12 +445,50 @@ class ComplaintAssignmentHistorySerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["unique_id"]
 
+    def validate_ticket_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ticket.")
+        return value
+
+    def _validate_team(self, value):
+        if value and not ComplaintTeam.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid team.")
+        return value
+
+    def validate_from_team_id(self, value):
+        return self._validate_team(value)
+
+    def validate_to_team_id(self, value):
+        return self._validate_team(value)
+
+    def _validate_staff(self, value):
+        if value and not StaffcreationOfficeDetails.objects.filter(
+            staff_unique_id=value
+        ).exists():
+            raise serializers.ValidationError("Invalid staff.")
+        return value
+
+    def validate_from_staff_id(self, value):
+        return self._validate_staff(value)
+
+    def validate_to_staff_id(self, value):
+        return self._validate_staff(value)
+
 
 class ComplaintCommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComplaintComment
         fields = "__all__"
         read_only_fields = ["unique_id"]
+
+    def validate_ticket_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ticket.")
+        return value
 
 
 class ComplaintRoutingRuleSerializer(serializers.ModelSerializer):
@@ -375,26 +507,70 @@ class ComplaintRoutingRuleSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["unique_id"]
 
+    def validate_category_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintCategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid category.")
+        return value
+
+    def validate_subcategory_id(self, value):
+        if value and not ComplaintSubcategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid subcategory.")
+        return value
+
+    def validate_priority_id(self, value):
+        if value and not ComplaintPriority.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid priority.")
+        return value
+
+    def validate_team_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTeam.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid team.")
+        return value
+
+    def validate_sla_rule_id(self, value):
+        if not value:
+            return value
+        from app.models.core_modules.complaint_management.sla_rule_master import (
+            ComplaintSlaRule,
+        )
+
+        if not ComplaintSlaRule.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid SLA rule.")
+        return value
+
+    def validate_user_id(self, value):
+        if not value:
+            return value
+        from django.contrib.auth import get_user_model
+
+        if not get_user_model().objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid user.")
+        return value
+
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
 
 class ComplaintEscalationHistorySerializer(serializers.ModelSerializer):
@@ -406,6 +582,13 @@ class ComplaintEscalationHistorySerializer(serializers.ModelSerializer):
         model = ComplaintEscalationHistory
         fields = "__all__"
         read_only_fields = ["unique_id"]
+
+    def validate_ticket_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ticket.")
+        return value
 
 
 class ComplaintTicketDetailSerializer(ComplaintTicketSerializer):
@@ -436,6 +619,13 @@ class ComplaintReopenHistorySerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["unique_id"]
 
+    def validate_ticket_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ticket.")
+        return value
+
 
 class ComplaintAddressChangeRequestSerializer(serializers.ModelSerializer):
     ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
@@ -456,11 +646,25 @@ class ComplaintAddressChangeRequestSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "unique_id",
             "verification_status",
-            "verified_by",
+            "verified_by_id",
             "verified_at",
-            "approved_by",
+            "approved_by_id",
             "approved_at",
         ]
+
+    def validate_ticket_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintTicket.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ticket.")
+        return value
+
+    def validate_customer_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not CustomerCreation.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid customer.")
+        return value
 
     def get_proof_file_url(self, obj):
         request = self.context.get("request")
@@ -469,25 +673,25 @@ class ComplaintAddressChangeRequestSerializer(serializers.ModelSerializer):
         return None
 
     def get_new_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.new_state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.new_state_id, "unique_id"), "name", None)
 
     def get_new_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.new_district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.new_district_id, "unique_id"), "name", None)
 
     def get_new_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.new_area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.new_area_type_id, "unique_id"), "name", None)
 
     def get_new_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.new_corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.new_corporation_id, "unique_id"), "corporation_name", None)
 
     def get_new_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.new_municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.new_municipality_id, "unique_id"), "municipality_name", None)
 
     def get_new_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.new_town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.new_town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_new_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.new_panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.new_panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_new_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.new_panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.new_panchayat_id, "unique_id"), "panchayat_name", None)

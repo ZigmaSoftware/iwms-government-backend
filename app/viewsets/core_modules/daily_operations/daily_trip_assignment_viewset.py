@@ -5,6 +5,9 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.utils.plain_ref import json_contains_any, ref_q
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.management.commands.generate_daily_trips import run_for_date
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.scheduler_config import SchedulerConfig
@@ -40,24 +43,19 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     throttle_scope = "daily_trip_assignment"
 
-    queryset = DailyTripAssignment.objects.select_related(
-        "trip_plan_id",
-        "trip_plan_id__vehicle_id",
-        "staff_template_id",
-        "staff_template_id__driver_id",
-        "staff_template_id__operator_id",
-        "alt_staff_template_id",
-        "alt_staff_template_id__driver_id",
-        "alt_staff_template_id__operator_id",
-        "vehicle_id",
-    ).prefetch_related("trip_plan_id__waste_types", "waste_types").filter(is_deleted=False)
+    queryset = DailyTripAssignment.objects.filter(is_deleted=False)
 
     serializer_class = DailyTripAssignmentSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripAssignment"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "vehicle_id__vehicle_no", "staff_template_id__driver_id__employee_name"]
+    search_fields = [
+        "unique_id",
+        "vehicle_id=app.models.masters.transport_masters.vehicleCreation.VehicleCreation.vehicle_no",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.driver_id"
+        "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+    ]
     ordering_fields = ["trip_date", "scheduled_time", "status", "approval_status"]
 
     AUDIT_MODULE = "trip-assignments"
@@ -114,9 +112,9 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(status=trip_status)
 
         if waste_type:
-            qs = qs.filter(waste_types__unique_id=waste_type).distinct()
+            qs = qs.filter(json_contains_any("waste_type_ids", [waste_type]))
         if ward_id:
-            qs = qs.filter(wards__unique_id=ward_id).distinct()
+            qs = qs.filter(json_contains_any("ward_ids", [ward_id]))
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
@@ -127,7 +125,11 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         mine = params.get("mine")
         if mine and str(mine).lower() in ("1", "true", "yes"):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
-            qs = qs.filter(trip_plan_id__supervisor_id=staff_uid) if staff_uid else qs.none()
+            qs = (
+                qs.filter(ref_q("trip_plan_id", TripPlan, supervisor_id=staff_uid))
+                if staff_uid
+                else qs.none()
+            )
 
         return qs
 
@@ -159,7 +161,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "status", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
 

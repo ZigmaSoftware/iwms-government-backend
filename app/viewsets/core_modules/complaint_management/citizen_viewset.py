@@ -118,12 +118,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
     def _scoped_qs(self, customer):
         return (
             ComplaintTicket.objects.filter(is_deleted=False)
-            .select_related(
-                "category", "subcategory", "priority", "status", "source",
-                "assigned_team", "assigned_team__department", "assigned_staff",
-            )
-            .prefetch_related("status_history", "status_history__to_status", "attachments")
-            .filter(Q(customer=customer) | Q(wa_phone=customer.contact_no))
+            .filter(Q(customer_id=customer.unique_id) | Q(wa_phone=customer.contact_no))
             .order_by("-created")
         )
 
@@ -190,12 +185,12 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             for field in CUSTOMER_GEO_FIELDS
         }
         ticket = ComplaintTicket.objects.create(
-            customer=customer,
-            category=category,
-            subcategory=subcategory,
-            priority=priority,
-            status=status_obj,
-            source=source,
+            customer_id=customer.unique_id,
+            category_id=category.unique_id,
+            subcategory_id=subcategory.unique_id if subcategory else None,
+            priority_id=priority.unique_id,
+            status_id=status_obj.unique_id,
+            source_id=source.unique_id if source else None,
             title=(description or category.category_name)[:120],
             description=description,
             location_text=str(data.get("location_text") or ""),
@@ -204,10 +199,10 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             **customer_geo,
         )
         ComplaintStatusHistory.objects.create(
-            ticket=ticket,
-            from_status=None,
-            to_status=status_obj,
-            changed_by_customer=customer,
+            ticket_id=ticket.unique_id,
+            from_status_id=None,
+            to_status_id=status_obj.unique_id,
+            changed_by_customer_id=customer.unique_id,
             changed_by_system=False,
             remarks="Raised via mobile app",
             visible_to_citizen=True,
@@ -244,9 +239,9 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
         feedback, _ = ComplaintFeedback.objects.update_or_create(
-            ticket=ticket,
+            ticket_id=ticket.unique_id,
             defaults={
-                "customer": customer,
+                "customer_id": customer.unique_id,
                 "rating": request.data.get("rating"),
                 "feedback_text": request.data.get("feedback_text"),
                 "is_issue_solved": bool(request.data.get("is_issue_solved", False)),
@@ -496,11 +491,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             defaults={"source_name": "Public Grievance", "is_active": True, "is_deleted": False},
         )
         ticket = ComplaintTicket.objects.create(
-            source=source,
-            category=category,
-            subcategory=subcategory,
-            priority=priority,
-            status=status_obj,
+            source_id=source.unique_id if source else None,
+            category_id=category.unique_id,
+            subcategory_id=subcategory.unique_id if subcategory else None,
+            priority_id=priority.unique_id if priority else None,
+            status_id=status_obj.unique_id,
             profile_name=person_name,
             wa_phone=phone or None,
             email=email or None,
@@ -513,14 +508,14 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             state_id=state_id,
             district_id=district_id,
             idempotency_key=idempotency_key,
-            assigned_team=assigned_team,
+            assigned_team_id=assigned_team.unique_id if assigned_team else None,
+            waste_type_ids=[w.unique_id for w in waste_types],
             **local_body_fields,
         )
-        ticket.waste_types.set(waste_types)
         ComplaintStatusHistory.objects.create(
-            ticket=ticket,
-            from_status=None,
-            to_status=status_obj,
+            ticket_id=ticket.unique_id,
+            from_status_id=None,
+            to_status_id=status_obj.unique_id,
             changed_by_system=True,
             remarks="Raised via public grievance form",
             visible_to_citizen=True,
@@ -529,7 +524,7 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         photo = request.FILES.get("photo") or request.FILES.get("file")
         if photo:
             ComplaintAttachment.objects.create(
-                ticket=ticket,
+                ticket_id=ticket.unique_id,
                 file=photo,
                 file_name=getattr(photo, "name", None),
                 file_type="photo",
@@ -584,8 +579,6 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
 
         qs = (
             ComplaintTicket.objects.filter(is_deleted=False)
-            .select_related("status", "category", "subcategory")
-            .prefetch_related("status_history", "status_history__to_status")
         )
         qs = qs.filter(ticket_no__iexact=ticket_no) if ticket_no else qs.filter(wa_phone=mobile)
         tickets = list(qs.order_by("-created")[:20])

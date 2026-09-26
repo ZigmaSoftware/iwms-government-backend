@@ -1,7 +1,7 @@
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from .mainscreentype import MainScreenType
+from app.utils import ref_cache
 
 
 
@@ -19,12 +19,10 @@ class MainScreen(BaseMaster):
         editable=False
     )
 
-    mainscreentype_id = models.ForeignKey(
-        MainScreenType,
-        on_delete=models.PROTECT,
-        related_name="mainscreens",
-        to_field="unique_id",
-        db_column="mainscreentype_id"   
+    mainscreentype_id = models.CharField(
+        max_length=30,
+        db_column="mainscreentype_id",
+        db_index=True,
     )
 
     mainscreen_name = models.CharField(max_length=50, unique=True)
@@ -49,6 +47,19 @@ class MainScreen(BaseMaster):
 
     def __str__(self):
         return self.mainscreen_name
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def mainscreentype(self):
+        return self._lookup("app.models.superadmin.screen_management.mainscreentype.MainScreenType", self.mainscreentype_id)
 
     def delete(self, *args, **kwargs):
         self.is_active = False

@@ -36,15 +36,11 @@ class CustomerAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSe
     AUDIT_ENDPOINT = "customer-access-configuration"
 
     def get_queryset(self):
-        return (
-            CustomerAccessConfiguration.objects.filter(is_deleted=False)
-            .select_related("customer_id")
-            .prefetch_related("app_modules", "app_screens")
-        )
+        return CustomerAccessConfiguration.objects.filter(is_deleted=False)
 
     def get_object(self):
         customer_id = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
-        obj = self.get_queryset().filter(customer_id_id=customer_id).first()
+        obj = self.get_queryset().filter(customer_id=customer_id).first()
         if not obj:
             from django.http import Http404
 
@@ -97,9 +93,9 @@ class CustomerAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSe
 
         configured = set(
             CustomerAccessConfiguration.objects.filter(
-                customer_id_id__in=queryset.values_list("unique_id", flat=True),
+                customer_id__in=queryset.values_list("unique_id", flat=True),
                 is_deleted=False,
-            ).values_list("customer_id_id", flat=True)
+            ).values_list("customer_id", flat=True)
         )
 
         return Response(

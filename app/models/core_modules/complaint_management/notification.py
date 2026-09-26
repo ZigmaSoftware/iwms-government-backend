@@ -1,9 +1,7 @@
-from django.conf import settings
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.core_modules.complaint_management.ticket import ComplaintTicket
-from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.utils import ref_cache
 
 
 def generate_notification_id():
@@ -39,27 +37,9 @@ class ComplaintNotification(BaseMaster):
         editable=False,
     )
 
-    ticket = models.ForeignKey(
-        ComplaintTicket,
-        on_delete=models.CASCADE,
-        related_name="notifications",
-        null=True,
-        blank=True,
-    )
-    recipient_staff = models.ForeignKey(
-        StaffcreationOfficeDetails,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="complaint_notifications",
-    )
-    recipient_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="complaint_notifications",
-    )
+    ticket_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    recipient_staff_id = models.CharField(max_length=30, null=True, blank=True)
+    recipient_user_id = models.CharField(max_length=100, null=True, blank=True)
 
     event_type = models.CharField(max_length=20, choices=EVENT_CHOICES)
     title = models.CharField(max_length=200)
@@ -75,9 +55,40 @@ class ComplaintNotification(BaseMaster):
         verbose_name = "Complaint Notification"
         verbose_name_plural = "Complaint Notifications"
         indexes = [
-            models.Index(fields=["recipient_staff", "is_read"]),
-            models.Index(fields=["recipient_user", "is_read"]),
+            models.Index(fields=["recipient_staff_id", "is_read"]),
+            models.Index(fields=["recipient_user_id", "is_read"]),
         ]
 
     def __str__(self):
         return f"{self.event_type}: {self.ticket_id}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def ticket(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.ticket.ComplaintTicket",
+            self.ticket_id,
+        )
+
+    @property
+    def recipient_staff(self):
+        return self._lookup(
+            "app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails",
+            self.recipient_staff_id,
+            field="staff_unique_id",
+        )
+
+    @property
+    def recipient_user(self):
+        return self._lookup(
+            "app.models.superadmin_masters.auth_user.User",
+            self.recipient_user_id,
+        )

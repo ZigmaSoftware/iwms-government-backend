@@ -5,6 +5,11 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.utils.plain_ref import json_contains_any, ref_q
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.core_modules.daily_operations.daily_trip_log_serializer import (
     DailyTripLogSerializer,
@@ -21,39 +26,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "daily_trip_log"
-    queryset = (
-        DailyTripLog.objects.select_related(
-            "trip_assignment_id",
-            "trip_assignment_id__trip_plan_id",
-            "trip_assignment_id__staff_template_id",
-            "trip_assignment_id__staff_template_id__driver_id",
-            "trip_assignment_id__staff_template_id__operator_id",
-            "trip_assignment_id__alt_staff_template_id",
-            "trip_assignment_id__alt_staff_template_id__driver_id",
-            "trip_assignment_id__alt_staff_template_id__operator_id",
-            "collection_point_id",
-            "driver_id",
-            "operator_id",
-            "vehicle_id",
-            "staff_template_id",
-            "staff_template_id__driver_id",
-            "staff_template_id__operator_id",
-            "alt_staff_template_id",
-            "alt_staff_template_id__driver_id",
-            "alt_staff_template_id__operator_id",
-            "verified_by",
-            "verified_by__staff",
-            "verified_by__user",
-        )
-        .prefetch_related(
-            "bin_ids",
-            "extra_operator_ids",
-            "waste_types",
-            "trip_assignment_id__trip_collection_points",
-            "trip_assignment_id__trip_collection_points__collection_point_id",
-        )
-        .filter(is_deleted=False)
-    )
+    queryset = DailyTripLog.objects.filter(is_deleted=False)
     serializer_class = DailyTripLogSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripLog"
@@ -120,7 +93,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if collection_point:
             qs = qs.filter(collection_point_id=collection_point)
         if waste_types:
-            qs = qs.filter(waste_types__unique_id__in=waste_types)
+            qs = qs.filter(json_contains_any("waste_type_ids", waste_types))
         if driver:
             qs = qs.filter(driver_id=driver)
         if operator:
@@ -128,12 +101,18 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if search:
             qs = qs.filter(
                 Q(unique_id__icontains=search)
-                | Q(trip_assignment_id__unique_id__icontains=search)
-                | Q(collection_point_id__cp_name__icontains=search)
-                | Q(waste_types__waste_type_name__icontains=search)
-                | Q(driver_id__employee_name__icontains=search)
-                | Q(operator_id__employee_name__icontains=search)
-                | Q(vehicle_id__vehicle_no__icontains=search)
+                | Q(trip_assignment_id__icontains=search)
+                | ref_q("collection_point_id", Collection_point, cp_name__icontains=search)
+                | json_contains_any(
+                    "waste_type_ids",
+                    list(
+                        WasteType.objects.filter(waste_type_name__icontains=search)
+                        .values_list("unique_id", flat=True)
+                    ),
+                )
+                | ref_q("driver_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                | ref_q("operator_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                | ref_q("vehicle_id", VehicleCreation, vehicle_no__icontains=search)
             )
 
         if waste_types or search:
@@ -181,7 +160,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
         self.log_audit(

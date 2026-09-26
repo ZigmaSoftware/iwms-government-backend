@@ -11,6 +11,11 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.masters.panchayat import Panchayat
+from app.utils import ref_cache
+from app.utils.plain_ref import ref_id, ref_q
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.masters.waste_masters.bins import Bins
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
 )
@@ -53,18 +58,18 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def _ensure_assignment_stops(self, assignment_id):
         assignment = (
-            DailyTripAssignment.objects.select_related("trip_plan_id")
+            DailyTripAssignment.objects
             .filter(unique_id=assignment_id, is_deleted=False)
             .first()
         )
-        if not assignment or not assignment.trip_plan_id_id:
+        if not assignment or not assignment.trip_plan_id:
             return assignment
 
         existing_cp_bins = set(
             DailyTripCollectionPoint.objects.filter(
-                trip_assignment_id=assignment,
+                trip_assignment_id=ref_id(assignment),
                 is_deleted=False,
-            ).values_list("collection_point_id_id", "bin_id_id")
+            ).values_list("collection_point_id", "bin_id")
         )
         # (trip_assignment_id, collection_point_id, bin_id) is uniquely
         # constrained regardless of is_deleted, so a row soft-deleted by an
@@ -72,9 +77,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # instead of trying to INSERT a duplicate, which would raise
         # IntegrityError.
         soft_deleted_by_key = {
-            (row.collection_point_id_id, row.bin_id_id): row
+            (row.collection_point_id, row.bin_id): row
             for row in DailyTripCollectionPoint.objects.filter(
-                trip_assignment_id=assignment,
+                trip_assignment_id=ref_id(assignment),
                 is_deleted=True,
             )
         }
@@ -82,13 +87,13 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             trip_plan_id=assignment.trip_plan_id,
             is_active=True,
             is_deleted=False,
-        ).select_related("collection_point_id", "bin_id").order_by("sequence")
+        ).order_by("sequence")
         for stop in plan_stops:
             # Household/bulk plan stops carry no collection point; they belong to
             # the household-collection table, not here (collection_point is NOT NULL).
-            if not stop.collection_point_id_id:
+            if not stop.collection_point_id:
                 continue
-            key = (stop.collection_point_id_id, stop.bin_id_id)
+            key = (stop.collection_point_id, stop.bin_id)
             if key in existing_cp_bins:
                 continue
             reusable = soft_deleted_by_key.get(key)
@@ -106,9 +111,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 ])
                 continue
             DailyTripCollectionPoint.objects.create(
-                trip_assignment_id=assignment,
-                collection_point_id=stop.collection_point_id,
-                bin_id=stop.bin_id,
+                trip_assignment_id=ref_id(assignment),
+                collection_point_id=ref_id(stop.collection_point),
+                bin_id=ref_id(stop.bin),
                 sequence=stop.sequence,
                 is_collected=False,
                 status=DailyTripCollectionPoint.STATUS_PENDING,
@@ -120,7 +125,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not assignment or assignment.status != DailyTripAssignment.STATUS_IN_PROGRESS:
             return
         stops = DailyTripCollectionPoint.objects.filter(
-            trip_assignment_id=assignment,
+            trip_assignment_id=ref_id(assignment),
             is_deleted=False,
         )
         if stops.filter(status=DailyTripCollectionPoint.STATUS_IN_PROGRESS).exists():
@@ -134,7 +139,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def _latest_vehicle_start(self, assignment):
         latest_event = (
-            BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
+            BinCollectionEvent.objects.filter(trip_assignment_id=ref_id(assignment))
             .exclude(driver_latitude=None)
             .exclude(driver_longitude=None)
             .order_by("-created_at")
@@ -149,10 +154,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def _latest_vehicle_location(self, assignment):
         latest_event = (
-            BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
+            BinCollectionEvent.objects.filter(trip_assignment_id=ref_id(assignment))
             .exclude(driver_latitude=None)
             .exclude(driver_longitude=None)
-            .select_related("collection_point_id")
             .order_by("-created_at")
             .first()
         )
@@ -162,7 +166,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "latitude": latest_event.driver_latitude,
             "longitude": latest_event.driver_longitude,
             "recorded_at": latest_event.created_at,
-            "collection_point": getattr(latest_event.collection_point_id, "cp_name", None),
+            "collection_point": getattr(latest_event.collection_point, "cp_name", None),
         }
 
     def _to_float(self, value):
@@ -174,19 +178,19 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             return None
 
     def _serialize_tracking_bin_stop(self, stop):
-        cp = stop.collection_point_id
-        bin_obj = stop.bin_id
+        cp = stop.collection_point
+        bin_obj = stop.bin
         return {
             "unique_id": stop.unique_id,
             "stop_kind": "collection_point",
-            "trip_assignment_id": stop.trip_assignment_id_id,
+            "trip_assignment_id": stop.trip_assignment_id,
             "collection_point": {
                 "unique_id": getattr(cp, "unique_id", None),
                 "cp_name": getattr(cp, "cp_name", None),
                 "latitude": getattr(cp, "latitude", None),
                 "longitude": getattr(cp, "longitude", None),
             } if cp else None,
-            "bin_id": stop.bin_id_id,
+            "bin_id": stop.bin_id,
             "bin": {
                 "unique_id": getattr(bin_obj, "unique_id", None),
                 "bin_name": getattr(bin_obj, "bin_name", None),
@@ -200,19 +204,23 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         }
 
     def _serialize_tracking_household_stop(self, stop):
-        customer = stop.customer_id
+        customer = stop.customer
         return {
             "unique_id": stop.unique_id,
             "stop_kind": "household",
-            "trip_assignment_id": stop.trip_assignment_id_id,
-            "customer_id": stop.customer_id_id,
+            "trip_assignment_id": stop.trip_assignment_id,
+            "customer_id": stop.customer_id,
             "customer": {
                 "unique_id": getattr(customer, "unique_id", None),
                 "customer_name": getattr(customer, "customer_name", None),
                 "contact_no": getattr(customer, "contact_no", None),
                 "building_no": getattr(customer, "building_no", None),
                 "street": getattr(customer, "street", None),
-                "panchayat_name": getattr(getattr(customer, "panchayat", None), "panchayat_name", None),
+                "panchayat_name": getattr(
+                    ref_cache.get(Panchayat, getattr(customer, "panchayat_id", None), "unique_id"),
+                    "panchayat_name",
+                    None,
+                ),
                 "latitude": getattr(customer, "latitude", None),
                 "longitude": getattr(customer, "longitude", None),
             } if customer else None,
@@ -308,7 +316,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         stops = list(
             self.get_queryset()
-            .filter(trip_assignment_id__unique_id=assignment_id)
+            .filter(trip_assignment_id=assignment_id)
             .order_by("sequence")
         )
         completed_stops = [
@@ -332,8 +340,8 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             {
                 "id": stop.unique_id,
                 "location": [
-                    float(stop.collection_point_id.longitude),
-                    float(stop.collection_point_id.latitude),
+                    float(stop.collection_point.longitude),
+                    float(stop.collection_point.latitude),
                 ],
             }
             for stop in valid_remaining_stops
@@ -377,7 +385,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ]
         optimized["optimized_stop_count"] = len(remaining_stops)
         optimized["completed_stop_count"] = len(completed_stops)
-        optimized["vehicle_no"] = getattr(assignment.vehicle_id, "vehicle_no", None)
+        optimized["vehicle_no"] = getattr(assignment.vehicle, "vehicle_no", None)
         optimized["vehicle_start_source"] = (
             "request"
             if vehicle_start
@@ -394,7 +402,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         stops = list(
             self.get_queryset()
-            .filter(trip_assignment_id__unique_id=assignment_id)
+            .filter(trip_assignment_id=assignment_id)
             .order_by("sequence")
         )
         completed_stops = [
@@ -409,8 +417,8 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             {
                 "id": stop.unique_id,
                 "location": [
-                    float(stop.collection_point_id.longitude),
-                    float(stop.collection_point_id.latitude),
+                    float(stop.collection_point.longitude),
+                    float(stop.collection_point.latitude),
                 ],
             }
             for stop in remaining_stops
@@ -426,7 +434,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "ordered_ids": [stop.unique_id for stop in remaining_stops],
             "optimized_stop_count": len(remaining_stops),
             "completed_stop_count": len(completed_stops),
-            "vehicle_no": getattr(assignment.vehicle_id, "vehicle_no", None),
+            "vehicle_no": getattr(assignment.vehicle, "vehicle_no", None),
             "vehicle_start": route["vehicle_start"],
             "vehicle_start_source": (
                 "request"
@@ -463,8 +471,8 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             ]
         ).exists()
         total_weight = children.aggregate(total=Sum("collected_weight_kg"))["total"] or 0
-        vehicle_capacity = getattr(getattr(assignment, "vehicle_id", None), "capacity", None)
-        trip_capacity = getattr(getattr(assignment, "trip_plan_id", None), "max_vehicle_capacity_kg", None)
+        vehicle_capacity = getattr(getattr(assignment, "vehicle", None), "capacity", None)
+        trip_capacity = getattr(getattr(assignment, "trip_plan", None), "max_vehicle_capacity_kg", None)
         capacity = vehicle_capacity or trip_capacity
         exceeds_capacity = (
             bool(capacity)
@@ -484,7 +492,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
         log, created = DailyTripLog.objects.get_or_create(
-            trip_assignment_id=assignment,
+            trip_assignment_id=ref_id(assignment),
             defaults={
                 "collected_weight_kg": stored_weight,
                 "log_status": log_status,
@@ -502,22 +510,14 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def _sync_assignment_and_log(self, instance):
         if not instance:
             return
-        assignment = instance.trip_assignment_id
+        assignment = instance.trip_assignment
         if instance.is_collected:
             assignment.mark_completed_if_all_cps_collected()
         self._upsert_trip_log_for_assignment(assignment)
 
     def get_queryset(self):
         queryset = (
-            DailyTripCollectionPoint.objects.select_related(
-                "trip_assignment_id",
-                "trip_assignment_id__trip_plan_id",
-                "collection_point_id",
-                "bin_id",
-                "bin_id__wastetype_id",
-                "collected_by",
-            )
-            .filter(is_deleted=False)
+            DailyTripCollectionPoint.objects.filter(is_deleted=False)
         )
 
         params = self.request.query_params
@@ -532,11 +532,11 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         search = params.get("search")
 
         if assignment:
-            queryset = queryset.filter(trip_assignment_id__unique_id=assignment)
+            queryset = queryset.filter(trip_assignment_id=assignment)
         if collection_point:
-            queryset = queryset.filter(collection_point_id__unique_id=collection_point)
+            queryset = queryset.filter(collection_point_id=collection_point)
         if bin_id:
-            queryset = queryset.filter(bin_id__unique_id=bin_id)
+            queryset = queryset.filter(bin_id=bin_id)
         if status_value and getattr(self, "action", None) != "tracking":
             queryset = queryset.filter(status=status_value)
         if is_collected is not None:
@@ -544,27 +544,31 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 is_collected=str(is_collected).lower() in {"1", "true", "yes"}
             )
         if trip_date and not assignment:
-            queryset = queryset.filter(trip_assignment_id__trip_date=trip_date)
+            queryset = queryset.filter(
+                ref_q("trip_assignment_id", DailyTripAssignment, trip_date=trip_date)
+            )
         if staff_template:
             queryset = queryset.filter(
-                trip_assignment_id__staff_template_id__unique_id=staff_template
+                ref_q("trip_assignment_id", DailyTripAssignment, staff_template_id=staff_template)
             )
         if alt_staff_template:
             queryset = queryset.filter(
-                trip_assignment_id__alt_staff_template_id__unique_id=alt_staff_template
+                ref_q(
+                    "trip_assignment_id",
+                    DailyTripAssignment,
+                    alt_staff_template_id=alt_staff_template,
+                )
             )
         if search:
             queryset = queryset.filter(
-                Q(collection_point_id__cp_name__icontains=search)
-                | Q(trip_assignment_id__unique_id__icontains=search)
-                | Q(bin_id__bin_name__icontains=search)
+                ref_q("collection_point_id", Collection_point, cp_name__icontains=search)
+                | Q(trip_assignment_id__icontains=search)
+                | ref_q("bin_id", Bins, bin_name__icontains=search)
             )
 
-        queryset = filter_flat_geo_queryset_by_params(
-            queryset,
-            params,
-            prefix="trip_assignment_id__",
-        )
+        # Stops carry their own flat geo columns (copied from the collection
+        # point), so filter on those directly — no join to the assignment.
+        queryset = filter_flat_geo_queryset_by_params(queryset, params)
 
         return filter_queryset_by_hierarchy(queryset, params)
 
@@ -580,30 +584,19 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     unique_id=assignment_id,
                     is_deleted=False,
                 )
-                .select_related("vehicle_id")
                 .first()
             )
             bin_rows = list(
-                DailyTripCollectionPoint.objects.select_related(
-                    "trip_assignment_id",
-                    "collection_point_id",
-                    "bin_id",
-                )
-                .filter(
-                    trip_assignment_id__unique_id=assignment_id,
+                DailyTripCollectionPoint.objects.filter(
+                    trip_assignment_id=assignment_id,
                     is_deleted=False,
                 )
                 .order_by("sequence")
             )
             household_rows = list(
-                DailyTripHouseholdCollection.objects.select_related(
-                    "trip_assignment_id",
-                    "customer_id",
-                    "customer_id__panchayat",
-                    "waste_collection_id",
-                )
+                DailyTripHouseholdCollection.objects
                 .filter(
-                    trip_assignment_id__unique_id=assignment_id,
+                    trip_assignment_id=ref_id(assignment_id),
                     is_deleted=False,
                 )
                 .order_by("sequence")
@@ -665,10 +658,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             latest_event = None
             if assignment:
                 latest_event = (
-                    BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
+                    BinCollectionEvent.objects.filter(trip_assignment_id=ref_id(assignment))
                     .exclude(driver_latitude=None)
                     .exclude(driver_longitude=None)
-                    .select_related("collection_point_id")
                     .order_by("-created_at")
                     .first()
                 )
@@ -730,12 +722,12 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "route_geojson": route["geometry"],
                 "vehicle_start": route["vehicle_start"],
                 "vehicle_tracking": {
-                    "vehicle_no": getattr(getattr(assignment, "vehicle_id", None), "vehicle_no", None),
+                    "vehicle_no": getattr(getattr(assignment, "vehicle", None), "vehicle_no", None),
                     "current_location": None if not latest_event else {
                         "latitude": latest_event.driver_latitude,
                         "longitude": latest_event.driver_longitude,
                         "recorded_at": latest_event.created_at,
-                        "collection_point": latest_event.collection_point_id.cp_name,
+                        "collection_point": getattr(latest_event.collection_point, "cp_name", None),
                     },
                     "next_collection_point": next_collection_point,
                     "remaining_collection_points": sum(
@@ -777,7 +769,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ).count()
 
         assignment = (
-            route_queryset.first().trip_assignment_id
+            route_queryset.first().trip_assignment
             if route_queryset.exists()
             else None
         )
@@ -787,16 +779,14 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     unique_id=assignment_id,
                     is_deleted=False,
                 )
-                .select_related("vehicle_id")
                 .first()
             )
         latest_event = None
         if assignment:
             latest_event = (
-                BinCollectionEvent.objects.filter(trip_assignment_id=assignment)
+                BinCollectionEvent.objects.filter(trip_assignment_id=ref_id(assignment))
                 .exclude(driver_latitude=None)
                 .exclude(driver_longitude=None)
-                .select_related("collection_point_id")
                 .order_by("-created_at")
                 .first()
             )
@@ -835,18 +825,18 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "route_geojson": route["geometry"],
             "vehicle_start": route["vehicle_start"],
             "vehicle_tracking": {
-                "vehicle_no": getattr(getattr(assignment, "vehicle_id", None), "vehicle_no", None),
+                "vehicle_no": getattr(getattr(assignment, "vehicle", None), "vehicle_no", None),
                 "current_location": None if not latest_event else {
                     "latitude": latest_event.driver_latitude,
                     "longitude": latest_event.driver_longitude,
                     "recorded_at": latest_event.created_at,
-                    "collection_point": latest_event.collection_point_id.cp_name,
+                    "collection_point": getattr(latest_event.collection_point, "cp_name", None),
                 },
                 "next_collection_point": None if not next_stop else {
-                    "unique_id": next_stop.collection_point_id.unique_id,
-                    "cp_name": next_stop.collection_point_id.cp_name,
-                    "latitude": next_stop.collection_point_id.latitude,
-                    "longitude": next_stop.collection_point_id.longitude,
+                    "unique_id": next_stop.collection_point.unique_id,
+                    "cp_name": next_stop.collection_point.cp_name,
+                    "latitude": next_stop.collection_point.latitude,
+                    "longitude": next_stop.collection_point.longitude,
                 },
                 "remaining_collection_points": pending + in_progress,
             },
@@ -856,10 +846,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def tracking_overview(self, request):
         scoped_stops = self.filter_queryset(self.get_queryset())
         scoped_assignment_ids = scoped_stops.values_list("trip_assignment_id", flat=True).distinct()
-        assignments = DailyTripAssignment.objects.select_related(
-            "vehicle_id",
-            "trip_plan_id",
-        ).filter(is_deleted=False, unique_id__in=scoped_assignment_ids)
+        assignments = DailyTripAssignment.objects.filter(
+            is_deleted=False, unique_id__in=scoped_assignment_ids
+        )
         trip_date = request.query_params.get("date") or request.query_params.get("trip_date")
         if trip_date:
             assignments = assignments.filter(trip_date=trip_date)
@@ -871,15 +860,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             self._ensure_assignment_stops(assignment.unique_id)
             self._ensure_current_stop(assignment)
             stops = list(
-                DailyTripCollectionPoint.objects.select_related(
-                    "collection_point_id",
-                    "trip_assignment_id",
-                    "trip_assignment_id__trip_plan_id",
-                    "bin_id",
-                    "bin_id__wastetype_id",
-                    "collected_by",
-                )
-                .filter(trip_assignment_id=assignment, is_deleted=False)
+                DailyTripCollectionPoint.objects.filter(trip_assignment_id=ref_id(assignment), is_deleted=False)
                 .order_by("sequence")
             )
             if not stops:
@@ -905,8 +886,8 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 {
                     "id": stop.unique_id,
                     "location": [
-                        float(stop.collection_point_id.longitude),
-                        float(stop.collection_point_id.latitude),
+                        float(stop.collection_point.longitude),
+                        float(stop.collection_point.latitude),
                     ],
                 }
                 for stop in stops
@@ -917,7 +898,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     assignment.unique_id,
                     str(vehicle_start),
                     *[
-                        f"{stop.unique_id}:{stop.sequence}:{stop.collection_point_id.latitude}:{stop.collection_point_id.longitude}"
+                        f"{stop.unique_id}:{stop.sequence}:{stop.collection_point.latitude}:{stop.collection_point.longitude}"
                         for stop in stops
                     ],
                 ]
@@ -931,7 +912,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "assignment_id": assignment.unique_id,
                 "trip_date": assignment.trip_date,
                 "status": assignment.status,
-                "vehicle_no": getattr(assignment.vehicle_id, "vehicle_no", None),
+                "vehicle_no": getattr(assignment.vehicle, "vehicle_no", None),
                 "vehicle_tracking": {
                     "current_location": self._latest_vehicle_location(assignment),
                 },
@@ -1015,22 +996,22 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         super().perform_create(serializer)
         self._sync_assignment_and_log(serializer.instance)
-        self._optimize_assignment_silently(serializer.instance.trip_assignment_id_id)
+        self._optimize_assignment_silently(serializer.instance.trip_assignment_id)
 
     def perform_update(self, serializer):
         super().perform_update(serializer)
         self._sync_assignment_and_log(serializer.instance)
-        self._optimize_assignment_silently(serializer.instance.trip_assignment_id_id)
+        self._optimize_assignment_silently(serializer.instance.trip_assignment_id)
 
     def perform_destroy(self, instance):
-        assignment_id = instance.trip_assignment_id_id
+        assignment_id = instance.trip_assignment_id
         previous_data = self._serialize_instance(instance)
         instance.is_deleted = True
         instance.is_active = False
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
         self.log_audit(
@@ -1039,7 +1020,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=previous_data,
             new_data=self._serialize_instance(instance),
         )
-        assignment = instance.trip_assignment_id
+        assignment = instance.trip_assignment
         if assignment is not None:
             assignment.mark_completed_if_all_cps_collected()
             if assignment.trip_collection_points.filter(is_deleted=False).exists():
@@ -1050,7 +1031,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 # non-zero collected_weight_kg; reset it explicitly. Mirrors
                 # that helper's own guard: only a VERIFIED log is left alone.
                 log = DailyTripLog.objects.filter(
-                    trip_assignment_id=assignment, is_deleted=False
+                    trip_assignment_id=ref_id(assignment), is_deleted=False
                 ).first()
                 if log is not None and log.log_status != DailyTripLog.LOG_STATUS_VERIFIED:
                     log.collected_weight_kg = 0

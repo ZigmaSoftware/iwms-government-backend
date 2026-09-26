@@ -1,7 +1,10 @@
 from django.db.models import Max
 
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.management.commands.seeders.base import BaseSeeder
 from app.models.masters.waste_masters.bins import Bins
+from app.utils.plain_ref import json_contains_any
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
@@ -39,7 +42,11 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
         plans = TripPlan.objects.filter(
             is_deleted=False, status=TripPlan.Status.ACTIVE
         ).exclude(
-            staff_template_id__driver_id__username__in=DEMO_STAFF_USERNAMES
+            staff_template_id__in=StaffTemplate.objects.filter(
+                driver_id__in=Staffcreation.objects.filter(
+                    username__in=DEMO_STAFF_USERNAMES
+                ).values("staff_unique_id")
+            ).values("unique_id")
         )
 
         for plan in plans:
@@ -49,7 +56,7 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
             # 1..N sequences, park every existing stop of this plan at a range
             # guaranteed to be free (above the plan's current max), otherwise a
             # re-seed after collection points/bins changed collides on sequence.
-            all_stops = TripPlanCollectionPoint.objects.filter(trip_plan_id=plan)
+            all_stops = TripPlanCollectionPoint.objects.filter(trip_plan_id=plan.unique_id)
             max_seq = all_stops.aggregate(m=Max("sequence"))["m"] or 0
             park_base = max(max_seq, 9000)
             offset = 0
@@ -84,7 +91,9 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                     # local-body match alone would pull in every ward's
                     # collection points. Narrow to just this plan's own
                     # ward(s) first.
-                    cps = cps.filter(wards__in=plan_wards)
+                    cps = cps.filter(
+                        json_contains_any("ward_ids", [w.unique_id for w in plan_wards])
+                    )
                 else:
                     for field in FLAT_HIERARCHY_FIELDS:
                         value = getattr(plan, f"{field}_id", None)
@@ -95,8 +104,8 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
 
                 for cp in cps:
                     bin_obj = Bins.objects.filter(
-                        collection_point_id=cp,
-                        wastetype_id__in=plan.waste_types.all(),
+                        collection_point_id=cp.unique_id,
+                        wastetype_id__in=plan.waste_types.values("unique_id"),
                         is_deleted=False,
                         is_active=True,
                     ).first()
@@ -105,11 +114,11 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
 
                     sequence += 1
                     _, created = TripPlanCollectionPoint.objects.update_or_create(
-                        trip_plan_id=plan,
+                        trip_plan_id=plan.unique_id,
                         collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
-                        collection_point_id=cp,
+                        collection_point_id=cp.unique_id,
                         defaults={
-                            "bin_id": bin_obj,
+                            "bin_id": bin_obj.unique_id,
                             "sequence": sequence,
                             "is_active": True,
                             "is_deleted": False,
@@ -126,7 +135,7 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                 # location_node is auto-copied from trip_plan_id in
                 # TripPlanCollectionPoint.save() — no need to set it here.
                 _, created = TripPlanCollectionPoint.objects.update_or_create(
-                    trip_plan_id=plan,
+                    trip_plan_id=plan.unique_id,
                     collection_type=plan.collection_type,
                     customer_id=None,
                     defaults={

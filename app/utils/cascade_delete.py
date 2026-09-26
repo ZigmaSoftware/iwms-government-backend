@@ -170,6 +170,40 @@ for _parent, _scope_field in ((_STATE, "state"), (_DISTRICT, "district"), (_AREA
 # users_district: District only.
 _register(_DISTRICT, "users_district", "app.models.superadmin_masters.auth_user.User", "district_id")
 
+# StaffTemplate -> TripPlan (TripPlan.staff_template_id is a plain unique_id).
+_register(
+    "app.models.core_modules.schedule_setup.staff_template.StaffTemplate",
+    "trip_plans",
+    "app.models.core_modules.schedule_setup.trip_plan.TripPlan",
+    "staff_template_id",
+)
+
+# StaffTemplate -> DailyTripAssignment (plain staff_template_id).
+_register(
+    "app.models.core_modules.schedule_setup.staff_template.StaffTemplate",
+    "daily_trip_assignments",
+    "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+    "staff_template_id",
+)
+
+# StaffAccessConfiguration keeps its geography as plain JSON id lists
+# (`<level>_ids`), so the geo models' "staff_access_configurations" relation
+# is a JSON-contains match on the matching list.
+_STAFF_ACCESS_CONFIGURATION = "app.models.superadmin.staff_management.staff_access_configuration.StaffAccessConfiguration"
+_WARD = "app.models.masters.ward.Ward"
+for _parent, _ids_field in (
+    (_STATE, "state_ids"),
+    (_DISTRICT, "district_ids"),
+    (_AREA_TYPE, "area_type_ids"),
+    (_CORPORATION, "corporation_ids"),
+    (_MUNICIPALITY, "municipality_ids"),
+    (_TOWN_PANCHAYAT, "town_panchayat_ids"),
+    (_PANCHAYAT_UNION, "panchayat_union_ids"),
+    (_PANCHAYAT, "panchayat_ids"),
+    (_WARD, "ward_ids"),
+):
+    _register(_parent, "staff_access_configurations", _STAFF_ACCESS_CONFIGURATION, f"{_ids_field}__contains")
+
 # departments: Corporation only.
 _register(_CORPORATION, "departments", "app.models.masters.department.Department", "corporation_id")
 
@@ -256,10 +290,17 @@ def cascade_soft_delete(instance, updated_by=None):
             update_fields = {"is_deleted": True, "is_active": False}
             if updated_by is not None:
                 try:
-                    model._meta.get_field("updated_by")
-                    update_fields["updated_by"] = updated_by
+                    field = model._meta.get_field("updated_by")
+                    update_fields["updated_by"] = (
+                        updated_by if getattr(field, "is_relation", False) else updated_by.pk
+                    )
                 except Exception:
-                    pass
+                    # Plain-string `updated_by_id` (e.g. CustomerCreation).
+                    try:
+                        model._meta.get_field("updated_by_id")
+                        update_fields["updated_by_id"] = updated_by.pk
+                    except Exception:
+                        pass
             model.objects.filter(pk__in=pks, is_deleted=False).update(**update_fields)
 
 

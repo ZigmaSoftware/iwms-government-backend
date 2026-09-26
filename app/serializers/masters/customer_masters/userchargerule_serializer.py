@@ -3,27 +3,39 @@ from rest_framework import serializers
 from app.models.masters.customer_masters.userchargerule import UserChargeRule
 from app.models.masters.waste_masters.property import Property
 from app.models.masters.waste_masters.subproperty import SubProperty
+from app.utils import ref_cache
 
 
 class UserChargeRuleSerializer(
     
     serializers.ModelSerializer
 ):
-    property_id = serializers.PrimaryKeyRelatedField(
-        queryset=Property.objects.filter(is_active=True, is_deleted=False)
-    )
-    subproperty_id = serializers.PrimaryKeyRelatedField(
-        queryset=SubProperty.objects.filter(is_active=True, is_deleted=False)
-    )
+    # Plain unique_id strings (no DB relation); checked in validate_*.
+    property_id = serializers.CharField()
+    subproperty_id = serializers.CharField()
 
-    property_name = serializers.CharField(
-        source="property_id.property_name",
-        read_only=True,
-    )
-    subproperty_name = serializers.CharField(
-        source="subproperty_id.sub_property_name",
-        read_only=True,
-    )
+    property_name = serializers.SerializerMethodField()
+    subproperty_name = serializers.SerializerMethodField()
+
+    def get_property_name(self, obj):
+        return getattr(ref_cache.get(Property, obj.property_id, "unique_id"), "property_name", None)
+
+    def get_subproperty_name(self, obj):
+        return getattr(ref_cache.get(SubProperty, obj.subproperty_id, "unique_id"), "sub_property_name", None)
+
+    def validate_property_id(self, value):
+        if not Property.objects.filter(
+            unique_id=value, is_active=True, is_deleted=False
+        ).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
+
+    def validate_subproperty_id(self, value):
+        if not SubProperty.objects.filter(
+            unique_id=value, is_active=True, is_deleted=False
+        ).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
 
     amount = serializers.DecimalField(
         source="charge_amount",
@@ -68,8 +80,16 @@ class UserChargeRuleSerializer(
         min_sqmtr_value = self._resolved_value(attrs, "min_sqmtr_value")
         max_sqmtr_value = self._resolved_value(attrs, "max_sqmtr_value")
         amount = self._resolved_value(attrs, "charge_amount")
-        property_obj = self._resolved_value(attrs, "property_id")
-        subproperty_obj = self._resolved_value(attrs, "subproperty_id")
+        property_uid = self._resolved_value(attrs, "property_id")
+        subproperty_uid = self._resolved_value(attrs, "subproperty_id")
+        property_obj = (
+            Property.objects.filter(unique_id=property_uid).first() if property_uid else None
+        )
+        subproperty_obj = (
+            SubProperty.objects.filter(unique_id=subproperty_uid).first()
+            if subproperty_uid
+            else None
+        )
 
         if is_bulk_waste_generator is None:
             is_bulk_waste_generator = False
@@ -85,7 +105,7 @@ class UserChargeRuleSerializer(
         if (
             property_obj is not None
             and subproperty_obj is not None
-            and subproperty_obj.property_id_id != property_obj.unique_id
+            and subproperty_obj.property_id != property_obj.unique_id
         ):
             errors["subproperty_id"] = (
                 "Selected subproperty does not belong to the selected property."

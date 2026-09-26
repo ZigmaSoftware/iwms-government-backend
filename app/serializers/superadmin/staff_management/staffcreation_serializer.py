@@ -1,10 +1,8 @@
 import re
 
 from rest_framework import serializers
-from app.models.superadmin.role_management.staffUserType import StaffUserType
-from app.models.superadmin.role_management.contractorUserType import ContractorUserType
-from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
-from app.models.superadmin.common_masters.state import State
+from app.models.masters.department import Department
+from app.models.masters.designation import Designation
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
@@ -12,63 +10,37 @@ from app.models.masters.municipality import Municipality
 from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
+from app.models.superadmin.common_masters.state import State
 
 from app.models.superadmin.staff_management.staffcreation import Staffcreation, StaffPersonalDetails
 
 from app.utils.password_encryption import encrypt_password, decrypt_password
 from app.utils.file_validators import validate_pdf_upload
+from app.utils import ref_cache
 
 
 class StaffcreationSerializer(serializers.ModelSerializer):
     # --------------------------------------------------
     # Core identifiers
     # --------------------------------------------------
-    unique_id = serializers.CharField(source="staff_unique_id",read_only=True)
+    unique_id = serializers.CharField(source="staff_unique_id", read_only=True)
     emp_id = serializers.CharField(read_only=True)
-    staffusertype_id = serializers.PrimaryKeyRelatedField(
-    queryset=StaffUserType.objects.all(),
-    required=False,
-    allow_null=True
-)
+    staffusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    staffusertype_name = serializers.SerializerMethodField()
     password = serializers.CharField(
-    required=False,
-    allow_blank=True,
-    allow_null=True,
-)
-
-    staffusertype_name = serializers.CharField(
-    source="staffusertype_id.name",
-    read_only=True
-)
-
-    contractorusertype_id = serializers.PrimaryKeyRelatedField(
-        queryset=ContractorUserType.objects.all(),
         required=False,
+        allow_blank=True,
         allow_null=True,
     )
-    contractorusertype_name = serializers.CharField(
-        source="contractorusertype_id.name",
-        read_only=True,
-    )
-    governmentusertype_id = serializers.PrimaryKeyRelatedField(
-        queryset=GovernmentStaffUserType.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
-    governmentusertype_name = serializers.CharField(
-        source="governmentusertype_id.name",
-        read_only=True,
-    )
+
+    contractorusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    contractorusertype_name = serializers.SerializerMethodField()
+    governmentusertype_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    governmentusertype_name = serializers.SerializerMethodField()
     # Staff-named response aliases. Keep the legacy ``*usertype*`` fields
     # during the API transition so existing mobile/web clients remain valid.
-    government_staff_type_name = serializers.CharField(
-        source="governmentusertype_id.name",
-        read_only=True,
-    )
-    governmentusertype_level = serializers.CharField(
-        source="governmentusertype_id.level",
-        read_only=True,
-    )
+    government_staff_type_name = serializers.SerializerMethodField()
+    governmentusertype_level = serializers.SerializerMethodField()
     # Geo hierarchy: plain unique_id strings in, display names out.
     # Staffcreation's own columns are literally named "<field>_id" (CharField,
     # no DB relation) — same convention as Ward/Corporation/District/etc —
@@ -98,28 +70,54 @@ class StaffcreationSerializer(serializers.ModelSerializer):
     panchayat_name = serializers.SerializerMethodField()
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
+
+    def get_staffusertype_name(self, obj):
+        return getattr(obj.staffusertype, "name", None)
+
+    def get_contractorusertype_name(self, obj):
+        return getattr(obj.contractorusertype, "name", None)
+
+    def get_governmentusertype_name(self, obj):
+        return getattr(obj.governmentusertype, "name", None)
+
+    def get_government_staff_type_name(self, obj):
+        return getattr(obj.governmentusertype, "name", None)
+
+    def get_governmentusertype_level(self, obj):
+        return getattr(obj.governmentusertype, "level", None)
+
+    def get_department_name(self, obj):
+        return getattr(obj.department_ref, "department_name", None)
+
+    def get_designation_name(self, obj):
+        return getattr(obj.designation_ref, "designation_name", None)
+
+    department_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    designation_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    department_name = serializers.SerializerMethodField()
+    designation_name = serializers.SerializerMethodField()
     # --------------------------------------------------
     #  Office-level: Driving licence
     # --------------------------------------------------
@@ -232,7 +230,7 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         return self._validate_address_pincode(value)
 
     user_type_id = serializers.CharField(
-    source="staffusertype_id.usertype_id.unique_id",read_only=True)
+    source="staffusertype.usertype_id",read_only=True)
 
     # Readable name of the staff's own user type (e.g. "government").
     user_type_name = serializers.CharField(
@@ -299,6 +297,12 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             "driving_experience_years",
 
             "active_status",
+
+            # Department and Designation (plain unique_id strings)
+            "department_id",
+            "designation_id",
+            "department_name",
+            "designation_name",
 
             # Personal details (flattened)
             "marital_status",
@@ -398,22 +402,31 @@ class StaffcreationSerializer(serializers.ModelSerializer):
 
         validated_data["is_active"] = True
 
-        staffusertype = validated_data.get("staffusertype_id")
-        if staffusertype and staffusertype.usertype_id:
-            validated_data["user_type_id"] = staffusertype.usertype_id
+        staffusertype_id = validated_data.get("staffusertype_id")
+        if staffusertype_id:
+            from app.models.superadmin.role_management.staffUserType import StaffUserType
+            staffusertype = ref_cache.get(StaffUserType, staffusertype_id)
+            if staffusertype and staffusertype.usertype_id:
+                validated_data["user_type_id"] = staffusertype.usertype_id
 
-        contractorusertype = validated_data.get("contractorusertype_id")
-        if contractorusertype and contractorusertype.usertype_id:
-            validated_data["user_type_id"] = contractorusertype.usertype_id
+        contractorusertype_id = validated_data.get("contractorusertype_id")
+        if contractorusertype_id:
+            from app.models.superadmin.role_management.contractorUserType import ContractorUserType
+            contractorusertype = ref_cache.get(ContractorUserType, contractorusertype_id)
+            if contractorusertype and contractorusertype.usertype_id:
+                validated_data["user_type_id"] = contractorusertype.usertype_id
 
-        governmentusertype = validated_data.get("governmentusertype_id")
-        if governmentusertype and governmentusertype.usertype_id:
-            validated_data["user_type_id"] = governmentusertype.usertype_id
+        governmentusertype_id = validated_data.get("governmentusertype_id")
+        if governmentusertype_id:
+            from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+            governmentusertype = ref_cache.get(GovernmentStaffUserType, governmentusertype_id)
+            if governmentusertype and governmentusertype.usertype_id:
+                validated_data["user_type_id"] = governmentusertype.usertype_id
 
         staff = Staffcreation.objects.create(**validated_data)
 
         StaffPersonalDetails.objects.create(
-            staff=staff,
+            staff_id=staff.staff_unique_id,
             staff_unique_id=staff.staff_unique_id,
             **personal_data,
         )
@@ -430,23 +443,32 @@ class StaffcreationSerializer(serializers.ModelSerializer):
         if password:
             validated_data["password"] = encrypt_password(password)
 
-        staffusertype = validated_data.get("staffusertype_id")
-        if staffusertype and staffusertype.usertype_id:
-            validated_data["user_type_id"] = staffusertype.usertype_id
+        staffusertype_id = validated_data.get("staffusertype_id")
+        if staffusertype_id:
+            from app.models.superadmin.role_management.staffUserType import StaffUserType
+            staffusertype = ref_cache.get(StaffUserType, staffusertype_id)
+            if staffusertype and staffusertype.usertype_id:
+                validated_data["user_type_id"] = staffusertype.usertype_id
 
-        contractorusertype = validated_data.get("contractorusertype_id")
-        if contractorusertype and contractorusertype.usertype_id:
-            validated_data["user_type_id"] = contractorusertype.usertype_id
+        contractorusertype_id = validated_data.get("contractorusertype_id")
+        if contractorusertype_id:
+            from app.models.superadmin.role_management.contractorUserType import ContractorUserType
+            contractorusertype = ref_cache.get(ContractorUserType, contractorusertype_id)
+            if contractorusertype and contractorusertype.usertype_id:
+                validated_data["user_type_id"] = contractorusertype.usertype_id
 
-        governmentusertype = validated_data.get("governmentusertype_id")
-        if governmentusertype and governmentusertype.usertype_id:
-            validated_data["user_type_id"] = governmentusertype.usertype_id
+        governmentusertype_id = validated_data.get("governmentusertype_id")
+        if governmentusertype_id:
+            from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+            governmentusertype = ref_cache.get(GovernmentStaffUserType, governmentusertype_id)
+            if governmentusertype and governmentusertype.usertype_id:
+                validated_data["user_type_id"] = governmentusertype.usertype_id
 
         staff = super().update(instance, validated_data)
 
         if personal_data:
             personal_instance, _ = StaffPersonalDetails.objects.get_or_create(
-                staff=staff
+                staff_id=staff.staff_unique_id
             )
             for attr, value in personal_data.items():
                 setattr(personal_instance, attr, value)
@@ -454,8 +476,8 @@ class StaffcreationSerializer(serializers.ModelSerializer):
             personal_instance.staff_unique_id = staff.staff_unique_id
             personal_instance.save()
         else:
-            if hasattr(staff, "personal_details"):
-                personal_details = staff.personal_details
+            personal_details = staff.personal_details
+            if personal_details is not None:
                 if personal_details.staff_unique_id != staff.staff_unique_id:
                     personal_details.staff_unique_id = staff.staff_unique_id
                     personal_details.save()

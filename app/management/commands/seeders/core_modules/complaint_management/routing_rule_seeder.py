@@ -14,17 +14,17 @@ class ComplaintRoutingRuleSeeder(BaseSeeder):
                 self.log(f"Category '{category.category_code}' has no default team - skipping routing rule.")
                 continue
             sla_rule = ComplaintSlaRule.objects.filter(
-                category=category, subcategory__isnull=True, is_deleted=False
+                category_id=category.unique_id, subcategory_id__isnull=True, is_deleted=False
             ).first()
             ComplaintRoutingRule.objects.get_or_create(
-                category=category,
-                subcategory=None,
+                category_id=category.unique_id,
+                subcategory_id=None,
                 state_id=None,
                 district_id=None,
-                priority=None,
+                priority_id=None,
                 defaults={
-                    "team": category.default_team,
-                    "sla_rule": sla_rule,
+                    "team_id": category.default_team_id,
+                    "sla_rule_id": sla_rule.unique_id if sla_rule else None,
                     "is_active": True,
                     "is_deleted": False,
                 },

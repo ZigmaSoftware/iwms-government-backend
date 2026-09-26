@@ -214,15 +214,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # Queryset
     # ---------------------------------------------------------
     def get_queryset(self):
-        queryset = UserScreenPermission.objects.filter(is_deleted=False).select_related(
-            "usertype_id",
-            "staffusertype_id",
-            "contractorusertype_id",
-            "governmentusertype_id",
-            "mainscreen_id",
-            "userscreen_id",
-            "userscreenaction_id",
-        )
+        queryset = UserScreenPermission.objects.filter(is_deleted=False)
 
         request = getattr(self, "request", None)
         if request is not None and getattr(self, "action", None) == "list":
@@ -329,23 +321,23 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # 🔥 OPTIMIZED QUERY (NO MODEL LOAD)
         perms = UserScreenPermission.objects.filter(
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
             is_deleted=False,
             **local_body_filters,
         ).values(
             "unique_id",
-            "userscreen_id_id",
-            "userscreenaction_id_id",
+            "userscreen_id",
+            "userscreenaction_id",
             "description",
         )
 
         column_perms = UserScreenColumnPermission.objects.filter(
-            userscreen_id__mainscreen_id_id=mainscreen_id,
+            userscreen_id__in=UserScreen.objects.filter(mainscreen_id=mainscreen_id).values("unique_id"),
             is_deleted=False,
             **column_local_body_filters,
         ).values(
-            "userscreen_id_id",
-            "column_id_id",
+            "userscreen_id",
+            "column_id",
             "field_permission_state",
         )
 
@@ -355,21 +347,21 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         description = ""
 
         for p in perms:
-            screen_map[p["userscreen_id_id"]]["actions"].append(p["userscreenaction_id_id"])
+            screen_map[p["userscreen_id"]]["actions"].append(p["userscreenaction_id"])
 
             if not description:
                 description = p["description"]
 
         # Build column permissions map
         for cp in column_perms:
-            column_map[cp["userscreen_id_id"]].append({
-                "column_id": cp["column_id_id"],
+            column_map[cp["userscreen_id"]].append({
+                "column_id": cp["column_id"],
                 "can_view": cp["field_permission_state"] != UserScreenColumnPermission.HIDDEN,
             })
 
         # 🔥 LIGHTWEIGHT QUERY
         screens_qs = UserScreen.objects.filter(
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
             is_deleted=False,
         ).values(
             "unique_id",
@@ -435,11 +427,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         local_body_filters = self._local_body_filter_kwargs(scope)
 
-        # Get ALL permissions for this Local Body (no mainscreen filter)
+        # Get ALL permissions for this Local Body (no mainscreen filter).
+        # Grants left on retired (soft-deleted) screens are not shown.
         qs = UserScreenPermission.objects.filter(
             is_deleted=False,
+            userscreen_id__in=UserScreen.objects.filter(is_deleted=False).values("unique_id"),
             **local_body_filters,
-        ).select_related("mainscreen_id")
+        )
 
         if not qs.exists():
             return Response(
@@ -456,8 +450,9 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         mainscreen_map = {}
 
         for perm in qs:
-            mainscreen_id = perm.mainscreen_id_id
-            mainscreen_name = perm.mainscreen_id.mainscreen_name if perm.mainscreen_id else "Unknown"
+            mainscreen_id = perm.mainscreen_id
+            mainscreen = perm.mainscreen
+            mainscreen_name = mainscreen.mainscreen_name if mainscreen else "Unknown"
 
             if mainscreen_id not in mainscreen_map:
                 mainscreen_map[mainscreen_id] = {
@@ -466,8 +461,8 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     "screens": {},
                 }
 
-            scr_id = perm.userscreen_id_id
-            act_id = perm.userscreenaction_id_id
+            scr_id = perm.userscreen_id
+            act_id = perm.userscreenaction_id
 
             if scr_id not in mainscreen_map[mainscreen_id]["screens"]:
                 mainscreen_map[mainscreen_id]["screens"][scr_id] = {
@@ -524,7 +519,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         column_local_body_filters = {k: v for k, v in local_body_filters.items() if k != "permission_type"}
 
         qs = UserScreenPermission.objects.filter(
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
             is_deleted=False,
             **local_body_filters,
         )
@@ -541,7 +536,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 permission.is_active = False
                 permission.save(update_fields=["is_deleted", "is_active", "updated_at"])
             UserScreenColumnPermission.objects.filter(
-                userscreen_id__mainscreen_id_id=mainscreen_id,
+                userscreen_id__in=UserScreen.objects.filter(mainscreen_id=mainscreen_id).values("unique_id"),
                 is_deleted=False,
                 **column_local_body_filters,
             ).update(is_deleted=True, is_active=False)

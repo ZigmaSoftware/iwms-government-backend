@@ -114,10 +114,10 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
 
         today = timezone.localdate()
         alt, created = AlternativeStaffTemplate.objects.get_or_create(
-            staff_template=templates[0],
+            staff_template_id=templates[0].unique_id,
             defaults={
-                "driver_id": drivers[1],
-                "operator_id": operators[1],
+                "driver_id": drivers[1].staff_unique_id,
+                "operator_id": operators[1].staff_unique_id,
                 "from_date": today,
                 "to_date": today + timedelta(days=30),
                 "change_reason": "Demo substitution",
@@ -183,8 +183,8 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             _, was_created = VehicleCreation.objects.get_or_create(
                 vehicle_no=vehicle_no,
                 defaults={
-                    "vehicle_type": vehicle_type,
-                    "fuel_type": fuel_type,
+                    "vehicle_type_id": vehicle_type.unique_id,
+                    "fuel_type_id": fuel_type.unique_id,
                     "capacity": capacity,
                     "vehicle_condition": "NEW",
                     "is_active": True,
@@ -198,12 +198,12 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
 
     def _get_or_create_template(self, driver, operator, geo):
         template = StaffTemplate.objects.filter(
-            driver_id=driver, operator_id=operator, is_deleted=False
+            driver_id=driver.staff_unique_id, operator_id=operator.staff_unique_id, is_deleted=False
         ).first()
         if template is None:
             template = StaffTemplate.objects.create(
-                driver_id=driver,
-                operator_id=operator,
+                driver_id=driver.staff_unique_id,
+                operator_id=operator.staff_unique_id,
                 approval_status=StaffTemplate.ApprovalStatus.APPROVED,
                 status=StaffTemplate.Status.ACTIVE,
                 is_active=True,

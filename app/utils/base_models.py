@@ -48,20 +48,20 @@ class BaseMaster(models.Model):
     # transitively when this row is soft-deleted. See app/utils/cascade_delete.py.
     CASCADE_SOFT_DELETE = ()
 
-    created_by = models.ForeignKey(
-        Account,
-        on_delete=models.SET_NULL,
+    created_by = models.CharField(
+        max_length=50,
+        db_column="created_by_id",
         null=True,
         blank=True,
-        related_name="%(class)s_created"
+        db_index=True,
     )
 
-    updated_by = models.ForeignKey(
-        Account,
-        on_delete=models.SET_NULL,
+    updated_by = models.CharField(
+        max_length=50,
+        db_column="updated_by_id",
         null=True,
         blank=True,
-        related_name="%(class)s_updated"
+        db_index=True,
     )
 
     class Meta:

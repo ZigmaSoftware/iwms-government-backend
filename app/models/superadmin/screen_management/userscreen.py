@@ -2,8 +2,7 @@ from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.model_mapper import resolve_userscreen_model
-
-from .mainscreen import MainScreen
+from app.utils import ref_cache
 
 
 
@@ -21,12 +20,10 @@ class UserScreen(BaseMaster):
         editable=False
     )
 
-    mainscreen_id = models.ForeignKey(
-        MainScreen,
-        on_delete=models.PROTECT,
-        related_name="userscreens",
-        to_field="unique_id",
-        db_column="mainscreen_id"
+    mainscreen_id = models.CharField(
+        max_length=30,
+        db_column="mainscreen_id",
+        db_index=True,
     )
 
     userscreen_name = models.CharField(max_length=50, unique=True)
@@ -80,8 +77,21 @@ class UserScreen(BaseMaster):
         self.is_active = False
         self.is_deleted = True
         self.save(update_fields=["is_active", "is_deleted"])
-        
-      # =====================================================
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def mainscreen(self):
+        return self._lookup("app.models.superadmin.screen_management.mainscreen.MainScreen", self.mainscreen_id)
+
+    # =====================================================
     # OPTIONAL HELPER
     # =====================================================
 

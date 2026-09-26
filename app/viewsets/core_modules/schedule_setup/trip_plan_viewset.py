@@ -20,13 +20,7 @@ TRIP_PLAN_CACHE_SCOPES = ("trip_plan_list", "trip_plan_detail")
 
 class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "trip_plan"
-    queryset = TripPlan.objects.select_related(
-        "staff_template_id",
-        "staff_template_id__driver_id",
-        "staff_template_id__operator_id",
-        "vehicle_id",
-        "supervisor_id",
-    ).prefetch_related("plan_collection_points", "waste_types").filter(is_deleted=False)
+    queryset = TripPlan.objects.filter(is_deleted=False)
 
     serializer_class = TripPlanSerializer
     lookup_field = "unique_id"

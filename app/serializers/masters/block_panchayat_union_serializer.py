@@ -2,22 +2,36 @@ from rest_framework import serializers
 from app.models.masters.block_panchayat_union import BlockPanchayatUnion
 from app.models.masters.district import District
 from app.models.superadmin.common_masters.state import State
+from app.models.masters.areatype import AreaType
+from app.models.masters.hierarchy import AdministrativeHierarchy
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils import ref_cache
 
 
 class BlockPanchayatUnionSerializer(serializers.ModelSerializer):
 
     state_name = serializers.SerializerMethodField()
     district_name = serializers.SerializerMethodField()
-    area_type_name = serializers.CharField(source="area_type_id.name", read_only=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True)
+    area_type_name = serializers.SerializerMethodField()
+    hierarchy_id = serializers.CharField(required=False, allow_null=True)
+    hierarchy_name = serializers.SerializerMethodField()
+    hierarchy_order = serializers.SerializerMethodField()
+
+    def get_area_type_name(self, obj):
+        return getattr(obj.area_type, "name", None)
+
+    def get_hierarchy_name(self, obj):
+        return getattr(obj.hierarchy, "level_name", None)
+
+    def get_hierarchy_order(self, obj):
+        return getattr(obj.hierarchy, "hierarchy_order", None)
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
-    hierarchy_name = serializers.CharField(source="hierarchy_id.level_name", read_only=True)
-    hierarchy_order = serializers.IntegerField(source="hierarchy_id.hierarchy_order", read_only=True)
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     class Meta:
         model = BlockPanchayatUnion
@@ -50,8 +64,18 @@ class BlockPanchayatUnionSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        area_type = attrs.get("area_type_id") or getattr(self.instance, "area_type_id", None)
-        hierarchy = attrs.get("hierarchy_id") or getattr(self.instance, "hierarchy_id", None)
+        area_type_uid = attrs.get("area_type_id") or getattr(self.instance, "area_type_id", None)
+        hierarchy_uid = attrs.get("hierarchy_id") or getattr(self.instance, "hierarchy_id", None)
+        area_type = AreaType.objects.filter(pk=area_type_uid).first() if area_type_uid else None
+        hierarchy = (
+            AdministrativeHierarchy.objects.filter(pk=hierarchy_uid).first()
+            if hierarchy_uid
+            else None
+        )
+        if area_type_uid and not area_type:
+            raise serializers.ValidationError({"area_type_id": "Invalid area type."})
+        if hierarchy_uid and not hierarchy:
+            raise serializers.ValidationError({"hierarchy_id": "Invalid hierarchy."})
         block_name = attrs.get("block_name")
 
         if area_type and area_type.name.lower() != "rural":

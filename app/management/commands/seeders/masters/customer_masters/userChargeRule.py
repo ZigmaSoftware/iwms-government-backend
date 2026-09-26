@@ -27,7 +27,7 @@ class UserChargeRuleSeeder(BaseSeeder):
                 property_name=prop_name, is_deleted=False
             ).first()
             sub_property = SubProperty.objects.filter(
-                property_id=property_obj,
+                property_id=property_obj.unique_id,
                 sub_property_name=sub_prop_name,
                 is_deleted=False,
             ).first() if property_obj else None
@@ -37,8 +37,8 @@ class UserChargeRuleSeeder(BaseSeeder):
                 continue
 
             exists = UserChargeRule.objects.filter(
-                property_id=property_obj,
-                subproperty_id=sub_property,
+                property_id=property_obj.unique_id,
+                subproperty_id=sub_property.unique_id,
                 min_sqmtr_value=min_sq,
                 max_sqmtr_value=max_sq,
                 is_deleted=False,
@@ -48,8 +48,8 @@ class UserChargeRuleSeeder(BaseSeeder):
                 continue
 
             UserChargeRule.objects.create(
-                property_id=property_obj,
-                subproperty_id=sub_property,
+                property_id=property_obj.unique_id,
+                subproperty_id=sub_property.unique_id,
                 min_sqmtr_value=min_sq,
                 max_sqmtr_value=max_sq,
                 charge_amount=charge,

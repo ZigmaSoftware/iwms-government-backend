@@ -11,6 +11,7 @@ from django.conf import settings
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 BINS_CACHE_SCOPES = ("bins_list", "bins_detail")
 
@@ -54,9 +55,13 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     permission_resource = "Bin"
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["bin_name", "ward__ward_name", "wastetype_id__waste_type_name"]
+    search_fields = [
+        "bin_name",
+        "ward_id=app.models.masters.ward.Ward.ward_name",
+        "wastetype_id=app.models.masters.waste_masters.wastetype.WasteType.waste_type_name",
+    ]
     ordering_fields = ["bin_name", "bin_capacity", "is_active"]
 
     AUDIT_MODULE = "assets"
@@ -78,11 +83,7 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return Response(serializer.data, status=201)
     
     def get_queryset(self):
-        queryset = Bins.objects.select_related(
-            "ward",
-            "collection_point_id",
-            "wastetype_id",
-        ).filter(is_deleted=False)
+        queryset = Bins.objects.filter(is_deleted=False)
 
         collection_point_uid = (
             self.request.query_params.get("collection_point")
@@ -105,7 +106,7 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 queryset = queryset.filter(**{field: value})
 
         if collection_point_uid:
-            queryset = queryset.filter(collection_point_id__unique_id=collection_point_uid)
+            queryset = queryset.filter(collection_point_id=collection_point_uid)
 
         ward_uid = (
             self.request.query_params.get("ward")

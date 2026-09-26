@@ -58,6 +58,33 @@ class ComplaintTeamSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["unique_id"]
 
+    def validate_department_id(self, value):
+        if not value:
+            return value
+        from app.models.masters.department import Department
+
+        if not Department.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid department.")
+        return value
+
+    def validate_lead_staff_id(self, value):
+        if not value:
+            return value
+        from app.models.superadmin.staff_management.staffcreation import (
+            StaffcreationOfficeDetails,
+        )
+
+        if not StaffcreationOfficeDetails.objects.filter(staff_unique_id=value).exists():
+            raise serializers.ValidationError("Invalid staff.")
+        return value
+
+    def validate_escalates_to_id(self, value):
+        if not value:
+            return value
+        if not ComplaintTeam.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid team.")
+        return value
+
 
 class ComplaintModuleSerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     class Meta:
@@ -77,6 +104,21 @@ class ComplaintCategorySerializer(AutoSortOrderSerializerMixin, serializers.Mode
         fields = "__all__"
         read_only_fields = ["unique_id", "sort_order"]
 
+    def validate_module_id(self, value):
+        if value and not ComplaintModule.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid module.")
+        return value
+
+    def validate_default_priority_id(self, value):
+        if value and not ComplaintPriority.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid priority.")
+        return value
+
+    def validate_default_team_id(self, value):
+        if value and not ComplaintTeam.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid team.")
+        return value
+
 
 class ComplaintSubcategorySerializer(AutoSortOrderSerializerMixin, serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.category_name", read_only=True)
@@ -87,6 +129,18 @@ class ComplaintSubcategorySerializer(AutoSortOrderSerializerMixin, serializers.M
         fields = "__all__"
         read_only_fields = ["unique_id", "sort_order"]
 
+    def validate_category_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintCategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid category.")
+        return value
+
+    def validate_default_priority_id(self, value):
+        if value and not ComplaintPriority.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid priority.")
+        return value
+
 
 class ComplaintSlaRuleSerializer(serializers.ModelSerializer):
     category_code = serializers.CharField(source="category.category_code", read_only=True)
@@ -96,3 +150,32 @@ class ComplaintSlaRuleSerializer(serializers.ModelSerializer):
         model = ComplaintSlaRule
         fields = "__all__"
         read_only_fields = ["unique_id"]
+
+    def validate_category_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintCategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid category.")
+        return value
+
+    def validate_priority_id(self, value):
+        if not value:
+            raise serializers.ValidationError("This field is required.")
+        if not ComplaintPriority.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid priority.")
+        return value
+
+    def validate_subcategory_id(self, value):
+        if value and not ComplaintSubcategory.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid subcategory.")
+        return value
+
+    def validate_source_id(self, value):
+        if value and not ComplaintSource.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid source.")
+        return value
+
+    def validate_escalation_team_id(self, value):
+        if value and not ComplaintTeam.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid team.")
+        return value

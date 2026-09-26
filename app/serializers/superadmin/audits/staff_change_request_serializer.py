@@ -5,7 +5,9 @@ from app.models.superadmin.staff_management.staffcreation import StaffPersonalDe
 
 
 class StaffChangeRequestSerializer(serializers.ModelSerializer):
-    requested_by_name = serializers.CharField(source="requested_by.employee_name", read_only=True)
+    requested_by = serializers.CharField(source="requested_by_id", read_only=True)
+    requested_by_name = serializers.CharField(source="requested_by.employee_name", read_only=True, default=None)
+    decided_by = serializers.CharField(source="decided_by_id", read_only=True)
     decided_by_name = serializers.CharField(source="decided_by.employee_name", read_only=True, default=None)
 
     class Meta:

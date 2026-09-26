@@ -6,9 +6,7 @@ from rest_framework import viewsets
 
 class FeedBackViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "feed_back"
-    queryset = FeedBack.objects.filter(is_deleted=False).select_related(
-        "customer__property_ref", "customer__sub_property"
-    )
+    queryset = FeedBack.objects.filter(is_deleted=False)
     serializer_class = FeedBackSerializer
     lookup_field = "unique_id"
 

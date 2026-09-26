@@ -11,6 +11,7 @@ from app.models.core_modules.schedule_setup.alternative_staff_template import Al
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.ward import Ward
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 def _generate_trip_assignment_unique_id():
@@ -88,30 +89,14 @@ class DailyTripAssignment(BaseMaster):
     # TRIP PLAN & STAFF
     # ------------------------------------------------------------------
 
-    trip_plan_id = models.ForeignKey(
-        TripPlan,
-        on_delete=models.PROTECT,
-        db_column="trip_plan_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-    )
+    # Plain unique_id references (no DB relation); the `trip_plan` /
+    # `staff_template` / `alt_staff_template` / `vehicle` properties resolve them.
+    trip_plan_id = models.CharField(max_length=30, db_column="trip_plan_id")
 
-    staff_template_id = models.ForeignKey(
-        StaffTemplate,
-        on_delete=models.PROTECT,
-        db_column="staff_template_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-    )
+    staff_template_id = models.CharField(max_length=20, db_column="staff_template_id", db_index=True)
 
-    alt_staff_template_id = models.ForeignKey(
-        AlternativeStaffTemplate,
-        on_delete=models.PROTECT,
-        db_column="alt_staff_template_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-        null=True,
-        blank=True,
+    alt_staff_template_id = models.CharField(
+        max_length=50, null=True, blank=True, db_column="alt_staff_template_id", db_index=True
     )
 
     # ------------------------------------------------------------------
@@ -128,11 +113,9 @@ class DailyTripAssignment(BaseMaster):
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     # Inherited from the Trip Plan on create (see `save`), can be narrowed
     # per-trip the same way `waste_types` already is.
-    wards = models.ManyToManyField(
-        Ward,
-        related_name="daily_trip_assignments_multi",
-        blank=True,
-    )
+    # Ward / WasteType unique_id lists (no M2M); `wards` / `waste_types` /
+    # `household_waste_types` properties return QuerySets.
+    ward_ids = models.JSONField(default=list, blank=True)
 
     # ------------------------------------------------------------------
     # WASTE TYPE
@@ -140,31 +123,17 @@ class DailyTripAssignment(BaseMaster):
 
     # Waste types collected on this daily trip (inherited from the Trip Plan;
     # can be narrowed per-trip).
-    waste_types = models.ManyToManyField(
-        WasteType,
-        related_name="daily_trip_assignments_multi",
-        blank=True,
-    )
+    waste_type_ids = models.JSONField(default=list, blank=True)
 
     # Multiple waste types for household collection stops on this trip
-    household_waste_type_ids = models.ManyToManyField(
-        WasteType,
-        related_name="household_trip_assignments",
-        blank=True,
-    )
+    household_waste_type_ids = models.JSONField(default=list, blank=True)
 
     # ------------------------------------------------------------------
     # VEHICLE (explicit for operator-mobile flow)
     # ------------------------------------------------------------------
 
-    vehicle_id = models.ForeignKey(
-        VehicleCreation,
-        on_delete=models.PROTECT,
-        db_column="vehicle_id",
-        to_field="unique_id",
-        related_name="daily_trip_assignments",
-        null=True,
-        blank=True,
+    vehicle_id = models.CharField(
+        max_length=40, null=True, blank=True, db_column="vehicle_id", db_index=True
     )
 
     # ------------------------------------------------------------------
@@ -232,25 +201,119 @@ class DailyTripAssignment(BaseMaster):
     # UNIQUE_ID GENERATION
     # ------------------------------------------------------------------
 
+    # ---- plain-reference lookups (request-cached) --------------------
+    @property
+    def trip_plan(self):
+        return ref_cache.get(TripPlan, self.trip_plan_id, "unique_id")
+
+    @property
+    def staff_template(self):
+        return ref_cache.get(StaffTemplate, self.staff_template_id, "unique_id")
+
+    @property
+    def alt_staff_template(self):
+        return ref_cache.get(AlternativeStaffTemplate, self.alt_staff_template_id, "unique_id")
+
+    @property
+    def effective_template(self):
+        """The substitution template when one is active, else the base one."""
+        return self.alt_staff_template or self.staff_template
+
+    @property
+    def vehicle(self):
+        return ref_cache.get(VehicleCreation, self.vehicle_id, "unique_id")
+
+    @property
+    def trip_collection_points(self):
+        """DailyTripCollectionPoint rows of this assignment (plain
+        trip_assignment_id); replaces the reverse FK accessor."""
+        from app.models.core_modules.daily_operations.daily_trip_collection_point import (
+            DailyTripCollectionPoint,
+        )
+
+        return DailyTripCollectionPoint.objects.filter(trip_assignment_id=self.unique_id)
+
+    @property
+    def trip_household_collections(self):
+        """DailyTripHouseholdCollection rows of this assignment (plain
+        trip_assignment_id); replaces the reverse FK accessor."""
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+            DailyTripHouseholdCollection,
+        )
+
+        return DailyTripHouseholdCollection.objects.filter(trip_assignment_id=self.unique_id)
+
+    @property
+    def secondary_bin_collection_events(self):
+        """BinCollectionEvent rows of this assignment (plain trip_assignment_id)."""
+        from app.models.core_modules.daily_operations.secondary_bin_collection_event import (
+            BinCollectionEvent,
+        )
+
+        return BinCollectionEvent.objects.filter(trip_assignment_id=self.unique_id)
+
+    @property
+    def daily_trip_log(self):
+        """This assignment's DailyTripLog (plain trip_assignment_id), or None;
+        replaces the reverse one-to-one accessor."""
+        from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+
+        return DailyTripLog.objects.filter(trip_assignment_id=self.unique_id).first()
+
+    @property
+    def retrip_requests(self):
+        """TripRetripRequest rows raised on this assignment (plain
+        assignment_id); replaces the reverse FK accessor."""
+        from app.models.core_modules.daily_operations.trip_retrip_request import (
+            TripRetripRequest,
+        )
+
+        return TripRetripRequest.objects.filter(assignment_id=self.unique_id)
+
+    @property
+    def vehicle_breakdown(self):
+        """This assignment's VehicleBreakdown (plain trip_assignment_id), or
+        None; replaces the reverse one-to-one accessor."""
+        from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
+
+        return VehicleBreakdown.objects.filter(trip_assignment_id=self.unique_id).first()
+
+    @property
+    def waste_collections(self):
+        """WasteCollection rows linked to this assignment (plain
+        trip_assignment_id); replaces the reverse FK accessor."""
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
+
+        return WasteCollection.objects.filter(trip_assignment_id=self.unique_id)
+
+    @property
+    def wards(self):
+        return Ward.objects.filter(unique_id__in=self.ward_ids or [])
+
+    @property
+    def waste_types(self):
+        return WasteType.objects.filter(unique_id__in=self.waste_type_ids or [])
+
+    @property
+    def household_waste_types(self):
+        return WasteType.objects.filter(unique_id__in=self.household_waste_type_ids or [])
+
     def save(self, *args, **kwargs):
-        if self.trip_plan_id:
-            self.staff_template_id = self.staff_template_id or self.trip_plan_id.staff_template_id
-            self.vehicle_id = self.vehicle_id or self.trip_plan_id.vehicle_id
-            copy_flat_geo(self, self.trip_plan_id, only_empty=True)
-            self.scheduled_time = self.scheduled_time or self.trip_plan_id.scheduled_time
+        plan = self.trip_plan
+        if plan:
+            self.staff_template_id = self.staff_template_id or plan.staff_template_id
+            self.vehicle_id = self.vehicle_id or plan.vehicle_id
+            copy_flat_geo(self, plan, only_empty=True)
+            self.scheduled_time = self.scheduled_time or plan.scheduled_time
+            # Default wards / waste types from the plan before the insert, so
+            # the post_save stop-copy signal already sees them.
+            if not self.waste_type_ids:
+                self.waste_type_ids = list(plan.waste_type_ids or [])
+            if not self.ward_ids:
+                self.ward_ids = list(plan.ward_ids or [])
         if not self.unique_id:
             self.unique_id = _generate_trip_assignment_unique_id()
-        is_new = self._state.adding
         super().save(*args, **kwargs)
-        if is_new and self.trip_plan_id and not self.waste_types.exists():
-            self.waste_types.set(self.trip_plan_id.waste_types.all())
-        if is_new and self.trip_plan_id and not self.wards.exists():
-            self.wards.set(self.trip_plan_id.wards.all())
-            # post_save fires before the assignment's many-to-many wards are
-            # available. Sync once more after the default wards are copied so
-            # household stops are restricted to the selected wards.
-            from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
-            sync_daily_assignment_stops_from_plan(self)
 
     def __str__(self):
         return self.unique_id

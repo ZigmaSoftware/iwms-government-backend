@@ -4,6 +4,8 @@ from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
+from app.viewsets.operator_mobile.helpers import effective_crew_q
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
@@ -41,7 +43,7 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
     )
     household_children = list(
         DailyTripHouseholdCollection.objects.filter(
-            trip_assignment_id=assignment, is_deleted=False,
+            trip_assignment_id=ref_id(assignment), is_deleted=False,
         )
     )
     total_weight += sum(
@@ -118,16 +120,16 @@ def _serialize_event(event: BinCollectionEvent, request=None) -> dict:
         "event_type": event.status,
         "collected_weight_kg": str(event.collected_weight_kg),
         "status_reason": event.status_reason,
-        "scanned_qr": event.bin_id_id,
+        "scanned_qr": event.bin_id,
         "bin": {
-            "unique_id": event.bin_id_id,
-            "bin_name": getattr(event.bin_id, "bin_name", None),
-            "bin_qr": event.bin_id_id,
-            "bin_qr_image_url": _bin_qr_image_url(event.bin_id, request=request),
+            "unique_id": event.bin_id,
+            "bin_name": getattr(event.bin, "bin_name", None),
+            "bin_qr": event.bin_id,
+            "bin_qr_image_url": _bin_qr_image_url(event.bin, request=request),
         },
         "collection_point": {
-            "unique_id": event.collection_point_id_id,
-            "name": getattr(event.collection_point_id, "cp_name", None),
+            "unique_id": event.collection_point_id,
+            "name": getattr(event.collection_point, "cp_name", None),
         },
         "latitude": (
             str(event.driver_latitude) if event.driver_latitude is not None else None
@@ -162,16 +164,8 @@ class TripHistoryViewSet(viewsets.ViewSet):
             DailyTripAssignment.objects
             .filter(is_deleted=False)
             .filter(
-                Q(alt_staff_template_id__isnull=False, alt_staff_template_id__operator_id=operator)
-                | Q(alt_staff_template_id__isnull=False, alt_staff_template_id__driver_id=operator)
-                | Q(alt_staff_template_id__isnull=True, staff_template_id__operator_id=operator)
-                | Q(alt_staff_template_id__isnull=True, staff_template_id__driver_id=operator)
+                effective_crew_q(ref_id(operator))
             )
-            .select_related(
-                "vehicle_id",
-                "alt_staff_template_id",
-            )
-            .prefetch_related("trip_collection_points", "waste_types", "wards")
             .order_by("-trip_date", "-scheduled_time")
         )
 
@@ -218,8 +212,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
         summary = _serialize_summary(assignment)
         events_qs = (
             BinCollectionEvent.objects
-            .filter(trip_assignment_id=assignment, is_deleted=False)
-            .select_related("bin_id", "collection_point_id")
+            .filter(trip_assignment_id=ref_id(assignment), is_deleted=False)
             .order_by("created_at")
         )
         summary["events"] = [_serialize_event(e, request=request) for e in events_qs]
@@ -227,7 +220,6 @@ class TripHistoryViewSet(viewsets.ViewSet):
         cps = (
             assignment.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id", "bin_id")
             .order_by("sequence")
         )
         summary["collection_points"] = [
@@ -244,15 +236,15 @@ class TripHistoryViewSet(viewsets.ViewSet):
                 # collection_point / bin are nullable (household stops carry
                 # neither) — guard so a single null-FK row can't 500 the detail.
                 "collection_point": {
-                    "unique_id": cp.collection_point_id.unique_id,
-                    "name": cp.collection_point_id.cp_name,
-                } if cp.collection_point_id else None,
+                    "unique_id": cp.collection_point.unique_id,
+                    "name": cp.collection_point.cp_name,
+                } if cp.collection_point else None,
                 "bin": {
-                    "unique_id": cp.bin_id.unique_id,
-                    "bin_name": cp.bin_id.bin_name,
-                    "bin_qr": cp.bin_id.unique_id,
-                    "bin_qr_image_url": _bin_qr_image_url(cp.bin_id, request=request),
-                } if cp.bin_id else None,
+                    "unique_id": cp.bin.unique_id,
+                    "bin_name": cp.bin.bin_name,
+                    "bin_qr": cp.bin.unique_id,
+                    "bin_qr_image_url": _bin_qr_image_url(cp.bin, request=request),
+                } if cp.bin else None,
             }
             for cp in cps
         ]

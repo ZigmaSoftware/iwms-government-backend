@@ -76,7 +76,7 @@ class ForgotPasswordView(APIView):
         max_requests = getattr(settings, 'OTP_MAX_REQUESTS_PER_WINDOW', 3)
         since = timezone.now() - timezone.timedelta(minutes=window_minutes)
         recent_count = PasswordResetOTP.objects.filter(
-            customer=customer,
+            customer_id=customer.unique_id,
             created_at__gte=since,
         ).count()
         if recent_count >= max_requests:
@@ -89,7 +89,7 @@ class ForgotPasswordView(APIView):
         cooldown = getattr(settings, 'OTP_RESEND_COOLDOWN_MINUTES', 2)
         cooldown_since = timezone.now() - timezone.timedelta(minutes=cooldown)
         last_otp = PasswordResetOTP.objects.filter(
-            customer=customer,
+            customer_id=customer.unique_id,
             created_at__gte=cooldown_since,
             is_used=False,
         ).first()
@@ -102,7 +102,7 @@ class ForgotPasswordView(APIView):
                 )
 
         # Invalidate all previous unused OTPs for this customer
-        PasswordResetOTP.objects.filter(customer=customer, is_used=False).update(is_used=True)
+        PasswordResetOTP.objects.filter(customer_id=customer.unique_id, is_used=False).update(is_used=True)
 
         otp_record = PasswordResetOTP.create_for_customer(customer)
         sent = send_otp_email(
@@ -136,7 +136,7 @@ class VerifyOTPView(APIView):
             return _err("session_token and otp_code are required.")
 
         try:
-            otp_record = PasswordResetOTP.objects.select_related("customer").get(
+            otp_record = PasswordResetOTP.objects.get(
                 session_token=session_token,
             )
         except PasswordResetOTP.DoesNotExist:
@@ -195,7 +195,7 @@ class ResetPasswordView(APIView):
             return _err(complexity_error)
 
         try:
-            otp_record = PasswordResetOTP.objects.select_related("customer").get(
+            otp_record = PasswordResetOTP.objects.get(
                 reset_token=reset_token,
             )
         except PasswordResetOTP.DoesNotExist:
