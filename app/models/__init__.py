@@ -55,6 +55,7 @@ from .masters.waste_masters.subproperty import SubProperty
 from .superadmin.role_management.userType import UserType
 from .superadmin.role_management.staffUserType import StaffUserType
 from .superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from .superadmin.role_management.staffHierarchy import StaffHierarchy
 
 
 # ============================================================
@@ -223,6 +224,7 @@ __all__ = [
     "UserType",
     "StaffUserType",
     "GovernmentStaffUserType",
+    "StaffHierarchy",
 
     # Screen Management
     "MainScreenType",

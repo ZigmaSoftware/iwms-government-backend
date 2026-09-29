@@ -208,6 +208,7 @@ API_THROTTLE_RATES = {
     "feed_back": READ_MASTER_DATA,
     "fuel": READ_MASTER_DATA,
     "government_staff_user_type": READ_MASTER_DATA,
+    "staff_hierarchy": READ_MASTER_DATA,
     "main_screen": READ_MASTER_DATA,
     "main_screen_type": READ_MASTER_DATA,
     "monthly_waste_comparison_report": READ_MASTER_DATA,

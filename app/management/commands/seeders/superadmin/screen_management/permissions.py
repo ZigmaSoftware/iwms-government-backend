@@ -354,6 +354,7 @@ class PermissionSeeder(BaseSeeder):
                 "subitems": [
                     ("user-type", "user-type", "user-type", 1, "User types"),
                     ("staff-user-type", "staff-user-type", "staff-user-type", 2, "Staff user types"),
+                    ("staff-hierarchy", "staff-hierarchy", "staff-hierarchy", 3, "Staff reporting hierarchy"),
                 ],
             },
             {

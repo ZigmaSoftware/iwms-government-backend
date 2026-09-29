@@ -56,6 +56,7 @@ from ..viewsets.superadmin.role_management.usertype_viewset import UserTypeViewS
 from ..viewsets.superadmin.role_management.staffusertype_viewset import StaffUserTypeViewSet
 from ..viewsets.superadmin.role_management.contractorusertype_viewset import ContractorUserTypeViewSet
 from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
+from ..viewsets.superadmin.role_management.staffhierarchy_viewset import StaffHierarchyViewSet
 
 # User creations
 from ..viewsets.superadmin.staff_management.staff_viewset import StaffViewSet
@@ -234,6 +235,7 @@ router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeV
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet, basename="contractorusertype-roletype")
 router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet)
 router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet, basename="governmentusertype-roletype")
+router.register_group("role-assigns", "staff-hierarchy",     StaffHierarchyViewSet)
 
 # ============================================================
 # GROUP: USER CREATION

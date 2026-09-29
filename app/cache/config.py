@@ -41,6 +41,8 @@ CACHE_CONFIG = {
     "contractor_user_type_detail": {"enabled": True, "ttl": 300},
     "government_staff_user_type_list": {"enabled": True, "ttl": 600},
     "government_staff_user_type_detail": {"enabled": True, "ttl": 300},
+    "staff_hierarchy_list": {"enabled": True, "ttl": 600},
+    "staff_hierarchy_detail": {"enabled": True, "ttl": 300},
     "staff_user_type_list": {"enabled": True, "ttl": 600},
     "staff_user_type_detail": {"enabled": True, "ttl": 300},
     "user_type_list": {"enabled": True, "ttl": 600},

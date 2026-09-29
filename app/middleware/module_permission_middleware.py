@@ -153,6 +153,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "StaffUserType",
         "ContractorUserType",
         "GovernmentStaffUserType",
+        "StaffHierarchy",
     },
     "user-creations": {
         "UsersCreation",
@@ -262,6 +263,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "StaffUserType": ("staff-user-type",),
     "ContractorUserType": ("contractorusertypes",),
     "GovernmentStaffUserType": ("governmentusertypes",),
+    "StaffHierarchy": ("staff-hierarchy",),
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
     "StaffCreation": ("staffcreation",),
