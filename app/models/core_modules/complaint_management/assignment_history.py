@@ -19,8 +19,6 @@ class ComplaintAssignmentHistory(BaseMaster):
     )
 
     ticket_id = models.CharField(db_index=True, max_length=30)
-    from_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
-    to_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
     from_user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     to_user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     from_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
@@ -36,7 +34,7 @@ class ComplaintAssignmentHistory(BaseMaster):
         verbose_name_plural = "Complaint Assignment History"
 
     def __str__(self):
-        return f"{self.ticket_id} -> {self.to_team_id}"
+        return f"{self.ticket_id} -> {self.to_staff_id}"
 
     def _lookup(self, model_path, value, field="unique_id"):
         if not value:
@@ -52,20 +50,6 @@ class ComplaintAssignmentHistory(BaseMaster):
         return self._lookup(
             "app.models.core_modules.complaint_management.ticket.ComplaintTicket",
             self.ticket_id,
-        )
-
-    @property
-    def from_team(self):
-        return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.from_team_id,
-        )
-
-    @property
-    def to_team(self):
-        return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.to_team_id,
         )
 
     @property

@@ -1,4 +1,5 @@
 from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from app.cache.decorators import cache_api
@@ -10,7 +11,6 @@ from app.models.core_modules.complaint_management.source_master import Complaint
 from app.models.core_modules.complaint_management.language_master import ComplaintLanguage
 from app.models.core_modules.complaint_management.priority_master import ComplaintPriority
 from app.models.core_modules.complaint_management.status_master import ComplaintStatus
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.core_modules.complaint_management.module_master import ComplaintModule
 from app.models.core_modules.complaint_management.category_master import ComplaintCategory
 from app.models.core_modules.complaint_management.subcategory_master import ComplaintSubcategory
@@ -21,7 +21,6 @@ from app.serializers.core_modules.complaint_management.master_serializers import
     ComplaintLanguageSerializer,
     ComplaintPrioritySerializer,
     ComplaintStatusSerializer,
-    ComplaintTeamSerializer,
     ComplaintModuleSerializer,
     ComplaintCategorySerializer,
     ComplaintSubcategorySerializer,
@@ -166,37 +165,6 @@ class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintTeamViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
-    throttle_scope = "complaint_team"
-    queryset = ComplaintTeam.objects.filter(is_deleted=False).order_by("team_code")
-    serializer_class = ComplaintTeamSerializer
-    lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    pagination_class = LimitOffsetWithPage
-    search_fields = ["team_code", "team_name"]
-    ordering_fields = ["team_code", "team_name", "is_active"]
-    AUDIT_MODULE = "complaint-ticket"
-    AUDIT_ENDPOINT = "teams"
-
-    CACHE_SCOPES = ("complaint_team_list", "complaint_team_detail")
-
-    @cache_api("complaint_team_list", vary_on_user=False)
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @cache_api("complaint_team_detail", vary_on_user=False)
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    def perform_create(self, serializer):
-        super().perform_create(serializer)
-        invalidate_on_commit(*self.CACHE_SCOPES)
-
-    def perform_update(self, serializer):
-        super().perform_update(serializer)
-        invalidate_on_commit(*self.CACHE_SCOPES)
-
-
 class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_module"
     queryset = ComplaintModule.objects.filter(is_deleted=False).order_by("sort_order")
@@ -318,6 +286,17 @@ class ComplaintSlaRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mode
     @cache_api("complaint_sla_rule_detail", vary_on_user=False)
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    # GET /complaint-ticket/sla-rules/hierarchy-levels/[?district_id=...&panchayat_id=...]
+    # — the Staff Hierarchy levels (with their roles) an SLA rule can set
+    # escalation windows for; scope params narrow it to that area's chain.
+    @action(detail=False, methods=["get"], url_path="hierarchy-levels")
+    def hierarchy_levels(self, request):
+        from app.services.complaint_escalation import hierarchy_level_options
+        from app.utils.staff_hierarchy import SCOPE_FIELDS
+
+        geo = {field: request.query_params.get(field) for field in SCOPE_FIELDS if request.query_params.get(field)}
+        return Response(hierarchy_level_options(geo or None))
 
     def perform_create(self, serializer):
         super().perform_create(serializer)

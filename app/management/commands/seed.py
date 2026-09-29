@@ -238,7 +238,7 @@ ORDERED_GROUPS = [
     "screen-managements",   # screen permissions
     "collections",          # panchayat-wise, ward-wise, zone-wise
     "customer-masters",     # customer creations, feedback, charge rules
-    "complaint-ticket",     # tickets, categories, teams, sla-rules, routing-rules
+    "complaint-ticket",     # tickets, categories, sla-rules (+ escalation levels), routing-rules
     # "audits",               # vehicle-trip-audit, trip-exception-log, ...
     "reports",              # monthly-waste-comparison
     "driver-demo",          # driver_user login wired to a today trip (bin + household)

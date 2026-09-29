@@ -24,7 +24,6 @@ class ComplaintCategory(BaseMaster):
     description = models.TextField(blank=True, null=True)
 
     default_priority_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
-    default_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
 
     requires_location = models.BooleanField(default=True)
     requires_media = models.BooleanField(default=False)
@@ -61,13 +60,6 @@ class ComplaintCategory(BaseMaster):
         return self._lookup(
             "app.models.core_modules.complaint_management.priority_master.ComplaintPriority",
             self.default_priority_id,
-        )
-
-    @property
-    def default_team(self):
-        return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.default_team_id,
         )
 
     @property

@@ -9,7 +9,18 @@ def generate_sla_rule_id():
 
 
 class ComplaintSlaRule(BaseMaster):
-    """Configurable assign/resolve SLA + escalation per category/priority/source."""
+    """Escalation timing per category/priority/source (and area).
+
+    Escalation windows live in `ComplaintSlaEscalationLevel` rows (one per
+    Staff Hierarchy level) — see `escalation_levels`.
+
+    A rule can be scoped to a place — state, district, area type and/or one
+    local body — the same way Staff Hierarchy rows are, so one complaint type
+    can escalate on different levels/timings in, say, Anthiyur Panchayat and
+    Chennai Corporation. Blank scope columns mean "everywhere"; for a ticket
+    the rule with the deepest scope covering its area wins (see
+    app/utils/complaint_ticket_routing.py).
+    """
 
     unique_id = models.CharField(
         max_length=30,
@@ -23,11 +34,20 @@ class ComplaintSlaRule(BaseMaster):
     priority_id = models.CharField(db_index=True, max_length=30)
     source_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
 
-    assign_within_minutes = models.IntegerField(null=True, blank=True)
-    resolve_within_minutes = models.IntegerField(null=True, blank=True)
+    # Counts only 09:00-18:00 Mon-Sat when adding the escalation windows.
     working_hours_only = models.BooleanField(default=False)
-    escalation_after_minutes = models.IntegerField(null=True, blank=True)
-    escalation_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+
+    # Scope (plain unique_id strings, no DB relation), broadest first. At
+    # most one local-body column is set; parents are stored filled in.
+    country_id = models.CharField(max_length=30, null=True, blank=True)
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
     class Meta:
         ordering = ["unique_id"]
@@ -75,8 +95,12 @@ class ComplaintSlaRule(BaseMaster):
         )
 
     @property
-    def escalation_team(self):
-        return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.escalation_team_id,
+    def escalation_levels(self):
+        """Live per-level escalation windows, lowest level first."""
+        from app.models.core_modules.complaint_management.sla_escalation_level import (
+            ComplaintSlaEscalationLevel,
         )
+
+        return ComplaintSlaEscalationLevel.objects.filter(
+            sla_rule_id=self.unique_id, is_deleted=False
+        ).order_by("level")

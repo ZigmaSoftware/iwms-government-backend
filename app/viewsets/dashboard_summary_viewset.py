@@ -1513,11 +1513,7 @@ class DashboardSummaryViewSet(ViewSet):
                     "gender": row.gender or "",
                     "module": getattr(getattr(row.category, "module", None), "module_name", "") or "",
                     "waste_types": [waste_type.waste_type_name for waste_type in row.waste_types.all()],
-                    "assigned_to": (
-                        getattr(row.assigned_staff, "employee_name", "")
-                        or getattr(row.assigned_team, "team_name", "")
-                        or ""
-                    ),
+                    "assigned_to": getattr(row.responsible_staff, "employee_name", "") or "",
                     "location": " · ".join(
                         value
                         for value in (

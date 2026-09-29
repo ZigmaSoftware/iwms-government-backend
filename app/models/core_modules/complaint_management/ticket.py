@@ -99,16 +99,26 @@ class ComplaintTicket(BaseMaster):
                 return field, obj, getattr(obj, name_attr, None)
         return None, None, None
 
-    assigned_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
     assigned_user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     assigned_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
 
-    sla_due_at = models.DateTimeField(null=True, blank=True)
-    first_response_due_at = models.DateTimeField(null=True, blank=True)
+    # Hierarchy-driven auto-escalation (see app/services/complaint_escalation.py).
+    # `assigned_staff_id` stays the first assignee; each escalation hop moves
+    # `escalated_to_staff_id` up the Staff Hierarchy.
+    is_escalated = models.BooleanField(default=False)
+    escalated_to_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    escalation_level = models.PositiveIntegerField(
+        default=0,
+        help_text="Staff Hierarchy level currently responsible (0 = no hierarchy level resolved).",
+    )
+    next_escalation_due_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Deadline for the current escalation_level. If passed and unresolved, auto-escalate to the next level.",
+    )
+
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
-    sla_breached = models.BooleanField(default=False)
-    sla_breached_at = models.DateTimeField(null=True, blank=True)
 
     reopened_count = models.IntegerField(default=0)
     parent_ticket_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
@@ -128,11 +138,42 @@ class ComplaintTicket(BaseMaster):
         indexes = [
             models.Index(fields=["ticket_no"]),
             models.Index(fields=["wa_phone"]),
-            models.Index(fields=["sla_due_at"]),
+            models.Index(fields=["next_escalation_due_at"]),
         ]
 
     def __str__(self):
         return self.ticket_no
+
+    def save(self, *args, **kwargs):
+        filled = self._fill_geo_parents(kwargs.get("update_fields"))
+        if filled and kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = [*kwargs["update_fields"], *filled]
+        super().save(*args, **kwargs)
+
+    def _fill_geo_parents(self, update_fields=None):
+        """Intake paths often set only the local body (or district); fill the
+        missing state/district/area type from it so location filters match.
+        Returns the names of the fields it filled."""
+        from app.utils.staff_hierarchy import complete_geo
+
+        parents = ("state_id", "district_id", "area_type_id")
+        if update_fields is not None and not {"state_id", "district_id", "area_type_id", "corporation_id",
+                                              "municipality_id", "town_panchayat_id", "panchayat_union_id",
+                                              "panchayat_id"} & set(update_fields):
+            return []
+        if all(getattr(self, field) for field in parents):
+            return []
+        geo = complete_geo({
+            field: getattr(self, field)
+            for field in (*parents, "corporation_id", "municipality_id", "town_panchayat_id",
+                          "panchayat_union_id", "panchayat_id")
+        })
+        filled = []
+        for field in parents:
+            if not getattr(self, field) and geo.get(field):
+                setattr(self, field, geo[field])
+                filled.append(field)
+        return filled
 
     # =============================
     # PLAIN-STRING RELATION LOOKUPS
@@ -199,11 +240,18 @@ class ComplaintTicket(BaseMaster):
         )
 
     @property
-    def assigned_team(self):
+    def escalated_to_staff(self):
         return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.assigned_team_id,
+            "app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails",
+            self.escalated_to_staff_id,
+            field="staff_unique_id",
         )
+
+    @property
+    def responsible_staff(self):
+        """Whoever currently owns the ticket: the escalatee once escalated,
+        otherwise the first assignee."""
+        return self.escalated_to_staff or self.assigned_staff
 
     @property
     def assigned_user(self):

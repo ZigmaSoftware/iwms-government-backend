@@ -450,7 +450,8 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
         screens = validated_data["screens"]
         desc = (validated_data.get("description") or "").strip()
         update_only = bool(self.context.get("update_only", False))
-        updated_by = self.context.get("updated_by")
+        updated_by_obj = self.context.get("updated_by")
+        updated_by = updated_by_obj.pk if updated_by_obj else None
         
         created, updated, deleted = [], [], []
         created_columns, updated_columns, deleted_columns = [], [], []
@@ -465,6 +466,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
             staff_id=staff_id,
             permission_type=permission_type,
             mainscreen_id=mainscreen_id,
+            is_deleted=False,
         )
         existing_lookup = {
             (obj.userscreen_id, obj.userscreenaction_id): obj
@@ -584,6 +586,7 @@ class UserScreenPermissionMultiScreenSerializer(serializers.Serializer):
                 permission_owner_kind=permission_owner_kind,
                 staff_id=staff_id,
                 userscreen_id=userscreen_id,
+                is_deleted=False,
             )
         }
 
