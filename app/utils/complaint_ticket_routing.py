@@ -2,26 +2,30 @@
 
 Given a ticket's category/subcategory/flat geo (state/district/local body)/
 priority/source, finds the most specific matching ComplaintRoutingRule (to
-assign a team/user) and the most specific matching ComplaintSlaRule (to
-compute due dates), then fills only the ticket fields that are still empty —
-an explicit assignment or a manually-set due date is never overwritten.
+assign a user) and the most specific matching ComplaintSlaRule (whose
+per-level windows pick the Staff Hierarchy entry level and escalation
+deadlines — see app/services/complaint_escalation.py), then fills only the
+ticket fields that are still empty — an explicit assignment is never
+overwritten.
 """
-from django.db.models import Max
 from django.utils import timezone
 from datetime import timedelta, time
 
+from app.utils.staff_hierarchy import covers, row_scope, specificity
+
 BUSINESS_START = time(9, 0)
 BUSINESS_END = time(18, 0)
-BUSINESS_WEEKDAY_LIMIT = 6  # Monday=0 ... Saturday=5 are working days, Sunday=6 is off
+BUSINESS_WEEKDAY_LIMIT = 6  # weekday() >= this is off: Monday=0 ... Saturday=5 work, Sunday=6 is off
 
 
 def _add_business_minutes(start, minutes):
     """Add `minutes` to `start`, counting only 09:00-18:00 on Mon-Sat."""
     remaining = minutes
-    current = start
+    # Business hours are local (TIME_ZONE) — timezone.now() is UTC.
+    current = timezone.localtime(start) if timezone.is_aware(start) else start
     # Move into the next open window if we start outside business hours.
-    while current.time() < BUSINESS_START or current.time() >= BUSINESS_END or current.weekday() > BUSINESS_WEEKDAY_LIMIT:
-        if current.weekday() > BUSINESS_WEEKDAY_LIMIT or current.time() >= BUSINESS_END:
+    while current.time() < BUSINESS_START or current.time() >= BUSINESS_END or current.weekday() >= BUSINESS_WEEKDAY_LIMIT:
+        if current.weekday() >= BUSINESS_WEEKDAY_LIMIT or current.time() >= BUSINESS_END:
             current = (current + timedelta(days=1)).replace(
                 hour=BUSINESS_START.hour, minute=BUSINESS_START.minute, second=0, microsecond=0
             )
@@ -41,7 +45,7 @@ def _add_business_minutes(start, minutes):
             current = (current + timedelta(days=1)).replace(
                 hour=BUSINESS_START.hour, minute=BUSINESS_START.minute, second=0, microsecond=0
             )
-            while current.weekday() > BUSINESS_WEEKDAY_LIMIT:
+            while current.weekday() >= BUSINESS_WEEKDAY_LIMIT:
                 current += timedelta(days=1)
     return current
 
@@ -95,26 +99,31 @@ def _best_routing_rule(ticket):
     return matching[0]
 
 
-def _sla_matches(rule, ticket):
+def _sla_matches(rule, ticket, geo):
     if rule.subcategory_id and rule.subcategory_id != ticket.subcategory_id:
         return False
     if rule.priority_id and rule.priority_id != ticket.priority_id:
         return False
     if rule.source_id and rule.source_id != ticket.source_id:
         return False
-    return True
+    return covers(row_scope(rule), geo)
 
 
 def _sla_specificity(rule):
-    return sum([
-        bool(rule.subcategory_id),
-        bool(rule.priority_id),
-        bool(rule.source_id),
-    ])
+    """Location first — a Panchayat/Corporation rule beats a District one,
+    which beats a State-wide or unscoped one — then sub-category/priority/
+    source."""
+    scope = row_scope(rule)
+    return (
+        specificity(scope),
+        len(scope),
+        sum([bool(rule.subcategory_id), bool(rule.priority_id), bool(rule.source_id)]),
+    )
 
 
 def _best_sla_rule(ticket):
     from app.models.core_modules.complaint_management.sla_rule_master import ComplaintSlaRule
+    from app.services.complaint_escalation import ticket_geo
 
     candidates = ComplaintSlaRule.objects.filter(
         is_deleted=False,
@@ -122,163 +131,64 @@ def _best_sla_rule(ticket):
         category_id=ticket.category_id,
     )
 
-    matching = [rule for rule in candidates if _sla_matches(rule, ticket)]
+    geo = ticket_geo(ticket)
+    matching = [rule for rule in candidates if _sla_matches(rule, ticket, geo)]
     if not matching:
         return None
     matching.sort(key=_sla_specificity, reverse=True)
     return matching[0]
 
 
-def apply_routing_and_sla(ticket, save=True):
-    """Fill assigned_team/assigned_user and sla_due_at/first_response_due_at
-    on `ticket` from the best-matching routing + SLA rules — only touching
-    fields that are currently empty. Returns the list of updated field names.
+def resolve_sla_rule(ticket, routing_rule=None):
+    """The SLA rule governing `ticket`: the most specific matching rule, else
+    the one pinned on the best routing rule.
+
+    A routing rule's `sla_rule` is a catch-all (the seeder attaches the
+    category-wide rule to a category-wide route), so it is only the fallback
+    — a ticket whose sub-category has its own SLA must not silently get the
+    category's slower target.
     """
-    updated_fields = []
-    now = timezone.now()
-
-    routing_rule = None
-    if not ticket.assigned_team_id:
-        routing_rule = _best_routing_rule(ticket)
-        if routing_rule:
-            ticket.assigned_team_id = routing_rule.team_id
-            updated_fields.append("assigned_team_id")
-            if routing_rule.user_id and not ticket.assigned_user_id:
-                ticket.assigned_user_id = routing_rule.user_id
-                updated_fields.append("assigned_user_id")
-        elif ticket.category_id and ticket.category and ticket.category.default_team_id:
-            # No routing rule matched — fall back to the category's default
-            # team. This is what makes ComplaintRoutingRule optional: a
-            # deployment only needs rules when a category must route to
-            # different teams by area. Configuring the team on the Complaint
-            # Type is enough for the common single-tenant case.
-            ticket.assigned_team_id = ticket.category.default_team_id
-            updated_fields.append("assigned_team_id")
-
-    # Prefer the most specific SLA rule that actually matches this ticket over
-    # the one pinned on the routing rule.
-    #
-    # A routing rule's `sla_rule` is a catch-all: the seeder attaches the
-    # category-wide rule to a category-wide route. Taking it unconditionally
-    # meant a ticket whose sub-category has its own SLA (a P1 "Dead animal"
-    # under a P2 Garbage category) silently got the category's slower target —
-    # 24h instead of 4h — because the pinned rule was consulted first and
-    # `_best_sla_rule` never ran. The pinned rule is now the fallback for when
-    # nothing more specific matches.
     sla_rule = _best_sla_rule(ticket)
-    if not sla_rule and routing_rule and routing_rule.sla_rule_id:
-        sla_rule = routing_rule.sla_rule
-
     if sla_rule:
-        add_minutes = _add_business_minutes if sla_rule.working_hours_only else (
-            lambda start, minutes: start + timedelta(minutes=minutes)
-        )
-        if not ticket.first_response_due_at and sla_rule.assign_within_minutes:
-            ticket.first_response_due_at = add_minutes(now, sla_rule.assign_within_minutes)
-            updated_fields.append("first_response_due_at")
-        if not ticket.sla_due_at and sla_rule.resolve_within_minutes:
-            ticket.sla_due_at = add_minutes(now, sla_rule.resolve_within_minutes)
-            updated_fields.append("sla_due_at")
+        return sla_rule
+    routing_rule = routing_rule or _best_routing_rule(ticket)
+    return routing_rule.sla_rule if routing_rule and routing_rule.sla_rule_id else None
+
+
+def apply_routing_and_sla(ticket, save=True):
+    """Fill assigned_user, the entry-level assigned_staff and the escalation
+    clock on `ticket` from the best-matching routing + SLA rules —
+    only touching fields that are currently empty. Returns the list of
+    updated field names.
+    """
+    from app.services.complaint_escalation import set_initial_escalation
+
+    updated_fields = []
+
+    routing_rule = _best_routing_rule(ticket)
+    if routing_rule and routing_rule.user_id and not ticket.assigned_user_id:
+        ticket.assigned_user_id = routing_rule.user_id
+        updated_fields.append("assigned_user_id")
+
+    sla_rule = resolve_sla_rule(ticket, routing_rule)
+
+    auto_assigned = False
+    if ticket.next_escalation_due_at is None and not ticket.escalation_level:
+        escalation_fields = set_initial_escalation(ticket, sla_rule)
+        auto_assigned = "assigned_staff_id" in escalation_fields
+        updated_fields += escalation_fields
 
     if save and updated_fields:
         ticket.save(update_fields=updated_fields)
 
+    if save and auto_assigned:
+        from app.services import notification_service
+
+        notification_service.notify(
+            ticket,
+            "ASSIGNED",
+            f"Ticket {ticket.ticket_no} ({ticket.title or ticket.category.category_name}) has been assigned to you.",
+            staff=ticket.assigned_staff,
+        )
+
     return updated_fields
-
-
-def perform_escalation(ticket, target_team=None, reason=None, actor_user=None, by_system=False):
-    """Escalate `ticket` to `target_team` (or the current team's `escalates_to`).
-
-    Shared by the manual `/escalate/` API action and the automated SLA-breach
-    detection job so both paths write identical history rows. Raises
-    ValueError if there is no team to escalate to.
-    """
-    from app.models.core_modules.complaint_management.status_master import ComplaintStatus
-    from app.models.core_modules.complaint_management.status_history import ComplaintStatusHistory
-    from app.models.core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
-    from app.models.core_modules.complaint_management.escalation_history import ComplaintEscalationHistory
-    from app.services import notification_service
-
-    current_team = ticket.assigned_team
-    target = target_team or (current_team.escalates_to if current_team else None)
-    if not target:
-        raise ValueError("Already at the top of the escalation chain.")
-
-    escalated_status = ComplaintStatus.objects.filter(status_code="ESCALATED", is_deleted=False).first()
-
-    from_team = current_team
-    from_staff = ticket.assigned_staff
-
-    last_level = (
-        ticket.escalation_history.aggregate(m=Max("escalation_level"))["m"]
-        if hasattr(ticket, "escalation_history") else None
-    )
-    base_level = last_level or (current_team.escalation_level if current_team else 1)
-    next_level = base_level + 1
-
-    ticket.assigned_team_id = target.unique_id
-    ticket.assigned_staff_id = target.lead_staff_id
-    old_status = ticket.status
-    if escalated_status:
-        ticket.status_id = escalated_status.unique_id
-        ticket.save(update_fields=["assigned_team_id", "assigned_staff_id", "status_id"])
-    else:
-        ticket.save(update_fields=["assigned_team_id", "assigned_staff_id"])
-
-    escalation = ComplaintEscalationHistory.objects.create(
-        ticket_id=ticket.unique_id,
-        escalation_level=next_level,
-        escalated_from_team_id=getattr(from_team, "unique_id", None),
-        escalated_to_team_id=getattr(target, "unique_id", None),
-        escalated_to_staff_id=getattr(target.lead_staff, "staff_unique_id", None),
-        reason=reason,
-        escalated_by_system=by_system,
-    )
-    ComplaintAssignmentHistory.objects.create(
-        ticket_id=ticket.unique_id,
-        from_team_id=getattr(from_team, "unique_id", None),
-        to_team_id=getattr(target, "unique_id", None),
-        from_staff_id=getattr(from_staff, "staff_unique_id", None),
-        to_staff_id=getattr(target.lead_staff, "staff_unique_id", None),
-        assigned_by_id=getattr(actor_user, "unique_id", None),
-        assignment_reason=reason or ("SLA breach auto-escalation" if by_system else "Escalated"),
-    )
-    if escalated_status:
-        ComplaintStatusHistory.objects.create(
-            ticket_id=ticket.unique_id,
-            from_status_id=getattr(old_status, "unique_id", None),
-            to_status_id=escalated_status.unique_id,
-            changed_by_user_id=getattr(actor_user, "unique_id", None),
-            changed_by_system=by_system,
-            remarks=f"Escalated to {target.team_name}" + (f": {reason}" if reason else ""),
-            visible_to_citizen=True,
-        )
-
-    new_staff = target.lead_staff
-    if new_staff and (not from_staff or new_staff.staff_unique_id != from_staff.staff_unique_id):
-        notification_service.notify(
-            ticket,
-            "ESCALATED_TO",
-            f"Ticket {ticket.ticket_no} escalated to you (Level {next_level}, {target.team_name})." + (
-                f" Reason: {reason}" if reason else ""
-            ),
-            staff=new_staff,
-        )
-    if from_staff and (not new_staff or from_staff.staff_unique_id != new_staff.staff_unique_id):
-        notification_service.notify(
-            ticket,
-            "ESCALATED",
-            f"Ticket {ticket.ticket_no} has been escalated to {target.team_name}." + (
-                f" Reason: {reason}" if reason else ""
-            ),
-            staff=from_staff,
-        )
-
-    from app.services.push_notification_service import send_push_to_customer
-    send_push_to_customer(
-        ticket.customer,
-        "Grievance update",
-        f"Your ticket {ticket.ticket_no} has been escalated for closer attention.",
-        data={"event": "ticket_escalated", "ticket_id": str(ticket.unique_id)},
-    )
-    return escalation

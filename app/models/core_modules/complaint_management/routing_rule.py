@@ -9,7 +9,7 @@ def generate_routing_rule_id():
 
 
 class ComplaintRoutingRule(BaseMaster):
-    """Resolves a team/user/SLA for a ticket by category + geo + priority."""
+    """Resolves a user/SLA for a ticket by category + geo + priority."""
 
     CACHE_SCOPES = ("complaint_routing_rule_list", "complaint_routing_rule_detail")
 
@@ -34,7 +34,6 @@ class ComplaintRoutingRule(BaseMaster):
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
     priority_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
-    team_id = models.CharField(db_index=True, max_length=30)
     user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     sla_rule_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
 
@@ -44,7 +43,7 @@ class ComplaintRoutingRule(BaseMaster):
         verbose_name_plural = "Complaint Routing Rules"
 
     def __str__(self):
-        return f"Route {self.category_id} -> {self.team_id}"
+        return f"Route {self.category_id} -> {self.sla_rule_id or self.user_id}"
 
     def _lookup(self, model_path, value):
         if not value:
@@ -74,13 +73,6 @@ class ComplaintRoutingRule(BaseMaster):
         return self._lookup(
             "app.models.core_modules.complaint_management.priority_master.ComplaintPriority",
             self.priority_id,
-        )
-
-    @property
-    def team(self):
-        return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.team_id,
         )
 
     @property

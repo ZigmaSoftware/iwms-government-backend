@@ -98,8 +98,6 @@ CACHE_CONFIG = {
     "complaint_status_detail": {"enabled": True, "ttl": 300},
     "complaint_module_list": {"enabled": True, "ttl": 600},
     "complaint_module_detail": {"enabled": True, "ttl": 300},
-    "complaint_team_list": {"enabled": True, "ttl": 300},
-    "complaint_team_detail": {"enabled": True, "ttl": 180},
     "complaint_category_list": {"enabled": True, "ttl": 300},
     "complaint_category_detail": {"enabled": True, "ttl": 180},
     "complaint_subcategory_list": {"enabled": True, "ttl": 300},

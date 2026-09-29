@@ -44,7 +44,7 @@ from app.serializers.core_modules.complaint_management.transaction_serializers i
     ComplaintTicketDetailSerializer,
     ComplaintFeedbackSerializer,
 )
-from app.utils.complaint_ticket_routing import apply_routing_and_sla, _add_business_minutes
+from app.utils.complaint_ticket_routing import apply_routing_and_sla
 from app.utils.email_utils import send_grievance_confirmation_email
 
 # Public grievance duplicate-submission cooldown: after this window has
@@ -96,16 +96,6 @@ def _multi_values(data, key):
     if isinstance(value, list):
         return [str(v).strip() for v in value if str(v).strip()]
     return [str(value).strip()] if value else []
-
-
-def _sla_strictness_key(waste_type):
-    """Sort key so the most time-sensitive waste type (smallest due window)
-    wins when several are selected on one ticket."""
-    if waste_type.resolve_within_minutes is not None:
-        return waste_type.resolve_within_minutes
-    if waste_type.assign_within_minutes is not None:
-        return waste_type.assign_within_minutes
-    return float("inf")
 
 
 class CitizenComplaintTicketViewSet(viewsets.ViewSet):
@@ -207,7 +197,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             remarks="Raised via mobile app",
             visible_to_citizen=True,
         )
-        # Derive routing (team + responsible staff) + SLA
+        # Derive routing (entry-level staff) + SLA + escalation clock
         apply_routing_and_sla(ticket, save=True)
 
         return Response(
@@ -295,8 +285,10 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
     def meta(self, request):
         waste_types = WasteType.objects.filter(is_deleted=False, is_active=True).order_by("waste_type_name")
         categories = ComplaintCategory.objects.filter(is_deleted=False, is_active=True).order_by("sort_order")
+        # category_id is a plain unique_id string (no DB relation), so filter
+        # through the live categories instead of a category__ join.
         subcategories = ComplaintSubcategory.objects.filter(
-            is_deleted=False, is_active=True, category__is_deleted=False, category__is_active=True
+            is_deleted=False, is_active=True, category_id__in=categories.values("unique_id")
         ).order_by("sort_order")
         return Response({
             "waste_types": [
@@ -439,17 +431,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             )
 
         # With multiple waste types selected, the most urgent default
-        # priority wins and the first configured default team is used -
-        # a ticket can only have one team/priority regardless of how many
-        # waste types it covers.
+        # priority wins - a ticket can only have one priority regardless of
+        # how many waste types it covers. Who handles it comes from the
+        # Staff Hierarchy (apply_routing_and_sla below).
         priority_candidates = [w.default_priority for w in waste_types if w.default_priority_id]
         waste_type_priority = min(priority_candidates, key=lambda p: p.sort_order) if priority_candidates else None
-        assigned_team = next((w.default_team for w in waste_types if w.default_team_id), None)
-        sla_source = min(
-            (w for w in waste_types if w.assign_within_minutes or w.resolve_within_minutes),
-            key=_sla_strictness_key,
-            default=None,
-        )
 
         priority = (
             waste_type_priority
@@ -508,7 +494,6 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             state_id=state_id,
             district_id=district_id,
             idempotency_key=idempotency_key,
-            assigned_team_id=assigned_team.unique_id if assigned_team else None,
             waste_type_ids=[w.unique_id for w in waste_types],
             **local_body_fields,
         )
@@ -531,24 +516,6 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
                 mime_type=getattr(photo, "content_type", None),
                 file_size=getattr(photo, "size", None),
             )
-
-        # The most time-sensitive selected waste type drives SLA timing
-        # directly when configured; anything left empty (no waste type here
-        # has a resolve/assign SLA configured) falls back to the
-        # category-based routing/SLA engine below.
-        if sla_source:
-            now = timezone.now()
-            add_minutes = _add_business_minutes if sla_source.working_hours_only else (
-                lambda start, minutes: start + timedelta(minutes=minutes)
-            )
-            sla_fields = []
-            if sla_source.assign_within_minutes:
-                ticket.first_response_due_at = add_minutes(now, sla_source.assign_within_minutes)
-                sla_fields.append("first_response_due_at")
-            if sla_source.resolve_within_minutes:
-                ticket.sla_due_at = add_minutes(now, sla_source.resolve_within_minutes)
-                sla_fields.append("sla_due_at")
-            ticket.save(update_fields=sla_fields)
 
         apply_routing_and_sla(ticket, save=True)
 

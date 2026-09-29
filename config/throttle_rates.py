@@ -193,7 +193,6 @@ API_THROTTLE_RATES = {
     "complaint_source": READ_MASTER_DATA,
     "complaint_status": READ_MASTER_DATA,
     "complaint_subcategory": READ_MASTER_DATA,
-    "complaint_team": READ_MASTER_DATA,
     "complaint_ticket": READ_MASTER_DATA,
     "continent": READ_MASTER_DATA,
     "contractor_user_type": READ_MASTER_DATA,

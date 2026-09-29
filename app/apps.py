@@ -19,6 +19,9 @@ class ApiConfig(AppConfig):
         from app.services.daily_trip_scheduler import start_daily_trip_scheduler
         start_daily_trip_scheduler()
 
+        from app.services.complaint_escalation_scheduler import start_complaint_escalation_scheduler
+        start_complaint_escalation_scheduler()
+
         def sync_userscreen_columns_after_migrate(sender, **kwargs):
             if sender.name != self.name:
                 return

@@ -20,8 +20,9 @@ class ComplaintEscalationHistory(BaseMaster):
 
     ticket_id = models.CharField(db_index=True, max_length=30)
     escalation_level = models.IntegerField(default=1)
-    escalated_from_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
-    escalated_to_team_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    escalated_from_level = models.IntegerField(null=True, blank=True)
+    escalated_from_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
+    escalated_by_user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     escalated_to_user_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     escalated_to_staff_id = models.CharField(db_index=True, max_length=30, null=True, blank=True)
     reason = models.TextField(blank=True, null=True)
@@ -54,17 +55,11 @@ class ComplaintEscalationHistory(BaseMaster):
         )
 
     @property
-    def escalated_from_team(self):
+    def escalated_from_staff(self):
         return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.escalated_from_team_id,
-        )
-
-    @property
-    def escalated_to_team(self):
-        return self._lookup(
-            "app.models.core_modules.complaint_management.team_master.ComplaintTeam",
-            self.escalated_to_team_id,
+            "app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails",
+            self.escalated_from_staff_id,
+            field="staff_unique_id",
         )
 
     @property

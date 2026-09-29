@@ -8,8 +8,9 @@ from app.models.core_modules.complaint_management.source_master import Complaint
 from app.models.core_modules.complaint_management.status_history import ComplaintStatusHistory
 from app.models.core_modules.complaint_management.status_master import ComplaintStatus
 from app.models.core_modules.complaint_management.subcategory_master import ComplaintSubcategory
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+from app.services.complaint_escalation import CLOSED_STATUS_CODES
+from app.utils.complaint_ticket_routing import apply_routing_and_sla
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 
 
@@ -17,7 +18,7 @@ class ComplaintTicketSeeder(BaseSeeder):
     name = "complaint_ticket"
 
     # (key, customer_index, category_code, subcategory_code, priority_code,
-    #  status_code, source_code, team_code, title, description)
+    #  status_code, source_code, title, description)
     TICKETS = [
         (
             "seed-missed-pickup-001",
@@ -27,7 +28,6 @@ class ComplaintTicketSeeder(BaseSeeder):
             "P2",
             "SUBMITTED",
             "WHATSAPP",
-            "SANITATION",
             "Waste was not collected today",
             "Household waste was kept outside before the scheduled time but was not collected.",
         ),
@@ -39,7 +39,6 @@ class ComplaintTicketSeeder(BaseSeeder):
             "P3",
             "ASSIGNED",
             "CALL_CENTER",
-            "SANITATION",
             "Bulk furniture pickup request",
             "Customer requested pickup for old furniture items from the apartment block.",
         ),
@@ -51,7 +50,6 @@ class ComplaintTicketSeeder(BaseSeeder):
             "P3",
             "RESOLVED",
             "WEB",
-            "ADDRESS_DESK",
             "Service address correction",
             "Customer requested service address correction after moving to a nearby street.",
         ),
@@ -63,7 +61,6 @@ class ComplaintTicketSeeder(BaseSeeder):
             "P2",
             "CLOSED",
             "MOBILE_APP",
-            "SANITATION_L2",
             "Worker conduct complaint",
             "Complaint about rude behaviour during morning collection.",
         ),
@@ -86,7 +83,6 @@ class ComplaintTicketSeeder(BaseSeeder):
             priority_code,
             status_code,
             source_code,
-            team_code,
             title,
             description,
         ) in self.TICKETS:
@@ -100,7 +96,6 @@ class ComplaintTicketSeeder(BaseSeeder):
             priority = ComplaintPriority.objects.filter(priority_code=priority_code, is_deleted=False).first()
             status = ComplaintStatus.objects.filter(status_code=status_code, is_deleted=False).first()
             source = ComplaintSource.objects.filter(source_code=source_code, is_deleted=False).first()
-            team = ComplaintTeam.objects.filter(team_code=team_code, is_deleted=False).first()
 
             if not all([category, priority, status]):
                 self.log(f"Missing master data for {key} - skipping.")
@@ -140,14 +135,15 @@ class ComplaintTicketSeeder(BaseSeeder):
                     "town_panchayat_id": customer.town_panchayat_id,
                     "panchayat_union_id": customer.panchayat_union_id,
                     "panchayat_id": customer.panchayat_id,
-                    "assigned_team_id": team.unique_id if team else None,
-                    "assigned_staff_id": getattr(team, "lead_staff_id", None) if team else None,
                     "resolved_at": now if status.status_code in ("RESOLVED", "CLOSED") else None,
                     "closed_at": now if status.status_code == "CLOSED" else None,
                     "is_active": True,
                     "is_deleted": False,
                 },
             )
+            if status.status_code not in CLOSED_STATUS_CODES:
+                # Entry-level assignee + escalation clock from the Staff Hierarchy.
+                apply_routing_and_sla(ticket, save=True)
 
             ComplaintStatusHistory.objects.get_or_create(
                 ticket_id=ticket.unique_id,

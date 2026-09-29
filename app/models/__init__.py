@@ -124,8 +124,8 @@ from .core_modules.complaint_management.status_master import ComplaintStatus
 from .core_modules.complaint_management.module_master import ComplaintModule
 from .core_modules.complaint_management.category_master import ComplaintCategory
 from .core_modules.complaint_management.subcategory_master import ComplaintSubcategory
-from .core_modules.complaint_management.team_master import ComplaintTeam
 from .core_modules.complaint_management.sla_rule_master import ComplaintSlaRule
+from .core_modules.complaint_management.sla_escalation_level import ComplaintSlaEscalationLevel
 from .core_modules.complaint_management.routing_rule import ComplaintRoutingRule
 from .core_modules.complaint_management.ticket import ComplaintTicket
 from .core_modules.complaint_management.ticket_extra_detail import ComplaintTicketExtraDetail
@@ -262,8 +262,8 @@ __all__ = [
     "ComplaintStatus",
     "ComplaintCategory",
     "ComplaintSubcategory",
-    "ComplaintTeam",
     "ComplaintSlaRule",
+    "ComplaintSlaEscalationLevel",
     "ComplaintRoutingRule",
     "ComplaintTicket",
     "ComplaintTicketExtraDetail",

@@ -20,10 +20,17 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.complaint_ticket_routing import apply_routing_and_sla, perform_escalation
+from app.utils.complaint_ticket_routing import apply_routing_and_sla
+from app.services.complaint_escalation import (
+    CLOSED_STATUS_CODES,
+    escalate_ticket,
+    is_passed_over,
+    restart_escalation_clock,
+    stop_escalation_clock,
+)
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope, _resolve_geo_candidate
 from app.utils.pagination import LimitOffsetWithPage
-from app.utils.roles import is_admin_role, is_supervisor_role
+from app.utils.roles import is_admin_role, is_super_admin, is_supervisor_role
 from app.services import notification_service
 from app.services.push_notification_service import send_push_to_customer
 
@@ -36,9 +43,9 @@ from app.models.masters.panchayat import Panchayat
 
 from app.models.core_modules.complaint_management.ticket import ComplaintTicket
 from app.models.core_modules.complaint_management.status_master import ComplaintStatus
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.core_modules.complaint_management.status_history import ComplaintStatusHistory
 from app.models.core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
+from app.models.core_modules.complaint_management.escalation_history import ComplaintEscalationHistory
 from app.models.core_modules.complaint_management.comment import ComplaintComment
 from app.models.core_modules.complaint_management.reopen_history import ComplaintReopenHistory
 from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
@@ -92,6 +99,22 @@ def _local_body_q(local_body_id):
     )
 
 
+def _area_type_q(area_type_id):
+    """Tickets in an area type (Urban / Rural Local Body). Older tickets were
+    saved with only their local body, so also match any ticket whose local
+    body belongs to that area type."""
+    q = models.Q(area_type_id=area_type_id)
+    for model, field in (
+        (Corporation, "corporation_id"),
+        (Municipality, "municipality_id"),
+        (TownPanchayat, "town_panchayat_id"),
+        (PanchayatUnion, "panchayat_union_id"),
+        (Panchayat, "panchayat_id"),
+    ):
+        q |= models.Q(**{f"{field}__in": model.objects.filter(area_type_id=area_type_id).values("unique_id")})
+    return q
+
+
 def _status_bucket_q(bucket):
     # status is a plain unique_id string (no DB relation) — resolve via
     # subquery instead of a join.
@@ -122,35 +145,46 @@ def _public_grievance_source_ids():
 
 
 def _staff_ticket_scope(user):
-    """Tickets explicitly owned by a staff member or their team/department.
-
-    assigned_staff_id is a plain unique_id string; team/department links go
-    through ComplaintTeam lookups (no joins from the ticket)."""
+    """Tickets a staff member is or was responsible for: assigned to them,
+    currently escalated to them, or escalated through them earlier (so a
+    ticket doesn't vanish from a supervisor's view once it hops further up)."""
     staff_uid = getattr(user, "staff_unique_id", None)
-    scope = models.Q(assigned_staff_id=staff_uid) if staff_uid else models.Q(pk__in=[])
-    led_team_ids = ComplaintTeam.objects.filter(
-        lead_staff_id=staff_uid, is_deleted=False).values("unique_id") if staff_uid else []
-    if staff_uid:
-        scope = scope | models.Q(assigned_team_id__in=led_team_ids)
-    department = getattr(user, "department_id", None)
-    # Staffcreation.department_id is itself an FK field literally named
-    # `department_id`, so `department` here may be an instance or a raw id.
-    dept_uid = getattr(department, "unique_id", department)
-    if dept_uid:
-        dept_team_ids = ComplaintTeam.objects.filter(
-            department_id=dept_uid, is_deleted=False).values("unique_id")
-        return scope | models.Q(assigned_team_id__in=dept_team_ids)
+    if not staff_uid:
+        return models.Q(pk__in=[])
+    escalated_through = ComplaintEscalationHistory.objects.filter(
+        models.Q(escalated_to_staff_id=staff_uid) | models.Q(escalated_from_staff_id=staff_uid),
+        is_deleted=False,
+    ).values("ticket_id")
+    return (
+        models.Q(assigned_staff_id=staff_uid)
+        | models.Q(escalated_to_staff_id=staff_uid)
+        | models.Q(unique_id__in=escalated_through)
+    )
 
-    department_name = (getattr(user, "department", "") or "").strip()
-    if department_name:
-        from app.models.masters.department import Department
-        dept_ids = Department.objects.filter(
-            department_name__iexact=department_name,
-            is_deleted=False).values("unique_id")
-        dept_team_ids = ComplaintTeam.objects.filter(
-            department_id__in=dept_ids, is_deleted=False).values("unique_id")
-        return scope | models.Q(assigned_team_id__in=dept_team_ids)
-    return scope
+
+def scope_tickets_to_requester(qs, user):
+    """Tickets `user` may see: everything for a platform super admin; their
+    area (capped by their StaffDataScope) plus their own tickets for an
+    admin/supervisor; otherwise only tickets they hold or held."""
+    if getattr(user, "is_superuser", False):
+        return qs
+    is_staff_record = hasattr(user, "staff_unique_id")
+    if is_admin_role(user) or is_supervisor_role(user):
+        # They must also see tickets explicitly routed or escalated to them
+        # even when the citizen's geo is outside their scope.
+        geo_qs = filter_flat_geo_queryset_by_requester_scope(qs, user)
+        if is_staff_record:
+            return (geo_qs | qs.filter(_staff_ticket_scope(user))).distinct()
+        return geo_qs
+    if is_staff_record:
+        return qs.filter(_staff_ticket_scope(user))
+    return qs
+
+
+PASSED_OVER_DETAIL = (
+    "This ticket has been escalated to a higher level ({level}). You can view it, "
+    "but only the staff it is escalated to can act on it."
+)
 
 
 class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -160,7 +194,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["ticket_no", "wa_phone", "profile_name", "title", "description"]
-    ordering_fields = ["created", "updated", "sla_due_at", "ticket_no"]
+    ordering_fields = ["created", "updated", "next_escalation_due_at", "ticket_no"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "tickets"
 
@@ -168,6 +202,20 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if self.action == "retrieve":
             return ComplaintTicketDetailSerializer
         return ComplaintTicketSerializer
+
+    # Actions only the level a ticket currently sits with may take; staff it
+    # has escalated past can still view it and add comments/attachments.
+    OWNER_ONLY_ACTIONS = {"change_status", "assign", "resolve", "escalate", "reopen", "update", "partial_update", "destroy"}
+
+    def get_object(self):
+        ticket = super().get_object()
+        if self.action in self.OWNER_ONLY_ACTIONS and is_passed_over(ticket, self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied(PASSED_OVER_DETAIL.format(
+                level=getattr(ticket.escalated_to_staff, "employee_name", None) or f"L{ticket.escalation_level}"
+            ))
+        return ticket
 
     def get_queryset(self):
         # Converted FKs are plain CharFields — no select_related possible.
@@ -202,10 +250,22 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 qs = qs.filter(district_id=district)
             area_type = params.get("area_type") or params.get("area_type_id")
             if area_type:
-                qs = qs.filter(area_type_id=area_type)
+                qs = qs.filter(_area_type_q(area_type))
             city = params.get("city")
             if city:
                 qs = qs.filter(_local_body_q(city))
+            assigned_staff = params.get("assigned_staff")
+            if assigned_staff:
+                qs = qs.filter(assigned_staff_id=assigned_staff)
+            if params.get("escalated") in ("1", "true", "True"):
+                qs = qs.filter(is_escalated=True)
+            # My Tasks: tickets the requester owns or owned — assigned to
+            # them, escalated to them, or escalated up past them (view only
+            # for them) — even for an admin/supervisor who can otherwise see
+            # their whole area. A platform super admin owns nothing but
+            # oversees everything, so their My Tasks lists every ticket.
+            if params.get("mine") in ("1", "true", "True") and not is_super_admin(self.request.user):
+                qs = qs.filter(_staff_ticket_scope(self.request.user))
             status_code = params.get("status")
             if status_code:
                 normalized = status_code.strip().lower()
@@ -233,29 +293,13 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # ----------------------------------------------------------
         # Per-staff scoping: a staff member only sees the tickets that
-        # belong to them - i.e. assigned to them personally, to a team
-        # they lead, or to any team in their department. Platform
-        # superadmins (and explicit ?all=1) see everything.
+        # belong to them - assigned to them, or escalated to/through them
+        # along the Staff Hierarchy. Admins/supervisors also see their whole
+        # area. Platform superadmins (and explicit ?all=1) see everything.
         # ----------------------------------------------------------
-        user = getattr(self.request, "user", None)
-        is_super = getattr(user, "is_superuser", False)
-        is_staff_record = hasattr(user, "staff_unique_id")
-        wants_all = params.get("all") in ("1", "true", "True")
-        if not is_super and not wants_all:
-            if is_admin_role(user) or is_supervisor_role(user):
-                # Corporation admins/supervisors see every ticket in their
-                # corporation subtree (capped by their StaffDataScope). They
-                # must also see tickets explicitly routed to them or their
-                # team even when the citizen's geo is outside that scope.
-                geo_qs = filter_flat_geo_queryset_by_requester_scope(qs, user)
-                if is_staff_record:
-                    qs = (geo_qs | qs.filter(_staff_ticket_scope(user))).distinct()
-                else:
-                    qs = geo_qs
-            elif is_staff_record:
-                # Regular staff still see only tickets that belong to them.
-                qs = qs.filter(_staff_ticket_scope(user))
-        return qs
+        if params.get("all") in ("1", "true", "True"):
+            return qs
+        return scope_tickets_to_requester(qs, getattr(self.request, "user", None))
 
     # ----------------------------------------------------------
     # GET /tickets/counts/ — All / Public Grievance / Internal tab totals,
@@ -328,6 +372,10 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             changed_by_user_id=getattr(_actor_user(request), "unique_id", None),
             remarks=request.data.get("remarks"),
         )
+        if new_status.status_code in CLOSED_STATUS_CODES:
+            stop_escalation_clock(ticket)
+        elif old_status.status_code in CLOSED_STATUS_CODES:
+            restart_escalation_clock(ticket)
         if old_status.pk != new_status.pk:
             status_label = new_status.status_name or new_status.status_code
             send_push_to_customer(
@@ -345,47 +393,31 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     @transaction.atomic
     def assign(self, request, unique_id=None):
         ticket = self.get_object()
-        team_id = request.data.get("team")
         staff_id = request.data.get("staff")
+        if not staff_id:
+            return Response({"staff": "This field is required."}, status=http_status.HTTP_400_BAD_REQUEST)
+        new_staff = StaffcreationOfficeDetails.objects.filter(staff_unique_id=staff_id, is_deleted=False).first()
+        if not new_staff:
+            return Response({"staff": "Invalid staff."}, status=http_status.HTTP_400_BAD_REQUEST)
 
-        from_team = ticket.assigned_team
-        from_staff = ticket.assigned_staff
-
-        new_team = from_team
-        if team_id:
-            new_team = ComplaintTeam.objects.filter(unique_id=team_id, is_deleted=False).first()
-            if not new_team:
-                return Response({"team": "Invalid team."}, status=http_status.HTTP_400_BAD_REQUEST)
-
-        # Resolve target staff: explicit staff param, else the team's lead, else unchanged
-        new_staff = from_staff
-        new_staff_id = ticket.assigned_staff_id
-        new_team_id = ticket.assigned_team_id
-        if staff_id:
-            new_staff = StaffcreationOfficeDetails.objects.filter(staff_unique_id=staff_id).first()
-            if not new_staff:
-                return Response({"staff": "Invalid staff."}, status=http_status.HTTP_400_BAD_REQUEST)
-            new_staff_id = new_staff.staff_unique_id
-        elif team_id and new_team and new_team.lead_staff_id:
-            new_staff = new_team.lead_staff
-            new_staff_id = new_team.lead_staff_id
-        if team_id:
-            new_team_id = new_team.unique_id if new_team else None
-
-        ticket.assigned_team_id = new_team_id
-        ticket.assigned_staff_id = new_staff_id
-        ticket.save(update_fields=["assigned_team_id", "assigned_staff_id"])
+        from_staff = ticket.responsible_staff
+        if ticket.is_escalated:
+            # Reassigning an escalated ticket hands it to someone else at
+            # the current level — the escalation stays in place.
+            ticket.escalated_to_staff_id = new_staff.staff_unique_id
+            ticket.save(update_fields=["escalated_to_staff_id"])
+        else:
+            ticket.assigned_staff_id = new_staff.staff_unique_id
+            ticket.save(update_fields=["assigned_staff_id"])
 
         ComplaintAssignmentHistory.objects.create(
             ticket_id=ticket.unique_id,
-            from_team_id=getattr(from_team, "unique_id", None),
-            to_team_id=getattr(new_team, "unique_id", None),
             from_staff_id=getattr(from_staff, "staff_unique_id", None),
-            to_staff_id=getattr(new_staff, "staff_unique_id", None),
+            to_staff_id=new_staff.staff_unique_id,
             assigned_by_id=getattr(_actor_user(request), "unique_id", None),
             assignment_reason=request.data.get("reason"),
         )
-        if new_staff and (not from_staff or new_staff.staff_unique_id != from_staff.staff_unique_id):
+        if not from_staff or new_staff.staff_unique_id != from_staff.staff_unique_id:
             notification_service.notify(
                 ticket,
                 "ASSIGNED",
@@ -517,6 +549,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             remarks=note or "Marked as resolved",
             visible_to_citizen=True,
         )
+        stop_escalation_clock(ticket)
         if note:
             ComplaintComment.objects.create(
                 ticket_id=ticket.unique_id,
@@ -524,12 +557,12 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 comment_text=note,
                 is_internal=False,
             )
-        if ticket.assigned_staff:
+        if ticket.responsible_staff:
             notification_service.notify(
                 ticket,
                 "RESOLVED",
                 f"Ticket {ticket.ticket_no} has been marked resolved." + (f" Note: {note}" if note else ""),
-                staff=ticket.assigned_staff,
+                staff=ticket.responsible_staff,
             )
         send_push_to_customer(
             ticket.customer,
@@ -543,22 +576,15 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # POST /tickets/{id}/escalate/
     # ----------------------------------------------------------
     @action(detail=True, methods=["post"], url_path="escalate")
-    @transaction.atomic
     def escalate(self, request, unique_id=None):
+        """Manually hop the ticket to the next enabled Staff Hierarchy level
+        — the same move the SLA sweep makes on breach."""
         ticket = self.get_object()
-
-        # Determine target team: explicit param, else current team's escalates_to
-        team_id = request.data.get("team")
-        target = None
-        if team_id:
-            target = ComplaintTeam.objects.filter(unique_id=team_id, is_deleted=False).first()
-            if not target:
-                return Response({"team": "Invalid team."}, status=http_status.HTTP_400_BAD_REQUEST)
-
+        if ticket.status and ticket.status.status_code in CLOSED_STATUS_CODES:
+            return Response({"detail": "A closed ticket cannot be escalated."}, status=http_status.HTTP_400_BAD_REQUEST)
         try:
-            perform_escalation(
+            ticket = escalate_ticket(
                 ticket,
-                target_team=target,
                 reason=request.data.get("reason"),
                 actor_user=_actor_user(request),
                 by_system=False,
@@ -637,14 +663,15 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             changed_by_user_id=getattr(_actor_user(request), "unique_id", None),
             remarks="Reopened",
         )
-        if ticket.assigned_staff:
+        restart_escalation_clock(ticket)
+        if ticket.responsible_staff:
             notification_service.notify(
                 ticket,
                 "REOPENED",
                 f"Ticket {ticket.ticket_no} has been reopened." + (
                     f" Reason: {request.data.get('reopen_reason')}" if request.data.get("reopen_reason") else ""
                 ),
-                staff=ticket.assigned_staff,
+                staff=ticket.responsible_staff,
             )
         send_push_to_customer(
             ticket.customer,

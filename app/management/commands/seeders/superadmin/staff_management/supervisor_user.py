@@ -3,7 +3,6 @@ from django.utils import timezone
 
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
@@ -106,16 +105,8 @@ class SupervisorUserSeeder(BaseSeeder):
             supervisor_id=supervisor.staff_unique_id
         )
 
-        # Make the supervisor lead every complaint team so complaints routed to
-        # those teams surface in the supervisor grievance view (the ticket
-        # queryset scopes to assigned_staff / team lead / department).
-        teams = ComplaintTeam.objects.filter(is_deleted=False).update(
-            lead_staff_id=supervisor.staff_unique_id
-        )
-
         self.log(
             f"{'Created' if created else 'Updated'} supervisor login: "
             f"{self.USERNAME} / {self.PASSWORD} — owns {updated} trip plan(s) "
-            f"covering {len(assignments)} of driver_user's trips today; "
-            f"leads {teams} complaint team(s)."
+            f"covering {len(assignments)} of driver_user's trips today."
         )

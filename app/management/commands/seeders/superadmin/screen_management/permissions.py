@@ -40,7 +40,6 @@ USER_SCREEN_MODELS = {
     "priorities": ("app", "ComplaintPriority"),
     "statuses": ("app", "ComplaintStatus"),
     "sources": ("app", "ComplaintSource"),
-    "teams": ("app", "ComplaintTeam"),
     "sla-rules": ("app", "ComplaintSlaRule"),
     "feedback": ("app", "ComplaintFeedback"),
     "vehicle-type": ("app", "VehicleTypeCreation"),
@@ -267,7 +266,14 @@ class PermissionSeeder(BaseSeeder):
                 f"{stale_userscreen_count} stale user screens not present in AppSidebar."
             )
 
+    # Screens whose feature was removed; hidden on every seed run.
+    RETIRED_USER_SCREENS = ("teams",)
+
     def run(self):
+        UserScreen.objects.filter(userscreen_name__in=self.RETIRED_USER_SCREENS).update(
+            is_active=False, is_deleted=True
+        )
+
         for action_name in ("view", "export"):
             UserScreenAction.objects.update_or_create(
                 action_name=action_name,
@@ -397,15 +403,16 @@ class PermissionSeeder(BaseSeeder):
                 "description": "Complaint ticket management",
                 "subitems": [
                     ("tickets", "tickets", "tickets", 1, "Complaint tickets"),
-                    ("modules", "modules", "modules", 2, "Modules"),
-                    ("categories", "categories", "categories", 3, "Categories"),
-                    ("subcategories", "subcategories", "subcategories", 4, "Subcategories"),
-                    ("priorities", "priorities", "priorities", 5, "Priorities"),
-                    ("statuses", "statuses", "statuses", 6, "Statuses"),
-                    ("sources", "sources", "sources", 7, "Sources"),
-                    ("teams", "teams", "teams", 8, "Teams"),
+                    ("my-tasks", "my-tasks", "my-tasks", 2, "My tasks"),
+                    ("modules", "modules", "modules", 3, "Modules"),
+                    ("categories", "categories", "categories", 4, "Categories"),
+                    ("subcategories", "subcategories", "subcategories", 5, "Subcategories"),
+                    ("priorities", "priorities", "priorities", 6, "Priorities"),
+                    ("statuses", "statuses", "statuses", 7, "Statuses"),
+                    ("sources", "sources", "sources", 8, "Sources"),
                     ("sla-rules", "sla-rules", "sla-rules", 9, "SLA rules"),
                     ("feedback", "feedback", "feedback", 10, "Feedback"),
+                    ("complaints-report", "complaints-report", "complaints-report", 11, "Complaints report"),
                 ],
             },
             {

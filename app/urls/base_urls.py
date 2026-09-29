@@ -91,7 +91,6 @@ from ..viewsets.core_modules.complaint_management.master_viewsets import (
     ComplaintLanguageViewSet,
     ComplaintPriorityViewSet,
     ComplaintStatusViewSet,
-    ComplaintTeamViewSet,
     ComplaintModuleViewSet,
     ComplaintCategoryViewSet,
     ComplaintSubcategoryViewSet,
@@ -109,6 +108,7 @@ from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintReopenHistoryViewSet,
 )
 from ..viewsets.core_modules.complaint_management.notification_viewset import ComplaintNotificationViewSet
+from ..viewsets.reports.complaint_reports.complaints_report_viewset import ComplaintsReportViewSet
 from ..viewsets.core_modules.notifications.staff_notification_viewset import StaffNotificationViewSet
 
 # Transport masters
@@ -280,13 +280,13 @@ router.register_group("complaint-ticket", "priorities", ComplaintPriorityViewSet
 router.register_group("complaint-ticket", "statuses", ComplaintStatusViewSet)
 router.register_group("complaint-ticket", "sources", ComplaintSourceViewSet)
 router.register_group("complaint-ticket", "languages", ComplaintLanguageViewSet)
-router.register_group("complaint-ticket", "teams", ComplaintTeamViewSet)
 router.register_group("complaint-ticket", "sla-rules", ComplaintSlaRuleViewSet)
 router.register_group("complaint-ticket", "routing-rules", ComplaintRoutingRuleViewSet)
 router.register_group("complaint-ticket", "feedback", ComplaintFeedbackViewSet)
 router.register_group("complaint-ticket", "reopen-history", ComplaintReopenHistoryViewSet)
 router.register_group("complaint-ticket", "notifications", ComplaintNotificationViewSet, basename="complaint-notifications")
 router.register_group("complaint-ticket", "address-change", ComplaintAddressChangeViewSet)
+router.register_group("complaint-ticket", "complaints-report", ComplaintsReportViewSet, basename="complaints-report")
 
 # ============================================================
 # GROUP: CITIZEN (mobile app, auth-only — no module permission check)

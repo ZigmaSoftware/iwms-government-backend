@@ -19,6 +19,39 @@ from app.utils.staff_hierarchy import (
 )
 
 
+def validated_scope(attrs, instance=None):
+    """A scoped row's location after this request: given values over the
+    stored ones, blanks dropped, parents filled in from the narrowest level.
+    Shared by every model with the Staff Hierarchy scope columns."""
+    scope = {}
+    for field in SCOPE_FIELDS:
+        if field in attrs:
+            value = attrs[field]
+        else:
+            value = getattr(instance, field, None)
+        if value:
+            scope[field] = value
+
+    local_bodies = [field for field in LOCAL_BODY_SCOPE_FIELDS if scope.get(field)]
+    if len(local_bodies) > 1:
+        raise serializers.ValidationError("Select only one local body.")
+
+    for field, value in scope.items():
+        record = scope_record(field, value)
+        if record is None or getattr(record, "is_deleted", False):
+            raise serializers.ValidationError({field: "Invalid selection."})
+        for parent in PARENT_FIELDS.get(field, ()):
+            parent_value = getattr(record, parent, None)
+            if scope.get(parent) and parent_value and parent_value != scope[parent]:
+                raise serializers.ValidationError(
+                    {field: "Does not belong to the selected parent location."}
+                )
+
+    # Parent values the local body/district implied are stored too, so the
+    # scope columns always describe a consistent chain.
+    return complete_geo(scope)
+
+
 class StaffHierarchySerializer(serializers.ModelSerializer):
     governmentusertype_id = serializers.CharField()
     reports_to_governmentusertype_id = serializers.CharField(
@@ -86,37 +119,6 @@ class StaffHierarchySerializer(serializers.ModelSerializer):
             return None
         return self._validate_role(value)
 
-    def _validated_scope(self, attrs):
-        """The row's scope after this request: given values over the stored
-        ones, blanks dropped, parents filled in from the narrowest level."""
-        scope = {}
-        for field in SCOPE_FIELDS:
-            if field in attrs:
-                value = attrs[field]
-            else:
-                value = getattr(self.instance, field, None)
-            if value:
-                scope[field] = value
-
-        local_bodies = [field for field in LOCAL_BODY_SCOPE_FIELDS if scope.get(field)]
-        if len(local_bodies) > 1:
-            raise serializers.ValidationError("Select only one local body.")
-
-        for field, value in scope.items():
-            record = scope_record(field, value)
-            if record is None or getattr(record, "is_deleted", False):
-                raise serializers.ValidationError({field: "Invalid selection."})
-            for parent in PARENT_FIELDS.get(field, ()):
-                parent_value = getattr(record, parent, None)
-                if scope.get(parent) and parent_value and parent_value != scope[parent]:
-                    raise serializers.ValidationError(
-                        {field: "Does not belong to the selected parent location."}
-                    )
-
-        # Parent values the local body/district implied are stored too, so
-        # the scope columns always describe a consistent chain.
-        return complete_geo(scope)
-
     def validate(self, attrs):
         role = attrs.get(
             "governmentusertype_id",
@@ -133,7 +135,7 @@ class StaffHierarchySerializer(serializers.ModelSerializer):
                 "A staff user type cannot report to itself."
             )
 
-        scope = self._validated_scope(attrs)
+        scope = validated_scope(attrs, self.instance)
         for field in SCOPE_FIELDS:
             attrs[field] = scope.get(field)
 

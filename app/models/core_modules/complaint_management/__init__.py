@@ -5,8 +5,8 @@ from .status_master import ComplaintStatus
 from .module_master import ComplaintModule
 from .category_master import ComplaintCategory
 from .subcategory_master import ComplaintSubcategory
-from .team_master import ComplaintTeam
 from .sla_rule_master import ComplaintSlaRule
+from .sla_escalation_level import ComplaintSlaEscalationLevel
 from .ticket import ComplaintTicket
 from .ticket_extra_detail import ComplaintTicketExtraDetail
 from .ticket_attachment import ComplaintAttachment
@@ -28,8 +28,8 @@ __all__ = [
     "ComplaintModule",
     "ComplaintCategory",
     "ComplaintSubcategory",
-    "ComplaintTeam",
     "ComplaintSlaRule",
+    "ComplaintSlaEscalationLevel",
     "ComplaintTicket",
     "ComplaintTicketExtraDetail",
     "ComplaintAttachment",
