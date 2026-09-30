@@ -20,6 +20,9 @@ from app.models.core_modules.daily_operations.daily_trip_household_collection im
 )
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
+    TripPlanCollectionPoint,
+)
 from app.services import retrip_service
 
 # "Today" is the same reservation `DriverUserSeeder`/`SchedulerDemoSeeder` use

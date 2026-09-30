@@ -97,7 +97,6 @@ from .superadmin.audits.login_audit import LoginAudit
 from .superadmin.audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
 from .superadmin.audits.permission_audit import PermissionAuditLog
-from .superadmin.audits.staff_change_request import StaffChangeRequest
 
 
 # ============================================================
@@ -291,7 +290,6 @@ __all__ = [
 
     # Audits
     "PermissionAuditLog",
-    "StaffChangeRequest",
 
     # Daily Trip Assignment
     "DailyTripAssignment",

@@ -72,12 +72,12 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
 
         driver_role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.DRIVER_ROLE,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
         operator_role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.OPERATOR_ROLE,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
@@ -142,8 +142,8 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             defaults={
                 "employee_name": name,
                 "password": make_password(password),
-                "user_type_id": user_type,
-                "governmentusertype_id": role,
+                "user_type_id": user_type.unique_id,
+                "governmentusertype_id": role.unique_id,
                 "is_active": True,
                 "is_deleted": False,
                 "is_superuser": False,
@@ -154,8 +154,8 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
         if not created:
             staff.employee_name = name
             staff.password = make_password(password)
-            staff.user_type_id = user_type
-            staff.governmentusertype_id = role
+            staff.user_type_id = user_type.unique_id
+            staff.governmentusertype_id = role.unique_id
             staff.staffusertype_id = None
             staff.is_active = True
             staff.is_deleted = False

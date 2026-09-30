@@ -30,7 +30,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
     def run(self):
         templates = StaffTemplate.objects.filter(
             is_deleted=False, status=StaffTemplate.Status.ACTIVE
-        ).select_related("driver_id", "operator_id").order_by("created_at")
+        ).order_by("created_at")
 
         if not templates.exists():
             self.log("No StaffTemplates found — run StaffTemplateSeeder first.")

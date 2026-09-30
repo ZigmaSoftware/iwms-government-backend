@@ -63,7 +63,6 @@ class BinCollectionEventSeeder(BaseSeeder):
             # run — touching it here would fight that reset and re-create
             # events every single run instead of converging.
             .exclude(trip_date=timezone.localdate())
-            .select_related("trip_plan_id", "staff_template_id", "vehicle_id")
             .order_by("trip_date")
         )
         if not assignments:

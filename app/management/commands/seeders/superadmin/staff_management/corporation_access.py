@@ -73,8 +73,8 @@ class CorporationAccessSeeder(BaseSeeder):
 
                 defaults = {
                     "employee_name": employee_name,
-                    "user_type_id": government_type,
-                    "governmentusertype_id": role,
+                    "user_type_id": government_type.unique_id,
+                    "governmentusertype_id": role.unique_id,
                     # Geo captured directly on the staff record (matches the finer
                     # StaffDataScope below); inclusive-downward from the corporation.
                     # StaffcreationOfficeDetails' own state/district/area_type/

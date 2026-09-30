@@ -23,13 +23,13 @@ class PlatformSuperUserSeeder(BaseSeeder):
 
         superadmin_role = (
             StaffUserType.objects.filter(
-                usertype_id=platform_type,
+                usertype_id=platform_type.unique_id,
                 name__iexact="superadmin",
             ).first()
         )
         if not superadmin_role:
             superadmin_role = StaffUserType.objects.create(
-                usertype_id=platform_type,
+                usertype_id=platform_type.unique_id,
                 name="superadmin",
                 is_active=True,
                 is_deleted=False,
