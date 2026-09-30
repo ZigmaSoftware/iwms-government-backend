@@ -15,7 +15,7 @@ Usage:
         ...
 
 Models that are NOT soft-deletable (no is_deleted field, e.g. TripAttendance,
-AlternativeStaffTemplate, StaffAudit) must never appear in a
+AlternativeStaffTemplate, CommonAudit) must never appear in a
 CASCADE_SOFT_DELETE tuple - there is nothing for the cascade to flip, and
 those tables are intentionally left untouched (audit/log-shaped tables in
 particular are meant to be permanent).

@@ -220,12 +220,8 @@ MODULE_RESOURCE_ALLOWLIST = {
         "MonthlyWasteComparisonReport",
     },
     "audits": {
-        "VehicleTripAudit",
-        "TripExceptionLog",
-        "StaffTemplateAuditLog",
         "LoginAudit",
         "CommonAudit",
-        "StaffAudit",
     },
     "attendance": {
         "DailyAttendanceReg",
@@ -322,7 +318,6 @@ RESOURCE_PERMISSION_ALIASES = {
     # coverage without changing behavior for anyone who already holds the
     # "common-audit" grant directly.
     "CommonAudit": ("common-audit", "staff-audit"),
-    "StaffAudit": ("staff-audit",),
     "LoginAudit": ("login-audit",),
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
     "userscreenpermissions": ("UserScreenPermission", "UserScreenPermission"),

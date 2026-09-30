@@ -15,7 +15,7 @@ from app.serializers.core_modules.daily_operations.secondary_bin_collection_even
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
-    filter_queryset_by_requester_scope,
+    filter_flat_geo_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import filters, viewsets
@@ -46,7 +46,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         trip_assignment = params.get("trip_assignment_id")
         trip_collection_point = params.get("trip_collection_point_id")
         bin_id = params.get("bin_id")
-        panchayat = params.get("panchayat_id")
         collection_date = params.get("collection_date") or params.get("date")
         date_from = params.get("date_from")
         date_to = params.get("date_to")
@@ -58,8 +57,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(trip_collection_point_id=trip_collection_point)
         if bin_id:
             queryset = queryset.filter(bin_id=bin_id)
-        if panchayat:
-            queryset = queryset.filter(location_node_id=panchayat)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
         if date_from:
@@ -72,7 +69,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # Events carry their own flat geo columns (copied from the assignment
         # on save), so filter on those directly — no join to the assignment.
         queryset = filter_flat_geo_queryset_by_params(queryset, params)
-        queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
+        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
 

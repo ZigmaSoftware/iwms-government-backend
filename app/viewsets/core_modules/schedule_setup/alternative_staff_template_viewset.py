@@ -6,8 +6,6 @@ from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
-from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
-from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.core_modules.schedule_setup.alternative_staff_template_serializer import (
     AlternativeStaffTemplateSerializer
 )
@@ -88,44 +86,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    # --------------------------------------------------
-    # ✅ USER RESOLUTION (NO SUPERADMIN CREATION)
-    # --------------------------------------------------
-
-    def _resolve_request_user(self):
-        from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
-
-        # 1. Try JWT payload (BEST METHOD)
-        payload = getattr(self.request, "jwt_payload", None)
-        if isinstance(payload, dict):
-            unique_id = payload.get("unique_id")
-            if unique_id:
-                staff = StaffcreationOfficeDetails.objects.filter(
-                    staff_unique_id=unique_id
-                ).first()
-                if staff:
-                    return staff
-
-        # 2. Fallback → username match
-        user = getattr(self.request, "user", None)
-
-        if user and not getattr(user, "is_anonymous", False):
-            # Try to map logged-in user to staff
-            staff = Staffcreation.objects.filter(username=user.username).first()
-            return staff  # may be None (allowed)
-
-        # JWT fallback
-        payload = getattr(self.request, "jwt_payload", None)
-        unique_id = payload.get("unique_id") if isinstance(payload, dict) else None
-
-        if unique_id:
-            return Staffcreation.objects.filter(staff_unique_id=unique_id).first()
-
-        return None
-
     def perform_create(self, serializer):
-        user = self._resolve_request_user()
-
         instance = serializer.save(
             approval_status="PENDING",
             # requested_by=user,  # can be None if allowed in model
@@ -140,21 +101,12 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=new_data
         )
 
-        self._log_audit(
-            user=user,
-            action=StaffTemplateAuditLog.Action.CREATE,
-            entity_id=instance.unique_id,
-            remarks=instance.change_remarks,
-        )
-
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
 
     def perform_update(self, serializer):
 
         if not self.request.user.is_authenticated:
             raise NotAuthenticated("Authentication required")
-
-        staff_user = self._resolve_request_user()
 
         previous_data = self._serialize_instance(serializer.instance)
 
@@ -168,14 +120,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=previous_data,
             new_data=new_data
         )
-
-        if staff_user:
-            self._log_audit(
-                user=staff_user,
-                action=StaffTemplateAuditLog.Action.MODIFY,
-                entity_id=instance.unique_id,
-                remarks=instance.change_remarks,
-            )
 
         if (
             previous_data.get("approval_status") != "APPROVED"
@@ -218,23 +162,3 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         super().perform_destroy(instance)
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
 
-    def _resolve_performed_role(self, user):
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "") or ""
-        role = role.lower()
-        if role == "admin":
-            return StaffTemplateAuditLog.PerformedRole.ADMIN
-        if role == "supervisor":
-            return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
-        return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
-
-    def _log_audit(self, user, action, entity_id, remarks=None):
-        if not user:
-            return
-        StaffTemplateAuditLog.objects.create(
-            entity_type=StaffTemplateAuditLog.EntityType.ALTERNATIVE_TEMPLATE,
-            entity_id=str(entity_id),
-            action=action,
-            performed_by_id=getattr(user, "staff_unique_id", None),
-            performed_role=self._resolve_performed_role(user),
-            change_remarks=remarks if isinstance(remarks, str) else None,
-        )

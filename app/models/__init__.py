@@ -27,8 +27,6 @@ from .masters.town_panchayat import TownPanchayat
 from .masters.panchayat_union import PanchayatUnion
 from .masters.panchayat import Panchayat
 from .masters.ward import Ward
-from .masters.hierarchy_tree import HierarchyLevel, HierarchyNode, HierarchyClosure
-from .masters.hierarchy_assignment import HierarchyAssignment
 
 
 # ============================================================
@@ -95,10 +93,8 @@ from .superadmin.staff_management.staff_data_scope import StaffDataScope
 # GROUP: AUTH / LOGIN / AUDIT (USER)
 # ============================================================
 from .superadmin.audits.login_audit import LoginAudit
-from .superadmin.audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
 from .superadmin.audits.permission_audit import PermissionAuditLog
-from .superadmin.audits.staff_change_request import StaffChangeRequest
 
 
 # ============================================================
@@ -205,10 +201,6 @@ __all__ = [
     "Ward",
 
     # Hierarchy Tree (closure-table)
-    "HierarchyLevel",
-    "HierarchyNode",
-    "HierarchyClosure",
-    "HierarchyAssignment",
 
     # Assets
     "Fuel",
@@ -246,7 +238,6 @@ __all__ = [
 
     # Auth / Audit
     "LoginAudit",
-    "AuditLog",
 
     # Customers
     "CustomerCreation",
@@ -293,7 +284,6 @@ __all__ = [
 
     # Audits
     "PermissionAuditLog",
-    "StaffChangeRequest",
 
     # Daily Trip Assignment
     "DailyTripAssignment",

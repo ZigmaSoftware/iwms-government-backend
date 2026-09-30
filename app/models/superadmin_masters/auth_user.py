@@ -124,16 +124,6 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
     # matches the rest of the geo-hierarchy refactor's convention.
     district_id = models.CharField(max_length=30, null=True, blank=True)
 
-    # Dynamic geography: the hierarchy node this user is scoped to. Replaces
-    # the static district_id (kept temporarily for zero-downtime migration).
-    location_node_id = models.CharField(
-        max_length=30,
-        db_column="location_node_id",
-        db_index=True,
-        null=True,
-        blank=True,
-    )
-
     # -----------------------------
     # SYSTEM FIELDS
     # -----------------------------
@@ -201,6 +191,3 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
     def customer(self):
         return self._lookup("app.models.masters.customer_masters.customercreation.CustomerCreation", self.customer_id)
 
-    @property
-    def location_node(self):
-        return self._lookup("app.models.masters.hierarchy_tree.HierarchyNode", self.location_node_id)
