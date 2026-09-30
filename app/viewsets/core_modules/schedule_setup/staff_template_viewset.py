@@ -9,7 +9,6 @@ from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
-from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
 from app.utils.base_models import Account
 
 from app.serializers.core_modules.schedule_setup.staff_template_serializer import (
@@ -24,7 +23,6 @@ from app.utils.hierarchy import (
 )
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
-from app.utils.roles import is_admin_role, is_super_admin
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
 
@@ -243,14 +241,6 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=new_data
         )
 
-        if staff_user:
-            self._log_audit(
-                user=staff_user,
-                action=StaffTemplateAuditLog.Action.CREATE,
-                entity_id=instance.unique_id,
-                remarks=None,
-            )
-
         invalidate_on_commit(*STAFF_TEMPLATE_CACHE_SCOPES)
     # ================= UPDATE =================
 
@@ -291,14 +281,6 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=new_data
         )
 
-        if staff_user:
-            self._log_audit(
-                user=staff_user,
-                action=StaffTemplateAuditLog.Action.MODIFY,
-                entity_id=instance.unique_id,
-                remarks=None,
-            )
-
         self._notify_team_change(previous_data, new_data, instance)
 
         invalidate_on_commit(*STAFF_TEMPLATE_CACHE_SCOPES)
@@ -325,27 +307,3 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 data={"staff_template_id": instance.unique_id},
             )
 
-    # ================= AUDIT =================
-
-    def _resolve_performed_role(self, user):
-        # Recognise admin/supervisor across all three role axes (company /
-        # contractor / government) rather than only ``staffusertype_id``, so a
-        # ``govt_corporation_admin`` is logged as ADMIN and a
-        # ``govt_corporation_supervisor`` as SUPERVISOR.
-        if is_super_admin(user) or is_admin_role(user):
-            return StaffTemplateAuditLog.PerformedRole.ADMIN
-
-        return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
-
-    def _log_audit(self, user, action, entity_id, remarks=None):
-        if not user:
-            return
-
-        StaffTemplateAuditLog.objects.create(
-            entity_type=StaffTemplateAuditLog.EntityType.STAFF_TEMPLATE,
-            entity_id=str(entity_id),
-            action=action,
-            performed_by_id=getattr(user, "staff_unique_id", None),
-            performed_role=self._resolve_performed_role(user),
-            change_remarks=remarks if isinstance(remarks, str) else None,
-        )

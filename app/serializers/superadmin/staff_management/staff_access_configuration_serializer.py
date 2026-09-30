@@ -6,7 +6,6 @@ from app.models.superadmin.common_masters.state import State
 from app.models.masters.areatype import AreaType
 from app.models.masters.corporation import Corporation
 from app.models.masters.district import District
-from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
@@ -299,10 +298,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             errors["wardIds"] = (
                 f"Selected ward is outside scope admin {scope_admin.employee_name}'s hierarchy."
             )
-        parent_nodes = set(parent.location_nodes.values_list("unique_id", flat=True))
-        child_nodes = set(child.get("locationNodes") or [])
-        if parent_nodes and child_nodes - parent_nodes:
-            errors["locationNodes"] = "Selected hierarchy node is outside the scope admin's hierarchy."
 
         if errors:
             raise serializers.ValidationError({"dataScope": errors})
@@ -457,7 +452,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         if not data_scope:
             return None
 
-        location_node_ids = data_scope.get("locationNodes") or []
         state_id = data_scope.get("stateId") or None
         district_id = data_scope.get("districtId") or None
         area_type_id = data_scope.get("areaTypeId") or None
@@ -537,20 +531,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                     }
                 })
 
-        valid_node_ids = set(
-            HierarchyNode.objects.filter(
-                unique_id__in=location_node_ids,
-                is_deleted=False,
-            ).values_list("unique_id", flat=True)
-        )
-        invalid_node_ids = set(location_node_ids) - valid_node_ids
-        if invalid_node_ids:
-            raise serializers.ValidationError({
-                "dataScope": {
-                    "locationNodes": f"Invalid location nodes: {', '.join(sorted(invalid_node_ids))}"
-                }
-            })
-
         scope, _ = StaffDataScope.objects.update_or_create(
             staff_id=staff.staff_unique_id,
             is_deleted=False,
@@ -559,7 +539,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
                 "district": district_id,
                 "area_type": area_type_id,
                 "is_active": True,
-                "location_node_ids": list(location_node_ids),
                 "corporation_ids": list(local_body_ids_by_model[0][1]),
                 "municipality_ids": list(local_body_ids_by_model[1][1]),
                 "town_panchayat_ids": list(local_body_ids_by_model[2][1]),
@@ -782,7 +761,6 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         local_body_level, local_body_id = candidates[0] if len(candidates) == 1 else (None, None)
 
         return {
-            "locationNodes": list(scope.location_nodes.values_list("unique_id", flat=True)),
             "stateId": scope.state,
             "districtId": scope.district,
             "areaTypeId": scope.area_type,

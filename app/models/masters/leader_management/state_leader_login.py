@@ -2,7 +2,6 @@ from django.db import models
 
 from app.utils.base_models import BaseMaster
 from app.models.masters.state_leader_login import generate_state_leader_id
-from app.utils import ref_cache
 
 
 class StateLeaderLogin(BaseMaster):
@@ -23,21 +22,6 @@ class StateLeaderLogin(BaseMaster):
     # matches the rest of the geo-hierarchy refactor's convention. Was
     # NOT NULL as a ForeignKey, so kept required here too.
     state_id = models.CharField(max_length=30)
-
-    # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
-    # the static state_id (kept temporarily for zero-downtime migration).
-    location_node_id = models.CharField(
-        max_length=30, null=True, blank=True, db_column="location_node_id", db_index=True
-    )
-
-    @property
-    def location_node(self):
-        """HierarchyNode for `location_node_id` (plain unique_id, no DB relation)."""
-        from app.models.masters.hierarchy_tree import HierarchyNode
-
-        if not self.location_node_id:
-            return None
-        return ref_cache.get(HierarchyNode, self.location_node_id, "unique_id")
 
     username = models.CharField(
         max_length=150,
