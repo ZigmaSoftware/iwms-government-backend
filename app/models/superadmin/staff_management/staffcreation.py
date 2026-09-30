@@ -262,7 +262,7 @@ class StaffcreationOfficeDetails(BaseMaster):
     @property
     def data_scopes(self):
         """StaffDataScope rows for this staff (plain staff_id); replaces the
-        reverse FK accessor."""
+        reverse accessor."""
         from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 
         return StaffDataScope.objects.filter(staff_id=self.staff_unique_id)

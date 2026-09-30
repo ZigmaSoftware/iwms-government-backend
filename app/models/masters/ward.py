@@ -11,8 +11,8 @@ def generate_ward_id():
 class Ward(BaseMaster):
     """A ward sits under exactly one local body — Corporation/Municipality/
     TownPanchayat (ULB) or PanchayatUnion/Panchayat (RLB) — mirroring the same
-    flat-geo FK block used by TripPlan/StaffTemplate/CustomerCreation. Exactly
-    one of the five local-body FKs is populated per row; enforced in
+    flat-geo field block used by TripPlan/StaffTemplate/CustomerCreation. Exactly
+    one of the five local-body fields is populated per row; enforced in
     `WardSerializer.validate` via `normalize_flat_geo_attrs`, not at the DB
     level, matching that existing convention.
 
@@ -65,7 +65,7 @@ class Ward(BaseMaster):
     @property
     def bins(self):
         """Bins in this ward (Bins.ward_id is a plain unique_id string);
-        replaces the reverse FK accessor CASCADE_SOFT_DELETE expects."""
+        replaces the reverse accessor CASCADE_SOFT_DELETE expects."""
         from app.models.masters.waste_masters.bins import Bins
 
         return Bins.objects.filter(ward_id=self.unique_id)
@@ -90,7 +90,7 @@ class Ward(BaseMaster):
     def customers(self):
         """CustomerCreation rows in this ward. CustomerCreation.ward_id is a
         plain unique_id string (no DB relation), so this replaces the reverse
-        FK accessor that CASCADE_SOFT_DELETE above expects."""
+        accessor that CASCADE_SOFT_DELETE above expects."""
         from app.models.masters.customer_masters.customercreation import CustomerCreation
 
         return CustomerCreation.objects.filter(ward_id=self.unique_id)

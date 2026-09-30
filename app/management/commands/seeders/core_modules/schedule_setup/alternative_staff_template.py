@@ -2,7 +2,6 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from app.utils.plain_ref import ref_id
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.ward_utils import FLAT_GEO_FIELDS
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
@@ -74,7 +73,6 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 f"{field}_id": getattr(template, f"{field}_id", None)
                 for field in FLAT_GEO_FIELDS
             }
-            approver = template.approved_by
 
             existing = AlternativeStaffTemplate.objects.filter(staff_template_id=template.unique_id).first()
             if existing:
@@ -83,10 +81,8 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 existing.extra_operator_id = [extra_operator.staff_unique_id]
                 existing.change_reason = reason
                 existing.change_remarks = remarks
-                existing.approved_by_id = ref_id(approver)
                 existing.from_date = existing.from_date or from_date
                 existing.to_date = existing.to_date or to_date
-                existing.approval_status = "APPROVED"
                 for field, value in geo_defaults.items():
                     setattr(existing, field, value)
                 existing.save()
@@ -103,8 +99,6 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 to_date=to_date,
                 change_reason=reason,
                 change_remarks=remarks,
-                approved_by_id=ref_id(approver),
-                approval_status="APPROVED",
                 **geo_defaults,
             )
             count += 1

@@ -15,12 +15,6 @@ class AlternativeStaffTemplate(models.Model):
     a staff template with approval workflow and audit trail.
     """
 
-    APPROVAL_STATUS_CHOICES = (
-        ('PENDING', 'Pending'),
-        ('APPROVED', 'Approved'),
-        ('REJECTED', 'Rejected'),
-    )
-
     # ------------------------------------------------------------------
     # CORE IDENTIFIER
     # ------------------------------------------------------------------
@@ -77,10 +71,6 @@ class AlternativeStaffTemplate(models.Model):
         return self._staff(self.operator_id)
 
     @property
-    def approved_by(self):
-        return self._staff(self.approved_by_id)
-
-    @property
     def staff_template(self):
         from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 
@@ -113,27 +103,6 @@ class AlternativeStaffTemplate(models.Model):
     )
 
     # ------------------------------------------------------------------
-    # APPROVAL WORKFLOW
-    # ------------------------------------------------------------------
-
-    # requested_by = models.ForeignKey(
-    #     Staffcreation,
-    #     on_delete=models.PROTECT,
-    #     db_column='requested_by',
-    #     related_name='alt_staff_requested'
-    # )
-
-    approved_by_id = models.CharField(
-        max_length=30, null=True, blank=True, db_column='approved_by', db_index=True
-    )
-
-    approval_status = models.CharField(
-        max_length=10,
-        choices=APPROVAL_STATUS_CHOICES,
-        default='PENDING'
-    )
-
-    # ------------------------------------------------------------------
     # HUMAN READABLE CODE
     # ------------------------------------------------------------------
 
@@ -160,7 +129,6 @@ class AlternativeStaffTemplate(models.Model):
 
         indexes = [
             models.Index(fields=['staff_template_id']),
-            models.Index(fields=['approval_status']),
             models.Index(fields=['display_code']),
         ]
 

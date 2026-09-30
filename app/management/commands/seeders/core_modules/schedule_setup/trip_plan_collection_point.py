@@ -86,7 +86,7 @@ class TripPlanCollectionPointSeeder(BaseSeeder):
                 plan_wards = list(plan.wards.all())
                 if plan_wards:
                     # Ward-level trip plans (one plan per ward — see
-                    # TripPlanSeeder) share their base local body FK with
+                    # TripPlanSeeder) share their base local body field with
                     # every other ward under that same local body, so the
                     # local-body match alone would pull in every ward's
                     # collection points. Narrow to just this plan's own

@@ -140,9 +140,9 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         validators = []
 
     def validate(self, attrs):
-        # `normalize_flat_geo_attrs` is shared with still-FK-based callers
-        # (StaffTemplate/TripPlan) and works in terms of the bare geo-level
-        # names ("state", "corporation", ...) both for reading `attrs`/
+        # `normalize_flat_geo_attrs` is shared with callers that use the bare
+        # geo-level attribute names (StaffTemplate/TripPlan: "state", "corporation",
+        # ...) both for reading `attrs`/
         # `instance` and for the keys it writes back. Ward's own model fields
         # are the "_id"-suffixed plain CharFields, so translate both ways
         # around the call: bare-keyed alias in, "_id"-suffixed attrs out.

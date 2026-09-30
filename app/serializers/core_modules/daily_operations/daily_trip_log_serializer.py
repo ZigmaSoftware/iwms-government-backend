@@ -375,7 +375,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         # Full location detail straight from the geo master columns on the log
         # (falling back to its assignment) — these are now plain unique_id
         # strings (no DB relation), so resolve display names with a lookup
-        # instead of attribute-chaining a live FK.
+        # instead of attribute-chaining a live related object.
         source = obj if obj.district_id or obj.panchayat_id or obj.corporation_id else obj.trip_assignment
         if not source:
             source = obj

@@ -25,9 +25,6 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
     # Plain staff_unique_ids (no DB relation); checked in validate_*.
     driver_id = serializers.CharField()
     operator_id = serializers.CharField()
-    approved_by = serializers.CharField(
-        source="approved_by_id", required=False, allow_null=True
-    )
 
     @staticmethod
     def _active_staff_id(value):
@@ -65,7 +62,6 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
 
     driver_name = serializers.CharField(source="driver.employee_name", read_only=True, default=None)
     operator_name = serializers.CharField(source="operator.employee_name", read_only=True, default=None)
-    approved_by_name = serializers.CharField(source="approved_by.employee_name", read_only=True, default=None)
     extra_operator_names = serializers.SerializerMethodField(read_only=True)
     driver_designation = serializers.SerializerMethodField(read_only=True)
     operator_designation = serializers.SerializerMethodField(read_only=True)
@@ -240,13 +236,8 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
             
 
             "updated_by",
-        
-
-            "approved_by",
-            "approved_by_name",
 
             "status",
-            "approval_status",
 
             "created_at",
             "updated_at",
@@ -269,19 +260,11 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
             "operator_role",
             "created_by_name",
             "updated_by_name",
-            "approved_by_name",
         ]
 
-    def validate_approved_by(self, value):
-        if value:
-            self._active_staff_id(value)
-        if self.instance and self.instance.approved_by_id and self.instance.approved_by_id != value:
-            raise serializers.ValidationError("Approved by cannot be modified")
-        return value
-
     def validate(self, attrs):
-        # `normalize_flat_geo_attrs` is shared with still-FK-based callers and
-        # works in terms of the bare geo-level names ("state", "corporation",
+        # `normalize_flat_geo_attrs` is shared with callers that use the bare
+        # geo-level attribute names ("state", "corporation",
         # ...) both for reading `attrs`/`instance` and for the keys it writes
         # back. StaffTemplate's own model fields are the "_id"-suffixed plain
         # CharFields, so translate both ways around the call.

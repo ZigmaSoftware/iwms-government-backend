@@ -221,7 +221,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     def _geo_ref(self, value, field):
         # These fields are now plain unique_id strings (no DB relation), so
         # the display ref is resolved with a lookup instead of attribute-
-        # chaining a live FK.
+        # chaining a live related object.
         if not value:
             return None
         model, label_attr = _GEO_LOOKUP_MODELS[field]

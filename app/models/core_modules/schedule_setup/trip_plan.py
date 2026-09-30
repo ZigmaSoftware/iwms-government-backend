@@ -179,7 +179,7 @@ class TripPlan(BaseMaster):
     @property
     def plan_collection_points(self):
         """TripPlanCollectionPoint rows for this plan (plain trip_plan_id);
-        replaces the reverse FK accessor CASCADE_SOFT_DELETE expects."""
+        replaces the reverse accessor CASCADE_SOFT_DELETE expects."""
         from app.models.core_modules.schedule_setup.trip_plan_collection_point import (
             TripPlanCollectionPoint,
         )
@@ -189,7 +189,7 @@ class TripPlan(BaseMaster):
     @property
     def daily_trip_assignments(self):
         """DailyTripAssignment rows generated from this plan (plain
-        trip_plan_id); replaces the reverse FK accessor."""
+        trip_plan_id); replaces the reverse accessor."""
         from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )

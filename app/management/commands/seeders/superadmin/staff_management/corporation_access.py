@@ -80,7 +80,7 @@ class CorporationAccessSeeder(BaseSeeder):
                     # StaffcreationOfficeDetails' own state/district/area_type/
                     # corporation columns are plain unique_id CharFields now (no
                     # DB relation), so assign the corporation's own unique_id
-                    # strings directly instead of resolving FK instances.
+                    # strings directly instead of resolving related instances.
                     "state_id": corporation.state_id,
                     "district_id": corporation.district_id,
                     "area_type_id": corporation.area_type_id,

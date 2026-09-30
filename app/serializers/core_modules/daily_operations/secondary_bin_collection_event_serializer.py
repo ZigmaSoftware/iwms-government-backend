@@ -97,8 +97,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
     to_date = serializers.SerializerMethodField()
     extra_operator_id = serializers.SerializerMethodField()
     change_reason = serializers.SerializerMethodField()
-    approved_by = serializers.SerializerMethodField()
-    approval_status = serializers.SerializerMethodField()
     display_code = serializers.SerializerMethodField()
     panchayat_name = serializers.SerializerMethodField()
     # Most-specific local body (corporation/municipality/.../panchayat) + its level
@@ -143,8 +141,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
             "to_date",
             "extra_operator_id",
             "change_reason",
-            "approved_by",
-            "approval_status",
             "display_code",
             "collection_date",
             "collected_weight_kg",
@@ -345,20 +341,6 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         alt_template = self._resolve_alternative_staff_template(obj)
         return getattr(alt_template, "change_reason", None) if alt_template else None
 
-    def get_approved_by(self, obj):
-        alt_template = self._resolve_alternative_staff_template(obj)
-        approved_by = getattr(alt_template, "approved_by", None)
-        if not approved_by:
-            return None
-        return {
-            "unique_id": approved_by.staff_unique_id,
-            "employee_name": approved_by.employee_name,
-        }
-
-    def get_approval_status(self, obj):
-        alt_template = self._resolve_alternative_staff_template(obj)
-        return getattr(alt_template, "approval_status", None) if alt_template else None
-
     def get_display_code(self, obj):
         alt_template = self._resolve_alternative_staff_template(obj)
         return getattr(alt_template, "display_code", None) if alt_template else None
@@ -368,7 +350,7 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         # then fall back to the collection point / trip assignment. All three
         # sources hold a plain panchayat unique_id string (Collection_point
         # and BinCollectionEvent are converted; DailyTripAssignment's own
-        # `panchayat` FK attname `panchayat_id` also yields the raw id).
+        # `panchayat_id` attname also yields the raw id).
         panchayat_uid = (
             obj.panchayat_id
             or getattr(obj.collection_point, "panchayat_id", None)

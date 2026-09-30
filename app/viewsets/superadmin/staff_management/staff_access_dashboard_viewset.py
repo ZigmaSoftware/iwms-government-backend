@@ -982,7 +982,7 @@ class StaffAccessDashboardViewSet(ViewSet):
 
         # staff.panchayat/.../.state are now plain unique_id strings (no DB
         # relation) — resolve the display name via the shared flat-geo
-        # helper instead of treating them as FK objects.
+        # helper instead of treating them as related objects.
         name, level_label = flat_geo_display(staff)
         if name:
             level = next(

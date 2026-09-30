@@ -17,7 +17,7 @@ class AdministrativeHierarchyViewSet(ModelViewSet):
     permission_resource = "AdministrativeHierarchy"
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    # area_type is a plain unique_id string, not a ForeignKey (see
+    # area_type is a plain unique_id string, not a relation field (see
     # docs/geo_hierarchy_fk_removal.md) — "area_type__name" would raise
     # FieldError since there's no relation left to join across.
     search_fields = ["level_name", "area_type"]

@@ -2,7 +2,7 @@
 Central resolution of a user's effective business role across the three role
 axes and the semantic predicates the gating code needs.
 
-A `Staffcreation` carries three nullable role FKs — `staffusertype_id`
+A `Staffcreation` carries three nullable role fields — `staffusertype_id`
 (company roles), `contractorusertype_id`, and `governmentusertype_id`
 (government roles, e.g. ``govt_corporation_admin`` / ``govt_corporation_supervisor``).
 Exactly one is set for a given staff member.
@@ -18,7 +18,7 @@ at all three axes and match by role *shape* so both the company roles
 (``govt_<level>_admin`` / ``govt_<level>_supervisor``) are recognised.
 """
 
-ROLE_FK_ATTRS = (
+ROLE_ATTRS = (
     "staffusertype_id",
     "contractorusertype_id",
     "governmentusertype_id",
@@ -32,11 +32,11 @@ SUPERVISOR_ROLE_NAMES = {"supervisor", "company_supervisor", "company supervisor
 
 
 def effective_role_name(user):
-    """Return the lowercased role name from whichever role FK is populated on
+    """Return the lowercased role name from whichever role field is populated on
     `user`, or "" if none. Order: staff → contractor → government."""
     if not user:
         return ""
-    for attr in ROLE_FK_ATTRS:
+    for attr in ROLE_ATTRS:
         name = getattr(getattr(user, attr, None), "name", None)
         if name:
             return name.strip().lower()

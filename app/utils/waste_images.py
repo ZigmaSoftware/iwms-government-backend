@@ -2,7 +2,7 @@
 
 The photos are taken in the mobile capture flow and stored on
 ``WasteCollectionSub.image``. They are linked to a household collection only by
-customer + date (there is no direct FK), so these helpers resolve and build
+customer + date (there is no direct link), so these helpers resolve and build
 servable ``/media/`` URLs for both the WasteCollection and DailyTripLog
 serializers.
 """

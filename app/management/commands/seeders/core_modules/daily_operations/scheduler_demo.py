@@ -159,7 +159,7 @@ class SchedulerDemoSeeder(BaseSeeder):
         # `generate_daily_trips` run visibly creates new records each time.
         existing_today = DailyTripAssignment.objects.filter(trip_plan_id=plan.unique_id, trip_date=today)
         removed = existing_today.count()
-        existing_today.delete()  # cascades to DailyTripCollectionPoint via FK
+        existing_today.delete()  # DailyTripCollectionPoint rows for today are left in place (no DB relation to cascade through)
         if removed:
             self.log(f"Cleared {removed} existing assignment(s) for today so the scheduler can regenerate.")
 

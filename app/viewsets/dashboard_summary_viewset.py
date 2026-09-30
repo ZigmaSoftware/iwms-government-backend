@@ -209,13 +209,11 @@ class DashboardSummaryViewSet(ViewSet):
     def _apply_geo(self, qs, params, include_ward=True):
         for key, value in params.items():
             if key == "local_body_type":
-                # `_model_has_field` matches by Django attname too (e.g. a
-                # still-FK model's "corporation" field resolves under
-                # "corporation_id"), so checking the "_id"-suffixed `value`
-                # directly works uniformly whether `qs.model`'s own column
-                # is a live FK (StaffTemplate/TripPlan) or an already-
-                # converted plain CharField literally named "..._id" (Ward,
-                # CustomerCreation, Corporation, District, ...).
+                # `_model_has_field` matches by Django attname too, so checking
+                # the "_id"-suffixed `value` directly works uniformly across
+                # every `qs.model` — all of them carry the geo columns as
+                # plain CharFields literally named "..._id" (StaffTemplate,
+                # TripPlan, Ward, CustomerCreation, Corporation, District, ...).
                 if value in LOCAL_BODY_MODELS and _model_has_field(qs.model, value):
                     qs = qs.filter(**{f"{value}__isnull": False})
                 continue
@@ -1061,7 +1059,7 @@ class DashboardSummaryViewSet(ViewSet):
         bin_master_data = {r["ward_id"]: r for r in bin_master_agg}
 
         # Bin (secondary collection point) stats per ward — BinCollectionEvent
-        # carries its own `ward` FK directly (set by the seeder / ScanBinViewSet),
+        # carries its own `ward_id` directly (set by the seeder / ScanBinViewSet),
         # so this is a straight aggregate, no join through customers needed.
         bin_qs = BinCollectionEvent.objects.filter(
             ward_id__in=ward_ids,

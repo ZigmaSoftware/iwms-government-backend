@@ -160,8 +160,8 @@ class AuditViewSetMixin:
             return {}
 
         kwargs = {}
-        # Audit actor fields may be real FKs on legacy models or plain string
-        # account-id columns on FK-free models. Stamp the shape each field uses.
+        # Audit actor fields may be real relation fields on legacy models or
+        # plain string account-id columns elsewhere. Stamp the shape each field uses.
         if create:
             field = self._model_field(model, "created_by")
             if field is not None:
@@ -197,7 +197,7 @@ class AuditViewSetMixin:
         for field in instance._meta.fields:
             value = getattr(instance, field.name)
 
-            # ForeignKey → store unique_id
+            # Relation field → store unique_id
             if field.is_relation:
                 data[field.name] = getattr(value, "unique_id", None) if value else None
 

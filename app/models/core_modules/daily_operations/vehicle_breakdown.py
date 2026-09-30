@@ -204,7 +204,7 @@ class VehicleBreakdown(BaseMaster):
     @property
     def photos(self):
         """Photos of this breakdown (VehicleBreakdownPhoto.breakdown_id is a
-        plain unique_id); replaces the reverse FK accessor."""
+        plain unique_id); replaces the reverse accessor."""
         return VehicleBreakdownPhoto.objects.filter(breakdown_id=self.unique_id)
 
 

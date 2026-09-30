@@ -84,7 +84,7 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
         # StaffTemplate/AlternativeStaffTemplate/Staffcreation all carry the
         # flat-geo block as plain "<field>_id" CharFields now (unique_id
         # strings, no DB relation) — read straight off the supervisor's own
-        # attnames rather than resolving FK objects.
+        # attnames rather than resolving related objects.
         geo = {
             f"{field}_id": getattr(supervisor, f"{field}_id", None)
             for field in FLAT_GEO_FIELDS
@@ -122,7 +122,6 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
                 "to_date": today + timedelta(days=30),
                 "change_reason": "Demo substitution",
                 "change_remarks": "Seeded for supervisor app testing.",
-                "approval_status": AlternativeStaffTemplate.APPROVAL_STATUS_CHOICES[1][0],
                 **geo,
             },
         )
@@ -204,7 +203,6 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             template = StaffTemplate.objects.create(
                 driver_id=driver.staff_unique_id,
                 operator_id=operator.staff_unique_id,
-                approval_status=StaffTemplate.ApprovalStatus.APPROVED,
                 status=StaffTemplate.Status.ACTIVE,
                 is_active=True,
                 is_deleted=False,
@@ -213,7 +211,6 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
         else:
             for field, value in geo.items():
                 setattr(template, field, value)
-            template.approval_status = StaffTemplate.ApprovalStatus.APPROVED
             template.status = StaffTemplate.Status.ACTIVE
             template.is_active = True
             template.is_deleted = False

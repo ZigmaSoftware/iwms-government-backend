@@ -65,7 +65,7 @@ FLAT_GEO_LEVEL_CANDIDATES = (
 )
 
 # Model each flat-geo field resolves against, for callers whose OWN field is
-# a plain unique_id string rather than a live FK object (Ward, CustomerCreation,
+# a plain unique_id string rather than a live related object (Ward, CustomerCreation,
 # and every other model converted in this pass — see `_as_geo_instance` for
 # state/district/area_type; local-body levels are added here too since
 # `flat_geo_display` needs to resolve those as well).
@@ -90,12 +90,12 @@ def _geo_model(field):
 
 def _geo_attr_value(obj, field):
     """Read `obj`'s value for a flat-geo `field`, whether `obj`'s own column
-    is a live FK named `field` (StaffTemplate/TripPlan, attname `field_id`
+    is a live relation named `field` (legacy shape: attname `field_id`
     resolves to an object via `field`), or an already-converted plain
     CharField literally named `field_id` (Ward, CustomerCreation, and every
     other model converted in this refactor — matching Corporation/District/.../
     Panchayat's own `state_id`/`district_id`/`area_type_id` convention).
-    Tries the FK-style bare name first, then the plain-string `_id` name."""
+    Tries the relation-style bare name first, then the plain-string `_id` name."""
     value = getattr(obj, field, None)
     if value is not None:
         return value
@@ -104,7 +104,7 @@ def _geo_attr_value(obj, field):
 
 def _resolve_geo_candidate(obj, field):
     """Return the resolved parent/local-body instance for `obj`'s `field`,
-    whether that field is still a live FK (an object is already there) or a
+    whether that field is still a live relation (an object is already there) or a
     plain unique_id string (already-converted models like Ward/
     CustomerCreation) — lets `flat_geo_display` keep working unmodified for
     both kinds of caller."""
@@ -164,7 +164,7 @@ LOCAL_BODY_FIELDS = (
 
 # `StaffDataScope`'s local-body levels are many-to-many (a staff can be
 # scoped to several corporations/municipalities/etc at once). Each tuple is
-# (level name, single-value FK field name as carried by other flat-geo
+# (level name, single-value field name as carried by other flat-geo
 # models like TripPlan/CustomerCreation, the M2M attribute on StaffDataScope).
 STAFF_LOCAL_BODY_M2M_LEVELS = (
     ("corporation", "corporation_id", "corporations"),
@@ -208,7 +208,7 @@ def validate_wards_for_flat_geo(wards, attrs, instance=None):
 def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
     """
     Apply explicit state/district/area_type/local-body query params to a
-    queryset that has flat geo FK columns. `prefix` supports related models,
+    queryset that has flat geo reference columns. `prefix` supports related models,
     e.g. prefix="trip_assignment_id__" for VehicleBreakdown.
     """
     for field in FLAT_GEO_QUERY_FIELDS:
@@ -228,7 +228,7 @@ def _object_pk(value):
     return getattr(value, "pk", value)
 
 
-def _same_fk(left, right):
+def _same_ref(left, right):
     return _object_pk(left) == _object_pk(right)
 
 
@@ -248,8 +248,8 @@ _GEO_PARENT_MODELS = {
 def _as_geo_instance(parent, value):
     """Some local-body/parent models (e.g. Corporation) store their
     state/district/area_type as a plain unique_id string rather than a
-    ForeignKey; resolve those into real instances so callers that assign
-    onto a still-FK attrs field (e.g. Ward.state) get an object, not a bare
+    relation field; resolve those into real instances so callers that assign
+    onto a bare-name attrs field (e.g. Ward.state) get an object, not a bare
     string."""
     if value is None or not isinstance(value, str):
         return value
@@ -265,9 +265,8 @@ def _as_geo_local_body_instance(field, value):
     .../panchayat) rather than state/district/area_type — needed so
     `normalize_flat_geo_attrs` can read a local body's own state_id/
     district_id/area_type_id regardless of whether the CALLER's local-body
-    attrs value is already a plain unique_id string (Ward/CustomerCreation,
-    post-conversion) or a live FK object (StaffTemplate/TripPlan, not yet
-    converted)."""
+    attrs value is already a plain unique_id string (the normal case for
+    every converted model) or a live related object."""
     if value is None or isinstance(value, str):
         return _geo_model(field).objects.filter(unique_id=value).first() if value else None
     return value
@@ -275,7 +274,7 @@ def _as_geo_local_body_instance(field, value):
 
 def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings=False):
     """
-    Normalize serializer attrs carrying flat geo FKs. If a corporation/
+    Normalize serializer attrs carrying flat geo references. If a corporation/
     municipality/town_panchayat/panchayat_union/panchayat is selected, copy
     its state, district, and area_type onto the attrs and reject contradictory
     parent selections. Returns an error dict; an empty dict means attrs were
@@ -283,15 +282,13 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings
 
     `as_strings`: pass True when the CALLING model's own state/district/
     area_type/local-body columns are plain CharFields holding a unique_id
-    (Ward, CustomerCreation, and the other models converted in this same
-    FK-to-plain-string refactor pass) rather than live ForeignKeys. Every
-    value this function assigns into `attrs` is then a plain unique_id
+    (Ward, CustomerCreation, StaffTemplate, TripPlan, and the other models
+    converted in this same refactor pass) rather than live related objects.
+    Every value this function assigns into `attrs` is then a plain unique_id
     string instead of a model instance, matching what the model's `.save()`
     expects. Values already present in `attrs`/`instance` are still read
     transparently either way (resolved to an object internally when needed
     to walk .state_id/.district_id/.area_type_id, e.g. off a local body).
-    Other callers (StaffTemplate, TripPlan, ... — still FK-based) must NOT
-    pass this, so they keep getting real objects as before.
     """
     selected_local_bodies = [
         field for field in LOCAL_BODY_FIELDS
@@ -334,7 +331,7 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings
                 continue
 
             current = attrs.get(parent)
-            if parent in attrs and current and not _same_fk(current, parent_obj):
+            if parent in attrs and current and not _same_ref(current, parent_obj):
                 return {
                     f"{parent}_id": (
                         f"Selected {parent.replace('_', ' ')} does not match "
@@ -373,8 +370,8 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings
 
 
 def copy_flat_geo(target, source, only_empty=False):
-    """Copy state/district/area_type/.../panchayat FKs from `source` onto
-    `target`. Both models are expected to carry the same flat geo FK set
+    """Copy state/district/area_type/.../panchayat references from `source` onto
+    `target`. Both models are expected to carry the same flat geo field set
     (e.g. CustomerCreation -> TripPlan, or any two models in the
     Staff/Customer/TripPlan family). If `source` doesn't have these fields,
     every field on `target` is cleared. Does nothing if `only_empty` is set
@@ -384,10 +381,10 @@ def copy_flat_geo(target, source, only_empty=False):
         return
 
     if any(hasattr(source, field) or hasattr(source, f"{field}_id") for field in FLAT_GEO_FIELDS):
-        # `source`'s own flat-geo columns may still be live FKs (bare name
+        # `source`'s own flat-geo columns may be a live relation (bare name
         # "<field>", Django attname "<field>_id" resolving to an object via
-        # "<field>", e.g. TripPlan) or, for already-converted models (Ward,
-        # CustomerCreation, ...), plain CharFields literally named
+        # "<field>") or, for already-converted models (Ward,
+        # CustomerCreation, TripPlan, ...), plain CharFields literally named
         # "<field>_id" holding a unique_id string. Resolve to a plain
         # unique_id string either way.
         values = {}
@@ -414,7 +411,7 @@ def sync_staff_data_scope(staff, source):
     same flat geo their trip carries restores visibility while keeping the
     corporation/district boundary intact. Idempotent (update_or_create).
 
-    `source` is any model carrying the flat geo FK block (a DailyTripAssignment,
+    `source` is any model carrying the flat geo field block (a DailyTripAssignment,
     TripPlan, etc.). `staff` must expose `staff_unique_id`.
     """
     scope, created = StaffDataScope.objects.update_or_create(
@@ -482,8 +479,8 @@ def _narrow_by_ward(queryset, scope):
     extra narrowing on top of the local-body/district scope, never a
     widening, so it's safe to apply speculatively across every scoped
     queryset in the app. Detects both conventions in use: a singular `ward`
-    FK (Bins, ...), a plain-string `ward_id` column (CustomerCreation) and a
-    plural `wards` M2M (TripPlan).
+    relation field, a plain-string `ward_id` column (CustomerCreation, Bins, ...)
+    and a plural `wards` M2M (TripPlan).
     """
     ward_ids = list(scope.wards.values_list("unique_id", flat=True))
     if not ward_ids:
@@ -525,7 +522,7 @@ def _narrow_by_ward(queryset, scope):
 
 def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
     """
-    Auto-scope a queryset whose model carries its own flat geo FKs (e.g.
+    Auto-scope a queryset whose model carries its own flat geo fields (e.g.
     Corporation/Municipality/.../Panchayat, or any model with matching
     state_id/district_id/.../panchayat_id columns) to the requester's
     `StaffDataScope`. A staff scoped to one or more specific local bodies
@@ -751,7 +748,7 @@ def _local_body_ids_by_level(scope):
         manager = getattr(scope, m2m_field, None)
         if manager is None:
             # Keep this helper usable with lightweight scope stand-ins used by
-            # tests and older callers that only expose the legacy FK fields.
+            # tests and older callers that only expose the legacy singular fields.
             legacy_id = getattr(scope, f"{level}_id", None)
             ids = [legacy_id] if legacy_id else []
         else:
@@ -772,7 +769,7 @@ def _granted_scope_level(scope):
     wards = getattr(scope, "wards", None)
     if wards is not None and wards.exists():
         return "ward"
-    # Legacy/plain scope objects may expose only singular FK fields. Preserve
+    # Legacy/plain scope objects may expose only singular fields. Preserve
     # their precise level when no local-body M2M managers are available.
     if not any(
         getattr(scope, m2m_field, None) is not None

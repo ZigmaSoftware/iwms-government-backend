@@ -4,7 +4,7 @@ def unique_name_validator(Model, name_field="name", scope_fields=None):
     """
     Model: Model class
     name_field: DB column for the name
-    scope_fields: list of FK field names to validate together
+    scope_fields: list of field names to validate together
     """
 
     scope_fields = scope_fields or []
