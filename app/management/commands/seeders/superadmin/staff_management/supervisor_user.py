@@ -37,7 +37,7 @@ class SupervisorUserSeeder(BaseSeeder):
 
         role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.ROLE_NAME,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
@@ -68,8 +68,8 @@ class SupervisorUserSeeder(BaseSeeder):
             defaults={
                 "employee_name": "Supervisor User",
                 "password": make_password(self.PASSWORD),
-                "user_type_id": user_type,
-                "governmentusertype_id": role,
+                "user_type_id": user_type.unique_id,
+                "governmentusertype_id": role.unique_id,
                 "is_active": True,
                 "is_deleted": False,
                 "is_superuser": False,
@@ -79,8 +79,8 @@ class SupervisorUserSeeder(BaseSeeder):
         if not created:
             supervisor.employee_name = "Supervisor User"
             supervisor.password = make_password(self.PASSWORD)
-            supervisor.user_type_id = user_type
-            supervisor.governmentusertype_id = role
+            supervisor.user_type_id = user_type.unique_id
+            supervisor.governmentusertype_id = role.unique_id
             supervisor.staffusertype_id = None
             supervisor.is_active = True
             supervisor.is_deleted = False

@@ -117,7 +117,7 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
         write_ser.is_valid(raise_exception=True)
         vd = write_ser.validated_data
 
-        # Resolve FK objects
+        # Resolve related objects
         userscreen = UserScreen.objects.get(unique_id=vd["userscreen_id"])
         column = UserScreenColumn.objects.get(unique_id=vd["column_id"])
 

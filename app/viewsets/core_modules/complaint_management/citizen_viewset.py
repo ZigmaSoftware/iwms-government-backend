@@ -63,7 +63,7 @@ LOCAL_BODY_SOURCES = (
     ("panchayat", Panchayat, "panchayat_name"),
 )
 
-# Flat geo FK field names copied from a customer onto their ticket.
+# Flat geo field names copied from a customer onto their ticket.
 CUSTOMER_GEO_FIELDS = (
     "state", "district", "corporation", "municipality",
     "town_panchayat", "panchayat_union", "panchayat",

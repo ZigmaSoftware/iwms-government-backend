@@ -17,7 +17,7 @@ from app.utils.hierarchy import (
 
 
 class FlatGeoScopedViewSetMixin:
-    """Mixin for viewsets whose model carries the flat geo FK block
+    """Mixin for viewsets whose model carries the flat geo field block
     (state/district/area_type/corporation/.../panchayat), directly or via a
     relation prefix.
 

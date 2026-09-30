@@ -150,7 +150,7 @@ class ComplaintTicketSeeder(BaseSeeder):
                 to_status_id=status.unique_id,
                 remarks=f"Seeded as {status.status_name}",
                 defaults={
-                    "from_status": None,
+                    "from_status_id": None,
                     "changed_by_system": True,
                     "visible_to_citizen": True,
                     "is_active": True,

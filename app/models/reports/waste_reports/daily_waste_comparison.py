@@ -12,7 +12,7 @@ class DailyWasteComparison(models.Model):
     # WasteType.unique_id (plain string, no DB relation).
     waste_type_id = models.CharField(max_length=30, db_column="waste_type_id", db_index=True)
 
-    # Plain unique_id references (no ForeignKey/DB relation) — see
+    # Plain unique_id references (no DB relation) — see
     # docs/geo_hierarchy_fk_removal.md. Existence of the referenced row is
     # checked at the API layer (see DailyWasteComparisonSerializer's
     # validate_<field> methods), not enforced by the database.

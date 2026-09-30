@@ -1,5 +1,4 @@
-from rest_framework import filters, viewsets, status, serializers
-from rest_framework.response import Response
+from rest_framework import filters, viewsets, serializers
 from rest_framework.exceptions import NotAuthenticated
 
 from app.utils.plain_ref_search import PlainRefSearchFilter
@@ -28,12 +27,11 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     API Contract:
     - Create alternative staff mapping
-    - Approve / Reject mapping
-    - Filter by status, date, template
+    - Filter by date, template
     """
     throttle_scope = "alternative_staff_template"
 
-    # staff_template / driver / operator / approved_by are plain unique_ids
+    # staff_template / driver / operator are plain unique_ids
     # now (no DB relation) — nothing to select_related.
     queryset = AlternativeStaffTemplate.objects.all()
     serializer_class = AlternativeStaffTemplateSerializer
@@ -48,7 +46,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
         "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
     ]
-    ordering_fields = ["from_date", "to_date", "approval_status"]
+    ordering_fields = ["from_date", "to_date"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "alternative-staff-templates"
@@ -57,15 +55,11 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         qs = super().get_queryset()
 
         staff_template = self.request.query_params.get("staff_template")
-        approval_status = self.request.query_params.get("approval_status")
         from_date = self.request.query_params.get("from_date")
         to_date = self.request.query_params.get("to_date")
 
         if staff_template:
             qs = qs.filter(staff_template_id=staff_template)
-
-        if approval_status:
-            qs = qs.filter(approval_status=approval_status)
 
         if from_date:
             qs = qs.filter(from_date__gte=from_date)
@@ -88,7 +82,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         instance = serializer.save(
-            approval_status="PENDING",
             # requested_by=user,  # can be None if allowed in model
         )
 
@@ -122,8 +115,9 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
         if (
-            previous_data.get("approval_status") != "APPROVED"
-            and new_data.get("approval_status") == "APPROVED"
+            previous_data.get("driver_id") != new_data.get("driver_id")
+            or previous_data.get("operator_id") != new_data.get("operator_id")
+            or previous_data.get("staff_template_id") != new_data.get("staff_template_id")
         ):
             for staff in (instance.driver, instance.operator):
                 notify_staff(
@@ -146,17 +140,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 )
 
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
-
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-
-        if instance.approval_status == "APPROVED":
-            return Response(
-                {"detail": "Approved records cannot be modified."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         super().perform_destroy(instance)

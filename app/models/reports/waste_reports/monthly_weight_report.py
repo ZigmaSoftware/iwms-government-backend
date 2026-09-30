@@ -20,7 +20,7 @@ class MonthlyWeightReport(models.Model):
     # WasteType.unique_id (plain string, no DB relation).
     waste_type_id = models.CharField(max_length=30, db_column="waste_type_id", db_index=True)
 
-    # Plain unique_id references (no ForeignKey/DB relation) — see
+    # Plain unique_id references (no DB relation) — see
     # docs/geo_hierarchy_fk_removal.md.
     state = models.CharField(max_length=30, null=True, blank=True, db_column="state_id")
     district = models.CharField(max_length=30, null=True, blank=True, db_column="district_id")

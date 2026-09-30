@@ -30,11 +30,6 @@ class StaffTemplate(BaseMaster):
     # CASCADE_SOFT_DELETE declarations.
     CASCADE_SOFT_DELETE = ("trip_plans", "daily_trip_assignments")
 
-    class ApprovalStatus(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        APPROVED = "APPROVED", "Approved"
-        REJECTED = "REJECTED", "Rejected"
-
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
         INACTIVE = "INACTIVE", "Inactive"
@@ -82,17 +77,6 @@ class StaffTemplate(BaseMaster):
     )
 
     # ---------------- AUDIT FIELDS ----------------
-    approved_by_id = models.CharField(
-        max_length=30, null=True, blank=True, db_column="approved_by", db_index=True
-    )
-
-    approval_status = models.CharField(
-        max_length=10,
-        choices=ApprovalStatus.choices,
-        default=ApprovalStatus.PENDING
-    )
-
-
     status = models.CharField(
         max_length=10,
         choices=Status.choices,
@@ -105,7 +89,7 @@ class StaffTemplate(BaseMaster):
     # ---------------- META ----------------
     class Meta:
         indexes = [
-            models.Index(fields=["status", "approval_status"]),
+            models.Index(fields=["status"]),
             models.Index(fields=["display_code"]),
         ]
         ordering = ["-created_at"]
@@ -123,10 +107,6 @@ class StaffTemplate(BaseMaster):
     @property
     def operator(self):
         return self._staff(self.operator_id)
-
-    @property
-    def approved_by(self):
-        return self._staff(self.approved_by_id)
 
     @property
     def alternative_templates(self):

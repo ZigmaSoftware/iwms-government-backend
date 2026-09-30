@@ -76,7 +76,7 @@ class District(BaseMaster):
     def wards(self):
         """Wards directly scoped to this district. Ward.district_id is a
         plain unique_id string (no DB relation), so this replaces the
-        reverse FK accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE
+        reverse accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE
         above) and other callers expect; returns a QuerySet, so `.all()`/
         `.filter()`/`.first()` etc. all still work the same as before."""
         from app.models.masters.ward import Ward

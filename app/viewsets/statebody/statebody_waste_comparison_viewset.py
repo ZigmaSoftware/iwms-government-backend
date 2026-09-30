@@ -40,7 +40,7 @@ from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignm
 
 def _district_names_by_id(district_ids):
     """DailyTripLog.district_id is a plain unique_id CharField, not a
-    ForeignKey (see docs/geo_hierarchy_fk_removal.md) — there is no
+    relation field (see docs/geo_hierarchy_fk_removal.md) — there is no
     "district__name" to join across, so names are looked up explicitly in
     one query for every district id actually present in the result set."""
     ids = {d for d in district_ids if d}

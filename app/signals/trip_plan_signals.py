@@ -27,7 +27,7 @@ _GEO_MATCH_FIELDS = (
 def _geo_filter_for(obj):
     """The exact (field, value) filter matching CustomerCreation rows scoped
     to precisely `obj`'s most specific populated geo field (e.g. a stop
-    scoped to a Panchayat only matches customers whose `panchayat` FK
+    scoped to a Panchayat only matches customers whose `panchayat_id`
     equals that panchayat) - not its ancestors/descendants. Returns None if
     `obj` has no geo field populated."""
     if not obj:

@@ -116,7 +116,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
     def _ref(self, obj, field):
         # TripPlan's own geo columns are now plain unique_id strings (no DB
         # relation), so the display ref is resolved with a lookup against
-        # the relevant master rather than attribute-chaining a live FK.
+        # the relevant master rather than attribute-chaining a live related object.
         value = getattr(obj, f"{field}_id", None)
         if not value:
             return None
@@ -225,7 +225,7 @@ class TripPlanSerializer(serializers.ModelSerializer):
 
         def value_for(field):
             # `attrs`/the model both key geo values as "<field>_id" (plain
-            # unique_id strings) now — no live FK object to unwrap.
+            # unique_id strings) now — no live related object to unwrap.
             return attrs.get(f"{field}_id", getattr(instance, f"{field}_id", None))
 
         # Most specific populated geo field wins - a trip plan scoped to one

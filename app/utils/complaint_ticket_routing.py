@@ -50,7 +50,7 @@ def _add_business_minutes(start, minutes):
     return current
 
 
-# Flat geo FK attnames shared by ComplaintRoutingRule and ComplaintTicket.
+# Flat geo attnames shared by ComplaintRoutingRule and ComplaintTicket.
 # An empty rule field means "any"; a set field must match the ticket exactly.
 ROUTING_GEO_ATTNAMES = (
     "state_id",

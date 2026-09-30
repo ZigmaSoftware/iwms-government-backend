@@ -29,7 +29,7 @@ CAPACITY_BY_TYPE = {BinType.SMALL: 120, BinType.MEDIUM: 240, BinType.LARGE: 660}
 class BinSeeder(BaseSeeder):
     """3 bins per ward-level collection point, cycling through all 9 waste
     types so every ward offers a representative spread and every waste
-    type is collected somewhere in each district. Ward FK set from the
+    type is collected somewhere in each district. Ward set from the
     collection point's own ward (Bins.save() copies the rest of the flat
     geo block from collection_point_id automatically, but not ward)."""
 

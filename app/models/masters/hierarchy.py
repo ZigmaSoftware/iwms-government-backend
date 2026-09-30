@@ -18,7 +18,7 @@ class AdministrativeHierarchy(BaseMaster):
         editable=False
     )
 
-    # Plain unique_id reference (no ForeignKey/DB relation) — see
+    # Plain unique_id reference (no DB relation) — see
     # docs/geo_hierarchy_fk_removal.md. area_type is looked up explicitly
     # via AreaType.objects.filter(unique_id=self.area_type) where needed.
     area_type = models.CharField(max_length=30, db_column="area_type_id")

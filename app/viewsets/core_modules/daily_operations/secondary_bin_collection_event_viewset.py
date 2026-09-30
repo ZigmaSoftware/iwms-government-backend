@@ -182,7 +182,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         Sync the linked DailyTripCollectionPoint whenever a BinCollectionEvent is saved.
 
         Always overwrites weight and marks Collected so the DTCP reflects the latest BCE data.
-        Falls back to get_or_create by (assignment, collection_point) if the direct FK isn't
+        Falls back to get_or_create by (assignment, collection_point) if the direct link isn't
         resolved (defensive — trip_collection_point_id is NOT NULL in the model).
         """
         trip_cp = event.trip_collection_point

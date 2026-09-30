@@ -104,7 +104,7 @@ class DriverUserSeeder(BaseSeeder):
             return
         operator_role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.OPERATOR_ROLE,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
@@ -324,8 +324,8 @@ class DriverUserSeeder(BaseSeeder):
             defaults={
                 "employee_name": name,
                 "password": make_password(password),
-                "user_type_id": user_type,
-                "governmentusertype_id": role,
+                "user_type_id": user_type.unique_id,
+                "governmentusertype_id": role.unique_id,
                 "is_active": True,
                 "is_deleted": False,
                 "is_superuser": False,
@@ -336,8 +336,8 @@ class DriverUserSeeder(BaseSeeder):
         if not created:
             staff.employee_name = name
             staff.password = make_password(password)
-            staff.user_type_id = user_type
-            staff.governmentusertype_id = role
+            staff.user_type_id = user_type.unique_id
+            staff.governmentusertype_id = role.unique_id
             staff.staffusertype_id = None
             staff.is_active = True
             staff.is_deleted = False
@@ -416,7 +416,6 @@ class DriverUserSeeder(BaseSeeder):
                 district_id=panchayat.district_id,
                 area_type_id=panchayat.area_type_id,
                 panchayat_id=panchayat.unique_id,
-                approval_status=StaffTemplate.ApprovalStatus.APPROVED,
                 status=StaffTemplate.Status.ACTIVE,
                 is_active=True,
                 is_deleted=False,
@@ -426,7 +425,6 @@ class DriverUserSeeder(BaseSeeder):
             template.district_id = panchayat.district_id
             template.area_type_id = panchayat.area_type_id
             template.panchayat_id = panchayat.unique_id
-            template.approval_status = StaffTemplate.ApprovalStatus.APPROVED
             template.status = StaffTemplate.Status.ACTIVE
             template.is_active = True
             template.is_deleted = False
@@ -467,7 +465,7 @@ class DriverUserSeeder(BaseSeeder):
                 fixed += 1
 
         # ...and templates that merely list a demo user in extra_operator_id
-        # (JSON list — not covered by the FK filter above).
+        # (JSON list — not covered by the driver/operator filter above).
         for tmpl in StaffTemplate.objects.exclude(pk=keep.pk):
             extras = tmpl.extra_operator_id or []
             if demo_ids & set(extras):

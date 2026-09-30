@@ -29,8 +29,7 @@ from app.services.staff_notification_service import notify_staff
 # TripPlanSerializer embeds StaffTemplate.display_code + driver/operator
 # names, and AlternativeStaffTemplateSerializer embeds
 # staff_template.display_code + driver/operator names — both go stale if
-# a StaffTemplate's driver/operator/approval changes without invalidating
-# them too.
+# a StaffTemplate's driver/operator changes without invalidating them too.
 STAFF_TEMPLATE_CACHE_SCOPES = (
     "staff_template_list",
     "staff_template_detail",
@@ -58,7 +57,7 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
         "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
     ]
-    ordering_fields = ["display_code", "status", "approval_status"]
+    ordering_fields = ["display_code", "status"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staff-templates"
@@ -70,16 +69,12 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if status_param:
             qs = qs.filter(status=status_param)
 
-        approval_status = self.request.query_params.get("approval_status")
-        if approval_status:
-            qs = qs.filter(approval_status=approval_status)
-
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         # state/district/area_type/corporation/municipality/town_panchayat/
         # panchayat_union/panchayat are plain unique_id CharFields now (no DB
-        # relation), and so are driver_id / operator_id / approved_by (plain
+        # relation), and so are driver_id / operator_id (plain
         # staff_unique_ids) — none of these are select_related-able.
         return qs
 
@@ -224,12 +219,11 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._get_account(staff_user, request_user)
 
         if not account:
-            raise Exception("Account not found or created")  # 🔥 fail fast
+            raise Exception("Account not found or created")  
 
         instance = serializer.save(
             created_by=account.pk,
             updated_by=account.pk,
-            approved_by_id=serializer.validated_data.get("approved_by_id"),
         )
 
         new_data = self._serialize_instance(instance)
@@ -254,22 +248,10 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # ✅ FIX: Convert to Account
         account = self._get_account(staff_user, request_user)
 
-        # instance = serializer.save(
-        #     updated_by=account,
-        #     approved_by=serializer.validated_data.get(
-        #         "approved_by",
-        #         serializer.instance.approved_by
-        #     ),
-        # )
-
         previous_data = self._serialize_instance(serializer.instance)
 
         instance = serializer.save(
             updated_by=account.pk,
-            approved_by_id=serializer.validated_data.get(
-                "approved_by_id",
-                serializer.instance.approved_by_id
-            ),
         )
 
         new_data = self._serialize_instance(instance)

@@ -9,7 +9,7 @@ def _actor_user(request):
     """Return the request user only if it is an auth User.
 
     Staff log in as `StaffcreationOfficeDetails` (not the auth User model), so
-    the history models' *_by_user / assigned_by FKs (-> AUTH_USER_MODEL) must be
+    the history models' *_by_user / assigned_by fields (-> AUTH_USER_MODEL) must be
     left null for staff actors rather than assigned a Staffcreation instance.
     """
     user = getattr(request, "user", None)
@@ -89,7 +89,7 @@ def _find_local_body(local_body_id):
 
 
 def _local_body_q(local_body_id):
-    """Q matching any of the five local-body FK columns against `local_body_id`."""
+    """Q matching any of the five local-body columns against `local_body_id`."""
     return (
         models.Q(corporation_id=local_body_id)
         | models.Q(municipality_id=local_body_id)
@@ -218,7 +218,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return ticket
 
     def get_queryset(self):
-        # Converted FKs are plain CharFields — no select_related possible.
+        # Converted relation fields are plain CharFields — no select_related possible.
         # status/escalation histories, attachments and extra details are now
         # plain-string reverse @properties (no prefetch possible).
         qs = ComplaintTicket.objects.filter(is_deleted=False).order_by("-created")
@@ -467,7 +467,7 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             # still show up when the caller drills into one panchayat/city
             # inside it, same as a staff member tagged to that exact
             # panchayat/local body. Match staff whose district equals the
-            # requested district OR whose local-body FK equals the requested
+            # requested district OR whose local-body field equals the requested
             # city/local body — covers both coarser- and finer-scoped staff.
             local_body_filter = _local_body_q(city_id) if city_id else models.Q()
             if district_id and city_id:

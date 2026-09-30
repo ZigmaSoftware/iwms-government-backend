@@ -77,7 +77,7 @@ def _serialize_summary(assignment: DailyTripAssignment) -> dict:
             int(duration.total_seconds()) if duration is not None else None
         ),
         "trip_count": assignment.trip_count(),
-        # panchayat is a nullable FK — a household-only / higher-level trip may
+        # panchayat_id is nullable — a household-only / higher-level trip may
         # have none, so guard it instead of crashing the whole history list.
         "panchayat": {
             "unique_id": panchayat_id,
@@ -234,7 +234,7 @@ class TripHistoryViewSet(viewsets.ViewSet):
                     str(cp.collected_weight_kg) if cp.collected_weight_kg is not None else None
                 ),
                 # collection_point / bin are nullable (household stops carry
-                # neither) — guard so a single null-FK row can't 500 the detail.
+                # neither) — guard so a single null-id row can't 500 the detail.
                 "collection_point": {
                     "unique_id": cp.collection_point.unique_id,
                     "name": cp.collection_point.cp_name,

@@ -191,7 +191,6 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
             "operator": self._staff_dict(getattr(template, "operator", None)),
             "change_reason": template.change_reason,
             "change_remarks": template.change_remarks,
-            "approval_status": template.approval_status,
         }
 
     def get_trip_assignment_detail(self, obj):

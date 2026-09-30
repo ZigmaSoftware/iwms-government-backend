@@ -19,7 +19,7 @@ class GovernmentStaffUserTypeSeeder(BaseSeeder):
                     continue
 
                 _, created = GovernmentStaffUserType.objects.get_or_create(
-                    usertype_id=government_type,
+                    usertype_id=government_type.unique_id,
                     name=role_name,
                     defaults={
                         "level": level_value,

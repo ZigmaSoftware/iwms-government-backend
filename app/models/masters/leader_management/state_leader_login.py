@@ -20,7 +20,7 @@ class StateLeaderLogin(BaseMaster):
 
     # Plain CharField holding State.unique_id (no DB relation/join) —
     # matches the rest of the geo-hierarchy refactor's convention. Was
-    # NOT NULL as a ForeignKey, so kept required here too.
+    # NOT NULL before, so kept required here too.
     state_id = models.CharField(max_length=30)
 
     username = models.CharField(

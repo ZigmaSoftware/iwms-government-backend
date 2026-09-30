@@ -294,8 +294,8 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
                 attrs[real] = None
 
         # `normalize_flat_geo_attrs`/`validate_wards_for_flat_geo` are shared
-        # with still-FK-based callers (StaffTemplate/TripPlan) and operate in
-        # terms of the bare geo-level names ("state", "corporation", ...).
+        # with callers that use the bare geo-level attribute names
+        # (StaffTemplate/TripPlan: "state", "corporation", ...).
         # CustomerCreation's own model fields are the "_id"-suffixed plain
         # CharFields, so translate both ways around these calls.
         bare_attrs = dict(attrs)

@@ -72,7 +72,7 @@ class State(BaseMaster):
     @property
     def wards(self):
         """Wards directly scoped to this state. Ward.state_id is a plain
-        unique_id string (no DB relation), so this replaces the reverse FK
+        unique_id string (no DB relation), so this replaces the reverse
         accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE above) and
         other callers expect; returns a QuerySet, so `.all()`/`.filter()`/
         `.first()` etc. all still work the same as before."""

@@ -226,7 +226,7 @@ class DailyTripAssignment(BaseMaster):
     @property
     def trip_collection_points(self):
         """DailyTripCollectionPoint rows of this assignment (plain
-        trip_assignment_id); replaces the reverse FK accessor."""
+        trip_assignment_id); replaces the reverse accessor."""
         from app.models.core_modules.daily_operations.daily_trip_collection_point import (
             DailyTripCollectionPoint,
         )
@@ -236,7 +236,7 @@ class DailyTripAssignment(BaseMaster):
     @property
     def trip_household_collections(self):
         """DailyTripHouseholdCollection rows of this assignment (plain
-        trip_assignment_id); replaces the reverse FK accessor."""
+        trip_assignment_id); replaces the reverse accessor."""
         from app.models.core_modules.daily_operations.daily_trip_household_collection import (
             DailyTripHouseholdCollection,
         )
@@ -263,7 +263,7 @@ class DailyTripAssignment(BaseMaster):
     @property
     def retrip_requests(self):
         """TripRetripRequest rows raised on this assignment (plain
-        assignment_id); replaces the reverse FK accessor."""
+        assignment_id); replaces the reverse accessor."""
         from app.models.core_modules.daily_operations.trip_retrip_request import (
             TripRetripRequest,
         )
@@ -281,7 +281,7 @@ class DailyTripAssignment(BaseMaster):
     @property
     def waste_collections(self):
         """WasteCollection rows linked to this assignment (plain
-        trip_assignment_id); replaces the reverse FK accessor."""
+        trip_assignment_id); replaces the reverse accessor."""
         from app.models.core_modules.daily_operations.waste_collection import WasteCollection
 
         return WasteCollection.objects.filter(trip_assignment_id=self.unique_id)
@@ -436,7 +436,7 @@ class DailyTripAssignment(BaseMaster):
         """This assignment's 1-based position among all assignments made today
         for the same trip plan — the ordinary run is `1`; a Re-Trip
         continuation (`app/services/retrip_service.py`, same `trip_plan_id`
-        and `trip_date`, a fresh row with no direct FK back to its source) is
+        and `trip_date`, a fresh row with no direct link back to its source) is
         `2`, and so on for a chain of same-day re-trips. Ordered by
         `created_at` so the count reflects the order the shifts actually
         happened in, not unique_id string order.

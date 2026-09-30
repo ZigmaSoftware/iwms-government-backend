@@ -43,7 +43,7 @@ class CommonAudit(models.Model):
     # Plain CharFields holding each row's unique_id (no DB relation/join) —
     # matches the rest of the geo-hierarchy refactor's convention. db_column
     # kept as "state_id"/etc (the field's own bare name predates the
-    # "_id"-suffixed FK attname convention) so the existing DB columns are
+    # "_id"-suffixed attname convention) so the existing DB columns are
     # preserved unrenamed.
     state = models.CharField(max_length=30, null=True, blank=True, db_column="state_id")
     district = models.CharField(max_length=30, null=True, blank=True, db_column="district_id")

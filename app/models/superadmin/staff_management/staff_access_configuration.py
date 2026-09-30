@@ -3,7 +3,7 @@
 Ported from the private backend, re-mapped onto this codebase's geography.
 Private scopes staff by company/project + zone/ward; here the scope is the
 government hierarchy (state -> district -> area type -> local body -> ward),
-so the M2Ms below mirror `Staffcreation`'s own FKs rather than private's.
+so the M2Ms below mirror `Staffcreation`'s own geo fields rather than private's.
 
 What this adds on top of the existing permission system:
 
@@ -155,7 +155,7 @@ class StaffAccessConfiguration(BaseMaster):
     @property
     def granted_permissions(self):
         """This configuration's screen grants (plain
-        staff_access_configuration_id); replaces the reverse FK accessor."""
+        staff_access_configuration_id); replaces the reverse accessor."""
         return StaffAccessConfigurationPermission.objects.filter(
             staff_access_configuration_id=self.unique_id
         )

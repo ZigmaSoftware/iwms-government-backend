@@ -57,9 +57,6 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
     #     queryset=Staffcreation.objects.filter(is_deleted=False),
     #     required=False,
     # )
-    approved_by = serializers.CharField(
-        source="approved_by_id", required=False, allow_null=True
-    )
 
     @staticmethod
     def _active_staff_id(value):
@@ -78,8 +75,6 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
     def validate_operator(self, value):
         return self._active_staff_id(value)
 
-    def validate_approved_by(self, value):
-        return self._active_staff_id(value) if value else None
     extra_operator = CommaSeparatedListField(
         source="extra_operator_id",
         child=serializers.CharField(),
@@ -280,8 +275,6 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
             'change_reason',
             'change_remarks',
             # 'requested_by',
-            'approved_by',
-            'approval_status',
             'created_at',
         ]
         read_only_fields = [
@@ -317,8 +310,8 @@ class AlternativeStaffTemplateSerializer(serializers.ModelSerializer):
             if staff_template_uid
             else None
         )
-        # `normalize_flat_geo_attrs` is shared with still-FK-based callers and
-        # works in terms of the bare geo-level names ("state", "corporation",
+        # `normalize_flat_geo_attrs` is shared with callers that use the bare
+        # geo-level attribute names ("state", "corporation",
         # ...) both for reading `attrs`/`instance` and for the keys it writes
         # back. AlternativeStaffTemplate's own model fields (and
         # StaffTemplate's, when defaulting from it below) are the

@@ -8,7 +8,7 @@ from app.utils import ref_cache
 
 class AdministrativeHierarchySerializer(serializers.ModelSerializer):
 
-    # area_type is a plain unique_id string (no ForeignKey/DB relation) —
+    # area_type is a plain unique_id string (no DB relation) —
     # see docs/geo_hierarchy_fk_removal.md — so its display name is looked
     # up explicitly instead of traversed via a dotted `source`.
     area_type_name = serializers.SerializerMethodField(read_only=True)

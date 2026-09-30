@@ -3,7 +3,7 @@ Generic, declarative cascade-soft-delete for BaseMaster subclasses.
 
 Each model that should sweep child rows when it is soft-deleted declares a
 CASCADE_SOFT_DELETE class attribute - a tuple of reverse-relation accessor
-names (the related_name used on the child FK/M2M, exactly as you'd write
+names (the related_name used on the child relation/M2M, exactly as you'd write
 `instance.<related_name>`). The child model's own CASCADE_SOFT_DELETE (if
 any) is walked transitively by the same function, so a model only needs to
 list its OWN direct children, not its whole descendant tree.
@@ -26,10 +26,10 @@ M2M link doesn't make sense - unlinking is a different, smaller operation
 and is out of scope here.
 
 Geo-hierarchy relations (child rows that reference a parent via a plain
-`<field>_id` unique_id string rather than a real ForeignKey - Corporation,
+`<field>_id` unique_id string rather than a real DB relation - Corporation,
 State, District, AreaType and friends were all converted this way) have no
 real reverse accessor for `getattr`/`_meta.get_field` to find. Those relation
-names are declared instead in `STRING_FK_CASCADE_RELATIONS` below and
+names are declared instead in `STRING_REF_CASCADE_RELATIONS` below and
 resolved through that registry as a fallback.
 """
 from django.core.exceptions import ObjectDoesNotExist
@@ -47,15 +47,15 @@ def _lazy_model(dotted_path):
 
 # {(dotted declaring-model path, relation_name): (dotted child-model path, filter_field)}
 # Populated for every CASCADE_SOFT_DELETE relation name that used to be a
-# real reverse-FK/OneToOne accessor before the child's own field was
-# converted from ForeignKey to a plain `<field>_id` CharField holding the
+# real reverse relation/OneToOne accessor before the child's own field was
+# converted to a plain `<field>_id` CharField holding the
 # parent's unique_id. See app/utils/hierarchy.py's geo-hierarchy conversion
 # for the full list of converted models.
-STRING_FK_CASCADE_RELATIONS = {}
+STRING_REF_CASCADE_RELATIONS = {}
 
 
 def _register(declaring_path, relation_name, child_path, filter_field):
-    STRING_FK_CASCADE_RELATIONS[(declaring_path, relation_name)] = (child_path, filter_field)
+    STRING_REF_CASCADE_RELATIONS[(declaring_path, relation_name)] = (child_path, filter_field)
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +210,8 @@ _register(_CORPORATION, "departments", "app.models.masters.department.Department
 
 def _resolve_related_manager(model, obj, rel_name):
     """Return an object with `.all()` (an iterable of children) for
-    `obj.<rel_name>`, whether that's a real Django reverse-FK/M2M/OneToOne
-    accessor or a registered string-FK cascade relation. Returns None if
+    `obj.<rel_name>`, whether that's a real Django reverse-relation/M2M/OneToOne
+    accessor or a registered string-reference cascade relation. Returns None if
     neither resolves."""
     try:
         related = getattr(obj, rel_name, None)
@@ -221,7 +221,7 @@ def _resolve_related_manager(model, obj, rel_name):
     if related is not None:
         return related
 
-    entry = STRING_FK_CASCADE_RELATIONS.get((_model_path(model), rel_name))
+    entry = STRING_REF_CASCADE_RELATIONS.get((_model_path(model), rel_name))
     if entry is None:
         return None
     child_path, filter_field = entry
@@ -276,7 +276,7 @@ def cascade_soft_delete(instance, updated_by=None):
             if related is None:
                 continue
             if hasattr(related, "all"):
-                # Reverse FK / M2M manager, or our registry QuerySet.
+                # Reverse relation / M2M manager, or our registry QuerySet.
                 for child in related.all().iterator():
                     _walk(child)
             else:
@@ -335,7 +335,7 @@ def collect_cascade_cache_scopes(instance):
         related_model = getattr(rel, "related_model", None) if rel else None
         if related_model is not None:
             return related_model
-        entry = STRING_FK_CASCADE_RELATIONS.get((_model_path(model), rel_name))
+        entry = STRING_REF_CASCADE_RELATIONS.get((_model_path(model), rel_name))
         if entry is None:
             return None
         return _lazy_model(entry[0])
