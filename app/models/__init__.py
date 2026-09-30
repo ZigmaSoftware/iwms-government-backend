@@ -27,8 +27,6 @@ from .masters.town_panchayat import TownPanchayat
 from .masters.panchayat_union import PanchayatUnion
 from .masters.panchayat import Panchayat
 from .masters.ward import Ward
-from .masters.hierarchy_tree import HierarchyLevel, HierarchyNode, HierarchyClosure
-from .masters.hierarchy_assignment import HierarchyAssignment
 
 
 # ============================================================
@@ -55,6 +53,7 @@ from .masters.waste_masters.subproperty import SubProperty
 from .superadmin.role_management.userType import UserType
 from .superadmin.role_management.staffUserType import StaffUserType
 from .superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from .superadmin.role_management.staffHierarchy import StaffHierarchy
 
 
 # ============================================================
@@ -94,7 +93,6 @@ from .superadmin.staff_management.staff_data_scope import StaffDataScope
 # GROUP: AUTH / LOGIN / AUDIT (USER)
 # ============================================================
 from .superadmin.audits.login_audit import LoginAudit
-from .superadmin.audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
 from .superadmin.audits.permission_audit import PermissionAuditLog
 
@@ -122,8 +120,8 @@ from .core_modules.complaint_management.status_master import ComplaintStatus
 from .core_modules.complaint_management.module_master import ComplaintModule
 from .core_modules.complaint_management.category_master import ComplaintCategory
 from .core_modules.complaint_management.subcategory_master import ComplaintSubcategory
-from .core_modules.complaint_management.team_master import ComplaintTeam
 from .core_modules.complaint_management.sla_rule_master import ComplaintSlaRule
+from .core_modules.complaint_management.sla_escalation_level import ComplaintSlaEscalationLevel
 from .core_modules.complaint_management.routing_rule import ComplaintRoutingRule
 from .core_modules.complaint_management.ticket import ComplaintTicket
 from .core_modules.complaint_management.ticket_extra_detail import ComplaintTicketExtraDetail
@@ -203,10 +201,6 @@ __all__ = [
     "Ward",
 
     # Hierarchy Tree (closure-table)
-    "HierarchyLevel",
-    "HierarchyNode",
-    "HierarchyClosure",
-    "HierarchyAssignment",
 
     # Assets
     "Fuel",
@@ -222,6 +216,7 @@ __all__ = [
     "UserType",
     "StaffUserType",
     "GovernmentStaffUserType",
+    "StaffHierarchy",
 
     # Screen Management
     "MainScreenType",
@@ -243,7 +238,6 @@ __all__ = [
 
     # Auth / Audit
     "LoginAudit",
-    "AuditLog",
 
     # Customers
     "CustomerCreation",
@@ -259,8 +253,8 @@ __all__ = [
     "ComplaintStatus",
     "ComplaintCategory",
     "ComplaintSubcategory",
-    "ComplaintTeam",
     "ComplaintSlaRule",
+    "ComplaintSlaEscalationLevel",
     "ComplaintRoutingRule",
     "ComplaintTicket",
     "ComplaintTicketExtraDetail",

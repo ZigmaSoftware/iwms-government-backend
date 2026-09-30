@@ -16,7 +16,6 @@ from app.serializers.operator_mobile.scan_serializers import (
     ScanBinRequestSerializer,
 )
 from app.utils.audit_mixin import log_common_audit, serialize_instance_for_audit
-from app.utils.hierarchy import node_for_flat_geo
 from app.utils.plain_ref import ref_id
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
@@ -175,9 +174,6 @@ class ScanBinViewSet(viewsets.ViewSet):
             trip_collection_point_id=ref_id(ctx.trip_cp),
             collection_point_id=ref_id(ctx.bin.collection_point),
             bin_id=ref_id(ctx.bin),
-            # Hierarchy visibility: stamp the audit row with the
-            # collection point's location node so scope filtering works.
-            location_node_id=ref_id(node_for_flat_geo(ctx.bin.collection_point)),
             waste_type_id=ref_id(ctx.bin.wastetype),
             vehicle_id=ref_id(ctx.assignment.vehicle),
             status=event_status,

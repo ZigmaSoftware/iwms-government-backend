@@ -8,7 +8,7 @@ from app.serializers.core_modules.daily_operations.daily_trip_household_collecti
     DailyTripHouseholdCollectionSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 
@@ -90,6 +90,4 @@ class DailyTripHouseholdCollectionViewSet(AuditViewSetMixin, viewsets.ModelViewS
             )
 
         queryset = filter_flat_geo_queryset_by_params(queryset, params)
-        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
-
-        return filter_queryset_by_hierarchy(queryset, params)
+        return filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)

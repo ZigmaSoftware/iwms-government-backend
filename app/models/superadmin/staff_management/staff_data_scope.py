@@ -1,7 +1,6 @@
 from django.db import models
 
 from app.models.masters.corporation import Corporation
-from app.models.masters.hierarchy_tree import HierarchyNode
 from app.models.masters.municipality import Municipality
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.panchayat_union import PanchayatUnion
@@ -27,8 +26,6 @@ class StaffDataScope(BaseMaster):
     )
     # StaffcreationOfficeDetails.staff_unique_id (plain string, no DB relation).
     staff_id = models.CharField(max_length=30, db_column="staff_id", db_index=True)
-    # HierarchyNode unique_ids (plain JSON list); read via `location_nodes`.
-    location_node_ids = models.JSONField(default=list, blank=True)
     # Plain CharFields holding State/District/AreaType.unique_id (no DB
     # relation/join) — matches the rest of the geo-hierarchy refactor's
     # convention. db_column kept as "state_id"/etc (the field's own bare
@@ -72,10 +69,6 @@ class StaffDataScope(BaseMaster):
     @property
     def staff(self):
         return ref_cache.get(StaffcreationOfficeDetails, self.staff_id)
-
-    @property
-    def location_nodes(self):
-        return HierarchyNode.objects.filter(unique_id__in=self.location_node_ids or [])
 
     @property
     def corporations(self):

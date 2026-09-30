@@ -31,7 +31,7 @@ from app.serializers.core_modules.daily_operations.daily_trip_collection_point_s
     DailyTripCollectionPointSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
-from app.utils.hierarchy import filter_flat_geo_queryset_by_params, filter_queryset_by_hierarchy
+from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
 
@@ -568,9 +568,7 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # Stops carry their own flat geo columns (copied from the collection
         # point), so filter on those directly — no join to the assignment.
-        queryset = filter_flat_geo_queryset_by_params(queryset, params)
-
-        return filter_queryset_by_hierarchy(queryset, params)
+        return filter_flat_geo_queryset_by_params(queryset, params)
 
     @action(detail=False, methods=["get"], url_path="tracking")
     def tracking(self, request):

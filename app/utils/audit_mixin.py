@@ -1,5 +1,4 @@
 from django.forms.models import model_to_dict
-from django.db import transaction
 from django.db.models.fields.files import FieldFile
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import Account
@@ -9,7 +8,6 @@ from datetime import datetime, date, time
 from decimal import Decimal
 from uuid import UUID
 from django.db.models.fields.files import FieldFile
-from app.models.superadmin.audits.staff_audit import StaffAudit
 
 
 def serialize_instance_for_audit(instance, redact_fields=()):
@@ -62,16 +60,13 @@ def get_client_ip(request):
     return request.META.get("REMOTE_ADDR")
 
 
-def _write_audit_pair(
+def _write_audit(
     *, module_name, endpoint_name, method, instance, previous_data, new_data, created_by,
     ip_address=None, user_agent=None, success=True, reason=None,
 ):
-    """Write one CommonAudit row (super-admin, unscoped, unchanged) and one
-    mirrored StaffAudit row (same data, read by the staff-facing hierarchy-
-    scoped viewset). Kept as a single call site so the two ledgers can never
-    drift out of sync."""
+    """Write the CommonAudit row for one audited event."""
     object_id = get_audit_object_id(instance) if instance is not None else None
-    shared_kwargs = dict(
+    common_audit = CommonAudit(
         module_name=module_name,
         endpoint_name=endpoint_name,
         method=method,
@@ -85,18 +80,10 @@ def _write_audit_pair(
         reason=reason,
     )
 
-    common_audit = CommonAudit(**shared_kwargs)
-    staff_audit = StaffAudit(**shared_kwargs)
-
     if instance is not None:
         copy_flat_geo(common_audit, instance, only_empty=True)
-        copy_flat_geo(staff_audit, instance, only_empty=True)
 
-    # The two ledgers represent the same event. Roll both writes back if
-    # either table cannot accept the row, rather than leaving a partial pair.
-    with transaction.atomic():
-        common_audit.save()
-        staff_audit.save()
+    common_audit.save()
     return common_audit
 
 
@@ -106,7 +93,7 @@ def log_common_audit(
 ):
     """Standalone version of AuditViewSetMixin.log_audit for plain
     function-based views (e.g. mobile actions) that don't inherit the mixin."""
-    return _write_audit_pair(
+    return _write_audit(
         module_name=module_name,
         endpoint_name=endpoint_name,
         method=request.method,
@@ -247,7 +234,7 @@ class AuditViewSetMixin:
 
     def log_audit(self, request, instance=None, previous_data=None, new_data=None, success=True, reason=None):
 
-        _write_audit_pair(
+        _write_audit(
             module_name=self.AUDIT_MODULE,
             endpoint_name=self.AUDIT_ENDPOINT,
             method=request.method,

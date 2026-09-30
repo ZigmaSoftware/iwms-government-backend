@@ -17,7 +17,6 @@ from app.models.core_modules.complaint_management.category_master import Complai
 from app.models.core_modules.complaint_management.subcategory_master import ComplaintSubcategory
 from app.models.core_modules.complaint_management.priority_master import ComplaintPriority
 from app.models.core_modules.complaint_management.status_master import ComplaintStatus
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.models.superadmin.common_masters.state import State
@@ -30,9 +29,10 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.utils import ref_cache
 from app.utils.base_models import Account
+from app.utils.bare_id_keys import BareIdKeysMixin
 
 
-class ComplaintTicketSerializer(serializers.ModelSerializer):
+class ComplaintTicketSerializer(BareIdKeysMixin, serializers.ModelSerializer):
     OPERATIONAL_CONTEXT_FIELDS = (
         "incident_type",
         "trip_reference",
@@ -62,17 +62,20 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
     reporter_type = serializers.SerializerMethodField()
     reporter_name = serializers.SerializerMethodField()
     raised_by_name = serializers.SerializerMethodField()
-    assigned_team_name = serializers.CharField(source="assigned_team.team_name", read_only=True)
     assigned_staff_name = serializers.CharField(source="assigned_staff.employee_name", read_only=True)
-    assigned_department_name = serializers.CharField(source="assigned_team.department.department_name", read_only=True)
-    escalation_level = serializers.IntegerField(source="assigned_team.escalation_level", read_only=True)
+    assigned_department_name = serializers.CharField(source="assigned_staff.department_ref.department_name", read_only=True)
+    escalated_to_staff_name = serializers.CharField(source="escalated_to_staff.employee_name", read_only=True)
+    escalation_level_name = serializers.SerializerMethodField()
+    escalation_time_remaining_seconds = serializers.SerializerMethodField()
+    # False when the requester is staff the ticket has escalated past: they
+    # may view it but not resolve/close/assign/escalate it.
+    can_act = serializers.SerializerMethodField()
     state_name = serializers.SerializerMethodField()
     district_name = serializers.SerializerMethodField()
     area_type_name = serializers.SerializerMethodField()
     city_id = serializers.SerializerMethodField()
     city_name = serializers.SerializerMethodField()
     city_type = serializers.SerializerMethodField()
-    sla_time_remaining_seconds = serializers.SerializerMethodField()
     public_timeline = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     close_image_url = serializers.SerializerMethodField()
@@ -89,7 +92,9 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = [
             "unique_id", "ticket_no", "resolved_at", "closed_at", "reopened_count",
-            "sla_breached", "sla_breached_at", "waste_type_ids",
+            "waste_type_ids",
+            # Owned by the escalation service, never written through the API.
+            "is_escalated", "escalated_to_staff_id", "escalation_level", "next_escalation_due_at",
         ]
 
     def validate_waste_types(self, value):
@@ -145,11 +150,6 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This field is required.")
         if not ComplaintStatus.objects.filter(unique_id=value).exists():
             raise serializers.ValidationError("Invalid status.")
-        return value
-
-    def validate_assigned_team_id(self, value):
-        if value and not ComplaintTeam.objects.filter(unique_id=value).exists():
-            raise serializers.ValidationError("Invalid team.")
         return value
 
     def validate_assigned_staff_id(self, value):
@@ -358,12 +358,26 @@ class ComplaintTicketSerializer(serializers.ModelSerializer):
         newest = attachments[0]
         return request.build_absolute_uri(newest.file.url) if newest.file else None
 
-    def get_sla_time_remaining_seconds(self, obj):
-        """Seconds until sla_due_at (negative once overdue); None if resolved/closed or no due date."""
-        if not obj.sla_due_at or obj.resolved_at or obj.closed_at:
+    def get_escalation_time_remaining_seconds(self, obj):
+        """Seconds until next_escalation_due_at (negative once overdue); None
+        if resolved/closed or at the top of the hierarchy."""
+        if not obj.next_escalation_due_at or obj.resolved_at or obj.closed_at:
             return None
         from django.utils import timezone
-        return int((obj.sla_due_at - timezone.now()).total_seconds())
+        return int((obj.next_escalation_due_at - timezone.now()).total_seconds())
+
+    def get_can_act(self, obj):
+        from app.services.complaint_escalation import is_passed_over
+
+        request = self.context.get("request")
+        return not (request and is_passed_over(obj, request.user))
+
+    def get_escalation_level_name(self, obj):
+        """Role name(s) at the ticket's current Staff Hierarchy level, e.g.
+        "govt_panchayat_supervisor", taken from the responsible staff."""
+        staff = obj.responsible_staff
+        role = getattr(staff, "governmentusertype", None) if staff else None
+        return getattr(role, "name", None)
 
     def get_public_timeline(self, obj):
         """Citizen-safe, chronological status timeline (visible_to_citizen only)."""
@@ -435,8 +449,6 @@ class ComplaintStatusHistorySerializer(serializers.ModelSerializer):
 
 
 class ComplaintAssignmentHistorySerializer(serializers.ModelSerializer):
-    to_team_name = serializers.CharField(source="to_team.team_name", read_only=True)
-    from_team_name = serializers.CharField(source="from_team.team_name", read_only=True)
     to_staff_name = serializers.CharField(source="to_staff.employee_name", read_only=True)
     from_staff_name = serializers.CharField(source="from_staff.employee_name", read_only=True)
 
@@ -451,17 +463,6 @@ class ComplaintAssignmentHistorySerializer(serializers.ModelSerializer):
         if not ComplaintTicket.objects.filter(unique_id=value).exists():
             raise serializers.ValidationError("Invalid ticket.")
         return value
-
-    def _validate_team(self, value):
-        if value and not ComplaintTeam.objects.filter(unique_id=value).exists():
-            raise serializers.ValidationError("Invalid team.")
-        return value
-
-    def validate_from_team_id(self, value):
-        return self._validate_team(value)
-
-    def validate_to_team_id(self, value):
-        return self._validate_team(value)
 
     def _validate_staff(self, value):
         if value and not StaffcreationOfficeDetails.objects.filter(
@@ -491,9 +492,8 @@ class ComplaintCommentSerializer(serializers.ModelSerializer):
         return value
 
 
-class ComplaintRoutingRuleSerializer(serializers.ModelSerializer):
+class ComplaintRoutingRuleSerializer(BareIdKeysMixin, serializers.ModelSerializer):
     category_code = serializers.CharField(source="category.category_code", read_only=True)
-    team_name = serializers.CharField(source="team.team_name", read_only=True)
     state_name = serializers.SerializerMethodField()
     district_name = serializers.SerializerMethodField()
     corporation_name = serializers.SerializerMethodField()
@@ -522,13 +522,6 @@ class ComplaintRoutingRuleSerializer(serializers.ModelSerializer):
     def validate_priority_id(self, value):
         if value and not ComplaintPriority.objects.filter(unique_id=value).exists():
             raise serializers.ValidationError("Invalid priority.")
-        return value
-
-    def validate_team_id(self, value):
-        if not value:
-            raise serializers.ValidationError("This field is required.")
-        if not ComplaintTeam.objects.filter(unique_id=value).exists():
-            raise serializers.ValidationError("Invalid team.")
         return value
 
     def validate_sla_rule_id(self, value):
@@ -574,8 +567,7 @@ class ComplaintRoutingRuleSerializer(serializers.ModelSerializer):
 
 
 class ComplaintEscalationHistorySerializer(serializers.ModelSerializer):
-    escalated_from_team_name = serializers.CharField(source="escalated_from_team.team_name", read_only=True)
-    escalated_to_team_name = serializers.CharField(source="escalated_to_team.team_name", read_only=True)
+    escalated_from_staff_name = serializers.CharField(source="escalated_from_staff.employee_name", read_only=True)
     escalated_to_staff_name = serializers.CharField(source="escalated_to_staff.employee_name", read_only=True)
 
     class Meta:

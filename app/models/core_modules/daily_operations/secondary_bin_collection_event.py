@@ -49,7 +49,6 @@ class BinCollectionEvent(BaseMaster):
 
     collection_point_id = models.CharField(max_length=30, db_column="collection_point_id", db_index=True)
     bin_id = models.CharField(max_length=30, db_column="bin_id", db_index=True)
-    location_node_id = models.CharField(max_length=30, db_column="location_node_id", null=True, blank=True, db_index=True)
     waste_type_id = models.CharField(max_length=100, db_column="waste_type_id", db_index=True)
     vehicle_id = models.CharField(max_length=40, db_column="vehicle_id", null=True, blank=True, db_index=True)
     # Approved breakdown that re-routed this collection to a replacement vehicle.
@@ -118,12 +117,6 @@ class BinCollectionEvent(BaseMaster):
     @property
     def bin(self):
         return ref_cache.get(Bins, self.bin_id, "unique_id")
-
-    @property
-    def location_node(self):
-        from app.models.masters.hierarchy_tree import HierarchyNode
-
-        return ref_cache.get(HierarchyNode, self.location_node_id, "unique_id")
 
     @property
     def waste_type(self):

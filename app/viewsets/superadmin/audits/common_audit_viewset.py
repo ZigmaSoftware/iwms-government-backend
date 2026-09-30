@@ -151,17 +151,16 @@ class CommonAuditViewSet(viewsets.ModelViewSet):
         if approval_only is not None and approval_only.lower() in ("1", "true", "yes"):
             queryset = queryset.filter(new_data__has_key="approval_status")
 
-        # Transaction Audit now also serves what used to be the separate
-        # "Collection Audit" screen (StaffAudit) — auto-scope by the
-        # requester's own hierarchy the same way StaffAuditViewSet always
-        # has: a super_admin sees everything, a staff/supervisor with a
+        # Transaction Audit also serves what used to be the separate
+        # "Collection Audit" screen — auto-scope by the requester's own
+        # hierarchy: a super_admin sees everything, a staff/supervisor with a
         # StaffDataScope row sees only their own local body, and a staff
         # user with no scope row sees nothing (deny-by-default). Explicit
         # ?state_id=/?district_id=/etc. params narrow further on top.
         # NOTE: filter_flat_geo_queryset_by_params (explicit ?state_id=/etc.
         # params) is intentionally NOT called here — it has no field_map
         # override and filters by "..._id"-suffixed field names directly,
-        # which raises FieldError against CommonAudit/StaffAudit's bare
+        # which raises FieldError against CommonAudit's bare
         # field names (state/district/... not state_id/district_id/...).
         # Nothing in the frontend currently sends those params to this
         # endpoint, so skipping it only omits an unused manual-narrowing

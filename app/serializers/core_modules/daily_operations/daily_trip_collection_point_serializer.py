@@ -8,7 +8,7 @@ from app.models.core_modules.daily_operations.daily_trip_collection_point import
     DailyTripCollectionPoint,
 )
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
-from app.utils.hierarchy import flat_geo_display, hierarchy_payload
+from app.utils.hierarchy import flat_geo_display
 
 
 class DailyTripCollectionPointSerializer(
@@ -109,7 +109,6 @@ class DailyTripCollectionPointSerializer(
             "cp_name": cp.cp_name,
             "latitude": cp.latitude,
             "longitude": cp.longitude,
-            **hierarchy_payload(cp),
             "wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in cp.wards.all()],
         }
 
