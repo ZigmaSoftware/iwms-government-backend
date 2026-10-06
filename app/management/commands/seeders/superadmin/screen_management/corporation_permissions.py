@@ -39,12 +39,14 @@ ACTIONS = ["view", "add", "edit", "delete"]
 # Schedule / daily-trip screens a Corporation Supervisor may WRITE (decision D4).
 SCHEDULE_WRITE_SCREENS = {
     "trip-plans",
-    "daily-trip-assignments",
-    "daily-trip-collection-points",
-    "householdcollection-events",
+    # The trip, its collection points and household stops are one grant
+    # (permission_catalog.DAILY_TRIP_PLAN_TABLES).
+    "daily-trip-plan",
+    "daily-trip-tracking",
+    "household-collection-event",
     "daily-trip-logs",
-    "secondary-bin-collection-events",
-    "vehicle-breakdowns",
+    "secondary-bin-collection-event",
+    "vehicle-breakdown",
 }
 
 

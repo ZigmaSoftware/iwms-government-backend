@@ -775,26 +775,33 @@ class DriverUserSeeder(BaseSeeder):
         )
 
     def _generate_assignment(self, plan, trip_date):
-        assignment, _ = DailyTripAssignment.objects.get_or_create(
-            trip_plan_id=plan.unique_id,
-            trip_date=trip_date,
-            is_deleted=False,
-            defaults={
-                "staff_template_id": plan.staff_template_id,
-                "vehicle_id": plan.vehicle_id,
-                "state_id": plan.state_id,
-                "district_id": plan.district_id,
-                "area_type_id": plan.area_type_id,
-                "corporation_id": plan.corporation_id,
-                "municipality_id": plan.municipality_id,
-                "town_panchayat_id": plan.town_panchayat_id,
-                "panchayat_union_id": plan.panchayat_union_id,
-                "panchayat_id": plan.panchayat_id,
-                "scheduled_time": plan.scheduled_time,
-                "status": DailyTripAssignment.STATUS_SCHEDULED,
-                "approval_status": DailyTripAssignment.APPROVAL_APPROVED,
-            },
-        )
+        # A plan can legitimately hold several trips on one date (a
+        # "proceed to next trip" creates another), so reuse the first one
+        # rather than get_or_create, which fails on a re-seed once there are
+        # more than one.
+        lookup = {
+            "trip_plan_id": plan.unique_id,
+            "trip_date": trip_date,
+            "is_deleted": False,
+        }
+        assignment = DailyTripAssignment.objects.filter(**lookup).order_by("pk").first()
+        if assignment is None:
+            assignment = DailyTripAssignment.objects.create(
+                **lookup,
+                staff_template_id=plan.staff_template_id,
+                vehicle_id=plan.vehicle_id,
+                state_id=plan.state_id,
+                district_id=plan.district_id,
+                area_type_id=plan.area_type_id,
+                corporation_id=plan.corporation_id,
+                municipality_id=plan.municipality_id,
+                town_panchayat_id=plan.town_panchayat_id,
+                panchayat_union_id=plan.panchayat_union_id,
+                panchayat_id=plan.panchayat_id,
+                scheduled_time=plan.scheduled_time,
+                status=DailyTripAssignment.STATUS_SCHEDULED,
+                approval_status=DailyTripAssignment.APPROVAL_APPROVED,
+            )
         if not assignment.waste_type_ids:
             assignment.waste_type_ids = list(plan.waste_type_ids or [])
             assignment.save(update_fields=["waste_type_ids"])

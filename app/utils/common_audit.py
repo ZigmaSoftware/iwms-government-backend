@@ -25,7 +25,15 @@ class CommonAudit(models.Model):
 
     object_id = models.CharField(max_length=150, null=True, blank=True)
 
+    # ── Actor ────────────────────────────────────────────────────────────
+    # createdBy stays as-is (existing rows depend on it and it is a
+    # documented search field); the id/name/type triple is added alongside
+    # it so the trail can show a person's name and be filtered by actor.
     createdBy = models.CharField(max_length=150, null=True, blank=True)
+    created_by_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    created_by_name = models.CharField(max_length=200, null=True, blank=True)
+    created_by_type = models.CharField(max_length=50, null=True, blank=True)
+
     createdAt = models.DateTimeField(default=timezone.now)
 
     # Request context + outcome — mirrors LoginAudit's ip_address/user_agent/
@@ -33,7 +41,7 @@ class CommonAudit(models.Model):
     # carries the same "who, from where, did it work, why not" trail.
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
-    success = models.BooleanField(default=True)
+    success = models.BooleanField(default=True, db_index=True)
     reason = models.CharField(max_length=255, null=True, blank=True)
 
     # Flat geo scope block — stamped from the audited instance at write time
@@ -57,6 +65,10 @@ class CommonAudit(models.Model):
     class Meta:
         db_table = "common_audit"
         ordering = ["-createdAt"]
+        indexes = [
+            models.Index(fields=["module_name", "-createdAt"]),
+            models.Index(fields=["district", "-createdAt"]),
+        ]
 
     def __str__(self):
         return self.uuid

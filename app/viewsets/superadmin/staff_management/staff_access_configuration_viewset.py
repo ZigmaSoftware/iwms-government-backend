@@ -14,9 +14,10 @@ from app.serializers.superadmin.staff_management.staff_access_configuration_seri
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
-class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class StaffAccessConfigurationViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "staff_access_configuration"
     queryset = Staffcreation.objects.all()
     serializer_class = StaffAccessConfigurationSerializer

@@ -14,9 +14,10 @@ from app.serializers.superadmin.screen_management.userscreencolumnpermission_ser
     UserScreenColumnPermissionWriteSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
-class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenColumnPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Dedicated CRUD API for UserScreenColumnPermission.
 

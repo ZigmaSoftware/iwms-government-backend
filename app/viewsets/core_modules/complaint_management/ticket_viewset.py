@@ -337,9 +337,19 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        previous_data = self._serialize_instance(instance)
         instance.is_deleted = True
         instance.is_active = False
         instance.save(update_fields=["is_deleted", "is_active"])
+        # Logged by hand because this soft delete bypasses perform_destroy;
+        # the Complaint Audit timeline reads this DELETE row (who / when).
+        self.log_audit(
+            request,
+            instance=instance,
+            previous_data=previous_data,
+            new_data=None,
+            success=True,
+        )
         return Response({"message": "Ticket deleted successfully"}, status=http_status.HTTP_200_OK)
 
     # ----------------------------------------------------------

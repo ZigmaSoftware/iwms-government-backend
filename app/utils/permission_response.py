@@ -4,6 +4,8 @@ import re
 
 from django.utils import timezone
 
+from app.utils import permission_catalog as _catalog
+
 from app.models.superadmin.screen_management.userscreencolumnpermission import (
     UserScreenColumnPermission,
 )
@@ -67,12 +69,12 @@ def role_default_permissions(role_name):
             "transport-masters": {
                 "vehicle-creation": ["view"],
             },
-            "customers": {
-                "customercreations": ["view"],
+            "customer-masters": {
+                "customer-creation": ["view"],
             },
-            "schedule-operations": {
-                "daily-trip-assignments": ["view"],
-                "vehicle-breakdowns": ["view", "add", "edit"],
+            "daily-operations": {
+                "daily-trip-plan": ["view"],
+                "vehicle-breakdown": ["view", "add", "edit"],
                 "daily-trip-logs": ["view"],
             },
         }
@@ -82,24 +84,24 @@ def role_default_permissions(role_name):
             "transport-masters": {
                 "vehicle-creation": ["view"],
             },
-            "user-creations": {
-                "staffcreation": ["view"],
+            "staff-management": {
+                "staff-creation": ["view"],
             },
-            "customers": {
-                "customercreations": ["view"],
+            "customer-masters": {
+                "customer-creation": ["view"],
             },
             "schedule-setup": {
-                "staff-templates": ["view", "add", "edit"],
-                "alternative-staff-templates": ["view", "add", "edit"],
-                "collection-points": ["view"],
+                "staff-template": ["view", "add", "edit"],
+                "alternative-staff-template": ["view", "add", "edit"],
+                "collection-point": ["view"],
                 "trip-plans": ["view"],
             },
-            "schedule-operations": {
-                "daily-trip-assignments": ["view", "edit"],
-                "daily-trip-collection-points": ["view"],
-                "householdcollection-events": ["view"],
-                "secondary-bin-collection-events": ["view"],
-                "vehicle-breakdowns": ["view", "edit"],
+            "daily-operations": {
+                "daily-trip-plan": ["view", "edit"],
+                "daily-trip-tracking": ["view"],
+                "household-collection-event": ["view"],
+                "secondary-bin-collection-event": ["view"],
+                "vehicle-breakdown": ["view", "edit"],
                 "daily-trip-logs": ["view"],
             },
         }
@@ -451,23 +453,23 @@ def infer_app_surfaces(module_access, permissions, role_name=None, user_type=Non
     elif any(token in role_key for token in ("admin", "superadmin", "platform")):
         surface_keys.append("admin")
     elif module_keys & {
-        "screen-managements",
-        "role-assigns",
-        "user-creations",
+        "screen-management",
+        "role-management",
+        "staff-management",
         "transport-masters",
         "audits",
-        "masters",
+        "location-masters",
         "common-masters",
-        "complaint-ticket",
+        "complaint-management",
     }:
         surface_keys.append("admin")
     elif screen_keys & {
-        "customercreations",
-        
+        "customer-creation",
+
         "trip_plan",
         "attendance-list",
         "alternative-stafftemplate",
-    } or module_keys & {"customers", "process", "process-items"}:
+    } or module_keys & {"customer-masters", "process", "process-items"}:
         surface_keys.append("operator")
 
     if not surface_keys and permissions:
@@ -586,37 +588,33 @@ def staff_configured_permissions(config):
     return permissions
 
 
-# Parent screen -> child screens with no permission row of their own. Each
-# child inherits every action granted on its parent (merged with any grant of
-# its own), so the frontend still shows its menu/page. The middleware applies
-# the same grouping by resource name (PERMISSION_SCREEN_CHILDREN there).
-PERMISSION_SCREEN_CHILDREN = {
-    "staff-user-type": ("contractorusertypes", "governmentusertypes"),
-    "householdcollection-events": ("wastecollections",),
-    "daily-trip-plans": ("daily-trip-assignments", "daily-trip-collection-points"),
+# Permission maps can still carry names from before the catalog renamed every
+# module and screen after the sidebar (a token issued earlier, a role default
+# written elsewhere). Map them onto the current names so they keep working.
+_SCREEN_MODULE = {
+    screen: module
+    for module, screens in _catalog.SCREEN_STRUCTURE.items()
+    for screen in screens
 }
 
 
-def expand_child_screen_permissions(permissions):
-    """Copy each parent screen's actions onto its child screens."""
+def normalize_permission_names(permissions):
+    """Rename legacy module/screen keys to the catalog's current names."""
     if not permissions:
         return permissions
-    expanded = {}
+    normalized = {}
     for module, screens in permissions.items():
-        screens = {screen: list(actions) for screen, actions in (screens or {}).items()}
-        by_key = {normalize_permission_key(screen): screen for screen in screens}
-        for parent, children in PERMISSION_SCREEN_CHILDREN.items():
-            parent_screen = by_key.get(normalize_permission_key(parent))
-            if not parent_screen:
-                continue
-            for child in children:
-                child_screen = by_key.get(normalize_permission_key(child), child)
-                actions = screens.setdefault(child_screen, [])
-                for action in screens[parent_screen]:
-                    if action not in actions:
-                        actions.append(action)
-        expanded[module] = screens
-    return expanded
+        module = _catalog.LEGACY_MODULE_NAMES.get(module, module)
+        for screen, actions in (screens or {}).items():
+            screen = _catalog.LEGACY_SCREEN_NAMES.get(screen, screen)
+            # A screen that moved module (e.g. the complaints report) is filed
+            # under the module the catalog now lists it in.
+            owner = _SCREEN_MODULE.get(screen, module)
+            merged = normalized.setdefault(owner, {}).setdefault(screen, [])
+            for action in actions or []:
+                if action not in merged:
+                    merged.append(action)
+    return normalized
 
 
 def apply_staff_access_configuration(permissions, staff_unique_id):
@@ -629,14 +627,14 @@ def apply_staff_access_configuration(permissions, staff_unique_id):
     """
     config = staff_access_config(staff_unique_id)
     if config is None:
-        return expand_child_screen_permissions(permissions)
+        return normalize_permission_names(permissions)
 
     configured = staff_configured_permissions(config)
     if getattr(config, "enforce_strict_permissions", False):
-        return expand_child_screen_permissions(configured)
+        return normalize_permission_names(configured)
     if not configured:
-        return expand_child_screen_permissions(permissions)
-    return expand_child_screen_permissions(merge_permission_maps(permissions or {}, configured))
+        return normalize_permission_names(permissions)
+    return normalize_permission_names(merge_permission_maps(permissions or {}, configured))
 
 
 def staff_app_modules(config):

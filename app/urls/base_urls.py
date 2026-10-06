@@ -136,6 +136,8 @@ from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import Dail
 from ..viewsets.superadmin.audits.login_audit_viewset import LoginAuditViewSet
 from ..viewsets.superadmin.audits.common_audit_viewset import CommonAuditViewSet
 from ..viewsets.superadmin.audits.permission_audit_viewset import PermissionAuditLogViewSet
+from ..viewsets.superadmin.audits.complaint_audit_viewset import ComplaintAuditViewSet
+from ..viewsets.superadmin.audits.audit_dashboard_viewset import AuditDashboardViewSet
 
 # Localbody
 from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardViewSet
@@ -355,6 +357,8 @@ router.register_group("reports", "daily-waste-comparisons", DailyWasteComparison
 router.register_group("audits", "login-audit", LoginAuditViewSet)
 router.register_group("audits", "common-audit", CommonAuditViewSet)
 router.register_group("audits", "permission-audit", PermissionAuditLogViewSet)
+router.register_group("audits", "complaint-audit", ComplaintAuditViewSet, basename="complaint-audit")
+router.register_group("audits", "audit-dashboard", AuditDashboardViewSet, basename="audit-dashboard")
 
 # ============================================================
 # GROUP: LOCALBODY (panchayat leader portal — auth-only, no module permission check)

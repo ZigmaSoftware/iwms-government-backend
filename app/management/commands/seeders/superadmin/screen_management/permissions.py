@@ -3,70 +3,7 @@ from app.models.superadmin.screen_management.mainscreentype import MainScreenTyp
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
-
-
-USER_SCREEN_MODELS = {
-    "continents": ("app", "Continent"),
-    "countries": ("app", "Country"),
-    "states": ("app", "State"),
-    "districts": ("app", "District"),
-    "area-types": ("app", "AreaType"),
-    "corporations": ("app", "Corporation"),
-    "municipalities": ("app", "Municipality"),
-    "town-panchayats": ("app", "TownPanchayat"),
-    "panchayat-unions": ("app", "PanchayatUnion"),
-    "panchayats": ("app", "Panchayat"),
-    "wards": ("app", "Ward"),
-    "properties": ("app", "Property"),
-    "subproperties": ("app", "SubProperty"),
-    "bins": ("app", "Bins"),
-    "wastetypes": ("app", "WasteType"),
-    "mainscreentype": ("app", "MainScreenType"),
-    "mainscreens": ("app", "MainScreen"),
-    "userscreens": ("app", "UserScreen"),
-    "userscreen-action": ("app", "UserScreenAction"),
-    "userscreenpermissions": ("app", "UserScreenPermission"),
-    "user-type": ("app", "UserType"),
-    "staff-user-type": ("app", "StaffUserType"),
-    "staffcreation": ("app", "StaffcreationOfficeDetails"),
-    "staff-access-configuration": ("app", "StaffcreationOfficeDetails"),
-    "staff-access-dashboard": ("app", "StaffcreationOfficeDetails"),
-    "customercreations": ("app", "CustomerCreation"),
-    "feedbacks": ("app", "FeedBack"),
-    "tickets": ("app", "ComplaintTicket"),
-    "modules": ("app", "ComplaintModule"),
-    "categories": ("app", "ComplaintCategory"),
-    "subcategories": ("app", "ComplaintSubcategory"),
-    "priorities": ("app", "ComplaintPriority"),
-    "statuses": ("app", "ComplaintStatus"),
-    "sources": ("app", "ComplaintSource"),
-    "sla-rules": ("app", "ComplaintSlaRule"),
-    "feedback": ("app", "ComplaintFeedback"),
-    "vehicle-type": ("app", "VehicleTypeCreation"),
-    "vehicle-creation": ("app", "VehicleCreation"),
-    "fuels": ("app", "Fuel"),
-    "staff-templates": ("app", "StaffTemplate"),
-    "alternative-staff-templates": ("app", "AlternativeStaffTemplate"),
-    "collection-points": ("app", "Collection_point"),
-    "trip-plans": ("app", "TripPlan"),
-    "daily-trip-plans": ("app", "DailyTripAssignment"),
-    "daily-trip-assignments": ("app", "DailyTripAssignment"),
-    "daily-trip-collection-points": ("app", "DailyTripCollectionPoint"),
-    "daily-trip-household-collections": ("app", "DailyTripHouseholdCollection"),
-    "secondary-bin-collection-events": ("app", "BinCollectionEvent"),
-    "vehicle-breakdowns": ("app", "VehicleBreakdown"),
-    "daily-trip-logs": ("app", "DailyTripLog"),
-    "householdcollection-events": ("app", "WasteCollection"),
-    "daily-waste-comparisons": ("app", "DailyWasteComparison"),
-    "MonthlyWasteComparison": ("app", "MonthlyWeightReport"),
-    "common-audit": ("app", "CommonAudit"),
-    "staff-audit": ("app", "CommonAudit"),
-    "login-audit": ("app", "LoginAudit"),
-    "plb-leader-creation": ("app", "PanchayatLeaderLogin"),
-    "district-leader-creation": ("app", "DistrictLeaderLogin"),
-    "state-leader-creation": ("app", "StateLeaderLogin"),
-    "attendance": ("app", "DailyAttendanceReg"),
-}
+from app.utils.permission_catalog import INHERITS_GRANTS_FROM, MODULES, SCREEN_MODELS
 
 
 class PermissionSeeder(BaseSeeder):
@@ -185,7 +122,7 @@ class PermissionSeeder(BaseSeeder):
         icon_name,
         description,
     ):
-        model_app_label, model_name = USER_SCREEN_MODELS.get(userscreen_name, (None, None))
+        model_app_label, model_name = SCREEN_MODELS.get(userscreen_name, (None, None))
         existing = UserScreen.objects.filter(userscreen_name=userscreen_name).first()
         folder_name = self._get_unique_value(
             UserScreen,
@@ -200,10 +137,11 @@ class PermissionSeeder(BaseSeeder):
             exclude_pk=existing.pk if existing else None,
         )
 
-        return UserScreen.objects.update_or_create(
+        main_id = getattr(main_screen, "pk", main_screen)
+        result = UserScreen.objects.update_or_create(
             userscreen_name=userscreen_name,
             defaults={
-                "mainscreen_id": getattr(main_screen, "pk", main_screen),
+                "mainscreen_id": main_id,
                 "folder_name": folder_name,
                 "icon_name": icon_name,
                 "order_no": order_no,
@@ -214,6 +152,28 @@ class PermissionSeeder(BaseSeeder):
                 "is_deleted": False,
             },
         )
+        if existing and existing.mainscreen_id != main_id:
+            self._repoint_grants(existing.unique_id, main_id)
+        return result
+
+    def _repoint_grants(self, userscreen_id, main_id):
+        """A screen moved to another module in the catalog: its grant rows
+        carry their own mainscreen_id and the permission payload is keyed by
+        it, so re-point them or every existing grant on it goes inert."""
+        from app.models.superadmin.screen_management.userscreenpermission import (
+            UserScreenPermission,
+        )
+        from app.models.superadmin.staff_management.staff_access_configuration import (
+            StaffAccessConfigurationPermission,
+        )
+
+        moved = 0
+        for model in (UserScreenPermission, StaffAccessConfigurationPermission):
+            moved += model.objects.filter(userscreen_id=userscreen_id).exclude(
+                mainscreen_id=main_id
+            ).update(mainscreen_id=main_id)
+        if moved:
+            self.log(f"Re-pointed {moved} grants of moved screen {userscreen_id}.")
 
     def _move_mainscreen_orders_out_of_range(self, mainscreentype, reserved_count):
         screens = list(
@@ -269,6 +229,103 @@ class PermissionSeeder(BaseSeeder):
     # Screens whose feature was removed; hidden on every seed run.
     RETIRED_USER_SCREENS = ("teams",)
 
+    @staticmethod
+    def _grant_models():
+        from app.models.superadmin.screen_management.userscreenpermission import (
+            UserScreenPermission,
+        )
+        from app.models.superadmin.staff_management.staff_access_configuration import (
+            StaffAccessConfigurationPermission,
+        )
+
+        return (UserScreenPermission, StaffAccessConfigurationPermission)
+
+    @staticmethod
+    def _rename_row(model, field, name, legacy):
+        """Rename the row still carrying a legacy (or differently-cased) name.
+
+        Grants point at the row's unique_id, so renaming in place keeps them.
+        Compared in Python: MySQL's collation is case-insensitive, so the
+        database alone would call "Dashboard" and "dashboard" the same name.
+        """
+        rows = list(model.objects.filter(**{f"{field}__in": (name, *legacy)}))
+        if any(getattr(row, field) == name for row in rows):
+            return False
+        rank = {old.lower(): index for index, old in enumerate((name, *legacy))}
+        rows.sort(key=lambda row: (row.is_deleted, rank.get(getattr(row, field).lower(), 99)))
+        if not rows:
+            return False
+        setattr(rows[0], field, name)
+        rows[0].save(update_fields=[field])
+        return True
+
+    def _rename_legacy_rows(self):
+        renamed = 0
+        for name, mod in MODULES.items():
+            renamed += self._rename_row(MainScreen, "mainscreen_name", name, mod["legacy"])
+            for scr in mod["screens"]:
+                renamed += self._rename_row(
+                    UserScreen, "userscreen_name", scr["name"], scr["legacy"]
+                )
+        if renamed:
+            self.log(f"Renamed {renamed} main/user screens to their sidebar names.")
+
+    def _copy_grants(self, source_ids, target, *, move):
+        """Copy the grants on `source_ids` onto `target`, skipping duplicates.
+
+        With `move`, the source grants are soft-deleted afterwards, so a later
+        seed run cannot copy them back over a grant an admin has since revoked.
+        """
+        copied = 0
+        for model in self._grant_models():
+            skip = {"unique_id", "created_at", "updated_at", "created_by", "updated_by",
+                    "order_no", "description"}
+            fields = [f.name for f in model._meta.concrete_fields if f.name not in skip]
+            sources = model.objects.filter(userscreen_id__in=source_ids, is_deleted=False)
+            for row in sources:
+                values = {field: getattr(row, field) for field in fields}
+                values["userscreen_id"] = target.unique_id
+                values["mainscreen_id"] = target.mainscreen_id
+                if model.objects.filter(**values).exists():
+                    continue
+                extra = {"order_no": row.order_no}
+                if hasattr(row, "description"):
+                    extra["description"] = row.description
+                model.objects.create(**values, **extra)
+                copied += 1
+            if move:
+                sources.update(is_deleted=True, is_active=False)
+        return copied
+
+    def _merge_folded_screens(self, user_screens):
+        """Give each screen the grants of the screens folded into it.
+
+        Its `absorbs` list (tabs that became one page), plus any leftover row
+        still carrying one of its legacy names.
+        """
+        for mod in MODULES.values():
+            for scr in mod["screens"]:
+                target = user_screens.get(scr["name"])
+                names = (*scr["legacy"], *scr["absorbs"])
+                if not target or not names:
+                    continue
+                source_ids = [
+                    row.unique_id
+                    for row in UserScreen.objects.filter(userscreen_name__in=names)
+                    if row.userscreen_name in names and row.pk != target.pk
+                ]
+                if source_ids and (copied := self._copy_grants(source_ids, target, move=True)):
+                    self.log(f"{scr['name']}: moved {copied} grants from {', '.join(names)}.")
+
+    def _inherit_grants(self, screen, source_name):
+        """A NEW screen split from an existing one starts with its grants, so
+        nobody loses access (catalog `inherits_grants_from`)."""
+        source = UserScreen.objects.filter(
+            userscreen_name=source_name, is_deleted=False
+        ).first()
+        if source and (copied := self._copy_grants([source.unique_id], screen, move=False)):
+            self.log(f"{screen.userscreen_name}: copied {copied} grants from {source_name}.")
+
     def run(self):
         UserScreen.objects.filter(userscreen_name__in=self.RETIRED_USER_SCREENS).update(
             is_active=False, is_deleted=True
@@ -292,252 +349,29 @@ class PermissionSeeder(BaseSeeder):
             },
         )
 
+        self._rename_legacy_rows()
+
+        # Modules and screens come from the one permission catalog
+        # (app/utils/permission_catalog.py), which mirrors the sidebar.
+        # Add or rename screens there, never here.
         sidebar_modules = [
             {
-                "module": "dashboard",
-                "icon": "dashboard",
-                "order": 1,
-                "description": "Dashboard landing page",
-                "subitems": [("Dashboard", "Dashboard", "dashboard", 1, "Dashboard")],
-            },
-            {
-                "module": "common-masters",
-                "icon": "layers",
-                "order": 2,
-                "description": "Common geographic master data",
+                "module": name,
+                "icon": mod["icon"],
+                "order": order,
+                "description": mod["description"],
                 "subitems": [
-                    ("continents", "continents", "continents", 1, "Continents"),
-                    ("countries", "countries", "countries", 2, "Countries"),
-                    ("states", "states", "states", 3, "States"),
+                    (scr["name"], scr["name"], scr["name"], index, scr["label"])
+                    for index, scr in enumerate(mod["screens"], start=1)
                 ],
-            },
-            {
-                "module": "masters",
-                "icon": "layers",
-                "order": 3,
-                "description": "Administrative and local-body master data",
-                "subitems": [
-                    ("districts", "districts", "districts", 1, "Districts"),
-                    ("area-types", "area-types", "area-types", 2, "Area types"),
-                    ("corporations", "corporations", "corporations", 3, "Corporations"),
-                    ("municipalities", "municipalities", "municipalities", 4, "Municipalities"),
-                    ("town-panchayats", "town-panchayats", "town-panchayats", 5, "Town panchayats"),
-                    ("panchayat-unions", "panchayat-unions", "panchayat-unions", 6, "Panchayat unions"),
-                    ("panchayats", "panchayats", "panchayats", 7, "Panchayats"),
-                    ("wards", "wards", "wards", 8, "Wards"),
-                ],
-            },
-            {
-                "module": "waste-types",
-                "icon": "recycling",
-                "order": 4,
-                "description": "Waste type and asset configuration",
-                "subitems": [
-                    ("wastetypes", "wastetypes", "wastetypes", 1, "Waste type maintenance"),
-                    ("properties", "properties", "properties", 2, "Property definitions"),
-                    ("subproperties", "subproperties", "subproperties", 3, "Sub-property definitions"),
-                    ("bins", "bins", "bins", 4, "Bin creation"),
-                ],
-            },
-            {
-                "module": "screen-managements",
-                "icon": "settings",
-                "order": 6,
-                "description": "Screen setup and permission management",
-                "subitems": [
-                    ("mainscreentype", "mainscreentype", "mainscreentype", 1, "Main screen types"),
-                    ("mainscreens", "mainscreens", "mainscreens", 2, "Main screens"),
-                    ("userscreens", "userscreens", "userscreens", 3, "User screens"),
-                    ("userscreen-action", "userscreen-action", "userscreen-action", 4, "User screen actions"),
-                    ("userscreenpermissions", "userscreenpermissions", "userscreenpermissions", 5, "User screen permissions"),
-                ],
-            },
-            {
-                "module": "role-assigns",
-                "icon": "admin_panel_settings",
-                "order": 7,
-                "description": "Role assignment configuration",
-                "subitems": [
-                    ("user-type", "user-type", "user-type", 1, "User types"),
-                    ("staff-user-type", "staff-user-type", "staff-user-type", 2, "Staff user types"),
-                    ("staff-hierarchy", "staff-hierarchy", "staff-hierarchy", 3, "Staff reporting hierarchy"),
-                ],
-            },
-            {
-                "module": "user-creations",
-                "icon": "group_add",
-                "order": 8,
-                "description": "User and staff creation",
-                "subitems": [
-                    ("staffcreation", "staffcreation", "staffcreation", 1, "Staff creation"),
-                    (
-                        "staff-access-configuration",
-                        "staff-access-configuration",
-                        "staff-access-configuration",
-                        2,
-                        "Staff access configuration",
-                    ),
-                    (
-                        "staff-access-dashboard",
-                        "staff-access-dashboard",
-                        "staff-access-dashboard",
-                        3,
-                        "Staff access dashboard",
-                    ),
-                ],
-            },
-            {
-                "module": "customers",
-                "icon": "groups",
-                "order": 9,
-                "description": "Customer master screens",
-                "subitems": [
-                    ("customercreations", "customercreations", "customercreations", 1, "Customer creation"),
-                    ("feedbacks", "feedbacks", "feedbacks", 2, "Feedback"),
-                ],
-            },
-            {
-                "module": "complaint-ticket",
-                "icon": "support_agent",
-                "order": 10,
-                "description": "Complaint ticket management",
-                "subitems": [
-                    ("tickets", "tickets", "tickets", 1, "Complaint tickets"),
-                    ("my-tasks", "my-tasks", "my-tasks", 2, "My tasks"),
-                    ("modules", "modules", "modules", 3, "Modules"),
-                    ("categories", "categories", "categories", 4, "Categories"),
-                    ("subcategories", "subcategories", "subcategories", 5, "Subcategories"),
-                    ("priorities", "priorities", "priorities", 6, "Priorities"),
-                    ("statuses", "statuses", "statuses", 7, "Statuses"),
-                    ("sources", "sources", "sources", 8, "Sources"),
-                    ("sla-rules", "sla-rules", "sla-rules", 9, "SLA rules"),
-                    ("feedback", "feedback", "feedback", 10, "Feedback"),
-                    ("complaints-report", "complaints-report", "complaints-report", 11, "Complaints report"),
-                ],
-            },
-            {
-                "module": "transport-masters",
-                "icon": "local_shipping",
-                "order": 11,
-                "description": "Transport and vehicle setup",
-                "subitems": [
-                    ("vehicle-type", "vehicle-type", "vehicle-type", 1, "Vehicle type"),
-                    ("vehicle-creation", "vehicle-creation", "vehicle-creation", 2, "Vehicle creation"),
-                    ("fuels", "fuels", "fuels", 3, "Fuels"),
-                ],
-            },
-            {
-                "module": "schedule-setup",
-                "icon": "event_note",
-                "order": 12,
-                "description": "Schedule planning and configuration",
-                "subitems": [
-                    ("staff-templates", "staff-templates", "staff-templates", 1, "Staff templates"),
-                    ("alternative-staff-templates", "alternative-staff-templates", "alternative-staff-templates", 2, "Alternative staff templates"),
-                    ("collection-points", "collection-points", "collection-points", 3, "Collection points"),
-                    ("trip-plans", "trip-plans", "trip-plans", 4, "Trip plans"),
-                ],
-            },
-            {
-                "module": "schedule-operations",
-                "icon": "calendar_check",
-                "order": 13,
-                "description": "Daily schedule execution and tracking",
-                "subitems": [
-                    # One permission row for the daily trip plan: its children
-                    # (daily-trip-assignments, daily-trip-collection-points) inherit
-                    # this grant — see PERMISSION_SCREEN_CHILDREN — so they have
-                    # no rows of their own.
-                    ("daily-trip-plans", "daily-trip-plans", "daily-trip-plans", 1, "Daily trip plans"),
-                    ("secondary-bin-collection-events", "secondary-bin-collection-events", "secondary-bin-collection-events", 2, "Secondary bin collection events"),
-                    ("householdcollection-events", "householdcollection-events", "householdcollection-events", 4, "Household collection events"),
-                    ("vehicle-breakdowns", "vehicle-breakdowns", "vehicle-breakdowns", 5, "Vehicle breakdowns"),
-                    ("daily-trip-logs", "daily-trip-logs", "daily-trip-logs", 6, "Daily trip logs"),
-                    # Registered in base_urls.py and called by the mobile app,
-                    # but never seeded — so no admin could grant them and every
-                    # request to them was refused.
-                    # wastecollections has no row of its own: it inherits the
-                    # householdcollection-events grant (PERMISSION_SCREEN_CHILDREN).
-                    ("retrip-requests", "retrip-requests", "retrip-requests", 8, "Re-trip requests"),
-                    ("staff-notifications", "staff-notifications", "staff-notifications", 9, "Staff notifications"),
-                ],
-            },
-            {
-                "module": "schedule-masters",
-                "icon": "bar_chart",
-                "order": 14,
-                "description": "Schedule and waste reports",
-                "subitems": [
-                    ("daily-waste-comparisons", "daily-waste-comparisons", "daily-waste-comparisons", 1, "Daily waste comparisons"),
-                    ("MonthlyWasteComparison", "MonthlyWasteComparison", "MonthlyWasteComparison", 2, "Monthly waste comparison"),
-                ],
-            },
-            {
-                "module": "audits",
-                "icon": "fact_check",
-                "order": 15,
-                "description": "Audit and activity logs",
-                "subitems": [
-                    ("common-audit", "common-audit", "common-audit", 1, "Common audit"),
-                    ("staff-audit", "staff-audit", "staff-audit", 2, "Collection audit"),
-                    ("login-audit", "login-audit", "login-audit", 3, "Login audit"),
-                ],
-            },
-            {
-                "module": "vehicle-tracking",
-                "icon": "local_shipping",
-                "order": 16,
-                "description": "Vehicle tracking and history",
-                "subitems": [
-                    ("VehicleTrack", "VehicleTrack", "VehicleTrack", 1, "Vehicle tracking"),
-                    ("VehicleHistory", "VehicleHistory", "VehicleHistory", 2, "Vehicle history"),
-                ],
-            },
-            {
-                "module": "reports",
-                "icon": "bar_chart",
-                "order": 17,
-                "description": "Fleet and waste reports",
-                "subitems": [
-                    ("TripSummary", "TripSummary", "TripSummary", 1, "Trip summary"),
-                    ("MonthlyDistance", "MonthlyDistance", "MonthlyDistance", 2, "Monthly distance"),
-                    ("WasteCollectedSummary", "WasteCollectedSummary", "WasteCollectedSummary", 3, "Waste collected summary"),
-                ],
-            },
-            {
-                "module": "workforce",
-                "icon": "group",
-                "order": 18,
-                "description": "Workforce management",
-                "subitems": [
-                    ("WorkforceManagement", "WorkforceManagement", "WorkforceManagement", 1, "Workforce management"),
-                ],
-            },
-            {
-                "module": "leader-login",
-                "icon": "badge",
-                "order": 19,
-                "description": "Leader login management",
-                "subitems": [
-                    ("plb-leader-creation", "plb-leader-creation", "plb-leader-creation", 1, "PLB leader creation"),
-                    ("district-leader-creation", "district-leader-creation", "district-leader-creation", 2, "District leader creation"),
-                    ("state-leader-creation", "state-leader-creation", "state-leader-creation", 3, "State leader creation"),
-                ],
-            },
-            {
-                "module": "attendance",
-                "icon": "calendar_check",
-                "order": 20,
-                "description": "Staff face-recognition attendance",
-                "subitems": [
-                    ("attendance", "attendance", "attendance", 1, "Attendance records"),
-                ],
-            },
+            }
+            for order, (name, mod) in enumerate(MODULES.items(), start=1)
         ]
 
         self._move_mainscreen_orders_out_of_range(megamenu.pk, len(sidebar_modules))
 
         main_screens = {}
+        user_screens = {}
         created_main_screens = 0
         created_user_screens = 0
         active_modules = {section["module"] for section in sidebar_modules}
@@ -563,7 +397,7 @@ class PermissionSeeder(BaseSeeder):
 
             for index, subitem in enumerate(section.get("subitems", []), start=1):
                 userscreen_name, folder_name, icon_name, order_no, description = subitem
-                _, created = self._get_or_create_user_screen(
+                user_screen, created = self._get_or_create_user_screen(
                     main_screen,
                     userscreen_name,
                     order_no or index,
@@ -571,8 +405,13 @@ class PermissionSeeder(BaseSeeder):
                     icon_name,
                     description,
                 )
+                user_screens[userscreen_name] = user_screen
                 if created:
                     created_user_screens += 1
+                    if userscreen_name in INHERITS_GRANTS_FROM:
+                        self._inherit_grants(user_screen, INHERITS_GRANTS_FROM[userscreen_name])
+
+        self._merge_folded_screens(user_screens)
 
         self._seed_mobile_app_catalog()
 
