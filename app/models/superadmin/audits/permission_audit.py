@@ -16,6 +16,43 @@ class PermissionAuditLog(models.Model):
         ("DELETED", "Deleted"),
     ]
 
+    # Where the grant was made. Every current source stores ONE row per save
+    # with the whole access before and after it (old_permissions /
+    # new_permissions, see app/utils/permission_snapshot.py): per local body
+    # + role for LOCAL_BODY_SCREEN, per role for ROLE_SCREEN, per person for
+    # STAFF_ACCESS / CUSTOMER_ACCESS.
+    SOURCE_CHOICES = [
+        ("LOCAL_BODY_SCREEN", "Local Body Screen Permission"),
+        ("ROLE_SCREEN", "Role Screen Permission"),
+        ("STAFF_ACCESS", "Staff Access Configuration"),
+        ("CUSTOMER_ACCESS", "Customer Access Configuration"),
+        # Per-grant rows written by the UserScreenPermission post_save signal
+        # (app/signals/permission_signals.py): every row from before saves
+        # were snapshotted, plus any write made outside an audited request.
+        ("GRANT_CHANGE", "Screen Permission Change"),
+    ]
+    CURRENT_SOURCES = ("LOCAL_BODY_SCREEN", "ROLE_SCREEN", "STAFF_ACCESS", "CUSTOMER_ACCESS")
+
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default="GRANT_CHANGE", db_index=True
+    )
+    # Who received the access: a staff_unique_id for STAFF_ACCESS rows, a
+    # customer unique_id for CUSTOMER_ACCESS rows. Local-body / role grants
+    # have no single recipient and leave it blank.
+    target_id = models.CharField(max_length=60, null=True, blank=True, db_index=True)
+    # HTTP method of the request that made the change (POST/PUT/PATCH/DELETE).
+    http_method = models.CharField(max_length=10, null=True, blank=True)
+    # The whole access before and after the save; see
+    # app/utils/permission_snapshot.py for the shape. Per-grant rows leave
+    # both blank.
+    old_permissions = models.JSONField(null=True, blank=True)
+    new_permissions = models.JSONField(null=True, blank=True)
+    # Geography of the grant (or of the person who received it), so the
+    # list can be scoped to the requester's own hierarchy.
+    state_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    area_type_id = models.CharField(max_length=30, null=True, blank=True)
+
     usertype_id = models.CharField(
         max_length=30,
         db_column="usertype_id",
@@ -52,8 +89,8 @@ class PermissionAuditLog(models.Model):
     local_body_type = models.CharField(
         max_length=20, choices=LocalBodyType.choices, null=True, blank=True,
     )
-    local_body_id = models.CharField(max_length=30, null=True, blank=True)
-    staff_id = models.CharField(max_length=60, null=True, blank=True)
+    local_body_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    staff_id = models.CharField(max_length=60, null=True, blank=True, db_index=True)
     mainscreen_id = models.CharField(
         max_length=30,
         db_column="mainscreen_id",
@@ -75,8 +112,10 @@ class PermissionAuditLog(models.Model):
         null=True,
         blank=True,
     )
+    # Actor: a staff_unique_id for staff, or the platform User.unique_id
+    # (up to 100 chars) for platform users.
     updated_by_id = models.CharField(
-        max_length=30,
+        max_length=100,
         db_column="updated_by",
         db_index=True,
         null=True,

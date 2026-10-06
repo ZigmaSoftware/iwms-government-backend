@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 # ============================================================
@@ -356,5 +357,12 @@ class Command(BaseCommand):
             seeder = seeder_cls()
             self.stdout.write(self.style.NOTICE(f"Running {seeder_cls.__name__}"))
             seeder.run()
+
+        # The permission screens just seeded come from the permission catalog
+        # that the frontend sidebar reads too; keep its generated copy
+        # (src/generated/permissionCatalog.ts) in step with them.
+        if any(seeder_cls in PERMISSION_SEEDERS for seeder_cls in seeders):
+            self.stdout.write(self.style.NOTICE("Running sync_permission_catalog"))
+            call_command("sync_permission_catalog", stdout=self.stdout)
 
         self.stdout.write(self.style.SUCCESS("\nSeeding completed successfully."))

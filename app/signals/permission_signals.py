@@ -5,6 +5,7 @@ from django.dispatch import receiver
 
 from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.audits.permission_audit import PermissionAuditLog
+from app.utils.permission_snapshot import snapshot_audit_active
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,12 @@ def _stash_previous_permission_state(sender, instance, **kwargs):
 
 @receiver(post_save, sender=UserScreenPermission)
 def log_permission_change(sender, instance, created, **kwargs):
+    # Requests through a permission screen record ONE row per save with the
+    # whole access before and after it (app/utils/permission_snapshot.py);
+    # a per-grant row here would only repeat it. Writes made anywhere else
+    # (cascade deletes, admin, shell) still get a per-grant row.
+    if snapshot_audit_active():
+        return
     try:
         action_type = "CREATED" if created else "UPDATED"
         if not created and instance.is_deleted:
@@ -43,6 +50,7 @@ def log_permission_change(sender, instance, created, **kwargs):
         previous = getattr(instance, "_previous_permission_state", None)
 
         PermissionAuditLog.objects.create(
+            source="GRANT_CHANGE",
             usertype_id=instance.usertype_id,
             staffusertype_id=instance.staffusertype_id,
             contractorusertype_id=instance.contractorusertype_id,

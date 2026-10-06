@@ -2,8 +2,9 @@ from django.forms.models import model_to_dict
 from django.db.models.fields.files import FieldFile
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.base_models import Account
+from app.utils.audit_context import resolve_actor, stamp_audit_geo
 from app.utils.common_audit import CommonAudit
-from app.utils.hierarchy import copy_flat_geo
+from app.utils.hierarchy import FLAT_GEO_FIELDS
 from datetime import datetime, date, time
 from decimal import Decimal
 from uuid import UUID
@@ -62,10 +63,11 @@ def get_client_ip(request):
 
 def _write_audit(
     *, module_name, endpoint_name, method, instance, previous_data, new_data, created_by,
-    ip_address=None, user_agent=None, success=True, reason=None,
+    ip_address=None, user_agent=None, success=True, reason=None, actor=None,
 ):
     """Write the CommonAudit row for one audited event."""
     object_id = get_audit_object_id(instance) if instance is not None else None
+    created_by_id, created_by_name, created_by_type = resolve_actor(actor)
     common_audit = CommonAudit(
         module_name=module_name,
         endpoint_name=endpoint_name,
@@ -74,14 +76,25 @@ def _write_audit(
         previous_data=previous_data,
         new_data=new_data,
         createdBy=created_by,
+        created_by_id=created_by_id,
+        created_by_name=created_by_name,
+        created_by_type=created_by_type,
         ip_address=ip_address,
         user_agent=user_agent,
         success=success,
         reason=reason,
     )
 
-    if instance is not None:
-        copy_flat_geo(common_audit, instance, only_empty=True)
+    # The changed record is the primary geo source; a scoped (non-super)
+    # actor's own geo is only the fallback for records that carry none (e.g.
+    # a failed create), so the row still lands in that actor's scope.
+    stamp_audit_geo(common_audit, instance)
+    if (
+        actor is not None
+        and not getattr(actor, "is_superuser", False)
+        and not any(getattr(common_audit, field) for field in FLAT_GEO_FIELDS)
+    ):
+        stamp_audit_geo(common_audit, actor)
 
     common_audit.save()
     return common_audit
@@ -105,6 +118,7 @@ def log_common_audit(
         user_agent=request.META.get("HTTP_USER_AGENT"),
         success=success,
         reason=reason,
+        actor=getattr(request, "user", None),
     )
 
 
@@ -246,6 +260,7 @@ class AuditViewSetMixin:
             user_agent=request.META.get("HTTP_USER_AGENT"),
             success=success,
             reason=reason,
+            actor=getattr(request, "user", None),
         )
 
     @staticmethod

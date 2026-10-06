@@ -10,9 +10,10 @@ from app.serializers.superadmin.screen_management.dashboardwidgetpermission_seri
     DashboardWidgetPermissionSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
-class DashboardWidgetPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DashboardWidgetPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "dashboard_widget_permission"
     serializer_class = DashboardWidgetPermissionSerializer
     lookup_field = "unique_id"

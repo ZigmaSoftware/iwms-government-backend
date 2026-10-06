@@ -21,9 +21,10 @@ from app.serializers.superadmin.screen_management.userscreencolumnpermission_ser
 )
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
-class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen_permission"
     serializer_class = UserScreenPermissionSerializer
     lookup_field = "unique_id"
@@ -530,11 +531,10 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         deleted_count = qs.count()
         if deleted_count > 0:
-            # Per-instance saves (not a queryset .update()) so post_save
-            # fires for each row and log_permission_change actually records
-            # this bulk soft-delete in PermissionAuditLog — a queryset
-            # .update() bypasses signals entirely and would leave these
-            # deletions un-audited.
+            # The User Access Audit row for this request comes from
+            # PermissionSnapshotAuditMixin (whole access before/after), not
+            # per-row signals. Per-instance saves are kept so any other
+            # post_save receivers still see each soft-delete.
             for permission in qs:
                 permission.is_deleted = True
                 permission.is_active = False

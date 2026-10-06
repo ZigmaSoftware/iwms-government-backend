@@ -13,6 +13,8 @@ from app.models.masters.leader_management.panchayat_leader_login import Panchaya
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.utils.hierarchy import local_body_scope_for_staff
+from app.utils.permission_catalog import ROUTE_MODULES, ROUTE_OWNERS
+from app.utils.screen_dependencies import INCLUDED_BY, LOOKUP_FOR
 from app.utils.permission_response import (
     apply_staff_access_configuration,
     resolve_intersected_permission_payload,
@@ -105,6 +107,10 @@ COMMON_AUDIT_CREATE_PATHS = tuple(
 # ============================================================
 # MODULE → RESOURCE ALLOWLIST
 # (THIS MUST MATCH ViewSet.permission_resource)
+#
+# Routes a screen owns in app/utils/permission_catalog.py, and routes a screen
+# depends on in app/utils/screen_dependencies.py, are allowed without being
+# listed here. New screens go in the catalog first.
 # ============================================================
 
 MODULE_RESOURCE_ALLOWLIST = {
@@ -219,16 +225,23 @@ MODULE_RESOURCE_ALLOWLIST = {
         "DailyWasteComparison",
         "MonthlyWasteComparisonReport",
     },
+    # Same audit resources as iwms-private (less its static route audit).
     "audits": {
         "LoginAudit",
         "CommonAudit",
+        "PermissionAudit",
+        "ComplaintAudit",
+        "AuditDashboard",
     },
     "attendance": {
         "DailyAttendanceReg",
     },
 }
 
-PROTECTED_MODULES = tuple(MODULE_RESOURCE_ALLOWLIST.keys())
+# Every URL group the allowlist or the permission catalog names.
+PROTECTED_MODULES = tuple(
+    dict.fromkeys([*MODULE_RESOURCE_ALLOWLIST, *sorted(ROUTE_MODULES)])
+)
 
 MODULE_PERMISSION_ALIASES = {
     "customer-masters": "customers",
@@ -319,20 +332,13 @@ RESOURCE_PERMISSION_ALIASES = {
     # "common-audit" grant directly.
     "CommonAudit": ("common-audit", "staff-audit"),
     "LoginAudit": ("login-audit",),
+    "PermissionAudit": ("permission-audit",),
+    "ComplaintAudit": ("complaint-audit",),
+    "AuditDashboard": ("audit-dashboard",),
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
     "userscreenpermissions": ("UserScreenPermission", "UserScreenPermission"),
     "DashboardWidgetPermission": ("userscreenpermissions", "dashboard-widget-permissions"),
 }
-
-# Parent screen -> child resources. Only the parent is shown in the permission
-# UI; each child inherits every action granted on its parent (merged with any
-# grant of its own). Keep in sync with PERMISSION_SCREEN_CHILDREN in the
-# frontend's utils/permissions.ts.
-PERMISSION_SCREEN_CHILDREN = {
-    "staff-user-type": ("ContractorUserType", "GovernmentStaffUserType"),
-    "daily-trip-plans": ("DailyTripAssignment", "DailyTripCollectionPoint"),
-}
-
 
 # ============================================================
 # HELPERS
@@ -656,9 +662,19 @@ class ModulePermissionMiddleware(MiddlewareMixin):
             permission_resource,
             route_resource,
         )
-        resource_allowed = any(
-            self._normalize_permission_key(candidate) in allowed_resource_keys
-            for candidate in resource_candidates
+        # The screen the permission catalog says owns this route. It is the
+        # primary answer; the allowlist + name matching below covers routes
+        # the catalog leaves to SCREEN_DEPENDENCIES and legacy grant names.
+        route_key = f"{module}/{route_resource}" if route_resource else None
+        route_owner = ROUTE_OWNERS.get(route_key)
+        resource_allowed = (
+            route_owner is not None
+            or route_key in INCLUDED_BY
+            or route_key in LOOKUP_FOR
+            or any(
+                self._normalize_permission_key(candidate) in allowed_resource_keys
+                for candidate in resource_candidates
+            )
         )
 
         if not resource_allowed:
@@ -689,11 +705,25 @@ class ModulePermissionMiddleware(MiddlewareMixin):
 
         permissions = _resolve_permissions_for_request(request)
         permission_module = MODULE_PERMISSION_ALIASES.get(module, module)
-        allowed_actions = self._resolve_allowed_actions(
-            self._lookup_module_permissions(permissions, permission_module),
-            permission_resource,
-            route_resource,
-        )
+        # The owning screen's grant (e.g. "daily-trip-plan" for all three
+        # daily trip tables), merged with any grant stored under the route's
+        # own resource name — role defaults and older grants use those.
+        allowed_actions = list(dict.fromkeys([
+            *(self._owner_actions(permissions, *route_owner) if route_owner else []),
+            *self._resolve_allowed_actions(
+                self._lookup_module_permissions(permissions, permission_module),
+                permission_resource,
+                route_resource,
+            ),
+        ]))
+
+        if action not in allowed_actions and action in self._dependency_actions(
+            permissions, route_key, action
+        ):
+            # The resource belongs to another screen's page — a child its
+            # form saves through, or a dropdown it fills
+            # (app/utils/screen_dependencies.py).
+            return None
 
         if action not in allowed_actions:
             return JsonResponse(
@@ -729,19 +759,36 @@ class ModulePermissionMiddleware(MiddlewareMixin):
 
         return {}
 
-    def _resolve_allowed_actions(self, permissions_map, resource_name, route_resource=None):
-        own = self._resolve_own_actions(permissions_map, resource_name, route_resource)
-        inherited = [
-            action
-            for parent, children in PERMISSION_SCREEN_CHILDREN.items()
-            if resource_name in children
-            for action in self._resolve_own_actions(permissions_map, parent)
-        ]
-        if not inherited:
-            return own
-        return list(dict.fromkeys([*own, *inherited]))
+    def _owner_actions(self, permissions, owner_module, owner_screen):
+        """Actions granted on a catalog screen, matched by its name."""
+        screens = self._lookup_module_permissions(permissions, owner_module)
+        if owner_screen in screens:
+            return list(screens[owner_screen] or [])
+        target = self._normalize_permission_key(owner_screen)
+        for key, granted in screens.items():
+            if self._normalize_permission_key(key) == target:
+                return list(granted or [])
+        return []
 
-    def _resolve_own_actions(self, permissions_map, resource_name, route_resource=None):
+    def _dependency_actions(self, permissions, route_key, action):
+        """Actions a request earns from the screens that depend on its route."""
+        if not route_key:
+            return []
+
+        granted = set()
+        for owner_module, owner_screen in INCLUDED_BY.get(route_key, ()):
+            granted.update(self._owner_actions(permissions, owner_module, owner_screen))
+
+        # Lookups are read-only: any grant on the owner allows the read.
+        if action == "view":
+            for owner_module, owner_screen in LOOKUP_FOR.get(route_key, ()):
+                if self._owner_actions(permissions, owner_module, owner_screen):
+                    granted.add("view")
+                    break
+
+        return sorted(granted)
+
+    def _resolve_allowed_actions(self, permissions_map, resource_name, route_resource=None):
         if not permissions_map:
             return []
 
