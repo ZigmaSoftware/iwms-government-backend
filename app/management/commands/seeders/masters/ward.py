@@ -1,5 +1,5 @@
 from app.management.commands.seeders.base import BaseSeeder
-from app.management.commands.seeders.geo import coordinates, spread_points, generate_ward_geofence
+from app.management.commands.seeders.geo import centroid, spread_points, generate_ward_geofence
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.management.commands.seeders.ward_utils import (
     WARDS_PER_LOCAL_BODY,
@@ -16,7 +16,7 @@ class WardSeeder(BaseSeeder):
     Panchayat, Panchayat Union, and each named Panchayat. Corporation wards
     use real, curated locality names; every other local body gets
     deterministically generated "<Local Body> Ward N" wards spread around
-    that local body's own seeded centroid (masters/{municipality,
+    that local body's own boundary centroid (masters/{municipality,
     town_panchayat, panchayat_union, panchayat}.py already carry real
     coordinates — this reuses them rather than duplicating data)."""
 
@@ -68,11 +68,11 @@ class WardSeeder(BaseSeeder):
         parent_name = getattr(parent, name_attr)
         count_needed = WARDS_PER_LOCAL_BODY[parent_type]
 
-        centroid = (parent.coordinates or [None])[0]
-        if not centroid:
+        center = centroid(parent.coordinates)
+        if not center:
             self.log(f"'{parent_name}' has no coordinates — skipping its wards.")
             return 0
-        lat, lon = centroid["latitude"], centroid["longitude"]
+        lat, lon = center
 
         points = spread_points(lat, lon, count_needed, radius_km=1.5)
         created_count = 0

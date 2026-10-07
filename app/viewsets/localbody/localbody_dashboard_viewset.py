@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.panchayat import Panchayat
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
@@ -67,9 +68,11 @@ class LocalBodyDashboardViewSet(ViewSet):
 
     def _get_panchayat(self, request):
         leader = self._get_leader(request)
-        if leader:
-            return getattr(leader, "panchayat_id", None)
-        return None
+        panchayat_uid = getattr(leader, "panchayat_id", None) if leader else None
+        if not panchayat_uid:
+            return None
+        # leader.panchayat_id is a plain unique_id string since the FK removal
+        return Panchayat.objects.filter(unique_id=panchayat_uid).first()
 
     # ── main endpoint ───────────────────────────────────────────────────
 

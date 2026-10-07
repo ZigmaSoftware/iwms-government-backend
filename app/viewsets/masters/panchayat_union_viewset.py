@@ -9,6 +9,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 PANCHAYAT_UNION_CACHE_SCOPES = ("panchayat_union_list", "panchayat_union_detail")
 
@@ -21,9 +22,14 @@ class PanchayatUnionViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelView
     )
     lookup_field = "unique_id"
     permission_resource = "PanchayatUnion"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["union_name", "area_type_id"]
+    search_fields = [
+        "union_name",
+        "district_id=app.models.masters.district.District.name",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "area_type_id=app.models.masters.areatype.AreaType.name",
+    ]
     ordering_fields = ["union_name", "is_active"]
 
     AUDIT_MODULE = "masters"

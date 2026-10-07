@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.geo import centroid
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.district import District
@@ -45,8 +46,7 @@ class TripAttendanceSeeder(BaseSeeder):
             lat, lon = 11.0, 78.0
             district_obj = District.objects.filter(unique_id=trip.district_id).first()
             if district_obj and district_obj.coordinates:
-                point = district_obj.coordinates[0]
-                lat, lon = point["latitude"], point["longitude"]
+                lat, lon = centroid(district_obj.coordinates)
 
             for idx, staff in enumerate([staff_template.operator, staff_template.driver]):
                 if not staff:

@@ -1,6 +1,8 @@
 """
 Central, real-world Tamil Nadu geographic + naming data for the three
-fully-built-out operational districts: Erode, Coimbatore, and Salem.
+fully-built-out operational districts: Erode, Coimbatore, and Salem — which
+of the district's (many, see seeders/tn_local_bodies.py) local bodies the
+demo wards, trips and customers are built on.
 
 Coordinates are approximate real-world locality centroids (the same
 precision level the rest of the seeders already use), not surveyed data —
@@ -25,6 +27,9 @@ DISTRICTS = {
             "Erode Bypass",
         ],
         "corporation_name": "Erode Corporation",
+        "municipality_name": "Bhavani Municipality",
+        "town_panchayat_name": "Anthiyur Town Panchayat",
+        "panchayat_union_name": "Anthiyur Panchayat Union",
         "corporation_pincode_base": "63800",
         # (ward_name, latitude, longitude)
         "corporation_wards": [
@@ -56,6 +61,9 @@ DISTRICTS = {
             "Mettupalayam Road",
         ],
         "corporation_name": "Coimbatore Corporation",
+        "municipality_name": "Pollachi Municipality",
+        "town_panchayat_name": "Periyanaickenpalayam Town Panchayat",
+        "panchayat_union_name": "Pollachi Panchayat Union",
         "corporation_pincode_base": "64100",
         "corporation_wards": [
             ("RS Puram", 11.0055, 76.9528),
@@ -82,6 +90,9 @@ DISTRICTS = {
             "Junction Main Road",
         ],
         "corporation_name": "Salem Corporation",
+        "municipality_name": "Attur Municipality",
+        "town_panchayat_name": "Vazhapadi Town Panchayat",
+        "panchayat_union_name": "Omalur Panchayat Union",
         "corporation_pincode_base": "63600",
         "corporation_wards": [
             ("Fairlands", 11.6730, 78.1460),
@@ -99,6 +110,15 @@ DISTRICTS = {
         ],
     },
 }
+
+# Demo-only local bodies the operational seed data hangs off that are not
+# real LGD bodies (seeders/tn_local_bodies.py holds every real one): LGD
+# splits Pollachi into Pollachi (N)/(S) unions, and the `panchayats` above
+# are named after nearby towns rather than actual village panchayats.
+# (district, union_name, latitude, longitude)
+DEMO_ONLY_PANCHAYAT_UNIONS = [
+    ("Coimbatore", "Pollachi Panchayat Union", 10.6587, 77.0085),
+]
 
 # Deterministic iteration order used everywhere three districts are looped.
 DISTRICT_NAMES = list(DISTRICTS.keys())

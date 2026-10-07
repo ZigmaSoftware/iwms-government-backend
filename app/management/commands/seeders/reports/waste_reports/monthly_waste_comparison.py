@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.masters.panchayat import Panchayat
 from app.models.reports.waste_reports.daily_waste_comparison import DailyWasteComparison
 from app.models.masters.waste_masters.wastetype import WasteType
@@ -13,7 +14,12 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
     name = "MonthlyWasteComparisonSeeder"
 
     def run(self):
-        panchayats = list(Panchayat.objects.filter(is_deleted=False).order_by("panchayat_name")[:5])
+        # Only the operational districts' demo panchayats have trips/waste to
+        # compare — not the thousands of other village panchayats.
+        demo_names = [name for geo in DISTRICTS.values() for name, _lat, _lon, _pin in geo["panchayats"]]
+        panchayats = list(
+            Panchayat.objects.filter(is_deleted=False, panchayat_name__in=demo_names).order_by("panchayat_name")[:5]
+        )
         if not panchayats:
             self.log("No panchayats found — run PanchayatSeeder first.")
             return

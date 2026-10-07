@@ -1,5 +1,8 @@
 # core/management/commands/seeders/base.py
 from django.db import transaction
+from django.utils import timezone
+
+from app.cache.invalidation import invalidate_scope
 
 
 class BaseSeeder:
@@ -38,6 +41,49 @@ class BaseSeeder:
             setattr(obj, key, value)
         obj.save()
         return obj, False
+
+    def bulk_upsert(self, model, rows, key_fields, scope=None, batch_size=500):
+        """upsert() for thousands of rows in a few queries; returns
+        (created, updated).
+
+        `rows` are dicts of field values; each is matched to an existing row
+        on `key_fields` (within `scope`, a filter dict narrowing which rows
+        are loaded), preferring a live row exactly like pick_existing().
+        Only rows whose values actually changed are written. bulk_* skips
+        save()/signals — fine for the plain geo masters this is used for."""
+        field_names = {f.name for f in model._meta.get_fields()}
+        ordering = [f for f in ("is_deleted", "-is_active") if f.lstrip("-") in field_names] + ["pk"]
+
+        existing = {}
+        for obj in model.objects.filter(**(scope or {})).order_by(*ordering):
+            existing.setdefault(tuple(getattr(obj, f) for f in key_fields), obj)
+
+        update_fields = sorted({f for row in rows for f in row} - set(key_fields))
+        if "updated_at" in field_names:
+            update_fields.append("updated_at")
+        now = timezone.now()
+
+        to_create, to_update, seen_pks = [], [], set()
+        for row in rows:
+            obj = existing.get(tuple(row[f] for f in key_fields))
+            if obj is None:
+                obj = model(**row)
+                while obj.pk in seen_pks:  # time-based ids can repeat in a tight loop
+                    obj.pk = model._meta.pk.get_default()
+                seen_pks.add(obj.pk)
+                to_create.append(obj)
+            elif any(getattr(obj, f) != v for f, v in row.items()):
+                for f, v in row.items():
+                    setattr(obj, f, v)
+                if "updated_at" in field_names:
+                    obj.updated_at = now
+                to_update.append(obj)
+
+        model.objects.bulk_create(to_create, batch_size=batch_size)
+        if to_update:
+            model.objects.bulk_update(to_update, update_fields, batch_size=batch_size)
+        invalidate_scope(*getattr(model, "CACHE_SCOPES", ()))
+        return len(to_create), len(to_update)
 
     def log(self, message):
         print(f"[{self.name.upper()}] {message}")
