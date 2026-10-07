@@ -19,6 +19,7 @@ from rest_framework.viewsets import ViewSet
 
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.models.masters.district import District
+from app.models.superadmin.common_masters.state import State
 
 
 TWO = Decimal("0.01")
@@ -57,8 +58,10 @@ class StateBodyDashboardViewSet(ViewSet):
                 {"detail": "State not found for this leader."}, status=403
             )
 
-        state_uid  = state.unique_id
-        state_name = getattr(state, "name", "") or ""
+        # leader.state_id is a plain unique_id string since the FK removal
+        state_uid  = state
+        state_obj  = State.objects.filter(unique_id=state_uid).first()
+        state_name = getattr(state_obj, "name", "") or ""
 
         districts = District.objects.filter(
             state_id=state_uid,

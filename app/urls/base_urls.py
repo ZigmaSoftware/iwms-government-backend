@@ -144,9 +144,16 @@ from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardV
 
 # Districtbody
 from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyDashboardViewSet
+from ..viewsets.districtbody.districtbody_map_viewset import (
+    DistrictBodyDailyComparisonViewSet,
+    DistrictBodyMapViewSet,
+    DistrictBodyMonthlyComparisonViewSet,
+    DistrictBodySummaryViewSet,
+)
 
 # Statebody
 from ..viewsets.statebody.statebody_dashboard_viewset import StateBodyDashboardViewSet
+from ..viewsets.statebody.statebody_map_viewset import StateBodyMapViewSet, StateBodySummaryViewSet
 from ..viewsets.statebody.statebody_waste_comparison_viewset import (
     StateMonthlyWasteComparisonViewSet,
     StateDailyWasteComparisonViewSet,
@@ -369,11 +376,17 @@ router.register_group("localbody", "dashboard", LocalBodyDashboardViewSet, basen
 # GROUP: DISTRICTBODY (district leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("districtbody", "dashboard", DistrictBodyDashboardViewSet, basename="districtbody-dashboard")
+router.register_group("districtbody", "map", DistrictBodyMapViewSet, basename="districtbody-map")
+router.register_group("districtbody", "summary", DistrictBodySummaryViewSet, basename="districtbody-summary")
+router.register_group("districtbody", "monthly-waste-comparison", DistrictBodyMonthlyComparisonViewSet, basename="districtbody-monthly-waste-comparison")
+router.register_group("districtbody", "daily-waste-comparison", DistrictBodyDailyComparisonViewSet, basename="districtbody-daily-waste-comparison")
 
 # ============================================================
 # GROUP: STATEBODY (state leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("statebody", "dashboard", StateBodyDashboardViewSet, basename="statebody-dashboard")
+router.register_group("statebody", "map", StateBodyMapViewSet, basename="statebody-map")
+router.register_group("statebody", "summary", StateBodySummaryViewSet, basename="statebody-summary")
 router.register_group("statebody", "monthly-waste-comparison", StateMonthlyWasteComparisonViewSet, basename="statebody-monthly-waste-comparison")
 router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComparisonViewSet, basename="statebody-daily-waste-comparison")
 

@@ -259,19 +259,45 @@ def bulk_waste_type_rows_for_trip_assignments(
     )
     from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
-    assignments = (
+    # Resolved in bulk (3 queries total). `assignment.waste_types` /
+    # `trip_plan.waste_types` are per-row QuerySet properties since the M2M
+    # removal, so looping over them cost 2 queries per trip — ~17k queries
+    # (25 s) for one month of a state's trips.
+    from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+
+    assignments = list(
         DailyTripAssignment.objects.filter(
             unique_id__in=trip_assignment_ids,
             is_deleted=False,
-        )
+        ).values("unique_id", "trip_plan_id", "waste_type_ids", "household_waste_type_ids")
     )
+    plan_type_ids = dict(
+        TripPlan.objects.filter(
+            unique_id__in={a["trip_plan_id"] for a in assignments if not a["waste_type_ids"] and a["trip_plan_id"]}
+        ).values_list("unique_id", "waste_type_ids")
+    )
+    all_type_ids = set()
+    for a in assignments:
+        all_type_ids.update(a["waste_type_ids"] or [])
+        all_type_ids.update(a["household_waste_type_ids"] or [])
+    for ids in plan_type_ids.values():
+        all_type_ids.update(ids or [])
+    # default model ordering, exactly as the per-row `.filter(unique_id__in=…)`
+    # QuerySets returned them (the order decides who gets the split remainder)
+    ordered_types = list(WasteType.objects.filter(unique_id__in=all_type_ids))
+    type_by_id = {wt.unique_id: wt for wt in ordered_types}
+    type_rank = {wt.unique_id: i for i, wt in enumerate(ordered_types)}
+
+    def _resolve(ids):
+        return [type_by_id[i] for i in sorted({i for i in (ids or []) if i in type_by_id}, key=type_rank.__getitem__)]
+
     configured_types = {}
-    for assignment in assignments:
-        standard = list(assignment.waste_types.all())
-        if not standard and assignment.trip_plan:
-            standard = list(assignment.trip_plan.waste_types.all())
-        household = list(assignment.household_waste_types) or standard
-        configured_types[assignment.unique_id] = {
+    for a in assignments:
+        standard = _resolve(a["waste_type_ids"])
+        if not standard and a["trip_plan_id"]:
+            standard = _resolve(plan_type_ids.get(a["trip_plan_id"]))
+        household = _resolve(a["household_waste_type_ids"]) or standard
+        configured_types[a["unique_id"]] = {
             "bin": standard,
             "household": household,
         }
