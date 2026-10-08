@@ -144,8 +144,17 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
         month_param = request.query_params.get("month")
         waste_type_param = request.query_params.get("waste_type_id")
 
+        # date_from / date_to: optional inclusive range (either end may be open)
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+
         if date_param:
             queryset = queryset.filter(trip_date=date_param)
+        elif date_from or date_to:
+            if date_from:
+                queryset = queryset.filter(trip_date__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(trip_date__lte=date_to)
         elif month_param:
             try:
                 year, mon = month_param.split("-")
