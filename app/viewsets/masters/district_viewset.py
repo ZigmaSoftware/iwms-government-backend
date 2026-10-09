@@ -8,6 +8,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 DISTRICT_CACHE_SCOPES = ("district_list", "district_detail")
 
@@ -22,9 +23,16 @@ class DistrictViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
         District, "district_name", source="name", extra_fields=("name", "state_id")
     )
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["name", "district_code"]
+    # The list's search box matches what the table shows: district plus
+    # its state name (plain unique_id column, no join).
+    search_fields = [
+        "name",
+        "district_code",
+        "unique_id",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+    ]
     ordering_fields = ["name", "district_code", "is_active"]
     permission_resource = "District"
 

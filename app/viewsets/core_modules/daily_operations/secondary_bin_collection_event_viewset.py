@@ -1,12 +1,26 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
-from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.waste_masters.bins import Bins
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.core_modules.daily_operations.secondary_bin_collection_event_serializer import (
@@ -28,9 +42,14 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
     permission_resource = "SecondaryBinCollectionEvent"
-    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
+    # No SearchFilter here — the list's search box matches what the table
+    # shows (trip plan, collection point, local body, bin, waste type,
+    # vehicle, status, reason), most of which are plain unique_id columns
+    # with no DB join. Resolved manually in get_queryset (same pattern as
+    # vehicle_breakdown_viewset); adding DRF's SearchFilter on top would AND
+    # a narrower condition and hide legitimate matches.
+    filter_backends = [filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "bin_id=app.models.masters.waste_masters.bins.Bins.bin_name"]
     ordering_fields = ["collection_date", "status"]
 
     AUDIT_MODULE = "transport-masters"
@@ -65,6 +84,50 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(collection_date__lte=date_to)
         if ward_id:
             queryset = queryset.filter(ward_id=ward_id)
+
+        # NOTE: trip_assignment_id stores DailyTripAssignment.unique_id
+        # while that model's pk is an auto int id, so hops through the
+        # assignment (trip plan code, vehicle) go through explicit
+        # unique_id subqueries (not PlainRefSearchFilter).
+        search = (params.get("search") or params.get("q") or "").strip()
+        if search:
+            plan_ids = TripPlan.objects.filter(
+                Q(display_code__icontains=search) | Q(unique_id__icontains=search)
+            ).values("unique_id")
+            vehicle_ids = VehicleCreation.objects.filter(
+                vehicle_no__icontains=search
+            ).values("unique_id")
+            assignment_ids = DailyTripAssignment.objects.filter(
+                Q(unique_id__icontains=search)
+                | Q(trip_plan_id__in=plan_ids)
+                | Q(vehicle_id__in=vehicle_ids)
+            ).values("unique_id")
+            queryset = queryset.filter(
+                Q(unique_id__icontains=search)
+                | Q(trip_assignment_id__icontains=search)
+                | Q(trip_assignment_id__in=assignment_ids)
+                | Q(collection_point_id__in=Collection_point.objects.filter(
+                    Q(cp_name__icontains=search) | Q(unique_id__icontains=search)
+                ).values("unique_id"))
+                | Q(bin_id__in=Bins.objects.filter(
+                    Q(bin_name__icontains=search) | Q(unique_id__icontains=search)
+                ).values("unique_id"))
+                | Q(waste_type_id__in=WasteType.objects.filter(
+                    waste_type_name__icontains=search
+                ).values("unique_id"))
+                | Q(vehicle_id__in=vehicle_ids)
+                | Q(status__icontains=search)
+                | Q(status_reason__icontains=search)
+                | Q(ward_id__in=Ward.objects.filter(ward_name__icontains=search).values("unique_id"))
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
+            )
 
         # Events carry their own flat geo columns (copied from the assignment
         # on save), so filter on those directly — no join to the assignment.

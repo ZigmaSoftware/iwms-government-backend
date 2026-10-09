@@ -28,6 +28,14 @@ from app.utils.hierarchy import (
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref import ref_q
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 
 
 class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -77,6 +85,20 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 | ref_q("replacement_vehicle_id", VehicleCreation, vehicle_no__icontains=search)
                 | ref_q("replacement_driver_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
                 | ref_q("replacement_operator_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                # Table columns: location (local-body/district/state names),
+                # reason, status and the free-text breakdown spot.
+                | Q(breakdown_location__icontains=search)
+                | Q(breakdown_reason__icontains=search)
+                | Q(status__icontains=search)
+                | Q(approval_status__icontains=search)
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
             )
 
         # Breakdowns copy the assignment's flat geo block on save

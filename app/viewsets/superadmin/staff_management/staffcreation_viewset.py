@@ -17,6 +17,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
 from app.utils.staff_hierarchy import complete_geo, resolve_entry
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.utils import ref_cache
 
 
@@ -31,11 +32,22 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staffcreation"
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
+    # The list's search box matches what the table shows: staff/employee
+    # ids, name, contact and staff-type names. Type columns are plain
+    # unique_id columns with no DB join, so names go through
+    # PlainRefSearchFilter.
+    # NOTE: contact phone/email live on the separate StaffPersonalDetails
+    # row, not on this model, so they are not searchable here.
     search_fields = [
         "employee_name",
         "staff_unique_id",
+        "emp_id",
+        "username",
+        "staffusertype_id=app.models.superadmin.role_management.staffUserType.StaffUserType.name",
+        "governmentusertype_id=app.models.superadmin.role_management.governmentStaffUserType.GovernmentStaffUserType.name",
+        "contractorusertype_id=app.models.superadmin.role_management.contractorUserType.ContractorUserType.name",
     ]
     ordering_fields = ["staff_unique_id", "employee_name", "created_at"]
 

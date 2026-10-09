@@ -9,6 +9,17 @@ from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.utils.plain_ref import json_contains_any, ref_q
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.core_modules.daily_operations.daily_trip_log_serializer import (
@@ -99,9 +110,29 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if operator:
             qs = qs.filter(operator_id=operator)
         if search:
+            # NOTE: trip_assignment_id stores DailyTripAssignment.unique_id
+            # while that model's pk is an auto int id, so hops through the
+            # assignment (template codes, ward names) go through explicit
+            # unique_id subqueries.
+            template_ids = StaffTemplate.objects.filter(
+                Q(display_code__icontains=search) | Q(unique_id__icontains=search)
+            ).values("unique_id")
+            ward_ids = Ward.objects.filter(
+                ward_name__icontains=search
+            ).values("unique_id")
+            assignment_ids = DailyTripAssignment.objects.filter(
+                Q(unique_id__icontains=search)
+                | Q(staff_template_id__in=template_ids)
+                | Q(alt_staff_template_id__in=template_ids)
+                | json_contains_any("ward_ids", list(ward_ids.values_list("unique_id", flat=True)))
+            ).values("unique_id")
             qs = qs.filter(
                 Q(unique_id__icontains=search)
                 | Q(trip_assignment_id__icontains=search)
+                | Q(trip_assignment_id__in=assignment_ids)
+                | Q(log_status__icontains=search)
+                | Q(staff_template_id__in=template_ids)
+                | Q(alt_staff_template_id__in=template_ids)
                 | ref_q("collection_point_id", Collection_point, cp_name__icontains=search)
                 | json_contains_any(
                     "waste_type_ids",
@@ -113,6 +144,14 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 | ref_q("driver_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
                 | ref_q("operator_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
                 | ref_q("vehicle_id", VehicleCreation, vehicle_no__icontains=search)
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
             )
 
         if waste_types or search:
