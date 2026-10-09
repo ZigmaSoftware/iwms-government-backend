@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.utils.plain_ref import ref_q
+from app.utils.hierarchy import FLAT_GEO_QUERY_FIELDS, filter_flat_geo_queryset_by_params
 from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 from app.serializers.core_modules.daily_operations.trip_retrip_serializer import (
     TripRetripRequestSerializer,
@@ -42,6 +43,15 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
         status_filter = params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
+
+        # Location filter: the request carries no geo columns of its own — its
+        # trip (DailyTripAssignment) does.
+        if any(params.get(field) for field in FLAT_GEO_QUERY_FIELDS):
+            qs = qs.filter(
+                assignment_id__in=filter_flat_geo_queryset_by_params(
+                    DailyTripAssignment.objects.all(), params
+                ).values("unique_id")
+            )
 
         # `mine=true` mirrors daily_trip_assignment_viewset.py:138-141 so the
         # supervisor app sees exactly the requests for trips it owns.

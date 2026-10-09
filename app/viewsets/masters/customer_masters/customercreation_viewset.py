@@ -5,6 +5,7 @@ import io
 from django.db.models import Q, Count
 from django.db.models.functions import Upper
 from rest_framework import filters, status
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -126,9 +127,34 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # so it's exempt from the admin module-permission check.
     permission_exempt_actions = ["register_fcm_token"]
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["customer_name", "contact_no", "apartment_name", "flat_no"]
+    # the list's search box matches what the table shows: customer, mobile,
+    # address, property / sub-property, local body, ward and waste types
+    # (ref columns hold unique_ids, so names go through PlainRefSearchFilter)
+    search_fields = [
+        "unique_id",
+        "customer_name",
+        "contact_no",
+        "apartment_name",
+        "flat_no",
+        "block_no",
+        "villa_no",
+        "building_no",
+        "street",
+        "area",
+        "pincode",
+        "property_id=app.models.masters.waste_masters.property.Property.property_name",
+        "sub_property_id=app.models.masters.waste_masters.subproperty.SubProperty.sub_property_name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+        "ward_id=app.models.masters.ward.Ward.ward_name",
+        "waste_type_ids[]=app.models.masters.waste_masters.wastetype.WasteType.waste_type_name",
+    ]
     ordering_fields = ["customer_name", "is_active"]
 
     AUDIT_MODULE = "customer-masters"

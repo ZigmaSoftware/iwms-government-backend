@@ -8,6 +8,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.plain_ref import json_contains_any
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
 
 # TripPlanSerializer embeds Collection_point details (cp_name, ward names,
 # bin names) via get_plan_collection_points, so a collection point write
@@ -26,7 +27,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     lookup_field = "unique_id"
 
     permission_resource = "CollectionPoint"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["cp_name"]
     ordering_fields = ["cp_name", "collection_type", "is_active"]

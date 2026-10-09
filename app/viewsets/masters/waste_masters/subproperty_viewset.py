@@ -5,6 +5,7 @@ from app.models.masters.waste_masters.subproperty import SubProperty
 from app.serializers.masters.waste_masters.subproperty_serializer import SubPropertySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
 from app.utils.plain_ref_search import PlainRefSearchFilter
 
 SUB_PROPERTY_CACHE_SCOPES = ("sub_property_list", "sub_property_detail")
@@ -18,7 +19,7 @@ class SubPropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "waste-types"
     AUDIT_ENDPOINT = "subproperties"
     lookup_field = "unique_id"
-    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = [
         "sub_property_name",

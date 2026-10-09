@@ -242,10 +242,13 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             wa_phone = params.get("wa_phone")
             if wa_phone:
                 qs = qs.filter(wa_phone=wa_phone)
-            state = params.get("state")
+            # Geo: the legacy ?state=/?district=/?city= names and the flat
+            # ?state_id=/.../?panchayat_id= params of the list page's
+            # Filters panel (useHierarchyFilter).
+            state = params.get("state") or params.get("state_id")
             if state:
                 qs = qs.filter(state_id=state)
-            district = params.get("district")
+            district = params.get("district") or params.get("district_id")
             if district:
                 qs = qs.filter(district_id=district)
             area_type = params.get("area_type") or params.get("area_type_id")
@@ -254,6 +257,10 @@ class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             city = params.get("city")
             if city:
                 qs = qs.filter(_local_body_q(city))
+            for field in ("corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
+                local_body = params.get(field)
+                if local_body:
+                    qs = qs.filter(**{field: local_body})
             assigned_staff = params.get("assigned_staff")
             if assigned_staff:
                 qs = qs.filter(assigned_staff_id=assigned_staff)

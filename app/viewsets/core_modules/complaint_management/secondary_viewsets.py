@@ -73,6 +73,13 @@ class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
         ticket = self.request.query_params.get("ticket")
         if ticket:
             qs = qs.filter(ticket_id=ticket)
+        # Feedback list page's Filters panel.
+        issue_solved = str(self.request.query_params.get("is_issue_solved", "")).strip().lower()
+        if issue_solved in ("true", "false"):
+            qs = qs.filter(is_issue_solved=issue_solved == "true")
+        rating = self.request.query_params.get("rating")
+        if rating and str(rating).isdigit():
+            qs = qs.filter(rating=int(rating))
         return qs
 
 

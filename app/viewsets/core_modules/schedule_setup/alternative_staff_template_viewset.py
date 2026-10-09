@@ -1,10 +1,14 @@
+from django.db.models import Q
 from rest_framework import filters, viewsets, serializers
 from rest_framework.exceptions import NotAuthenticated
 
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.plain_ref import json_contains_any
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.serializers.core_modules.schedule_setup.alternative_staff_template_serializer import (
     AlternativeStaffTemplateSerializer
 )
@@ -39,17 +43,55 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     #  CRITICAL: single source of truth for middleware
     permission_resource = "AlternativeStaffTemplate"
     lookup_field = "unique_id"
-    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
+    # the list's search box matches what the table shows: template id,
+    # staff template, driver, operator, extra operators and the reason
     search_fields = [
         "unique_id",
+        "display_code",
+        "change_reason",
+        "change_remarks",
+        "staff_template_id",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.display_code",
         "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
         "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "extra_operator_id[]=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
     ]
     ordering_fields = ["from_date", "to_date"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "alternative-staff-templates"
+
+    def _apply_list_search(self, qs):
+        terms = PlainRefSearchFilter().get_search_terms(self.request)
+        if not terms:
+            return qs
+
+        for term in terms:
+            matching_template_ids = StaffTemplate.objects.filter(
+                Q(unique_id__icontains=term) | Q(display_code__icontains=term)
+            ).values("unique_id")
+
+            matching_staff_ids = StaffcreationOfficeDetails.objects.filter(
+                Q(staff_unique_id__icontains=term) | Q(employee_name__icontains=term),
+                is_deleted=False,
+            ).values_list("staff_unique_id", flat=True)
+
+            clause = (
+                Q(unique_id__icontains=term)
+                | Q(display_code__icontains=term)
+                | Q(staff_template_id__icontains=term)
+                | Q(staff_template_id__in=matching_template_ids)
+                | Q(change_reason__icontains=term)
+                | Q(change_remarks__icontains=term)
+                | Q(driver_id__in=matching_staff_ids)
+                | Q(operator_id__in=matching_staff_ids)
+                | json_contains_any("extra_operator_id", matching_staff_ids)
+            )
+            qs = qs.filter(clause)
+
+        return qs
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -69,6 +111,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+        qs = self._apply_list_search(qs)
 
         return qs
 
@@ -144,4 +187,3 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         super().perform_destroy(instance)
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
-

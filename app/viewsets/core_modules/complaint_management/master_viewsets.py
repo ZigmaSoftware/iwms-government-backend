@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.list_filters import ListParamFilter
 from app.utils.pagination import LimitOffsetWithPage
 
 from app.models.core_modules.complaint_management.source_master import ComplaintSource
@@ -46,7 +47,7 @@ class ComplaintSourceViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
     queryset = ComplaintSource.objects.filter(is_deleted=False).order_by("source_code")
     serializer_class = ComplaintSourceSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["source_code", "source_name"]
     ordering_fields = ["source_code", "source_name", "is_active"]
@@ -108,7 +109,7 @@ class ComplaintPriorityViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     queryset = ComplaintPriority.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintPrioritySerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["priority_code", "priority_name"]
     ordering_fields = ["sort_order", "priority_code", "is_active"]
@@ -139,7 +140,7 @@ class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
     queryset = ComplaintStatus.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintStatusSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["status_code", "status_name"]
     ordering_fields = ["sort_order", "status_code", "is_active"]
@@ -170,7 +171,7 @@ class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
     queryset = ComplaintModule.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintModuleSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["module_code", "module_name"]
     ordering_fields = ["sort_order", "module_code", "is_active"]
@@ -201,7 +202,7 @@ class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     queryset = ComplaintCategory.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintCategorySerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["category_code", "category_name"]
     ordering_fields = ["sort_order", "category_code", "is_active"]
@@ -232,7 +233,7 @@ class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
     throttle_scope = "complaint_subcategory"
     serializer_class = ComplaintSubcategorySerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["subcategory_code", "subcategory_name"]
     ordering_fields = ["sort_order", "subcategory_code", "is_active"]
@@ -270,7 +271,7 @@ class ComplaintSlaRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mode
     queryset = ComplaintSlaRule.objects.filter(is_deleted=False).order_by("unique_id")
     serializer_class = ComplaintSlaRuleSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["unique_id"]
     ordering_fields = ["unique_id", "is_active"]

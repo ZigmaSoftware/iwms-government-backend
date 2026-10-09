@@ -84,6 +84,12 @@ class ComplaintAuditViewSet(viewsets.ViewSet):
         if city:
             queryset = queryset.filter(_local_body_q(city))
 
+        # The list page's location filter sends the flat per-level params.
+        for field in ("corporation_id", "municipality_id", "town_panchayat_id", "panchayat_union_id", "panchayat_id"):
+            local_body = params.get(field)
+            if local_body:
+                queryset = queryset.filter(**{field: local_body})
+
         status_codes = [c for c in (params.get("status") or "").upper().split(",") if c]
         if status_codes:
             status_ids = ComplaintStatus.objects.filter(status_code__in=status_codes).values("unique_id")

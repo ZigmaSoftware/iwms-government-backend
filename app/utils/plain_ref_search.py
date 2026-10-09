@@ -16,6 +16,10 @@ model, e.g. assignment -> staff template -> driver name::
 
     "staff_template_id=app...StaffTemplate.driver_id=app...Staff.employee_name"
 
+A column holding a JSON *list* of unique_ids is marked with ``[]``, e.g.
+``"waste_type_ids[]=app...WasteType.waste_type_name"`` — it matches rows
+whose list contains any matching id.
+
 Ordinary search fields behave exactly as in DRF's SearchFilter.
 """
 
@@ -47,9 +51,21 @@ class PlainRefSearchFilter(filters.SearchFilter):
         for term in search_terms:
             clauses = [Q(**{lookup: term}) for lookup in orm_lookups]
             for column, *hops in refs:
-                clauses.append(Q(**{f"{column}__in": self._chain(hops, term)}))
+                if column.endswith("[]"):
+                    clauses.append(self._list_contains(column[:-2], self._chain(hops, term)))
+                else:
+                    clauses.append(Q(**{f"{column}__in": self._chain(hops, term)}))
             queryset = queryset.filter(reduce(operator.or_, clauses))
         return queryset
+
+    @staticmethod
+    def _list_contains(column, ids, limit=200):
+        """JSON-list column contains any of `ids` (capped; these are small
+        master tables such as waste types)."""
+        clause = Q(pk__in=[])
+        for pk in list(ids.values_list("pk", flat=True)[:limit]):
+            clause |= Q(**{f"{column}__contains": pk})
+        return clause
 
     @staticmethod
     def _chain(hops, term):

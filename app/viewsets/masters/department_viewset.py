@@ -1,5 +1,6 @@
 from rest_framework import filters
 
+from app.utils.list_filters import ListParamFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.department import Department
@@ -17,7 +18,7 @@ class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
     lookup_field = "unique_id"
     permission_resource = "Department"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["department_name", "department_code", "description"]
     ordering_fields = ["department_name", "department_code", "created_at"]

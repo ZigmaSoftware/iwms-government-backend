@@ -1,6 +1,8 @@
 from rest_framework import filters, status
 from rest_framework.response import Response
 
+from app.models.masters.panchayat import Panchayat
+from app.utils.list_filters import ListParamFilter
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
@@ -21,7 +23,7 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT = "panchayat-leaders"
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["username", "leader_name", "email"]
     ordering_fields = ["username", "created_at"]
@@ -32,6 +34,18 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         panchayat_id = self.request.query_params.get("panchayat_id")
         if panchayat_id:
             qs = qs.filter(panchayat_id=panchayat_id)
+
+        # Filters panel: leaders carry only panchayat_id, so State / District
+        # / Area type picks go through the Panchayat's own geo columns.
+        panchayat_geo = {
+            field: self.request.query_params.get(field)
+            for field in ("state_id", "district_id", "area_type_id")
+            if self.request.query_params.get(field)
+        }
+        if panchayat_geo:
+            qs = qs.filter(
+                panchayat_id__in=Panchayat.objects.filter(**panchayat_geo).values("unique_id")
+            )
 
         return qs.order_by("-created_at")
 

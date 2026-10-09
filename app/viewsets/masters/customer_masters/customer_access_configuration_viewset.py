@@ -15,6 +15,7 @@ from app.serializers.masters.customer_masters.customer_access_configuration_seri
 from app.utils.app_feature_grants import CITIZEN_APP_SCREENS
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
 from app.utils.permission_snapshot import (
     EMPTY_SNAPSHOT,
     customer_access_snapshot,
@@ -119,6 +120,8 @@ class CustomerAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSe
         queryset = CustomerCreation.objects.filter(
             is_deleted=False, is_active=True
         ).order_by("customer_name")
+        # the page's Location filter (?state_id= / ?district_id= / ...)
+        queryset = ListParamFilter().filter_queryset(request, queryset, self)
 
         configured = set(
             CustomerAccessConfiguration.objects.filter(

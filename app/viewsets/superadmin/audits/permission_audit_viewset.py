@@ -149,6 +149,34 @@ class PermissionAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             | Q(source="CUSTOMER_ACCESS", target_id__in=customer_ids)
         )
 
+    @staticmethod
+    def _filter_by_geo_params(queryset, params):
+        """
+        The list page's location filter (?state_id=/?district_id=/
+        ?area_type_id=/?corporation_id=/...). A local-body param matches the
+        grant's own local body; a State/District/Area type matches the row's
+        own geo or any local body inside it (older per-grant rows carry only
+        the local body), the same widening `_geo_q` uses for scope.
+        """
+        for row_field in ("state_id", "district_id", "area_type_id"):
+            value = params.get(row_field)
+            if not value:
+                continue
+            q = Q(**{row_field: value})
+            for level in LOCAL_BODY_MODELS:
+                q |= Q(
+                    local_body_type=level,
+                    local_body_id__in=_local_body_model(level)
+                    .objects.filter(**{row_field: value})
+                    .values("unique_id"),
+                )
+            queryset = queryset.filter(q)
+        for level in LOCAL_BODY_MODELS:
+            value = params.get(f"{level}_id")
+            if value:
+                queryset = queryset.filter(local_body_type=level, local_body_id=value)
+        return queryset
+
     # ------------------------------------------------------------------
     # Queryset
     # ------------------------------------------------------------------
@@ -198,7 +226,7 @@ class PermissionAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         if date_to:
             queryset = queryset.filter(timestamp__date__lte=date_to)
 
-        return queryset
+        return self._filter_by_geo_params(queryset, params)
 
     @action(detail=False, methods=["get"], url_path="filter-options")
     def filter_options(self, request):
