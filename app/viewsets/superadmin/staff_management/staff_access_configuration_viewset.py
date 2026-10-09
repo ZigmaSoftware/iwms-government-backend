@@ -4,6 +4,7 @@ from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.utils.list_filters import ListParamFilter
 from app.models.masters.district import District
 from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
@@ -23,13 +24,22 @@ class StaffAccessConfigurationViewSet(PermissionSnapshotAuditMixin, AuditViewSet
     serializer_class = StaffAccessConfigurationSerializer
     lookup_field = "staff_unique_id"
     permission_resource = "StaffAccessConfiguration"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["employee_name", "staff_unique_id", "department", "designation"]
     ordering_fields = ["employee_name", "staff_unique_id", "doj"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staff-access-configuration"
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        # Filters panel Status = the staff flag (same as Staff Creation's
+        # ?active_status=1|0), not BaseMaster.is_active.
+        active_status = self.request.query_params.get("active_status")
+        if active_status in ("0", "1"):
+            queryset = queryset.filter(active_status=active_status == "1")
+        return queryset
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

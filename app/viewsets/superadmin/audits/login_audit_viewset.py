@@ -10,6 +10,8 @@ from app.models.superadmin.audits.login_audit import LoginAudit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.superadmin.audits.login_audit_serializer import LoginAuditSerializer
 from app.utils.hierarchy import (
+    FLAT_GEO_QUERY_FIELDS,
+    filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
     local_body_scope_for_staff,
 )
@@ -84,6 +86,23 @@ class LoginAuditViewSet(viewsets.ReadOnlyModelViewSet):
             )
         )
 
+    @staticmethod
+    def _filter_by_geo_params(queryset, params):
+        """
+        The list page's location filter (?state_id=/.../?panchayat_id=). A
+        login row has no geo of its own, so it matches through the account
+        that logged in: staff and customers carry the flat geo columns. Only
+        narrows, on top of the scope gate above.
+        """
+        if not any(params.get(field) for field in FLAT_GEO_QUERY_FIELDS):
+            return queryset
+        staff = filter_flat_geo_queryset_by_params(Staffcreation.objects.all(), params)
+        customers = filter_flat_geo_queryset_by_params(CustomerCreation.objects.all(), params)
+        return queryset.filter(
+            Q(user_unique_id__in=staff.values("staff_unique_id"))
+            | Q(user_unique_id__in=customers.values("unique_id"))
+        )
+
     def get_queryset(self):
         queryset = self._scoped_base_queryset()
         params = self.request.query_params
@@ -124,4 +143,4 @@ class LoginAuditViewSet(viewsets.ReadOnlyModelViewSet):
                 timestamp__lte=make_aware(datetime.combine(date_to, time.max))
             )
 
-        return queryset
+        return self._filter_by_geo_params(queryset, params)

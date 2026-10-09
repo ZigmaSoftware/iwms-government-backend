@@ -1,5 +1,6 @@
 from rest_framework import filters
 from rest_framework.viewsets import ModelViewSet
+from app.utils.list_filters import ListParamFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.hierarchy import AdministrativeHierarchy
@@ -15,7 +16,7 @@ class AdministrativeHierarchyViewSet(ModelViewSet):
     serializer_class = AdministrativeHierarchySerializer
     lookup_field = "unique_id"
     permission_resource = "AdministrativeHierarchy"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     # area_type is a plain unique_id string, not a relation field (see
     # docs/geo_hierarchy_fk_removal.md) — "area_type__name" would raise

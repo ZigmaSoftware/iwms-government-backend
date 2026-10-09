@@ -54,8 +54,10 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     search_fields = [
         "unique_id",
         "display_code",
+        "status",
         "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
         "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "extra_operator_id[]=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
     ]
     ordering_fields = ["display_code", "status"]
 

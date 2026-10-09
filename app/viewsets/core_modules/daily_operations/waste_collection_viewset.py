@@ -1,8 +1,21 @@
 from django.db import transaction
+from django.db.models import Q
 
 from rest_framework import filters, viewsets
 from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.serializers.core_modules.daily_operations.waste_collection_serializer import WasteCollectionSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
@@ -17,9 +30,8 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
     queryset = WasteCollection.objects.filter(is_deleted=False).order_by("-collection_date","-collection_time")
     serializer_class = WasteCollectionSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id"]
     ordering_fields = ["collection_date", "collection_time", "status", "total_quantity"]
 
     AUDIT_MODULE = "schedule-masters"
@@ -36,6 +48,45 @@ class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, views
             queryset = queryset.filter(ward_id=ward_id)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
+
+        # No SearchFilter here — the list's search box matches what the
+        # table shows (customer, mobile, trip, vehicle, district, area,
+        # location, status), most of which are plain unique_id columns with
+        # no DB join. Resolved manually (same pattern as
+        # vehicle_breakdown_viewset); adding DRF's SearchFilter on top
+        # would AND a narrower condition and hide legitimate matches.
+        # NOTE: trip_assignment_id stores DailyTripAssignment.unique_id
+        # while that model's pk is an auto int id, so the vehicle hop goes
+        # through explicit unique_id subqueries (not PlainRefSearchFilter).
+        search = (params.get("search") or params.get("q") or "").strip()
+        if search:
+            customer_ids = CustomerCreation.objects.filter(
+                Q(customer_name__icontains=search)
+                | Q(contact_no__icontains=search)
+                | Q(unique_id__icontains=search)
+            ).values("unique_id")
+            vehicle_ids = VehicleCreation.objects.filter(
+                vehicle_no__icontains=search
+            ).values("unique_id")
+            assignment_ids = DailyTripAssignment.objects.filter(
+                Q(unique_id__icontains=search) | Q(vehicle_id__in=vehicle_ids)
+            ).values("unique_id")
+            queryset = queryset.filter(
+                Q(unique_id__icontains=search)
+                | Q(customer_id__in=customer_ids)
+                | Q(trip_assignment_id__icontains=search)
+                | Q(trip_assignment_id__in=assignment_ids)
+                | Q(status__icontains=search)
+                | Q(ward_id__in=Ward.objects.filter(ward_name__icontains=search).values("unique_id"))
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
+            )
         return queryset
 
     @transaction.atomic

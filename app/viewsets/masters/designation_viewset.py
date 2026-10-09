@@ -1,5 +1,6 @@
 from rest_framework import filters
 
+from app.utils.list_filters import ListParamFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.designation import Designation
@@ -17,7 +18,7 @@ class DesignationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DesignationSerializer
     lookup_field = "unique_id"
     permission_resource = "Designation"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["designation_name", "designation_group", "description"]
     ordering_fields = ["designation_name", "designation_group", "created_at"]

@@ -52,9 +52,24 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     pagination_class = LimitOffsetWithPage
     search_fields = [
         "unique_id",
+        "status",
+        "approval_status",
         "vehicle_id=app.models.masters.transport_masters.vehicleCreation.VehicleCreation.vehicle_no",
+        "trip_plan_id=app.models.core_modules.schedule_setup.trip_plan.TripPlan.display_code",
+        "trip_plan_id=app.models.core_modules.schedule_setup.trip_plan.TripPlan.collection_type",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.display_code",
         "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.driver_id"
         "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.operator_id"
+        "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+        "ward_ids[]=app.models.masters.ward.Ward.ward_name",
     ]
     ordering_fields = ["trip_date", "scheduled_time", "status", "approval_status"]
 

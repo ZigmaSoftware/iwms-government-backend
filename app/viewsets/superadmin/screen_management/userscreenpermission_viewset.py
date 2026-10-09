@@ -21,6 +21,7 @@ from app.serializers.superadmin.screen_management.userscreencolumnpermission_ser
 )
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.list_filters import ListParamFilter
 from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
@@ -35,7 +36,7 @@ class UserScreenPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixi
     permission_resource = "userscreenpermissions"
 
     # Makes newest records appear first on page 1
-    filter_backends = [OrderingFilter]
+    filter_backends = [ListParamFilter, OrderingFilter]
     ordering_fields = ["created_at", "updated_at"]
     ordering = ["-updated_at", "-created_at"]
 
@@ -230,6 +231,26 @@ class UserScreenPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixi
                 # written by Staff Access Configuration) live in the same
                 # table but are a separate, independently-managed row set.
                 queryset = queryset.filter(**self._local_body_filter_kwargs(scope))
+            else:
+                # The list page's Location filter sends the flat
+                # ?corporation_id= / ?panchayat_id= ... params; this table
+                # stores the local body as (local_body_type, local_body_id),
+                # so match on the most specific one sent. state / district /
+                # area type are plain columns, handled by ListParamFilter.
+                for local_body_type in (
+                    "panchayat",
+                    "town_panchayat",
+                    "municipality",
+                    "corporation",
+                    "panchayat_union",
+                ):
+                    value = request.query_params.get(f"{local_body_type}_id")
+                    if value:
+                        queryset = queryset.filter(
+                            local_body_type=local_body_type,
+                            local_body_id=value,
+                        )
+                        break
 
         return queryset
 

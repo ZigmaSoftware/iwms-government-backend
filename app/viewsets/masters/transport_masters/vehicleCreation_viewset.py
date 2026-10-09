@@ -27,6 +27,8 @@ from app.serializers.masters.transport_masters.vehicleCreation_serializer import
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 VEHICLE_CREATION_CACHE_SCOPES = ("vehicle_creation_list", "vehicle_creation_detail")
 
@@ -36,9 +38,23 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = VehicleCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleCreationSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["vehicle_no"]
+    # the list's search box matches what the table shows: number, type,
+    # fuel, district and local body (ref columns hold unique_ids, so names
+    # are matched through PlainRefSearchFilter subqueries)
+    search_fields = [
+        "vehicle_no",
+        "vehicle_condition",
+        "vehicle_type_id=app.models.masters.transport_masters.vehicleTypeCreation.VehicleTypeCreation.vehicleType",
+        "fuel_type_id=app.models.masters.transport_masters.fuel.Fuel.fuel_type",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+    ]
     ordering_fields = ["vehicle_no", "is_active"]
 
     AUDIT_MODULE = "transport-masters"

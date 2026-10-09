@@ -1,6 +1,8 @@
 from rest_framework import filters, status
 from rest_framework.response import Response
 
+from app.models.masters.district import District
+from app.utils.list_filters import ListParamFilter
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
@@ -21,7 +23,7 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "masters"
     AUDIT_ENDPOINT = "district-leaders"
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["username", "leader_name", "email"]
     ordering_fields = ["username", "created_at"]
@@ -32,6 +34,14 @@ class DistrictLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         district_id = self.request.query_params.get("district_id")
         if district_id:
             qs = qs.filter(district_id=district_id)
+
+        # Filters panel: leaders carry only district_id, so a State pick
+        # narrows to that state's districts.
+        state_id = self.request.query_params.get("state_id")
+        if state_id:
+            qs = qs.filter(
+                district_id__in=District.objects.filter(state_id=state_id).values("unique_id")
+            )
 
         return qs.order_by("-created_at")
 

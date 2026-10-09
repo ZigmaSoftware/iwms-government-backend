@@ -5,6 +5,7 @@ from app.models.masters.waste_masters.property import Property
 from app.serializers.masters.waste_masters.property_serializer import PropertySerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
 
 PROPERTY_CACHE_SCOPES = ("property_list", "property_detail")
 
@@ -13,7 +14,7 @@ class PropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = Property.objects.filter(is_deleted=False)
     serializer_class = PropertySerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["property_name"]
     ordering_fields = ["property_name", "is_active"]

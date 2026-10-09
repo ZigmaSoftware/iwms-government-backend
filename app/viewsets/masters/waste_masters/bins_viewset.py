@@ -1,4 +1,5 @@
 from rest_framework import filters, viewsets, status
+from app.utils.list_filters import ListParamFilter
 from rest_framework.response import Response
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
@@ -55,7 +56,7 @@ class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     permission_resource = "Bin"
 
-    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = [
         "bin_name",

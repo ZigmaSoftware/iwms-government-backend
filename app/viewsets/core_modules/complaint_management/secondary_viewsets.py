@@ -5,6 +5,7 @@ from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 from app.models.core_modules.complaint_management.routing_rule import ComplaintRoutingRule
 from app.models.core_modules.complaint_management.feedback import ComplaintFeedback
@@ -61,9 +62,18 @@ class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
     throttle_scope = "complaint_feedback"
     serializer_class = ComplaintFeedbackSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["ticket_id"]
+    # The list's search box matches what the table shows: ticket number,
+    # customer and feedback text. ticket/customer are plain id columns with
+    # no DB join, so names go through PlainRefSearchFilter.
+    search_fields = [
+        "unique_id",
+        "ticket_id",
+        "feedback_text",
+        "ticket_id=app.models.core_modules.complaint_management.ticket.ComplaintTicket.ticket_no",
+        "customer_id=app.models.masters.customer_masters.customercreation.CustomerCreation.customer_name",
+    ]
     ordering_fields = ["submitted_at", "rating"]
     AUDIT_MODULE = "complaint-ticket"
     AUDIT_ENDPOINT = "feedback"
@@ -73,6 +83,13 @@ class ComplaintFeedbackViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
         ticket = self.request.query_params.get("ticket")
         if ticket:
             qs = qs.filter(ticket_id=ticket)
+        # Feedback list page's Filters panel.
+        issue_solved = str(self.request.query_params.get("is_issue_solved", "")).strip().lower()
+        if issue_solved in ("true", "false"):
+            qs = qs.filter(is_issue_solved=issue_solved == "true")
+        rating = self.request.query_params.get("rating")
+        if rating and str(rating).isdigit():
+            qs = qs.filter(rating=int(rating))
         return qs
 
 

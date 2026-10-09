@@ -16,9 +16,13 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from django.db.models import Q
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.plain_ref import ref_q
+from app.utils.hierarchy import FLAT_GEO_QUERY_FIELDS, filter_flat_geo_queryset_by_params
 from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 from app.serializers.core_modules.daily_operations.trip_retrip_serializer import (
     TripRetripRequestSerializer,
@@ -42,6 +46,41 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
         status_filter = params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
+
+        # The list's search box matches what the table shows: request/trip
+        # ids, reason, status, requester name and vehicle number. `status`
+        # also has a dedicated filter-chip; matching its text here keeps the
+        # search box consistent when the panel is set to All.
+        search = (params.get("search") or params.get("q") or "").strip()
+        if search:
+            vehicle_ids = VehicleCreation.objects.filter(
+                vehicle_no__icontains=search
+            ).values("unique_id")
+            assignment_ids = DailyTripAssignment.objects.filter(
+                Q(unique_id__icontains=search) | Q(vehicle_id__in=vehicle_ids)
+            ).values("unique_id")
+            qs = qs.filter(
+                Q(unique_id__icontains=search)
+                | Q(assignment_id__icontains=search)
+                | Q(assignment_id__in=assignment_ids)
+                | Q(reason__icontains=search)
+                | Q(status__icontains=search)
+                | ref_q(
+                    "requested_by_id",
+                    Staffcreation,
+                    "staff_unique_id",
+                    employee_name__icontains=search,
+                )
+            )
+
+        # Location filter: the request carries no geo columns of its own — its
+        # trip (DailyTripAssignment) does.
+        if any(params.get(field) for field in FLAT_GEO_QUERY_FIELDS):
+            qs = qs.filter(
+                assignment_id__in=filter_flat_geo_queryset_by_params(
+                    DailyTripAssignment.objects.all(), params
+                ).values("unique_id")
+            )
 
         # `mine=true` mirrors daily_trip_assignment_viewset.py:138-141 so the
         # supervisor app sees exactly the requests for trips it owns.
