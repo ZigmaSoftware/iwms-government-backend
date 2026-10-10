@@ -13,6 +13,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 BINS_CACHE_SCOPES = ("bins_list", "bins_detail")
 
@@ -46,7 +47,7 @@ def save_uploaded_file(file, folder_name):
 
 
 
-class BinsViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class BinsViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "bins"
 
     parser_classes = (MultiPartParser, FormParser, JSONParser)

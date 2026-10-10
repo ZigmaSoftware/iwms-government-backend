@@ -34,9 +34,10 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DailyTripCollectionPointViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "daily_trip_collection_point"
     serializer_class = DailyTripCollectionPointSerializer
     lookup_field = "unique_id"

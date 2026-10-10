@@ -10,11 +10,12 @@ from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 PANHAYAT_CACHE_SCOPES = ("panhayat_list", "panhayat_detail")
 
 
-class PanhayatViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class PanhayatViewSet(BulkUploadMixin, LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "panhayat"
     serializer_class = PanchayatSerializer
     lite_serializer_class = make_lite_serializer(

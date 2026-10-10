@@ -31,9 +31,10 @@ from app.utils.hierarchy import (
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.roles import can_manage_trips
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DailyTripAssignmentViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     CRUD + state-machine actions for daily trip assignments.
 

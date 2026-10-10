@@ -9,11 +9,12 @@ from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.serializers.superadmin.screen_management.userscreen_serializer import UserScreenSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 USER_SCREEN_CACHE_SCOPES = ("user_screen_list", "user_screen_detail")
 
 
-class UserScreenViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen"
     serializer_class = UserScreenSerializer
     queryset = UserScreen.objects.filter(is_deleted=False)

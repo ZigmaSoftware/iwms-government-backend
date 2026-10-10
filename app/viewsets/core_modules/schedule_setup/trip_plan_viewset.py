@@ -15,11 +15,12 @@ from app.utils.hierarchy import (
 )
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 TRIP_PLAN_CACHE_SCOPES = ("trip_plan_list", "trip_plan_detail")
 
 
-class TripPlanViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class TripPlanViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "trip_plan"
     queryset = TripPlan.objects.filter(is_deleted=False)
 

@@ -7,10 +7,11 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 SUB_PROPERTY_CACHE_SCOPES = ("sub_property_list", "sub_property_detail")
 
-class SubPropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class SubPropertyViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "sub_property"
     queryset = SubProperty.objects.filter(is_deleted=False)\
         .order_by("sub_property_name")

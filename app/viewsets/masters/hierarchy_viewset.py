@@ -6,11 +6,12 @@ from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.hierarchy import AdministrativeHierarchy
 from app.serializers.masters.hierarchy_serializer import AdministrativeHierarchySerializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 ADMINISTRATIVE_HIERARCHY_CACHE_SCOPES = ("administrative_hierarchy_list", "administrative_hierarchy_detail")
 
 
-class AdministrativeHierarchyViewSet(ModelViewSet):
+class AdministrativeHierarchyViewSet(BulkUploadMixin, ModelViewSet):
     throttle_scope = "administrative_hierarchy"
     queryset = AdministrativeHierarchy.objects.filter(is_deleted=False)
     serializer_class = AdministrativeHierarchySerializer

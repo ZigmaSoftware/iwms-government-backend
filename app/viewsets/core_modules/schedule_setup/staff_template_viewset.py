@@ -25,6 +25,7 @@ from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 # TripPlanSerializer embeds StaffTemplate.display_code + driver/operator
 # names, and AlternativeStaffTemplateSerializer embeds
@@ -40,7 +41,7 @@ STAFF_TEMPLATE_CACHE_SCOPES = (
 )
 
 
-class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class StaffTemplateViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Staff Template API
     """

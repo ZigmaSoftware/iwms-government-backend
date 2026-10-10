@@ -289,23 +289,23 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             vehicle_no = (row.get("vehicle_no") or "").strip()
 
             if not vehicle_no:
-                errors.append({"row": index, "error": "vehicle_no is required"})
+                errors.append({"row": index, "error": "vehicle_no is required", "data": row})
                 continue
 
             vehicle_type = self._find_vehicle_type(row.get("vehicle_type"))
             if row.get("vehicle_type") and not vehicle_type:
-                errors.append({"row": index, "error": f"Invalid vehicle_type: {row.get('vehicle_type')}"})
+                errors.append({"row": index, "error": f"Invalid vehicle_type: {row.get('vehicle_type')}", "data": row})
                 continue
 
             fuel = self._find_fuel(row.get("fuel_type"))
             if row.get("fuel_type") and not fuel:
-                errors.append({"row": index, "error": f"Invalid fuel_type: {row.get('fuel_type')}"})
+                errors.append({"row": index, "error": f"Invalid fuel_type: {row.get('fuel_type')}", "data": row})
                 continue
 
             condition_value = (row.get("vehicle_condition") or "").strip().upper()
             if condition_value and condition_value not in VehicleCreation.ConditionChoices.values:
                 allowed = ", ".join(VehicleCreation.ConditionChoices.values)
-                errors.append({"row": index, "error": f"vehicle_condition must be one of: {allowed}"})
+                errors.append({"row": index, "error": f"vehicle_condition must be one of: {allowed}", "data": row})
                 continue
 
             country = self._find_location(Country, row.get("country_id"))
@@ -349,7 +349,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 serializer.save()
                 success_count += 1
             else:
-                errors.append({"row": index, "error": serializer.errors})
+                errors.append({"row": index, "error": serializer.errors, "data": row})
 
         if success_count:
             invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
@@ -357,5 +357,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return Response({
             "message": "Vehicle bulk upload completed",
             "success_count": success_count,
+            "error_count": len(errors),
+            "total_count": success_count + len(errors),
             "errors": errors,
         })

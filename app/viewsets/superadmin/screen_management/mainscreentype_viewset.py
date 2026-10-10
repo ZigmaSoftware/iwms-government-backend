@@ -12,11 +12,12 @@ from app.serializers.superadmin.screen_management.mainscreentype_serializer impo
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 MAIN_SCREEN_TYPE_CACHE_SCOPES = ("main_screen_type_list", "main_screen_type_detail")
 
 
-class MainScreenTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class MainScreenTypeViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "main_screen_type"
     serializer_class = MainScreenTypeSerializer
     queryset = MainScreenType.objects.filter(is_deleted=False)

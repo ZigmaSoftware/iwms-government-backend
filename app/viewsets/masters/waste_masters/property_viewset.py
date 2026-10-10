@@ -6,10 +6,11 @@ from app.serializers.masters.waste_masters.property_serializer import PropertySe
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 PROPERTY_CACHE_SCOPES = ("property_list", "property_detail")
 
-class PropertyViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class PropertyViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "property"
     queryset = Property.objects.filter(is_deleted=False)
     serializer_class = PropertySerializer

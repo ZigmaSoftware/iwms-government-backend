@@ -8,11 +8,12 @@ from app.serializers.masters.department_serializer import DepartmentSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 DEPARTMENT_CACHE_SCOPES = ("department_list", "department_detail")
 
 
-class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DepartmentViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "department"
     queryset = Department.objects.filter(is_deleted=False)
     serializer_class = DepartmentSerializer

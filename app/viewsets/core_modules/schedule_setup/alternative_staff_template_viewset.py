@@ -20,6 +20,7 @@ from app.utils.hierarchy import (
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES = (
     "alternative_staff_template_list",
@@ -27,7 +28,7 @@ ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES = (
 )
 
 
-class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class AlternativeStaffTemplateViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     API Contract:
     - Create alternative staff mapping

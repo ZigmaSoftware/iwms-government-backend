@@ -7,11 +7,12 @@ from app.serializers.superadmin.common_masters.country_serializer import Country
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 COUNTRY_CACHE_SCOPES = ("country_list", "country_detail")
 
 
-class CountryViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
+class CountryViewSet(BulkUploadMixin, AuditViewSetMixin,viewsets.ModelViewSet):
     throttle_scope = "country"
     queryset = Country.objects.filter(is_deleted=False)
     serializer_class = CountrySerializer

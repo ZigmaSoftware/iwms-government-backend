@@ -10,6 +10,7 @@ from app.utils.plain_ref import json_contains_any
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 # TripPlanSerializer embeds Collection_point details (cp_name, ward names,
 # bin names) via get_plan_collection_points, so a collection point write
@@ -22,7 +23,7 @@ COLLECTION_POINT_CACHE_SCOPES = (
 )
 
 
-class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class CollectionPointViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "collection_point"
     serializer_class = CollectionPointSerializer
     lookup_field = "unique_id"

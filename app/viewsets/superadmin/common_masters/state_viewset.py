@@ -9,11 +9,12 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 STATE_CACHE_SCOPES = ("state_list", "state_detail")
 
 
-class StateViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class StateViewSet(BulkUploadMixin, LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "state"
     queryset = State.objects.all()   # REQUIRED for DRF basename detection
     serializer_class = StateSerializer

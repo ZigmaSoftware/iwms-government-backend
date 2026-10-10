@@ -1,5 +1,9 @@
 from rest_framework import filters, status
 from rest_framework.response import Response
+from rest_framework.decorators import action
+
+import csv
+import io
 
 from app.utils.list_filters import ListParamFilter
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -79,3 +83,41 @@ class StateLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             {"status": True, "message": "State Leader deleted successfully."},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["post"], url_path="bulk-upload")
+    def bulk_upload(self, request):
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"error": "CSV file is required"}, status=400)
+        try:
+            decoded = file.read().decode("utf-8")
+        except Exception as exc:
+            return Response({"error": "Unable to decode CSV file", "detail": str(exc)}, status=400)
+
+        reader = csv.DictReader(io.StringIO(decoded))
+        success_count = 0
+        errors: list[dict] = []
+        for index, row in enumerate(reader, start=1):
+            payload = {
+                "username": (row.get("username") or "").strip() or None,
+                "password": (row.get("password") or "").strip() or None,
+                "leader_name": (row.get("leader_name") or "").strip() or None,
+                "email": (row.get("email") or "").strip() or None,
+                "state_id": (row.get("state_id") or row.get("state_name") or "").strip() or None,
+            }
+            is_active_value = (row.get("is_active") or "").strip().lower()
+            if is_active_value:
+                payload["is_active"] = is_active_value in {"true", "1", "yes", "y"}
+            serializer = self.get_serializer(data=payload)
+            if serializer.is_valid():
+                serializer.save()
+                success_count += 1
+            else:
+                errors.append({"row": index, "error": serializer.errors, "data": row})
+        return Response({
+            "message": "State leader bulk upload completed",
+            "success_count": success_count,
+            "error_count": len(errors),
+            "total_count": success_count + len(errors),
+            "errors": errors,
+        })

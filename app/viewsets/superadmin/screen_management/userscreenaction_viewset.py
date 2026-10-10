@@ -12,11 +12,12 @@ from app.serializers.superadmin.screen_management.userscreenaction_serializer im
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 USER_SCREEN_ACTION_CACHE_SCOPES = ("user_screen_action_list", "user_screen_action_detail")
 
 
-class UserScreenActionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenActionViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen_action"
     serializer_class = UserScreenActionSerializer
     queryset = UserScreenAction.objects.filter(is_deleted=False)

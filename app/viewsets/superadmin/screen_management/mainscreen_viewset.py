@@ -8,11 +8,12 @@ from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.screen_management.mainscreen import MainScreen
 from app.serializers.superadmin.screen_management.mainscreen_serializer import MainScreenSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 MAIN_SCREEN_CACHE_SCOPES = ("main_screen_list", "main_screen_detail")
 
 
-class MainScreenViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class MainScreenViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "main_screen"
     serializer_class = MainScreenSerializer
     queryset = MainScreen.objects.filter(is_deleted=False)

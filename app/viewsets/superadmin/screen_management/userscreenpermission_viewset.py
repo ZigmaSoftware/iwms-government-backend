@@ -23,9 +23,10 @@ from app.serializers.superadmin.screen_management.userscreencolumnpermission_ser
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.list_filters import ListParamFilter
 from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class UserScreenPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenPermissionViewSet(BulkUploadMixin, PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen_permission"
     serializer_class = UserScreenPermissionSerializer
     lookup_field = "unique_id"

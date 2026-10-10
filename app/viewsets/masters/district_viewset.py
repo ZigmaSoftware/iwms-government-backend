@@ -9,10 +9,11 @@ from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 DISTRICT_CACHE_SCOPES = ("district_list", "district_detail")
 
-class DistrictViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class DistrictViewSet(BulkUploadMixin, LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "district"
 
     queryset = District.objects.filter(is_deleted=False)
