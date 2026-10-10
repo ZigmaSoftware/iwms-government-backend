@@ -162,7 +162,7 @@ from .core_modules.attendance import DailyAttendanceReg
 # GROUP: TRANSPORT MASTERS & TRIPS
 # ============================================================
 from .masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
-from .masters.transport_masters.vehicleCreation import VehicleCreation
+from .masters.transport_masters.vehicleCreation import VehicleCreation, VehicleDocumentHistory
 from .core_modules.schedule_setup.trip_plan import TripPlan
 from .core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
 from .masters.transport_masters.trip_attendance import TripAttendance
@@ -278,6 +278,7 @@ __all__ = [
     # Transport
     "VehicleTypeCreation",
     "VehicleCreation",
+    "VehicleDocumentHistory",
     "TripPlan",
     "TripPlanCollectionPoint",
     "TripAttendance",
