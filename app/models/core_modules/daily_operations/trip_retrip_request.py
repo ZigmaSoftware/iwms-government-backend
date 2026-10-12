@@ -91,9 +91,6 @@ class TripRetripRequest(BaseMaster):
         max_length=50, db_column="new_assignment_id", null=True, blank=True, db_index=True
     )  # DailyTripAssignment.unique_id
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Re-Trip Request"

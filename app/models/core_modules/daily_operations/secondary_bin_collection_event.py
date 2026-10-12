@@ -88,9 +88,6 @@ class BinCollectionEvent(BaseMaster):
     driver_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     driver_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     notes = models.TextField(null=True, blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-collection_date", "-created_at"]

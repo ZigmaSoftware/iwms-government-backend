@@ -47,9 +47,6 @@ class UserScreenColumn(BaseMaster):
     related_model = models.CharField(max_length=150, null=True, blank=True)
     related_app = models.CharField(max_length=150, null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["order_no"]
         verbose_name = "User Screen Column"

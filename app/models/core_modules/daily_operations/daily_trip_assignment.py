@@ -179,13 +179,6 @@ class DailyTripAssignment(BaseMaster):
     remarks = models.TextField(null=True, blank=True)
 
     # ------------------------------------------------------------------
-    # AUDIT
-    # ------------------------------------------------------------------
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    # ------------------------------------------------------------------
     # META
     # ------------------------------------------------------------------
 

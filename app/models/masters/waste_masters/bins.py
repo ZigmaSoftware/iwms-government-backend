@@ -62,9 +62,6 @@ class Bins(BaseMaster):
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     def _lookup(self, model, value):
         """Resolve a plain unique_id into its row (request-cached)."""
         return ref_cache.get(model, value)

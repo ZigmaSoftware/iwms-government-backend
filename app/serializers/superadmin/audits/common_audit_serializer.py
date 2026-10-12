@@ -77,6 +77,7 @@ class CommonAuditSerializer(serializers.ModelSerializer):
             "user_agent",
             "success",
             "reason",
+            "delete_reason",
             "state",
             "district",
             "area_type",

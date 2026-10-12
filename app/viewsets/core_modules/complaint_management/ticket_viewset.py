@@ -344,11 +344,18 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
         apply_routing_and_sla(ticket, save=True)
 
     def destroy(self, request, *args, **kwargs):
+        from app.utils.delete_reason import read_delete_reason
+
         instance = self.get_object()
         previous_data = self._serialize_instance(instance)
+        reason = read_delete_reason(request) or getattr(self, "_delete_reason", None)
         instance.is_deleted = True
         instance.is_active = False
-        instance.save(update_fields=["is_deleted", "is_active"])
+        if reason:
+            instance.delete_reason = reason
+            instance.save(update_fields=["is_deleted", "is_active", "delete_reason"])
+        else:
+            instance.save(update_fields=["is_deleted", "is_active"])
         # Logged by hand because this soft delete bypasses perform_destroy;
         # the Complaint Audit timeline reads this DELETE row (who / when).
         self.log_audit(
@@ -657,6 +664,13 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
                 {"detail": "Current status does not allow reopen."},
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
+        # Required for audit: every reopen must say why.
+        reopen_reason = str(request.data.get("reopen_reason") or "").strip()
+        if not reopen_reason:
+            return Response(
+                {"reopen_reason": ["Please enter the reason for reopening this ticket."]},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
         reopened_status = _resolve_status("REOPENED")
         if not reopened_status:
             return Response({"detail": "REOPENED status not configured."}, status=http_status.HTTP_400_BAD_REQUEST)
@@ -671,7 +685,7 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
         ComplaintReopenHistory.objects.create(
             ticket_id=ticket.unique_id,
             reopened_by_user_id=getattr(_actor_user(request), "unique_id", None),
-            reopen_reason=request.data.get("reopen_reason"),
+            reopen_reason=reopen_reason,
             previous_status_id=getattr(previous_status, "unique_id", None),
         )
         ComplaintStatusHistory.objects.create(
@@ -679,7 +693,7 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
             from_status_id=getattr(previous_status, "unique_id", None),
             to_status_id=reopened_status.unique_id,
             changed_by_user_id=getattr(_actor_user(request), "unique_id", None),
-            remarks="Reopened",
+            remarks=reopen_reason,
         )
         restart_escalation_clock(ticket)
         if ticket.responsible_staff:

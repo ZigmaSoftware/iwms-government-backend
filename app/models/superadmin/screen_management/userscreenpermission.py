@@ -137,9 +137,6 @@ class UserScreenPermission(BaseMaster):
     order_no = models.IntegerField()
     description = models.CharField(max_length=255, blank=True, null=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = "app_userscreenpermission"
         ordering = ["order_no"]

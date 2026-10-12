@@ -208,9 +208,6 @@ class StaffcreationOfficeDetails(BaseMaster):
     panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
     panchayat_id = models.CharField(max_length=30, null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["-created_at"]
 

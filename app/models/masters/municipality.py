@@ -48,9 +48,6 @@ class Municipality(BaseMaster):
     municipality_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["municipality_name"]
         unique_together = ("state_id", "district_id", "area_type_id", "municipality_name")

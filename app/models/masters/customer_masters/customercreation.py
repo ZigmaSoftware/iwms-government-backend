@@ -260,9 +260,6 @@ class CustomerCreation(BaseMaster):
                    "(e.g. waste collection status updates) to this customer.",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
-
     is_staff = models.BooleanField(
         default=False,
         help_text="Django admin-site access flag.",
