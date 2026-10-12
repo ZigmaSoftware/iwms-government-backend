@@ -68,9 +68,6 @@ class DashboardWidgetPermission(BaseMaster):
     is_enabled = models.BooleanField(default=True)
     order_no = models.IntegerField()
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["order_no"]
         verbose_name = "Dashboard Widget Permission"

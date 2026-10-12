@@ -23,9 +23,6 @@ class MainScreenType(BaseMaster):
         unique=True
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["type_name"]
         verbose_name = "Main Screen Type"

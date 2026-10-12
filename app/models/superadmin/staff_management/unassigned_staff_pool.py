@@ -31,7 +31,6 @@ class UnassignedStaffPool(BaseMaster):
     driver_id = models.CharField(max_length=30, null=True, blank=True, db_column="driver_id", db_index=True)  # Staffcreation.staff_unique_id
     daily_trip_assignment_id = models.CharField(max_length=50, null=True, blank=True, db_column="trip_instance_id", db_index=True, help_text="unique_id of the daily trip assignment that triggered this pool snapshot")
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.AVAILABLE, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "unassigned_staff_pool"

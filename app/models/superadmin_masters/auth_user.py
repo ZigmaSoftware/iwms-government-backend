@@ -127,9 +127,6 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
     # -----------------------------
     # SYSTEM FIELDS
     # -----------------------------
-    created_at = models.DateTimeField(auto_now_add=True, null=True)
-    updated_at = models.DateTimeField(auto_now=True, null=True)
-
     is_staff = models.BooleanField(
         default=False,
         help_text="Django admin-site access flag (not a business role).",

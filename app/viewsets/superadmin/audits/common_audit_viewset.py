@@ -72,6 +72,7 @@ class CommonAuditViewSet(
         "created_by_id",
         "object_id",
         "reason",
+        "delete_reason",
         "ip_address",
     ]
     ordering_fields = ["createdAt", "module_name"]

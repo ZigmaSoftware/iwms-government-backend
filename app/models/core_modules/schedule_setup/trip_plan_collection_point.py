@@ -72,8 +72,6 @@ class TripPlanCollectionPoint(BaseMaster):
         default=True,
         help_text="Inactive stops are skipped during auto-assignment.",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["trip_plan_id", "sequence"]

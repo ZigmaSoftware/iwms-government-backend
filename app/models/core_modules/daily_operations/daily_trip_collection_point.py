@@ -98,9 +98,6 @@ class DailyTripCollectionPoint(BaseMaster):
         max_length=50, null=True, blank=True, db_column="carried_to_assignment_id", db_index=True
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["trip_assignment_id", "sequence"]
         indexes = [

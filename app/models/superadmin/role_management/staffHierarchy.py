@@ -65,9 +65,6 @@ class StaffHierarchy(BaseMaster):
         help_text="Display/ordering rank (1 = lowest level).",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["hierarchy_level", "created_at"]
         verbose_name = "Staff Hierarchy"

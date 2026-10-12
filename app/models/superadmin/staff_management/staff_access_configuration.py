@@ -92,9 +92,6 @@ class StaffAccessConfiguration(BaseMaster):
 
     description = models.CharField(max_length=255, blank=True, null=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["-updated_at"]
         constraints = [
@@ -196,9 +193,6 @@ class StaffAccessConfigurationPermission(BaseMaster):
     )
 
     order_no = models.IntegerField(default=0)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["order_no"]

@@ -551,21 +551,45 @@ class UserScreenPermissionViewSet(BulkUploadMixin, PermissionSnapshotAuditMixin,
             **local_body_filters,
         )
 
+        from django.utils import timezone
+
+        from app.utils.delete_reason import read_delete_reason
+
+        reason = read_delete_reason(request) or getattr(self, "_delete_reason", None)
+        account_fn = getattr(self, "_account_for_request_user", None)
+        account = account_fn() if callable(account_fn) else None
+        deleted_by = account.pk if account is not None else None
+        now = timezone.now()
         deleted_count = qs.count()
         if deleted_count > 0:
             # The User Access Audit row for this request comes from
             # PermissionSnapshotAuditMixin (whole access before/after), not
             # per-row signals. Per-instance saves are kept so any other
             # post_save receivers still see each soft-delete.
+            # (deleted_at is auto-stamped by BaseMaster.save().)
             for permission in qs:
                 permission.is_deleted = True
                 permission.is_active = False
-                permission.save(update_fields=["is_deleted", "is_active", "updated_at"])
-            UserScreenColumnPermission.objects.filter(
+                update_fields = ["is_deleted", "is_active", "updated_at"]
+                if reason:
+                    permission.delete_reason = reason
+                    update_fields.append("delete_reason")
+                if deleted_by is not None:
+                    permission.deleted_by = deleted_by
+                    update_fields.append("deleted_by")
+                permission.save(update_fields=update_fields)
+            col_qs = UserScreenColumnPermission.objects.filter(
                 userscreen_id__in=UserScreen.objects.filter(mainscreen_id=mainscreen_id).values("unique_id"),
                 is_deleted=False,
                 **column_local_body_filters,
-            ).update(is_deleted=True, is_active=False)
+            )
+            # Bulk .update() bypasses save(), so stamp everything explicitly.
+            col_update = {"is_deleted": True, "is_active": False, "deleted_at": now, "updated_at": now}
+            if reason:
+                col_update["delete_reason"] = reason
+            if deleted_by is not None:
+                col_update["deleted_by"] = deleted_by
+            col_qs.update(**col_update)
 
         return Response(
             {

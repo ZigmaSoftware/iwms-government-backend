@@ -82,9 +82,6 @@ class StaffTemplate(BaseMaster):
         choices=Status.choices,
         default=Status.ACTIVE
     )
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     # ---------------- META ----------------
     class Meta:

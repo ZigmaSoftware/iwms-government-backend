@@ -114,9 +114,6 @@ class DailyTripLog(BaseMaster):
     verified_by_id = models.CharField(max_length=50, db_column="verified_by", null=True, blank=True, db_index=True)
     verified_at = models.DateTimeField(null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["-trip_date", "-created_at"]
         indexes = [

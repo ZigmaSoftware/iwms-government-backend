@@ -44,8 +44,6 @@ class PanchayatUnion(BaseMaster):
     area_type_id = models.CharField(max_length=30)
     union_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["union_name"]

@@ -34,6 +34,12 @@ resolved through that registry as a fallback.
 """
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
+from django.utils import timezone
+from app.utils.delete_reason import (
+    DELETE_REASON_MAX_LENGTH,
+    cascaded_delete_reason,
+    get_current_delete_reason,
+)
 
 
 def _lazy_model(dotted_path):
@@ -233,7 +239,30 @@ def _model_path(model):
     return f"{model.__module__}.{model.__qualname__}"
 
 
-def cascade_soft_delete(instance, updated_by=None):
+def _model_has_field(model, field_name):
+    return any(f.name == field_name for f in model._meta.fields)
+
+
+def _stamp_actor(update_fields, model, field_name, actor):
+    """Stamp an actor id (`updated_by`/`deleted_by`, each either a real
+    relation or a plain-string account-id column) into a bulk-update dict."""
+    if actor is None:
+        return
+    try:
+        field = model._meta.get_field(field_name)
+        update_fields[field_name] = (
+            actor if getattr(field, "is_relation", False) else actor.pk
+        )
+    except Exception:
+        # Plain-string `<field>_id` variant (e.g. CustomerCreation).
+        try:
+            model._meta.get_field(f"{field_name}_id")
+            update_fields[f"{field_name}_id"] = actor.pk
+        except Exception:
+            pass
+
+
+def cascade_soft_delete(instance, updated_by=None, delete_reason=None, deleted_by=None):
     """
     Soft-delete `instance` and, transitively, every row reachable via the
     reverse relations named in `type(instance).CASCADE_SOFT_DELETE` (and in
@@ -249,6 +278,10 @@ def cascade_soft_delete(instance, updated_by=None):
       every row's `updated_by` field in the same bulk update, on every
       model that declares that field - so cascaded rows record who
       triggered the delete, not just the top-level instance.
+    - `deleted_by` defaults to `updated_by`: who deleted the row is tracked
+      separately from who last updated it.
+    - Every touched row also gets `deleted_at`/`updated_at` stamped (bulk
+      `.update()` bypasses `auto_now`, so they are set explicitly).
     - Wrapped in a single transaction.atomic() so a partial cascade can
       never be left half-applied.
 
@@ -261,7 +294,19 @@ def cascade_soft_delete(instance, updated_by=None):
     (e.g. in a pre_save signal keyed off an is_deleted transition) rather
     than relying on delete() being called per-instance, since this cascade
     bypasses it.
+
+    delete_reason defaults to the reason sent with the current DELETE
+    request. instance gets it verbatim; cascaded rows get it tagged with
+    the parent that removed them.
     """
+    if delete_reason is None:
+        delete_reason = get_current_delete_reason()
+    if delete_reason:
+        delete_reason = str(delete_reason)[:DELETE_REASON_MAX_LENGTH]
+    if deleted_by is None:
+        deleted_by = updated_by
+    now = timezone.now()
+
     visited: dict[type, set] = {}
 
     def _walk(obj):
@@ -288,20 +333,59 @@ def cascade_soft_delete(instance, updated_by=None):
     with transaction.atomic():
         for model, pks in visited.items():
             update_fields = {"is_deleted": True, "is_active": False}
-            if updated_by is not None:
+            _stamp_actor(update_fields, model, "updated_by", updated_by)
+            _stamp_actor(update_fields, model, "deleted_by", deleted_by)
+            if _model_has_field(model, "deleted_at"):
+                update_fields["deleted_at"] = now
+            if _model_has_field(model, "updated_at"):
+                update_fields["updated_at"] = now
+            rows = model.objects.filter(pk__in=pks, is_deleted=False)
+            if delete_reason and _model_has_field(model, "delete_reason"):
+                # Cascaded children are tagged with the parent that removed
+                # them; instance's own row gets the plain reason below.
+                child_pks = pks - {instance.pk} if model is type(instance) else pks
+                rows.filter(pk__in=child_pks).update(
+                    **update_fields,
+                    delete_reason=cascaded_delete_reason(delete_reason, instance),
+                )
+                rows = rows.exclude(pk__in=child_pks)
+            rows.update(**update_fields)
+
+        instance.is_deleted = True
+        instance.is_active = False
+        if _model_has_field(type(instance), "is_active"):
+            instance.is_active = False
+        if _model_has_field(type(instance), "deleted_at"):
+            instance.deleted_at = now
+        if _model_has_field(type(instance), "updated_at"):
+            instance.updated_at = now
+        if updated_by is not None:
+            try:
+                field = type(instance)._meta.get_field("updated_by")
+                setattr(
+                    instance,
+                    "updated_by",
+                    updated_by if getattr(field, "is_relation", False) else updated_by.pk,
+                )
+            except Exception:
                 try:
-                    field = model._meta.get_field("updated_by")
-                    update_fields["updated_by"] = (
-                        updated_by if getattr(field, "is_relation", False) else updated_by.pk
-                    )
+                    type(instance)._meta.get_field("updated_by_id")
+                    instance.updated_by_id = updated_by.pk
                 except Exception:
-                    # Plain-string `updated_by_id` (e.g. CustomerCreation).
-                    try:
-                        model._meta.get_field("updated_by_id")
-                        update_fields["updated_by_id"] = updated_by.pk
-                    except Exception:
-                        pass
-            model.objects.filter(pk__in=pks, is_deleted=False).update(**update_fields)
+                    pass
+        if deleted_by is not None and _model_has_field(type(instance), "deleted_by"):
+            try:
+                field = type(instance)._meta.get_field("deleted_by")
+                setattr(
+                    instance,
+                    "deleted_by",
+                    deleted_by if getattr(field, "is_relation", False) else deleted_by.pk,
+                )
+            except Exception:
+                pass
+        if delete_reason and _model_has_field(type(instance), "delete_reason"):
+            type(instance)._base_manager.filter(pk=instance.pk).update(delete_reason=delete_reason)
+            instance.delete_reason = delete_reason
 
 
 def collect_cascade_cache_scopes(instance):

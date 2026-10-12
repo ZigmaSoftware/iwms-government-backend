@@ -61,8 +61,6 @@ class StaffNotification(BaseMaster):
     is_read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Staff Notification"
