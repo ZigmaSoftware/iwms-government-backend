@@ -27,6 +27,7 @@ from app.serializers.core_modules.complaint_management.master_serializers import
     ComplaintSubcategorySerializer,
     ComplaintSlaRuleSerializer,
 )
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
 class _SoftDeleteMixin:
@@ -42,7 +43,7 @@ class _SoftDeleteMixin:
         return Response({"message": "Deleted successfully"}, status=status.HTTP_200_OK)
 
 
-class ComplaintSourceViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintSourceViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_source"
     queryset = ComplaintSource.objects.filter(is_deleted=False).order_by("source_code")
     serializer_class = ComplaintSourceSerializer
@@ -73,7 +74,7 @@ class ComplaintSourceViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintLanguageViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintLanguageViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_language"
     queryset = ComplaintLanguage.objects.filter(is_deleted=False).order_by("language_code")
     serializer_class = ComplaintLanguageSerializer
@@ -104,7 +105,7 @@ class ComplaintLanguageViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintPriorityViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintPriorityViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_priority"
     queryset = ComplaintPriority.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintPrioritySerializer
@@ -135,7 +136,7 @@ class ComplaintPriorityViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintStatusViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_status"
     queryset = ComplaintStatus.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintStatusSerializer
@@ -166,7 +167,7 @@ class ComplaintStatusViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintModuleViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_module"
     queryset = ComplaintModule.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintModuleSerializer
@@ -197,7 +198,7 @@ class ComplaintModuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Model
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintCategoryViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_category"
     queryset = ComplaintCategory.objects.filter(is_deleted=False).order_by("sort_order")
     serializer_class = ComplaintCategorySerializer
@@ -229,7 +230,7 @@ class ComplaintCategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.Mod
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintSubcategoryViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_subcategory"
     serializer_class = ComplaintSubcategorySerializer
     lookup_field = "unique_id"
@@ -266,7 +267,7 @@ class ComplaintSubcategoryViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.
         invalidate_on_commit(*self.CACHE_SCOPES)
 
 
-class ComplaintSlaRuleViewSet(_SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintSlaRuleViewSet(BulkUploadMixin, _SoftDeleteMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_sla_rule"
     queryset = ComplaintSlaRule.objects.filter(is_deleted=False).order_by("unique_id")
     serializer_class = ComplaintSlaRuleSerializer

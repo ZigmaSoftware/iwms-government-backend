@@ -8,9 +8,10 @@ from app.serializers.superadmin.staff_management.unassigned_staff_pool_serialize
     UnassignedStaffPoolSerializer
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class UnassignedStaffPoolViewSet(ModelViewSet,AuditViewSetMixin):
+class UnassignedStaffPoolViewSet(BulkUploadMixin, ModelViewSet,AuditViewSetMixin):
     """
     Controls staff availability.
     Used by system + supervisors.

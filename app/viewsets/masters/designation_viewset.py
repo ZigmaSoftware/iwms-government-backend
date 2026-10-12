@@ -8,11 +8,12 @@ from app.serializers.masters.designation_serializer import DesignationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 DESIGNATION_CACHE_SCOPES = ("designation_list", "designation_detail")
 
 
-class DesignationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DesignationViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "designation"
     queryset = Designation.objects.filter(is_deleted=False)
     serializer_class = DesignationSerializer

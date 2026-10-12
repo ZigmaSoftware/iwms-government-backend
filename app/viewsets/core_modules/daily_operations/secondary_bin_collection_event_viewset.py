@@ -35,9 +35,10 @@ from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class BinCollectionEventViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "bin_collection_event"
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"

@@ -8,11 +8,12 @@ from app.serializers.superadmin.role_management.usertype_serializer import UserT
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 USER_TYPE_CACHE_SCOPES = ("user_type_list", "user_type_detail")
 
 
-class UserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserTypeViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_type"
     queryset = UserType.objects.filter(is_deleted=False)
     serializer_class = UserTypeSerializer

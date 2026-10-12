@@ -331,7 +331,7 @@ class PermissionSeeder(BaseSeeder):
             is_active=False, is_deleted=True
         )
 
-        for action_name in ("view", "export"):
+        for action_name in ("view", "export", "import"):
             UserScreenAction.objects.update_or_create(
                 action_name=action_name,
                 defaults={

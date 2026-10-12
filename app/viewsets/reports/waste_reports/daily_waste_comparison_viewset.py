@@ -46,6 +46,7 @@ from app.utils.hierarchy import (
     filter_daily_trip_logs_by_ward_scope,
 )
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
@@ -112,7 +113,7 @@ def percent(numerator, denominator):
     return rounded(decimal_value(numerator) / d * Decimal("100"))
 
 
-class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
+class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
     throttle_scope = "daily_waste_comparison"
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table

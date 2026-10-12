@@ -1,6 +1,7 @@
 from django.db import transaction, models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 User = get_user_model()
 
@@ -187,7 +188,7 @@ PASSED_OVER_DETAIL = (
 )
 
 
-class ComplaintTicketViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "complaint_ticket"
     serializer_class = ComplaintTicketSerializer
     lookup_field = "unique_id"

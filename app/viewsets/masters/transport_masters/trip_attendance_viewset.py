@@ -14,9 +14,10 @@ from app.serializers.masters.transport_masters.trip_attendance_serializer import
     TripAttendanceSerializer
 )
 from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class TripAttendanceViewSet(FlatGeoScopedViewSetMixin, ModelViewSet):
+class TripAttendanceViewSet(BulkUploadMixin, FlatGeoScopedViewSetMixin, ModelViewSet):
     """
     Mobile-triggered periodic attendance capture.
     Invoked every 45 minutes per staff during a trip.

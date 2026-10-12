@@ -9,11 +9,12 @@ from app.serializers.superadmin.role_management.staffusertype_serializer import 
 from rest_framework.decorators import action
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 STAFF_USER_TYPE_CACHE_SCOPES = ("staff_user_type_list", "staff_user_type_detail")
 
 
-class StaffUserTypeViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
+class StaffUserTypeViewSet(BulkUploadMixin, AuditViewSetMixin,viewsets.ModelViewSet):
     throttle_scope = "staff_user_type"
     queryset = StaffUserType.objects.filter(is_deleted=False)
     serializer_class = StaffUserTypeSerializer

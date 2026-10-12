@@ -9,11 +9,12 @@ from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
 from rest_framework import filters, viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 WASTE_TYPE_CACHE_SCOPES = ("waste_type_list", "waste_type_detail")
 
 
-class WasteTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class WasteTypeViewSet(BulkUploadMixin, LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "waste_type"
 
     serializer_class = WasteTypeSerializer

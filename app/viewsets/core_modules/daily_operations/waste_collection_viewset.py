@@ -20,8 +20,9 @@ from app.serializers.core_modules.daily_operations.waste_collection_serializer i
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.scoped_viewset import FlatGeoScopedViewSetMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
-class WasteCollectionViewSet(FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class WasteCollectionViewSet(BulkUploadMixin, FlatGeoScopedViewSetMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "waste_collection"
     # The "Household collection events" screen in the permission UI.
     permission_resource = "HouseholdCollectionEvent"

@@ -19,9 +19,10 @@ from app.utils.staff_hierarchy import complete_geo, resolve_entry
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.utils import ref_cache
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
+class StaffcreationViewset(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "staffcreation"
     queryset = Staffcreation.objects.filter(is_deleted=False).all()
     serializer_class = StaffcreationSerializer

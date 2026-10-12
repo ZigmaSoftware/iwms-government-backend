@@ -33,6 +33,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.ward import Ward
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.file_archive import archive_bytes
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -516,7 +517,16 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             return waste_type_ids, invalid_values
 
         try:
-            decoded_file = file.read().decode("utf-8")
+            _upload_content = file.read()
+            decoded_file = _upload_content.decode("utf-8")
+            try:
+                _archived = archive_bytes(
+                    _upload_content,
+                    getattr(file, "name", None) or "customer_bulk_upload.csv",
+                    subdir="bulk_uploads/customers",
+                )
+            except Exception:
+                _archived = {"archived": False}
             io_string = io.StringIO(decoded_file)
             reader = csv.DictReader(io_string)
 
@@ -597,11 +607,11 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
                 # ✅ VALIDATION
                 if not state:
-                    errors.append({"row": index, "error": f"Invalid state"})
+                    errors.append({"row": index, "error": "Invalid state", "data": row})
                     continue
 
                 if not sub_property:
-                    errors.append({"row": index, "error": f"Invalid sub_property"})
+                    errors.append({"row": index, "error": "Invalid sub_property", "data": row})
                     continue
 
                 apartment_name = clean(row.get("apartment_name"))
@@ -612,14 +622,16 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     if not apartment_name or not block_no:
                         errors.append({
                             "row": index,
-                            "error": "Apartment requires apartment_name and block_no"
+                            "error": "Apartment requires apartment_name and block_no",
+                            "data": row,
                         })
                         continue
 
                 if not district:
                     errors.append({
                         "row": index,
-                        "error": "District is required"
+                        "error": "District is required",
+                        "data": row,
                     })
                     continue
 
@@ -629,18 +641,20 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                         "error": (
                             "Select exactly one valid local body: Corporation, "
                             "Municipality, Town Panchayat, Panchayat Union, or Panchayat"
-                        )
+                        ),
+                        "data": row,
                     })
                     continue
 
                 if not ward:
-                    errors.append({"row": index, "error": "Ward is required"})
+                    errors.append({"row": index, "error": "Ward is required", "data": row})
                     continue
 
                 if invalid_waste_types:
                     errors.append({
                         "row": index,
-                        "error": f"Invalid waste type(s): {', '.join(invalid_waste_types)}"
+                        "error": f"Invalid waste type(s): {', '.join(invalid_waste_types)}",
+                        "data": row,
                     })
                     continue
 
@@ -690,13 +704,18 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 else:
                     errors.append({
                         "row": index,
-                        "error": serializer.errors
+                        "error": serializer.errors,
+                        "data": row,
                     })
 
             return Response({
                 "message": "Bulk upload completed",
                 "success_count": success_count,
-                "errors": errors
+                "error_count": len(errors),
+                "total_count": success_count + len(errors),
+                "errors": errors,
+                "file_name": getattr(file, "name", None),
+                "file_url": _archived.get("file_url") if _archived.get("archived") else None,
             })
 
         except Exception as e:

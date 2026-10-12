@@ -8,11 +8,12 @@ from app.serializers.masters.transport_masters.vehicletypecreation_serializer im
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 VEHICLE_TYPE_CREATION_CACHE_SCOPES = ("vehicle_type_creation_list", "vehicle_type_creation_detail")
 
 
-class VehicleTypeCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class VehicleTypeCreationViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "vehicle_type_creation"
     queryset = VehicleTypeCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleTypeCreationSerializer

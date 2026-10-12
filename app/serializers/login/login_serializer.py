@@ -227,14 +227,9 @@ class LoginSerializer(serializers.Serializer):
             )
         permissions = permission_payload["permissions"]
 
-        if not permissions:
-            permissions = self._apply_role_defaults(permissions, role_name)
-            permission_payload = finalize_permission_payload(
-                permission_payload,
-                permissions=permissions,
-                role_name=role_name,
-                user_type=resolved_user_type,
-            )
+        # Web permissions never include role defaults (app-only baseline).
+        # An unconfigured staff member simply resolves to whatever explicit
+        # grants exist — possibly nothing — instead of default modules.
 
         # Mobile layer. Applied here rather than inside each of the three
         # resolution branches above so every path — local-body intersected,
@@ -248,12 +243,15 @@ class LoginSerializer(serializers.Serializer):
         app_modules = staff_app_modules(access_config)
         app_module = getattr(staff_record, "app_module", None)
 
+        # Role defaults feed the mobile screens only — the web `permissions`
+        # map above stays limited to explicit grants.
+        app_defaulted = self._apply_role_defaults(permissions, role_name)
         permission_payload = finalize_permission_payload(
             {
                 **permission_payload,
                 "permissions": permissions,
                 "app_modules": app_modules,
-                "app_screens": build_app_screens(permissions, app_modules),
+                "app_screens": build_app_screens(app_defaulted, app_modules),
                 "strict_permissions": bool(
                     getattr(access_config, "enforce_strict_permissions", False)
                 ),

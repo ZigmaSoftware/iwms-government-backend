@@ -34,7 +34,7 @@ from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
-ACTIONS = ["view", "add", "edit", "delete"]
+ACTIONS = ["view", "add", "edit", "delete", "import", "export"]
 
 # Schedule / daily-trip screens a Corporation Supervisor may WRITE (decision D4).
 SCHEDULE_WRITE_SCREENS = {
