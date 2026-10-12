@@ -6,12 +6,14 @@ from django.utils.timezone import make_aware
 from datetime import datetime, time
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from app.utils.audit_context import resolve_actor, stamp_audit_geo
 from app.utils.audit_mixin import get_client_ip
 from app.utils.common_audit import CommonAudit
+from app.utils.file_archive import archive_bytes
 from app.utils.hierarchy import (
     FLAT_GEO_FIELDS,
     LOCAL_BODY_FIELDS,
@@ -325,3 +327,46 @@ class CommonAuditViewSet(
             "methods": distinct_values("method"),
             "users": distinct_users(),
         })
+
+    # -----------------------------------------------------
+    # File attachments for the audit trail (data files only)
+    # -----------------------------------------------------
+    ATTACHMENT_EXTENSIONS = {
+        ".xlsx", ".xls", ".csv", ".pdf",
+        ".png", ".jpg", ".jpeg", ".webp",
+    }
+    ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="attachments",
+        parser_classes=[MultiPartParser],
+    )
+    def attachments(self, request):
+        """Archive a client-generated file (export/template) so the audit
+        trail can show and offer it for download later. Returns the stored
+        ``file_url`` to record in the audit entry's ``new_data``."""
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"error": "File is required"}, status=400)
+
+        name = getattr(file, "name", "") or "attachment"
+        extension = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if extension not in self.ATTACHMENT_EXTENSIONS:
+            return Response(
+                {"error": f"Only {', '.join(sorted(self.ATTACHMENT_EXTENSIONS))} files can be archived."},
+                status=400,
+            )
+        if file.size and file.size > self.ATTACHMENT_MAX_BYTES:
+            return Response({"error": "File is larger than 10 MB."}, status=400)
+
+        try:
+            content = file.read()
+        except Exception as exc:
+            return Response({"error": "Unable to read file", "detail": str(exc)}, status=400)
+
+        archived = archive_bytes(content, name, subdir="audit_attachments")
+        if not archived.get("archived"):
+            return Response({"error": "Unable to archive file"}, status=500)
+        return Response(archived, status=201)

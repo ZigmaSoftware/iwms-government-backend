@@ -693,6 +693,13 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         if not action:
             return JsonResponse({"detail": "Invalid HTTP method"}, status=405)
 
+        # Bulk upload needs BOTH grants: "add" (writing records) and the
+        # dedicated "import" (uploading a file). Either one alone is not
+        # enough — revoking either blocks the upload.
+        required_actions = [action]
+        if request.method == "POST" and request.path.rstrip("/").endswith("/bulk-upload"):
+            required_actions = ["import", "add"]
+
         # Oversight roles (supervisor / admin): read operational data anywhere,
         # and fully manage complaints (their core duty — status / assign /
         # escalate / resolve / comment) without an explicit per-screen grant.
@@ -717,21 +724,26 @@ class ModulePermissionMiddleware(MiddlewareMixin):
             ),
         ]))
 
-        if action not in allowed_actions and action in self._dependency_actions(
-            permissions, route_key, action
+        missing_actions = [a for a in required_actions if a not in allowed_actions]
+        if (
+            missing_actions
+            and len(required_actions) == 1
+            and missing_actions[0]
+            in self._dependency_actions(permissions, route_key, missing_actions[0])
         ):
             # The resource belongs to another screen's page — a child its
             # form saves through, or a dropdown it fills
             # (app/utils/screen_dependencies.py).
             return None
 
-        if action not in allowed_actions:
+        if missing_actions:
             return JsonResponse(
                 {
                     "detail": "Permission denied",
                     "module": module,
                     "resource": permission_resource,
-                    "action": action,
+                    "action": missing_actions[0],
+                    "required_actions": required_actions,
                 },
                 status=403,
             )

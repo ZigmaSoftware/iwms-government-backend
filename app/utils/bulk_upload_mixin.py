@@ -25,6 +25,8 @@ import io
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.utils.file_archive import archive_bytes
+
 
 class BulkUploadMixin:
     """Generic serializer-driven bulk upload.
@@ -36,6 +38,21 @@ class BulkUploadMixin:
     """
 
     bulk_upload_message = "Bulk upload completed"
+    # Subdirectory (under media/) where the received file is archived for
+    # audit reference. Override per viewset when useful.
+    bulk_upload_archive_subdir = "bulk_uploads"
+
+    def _bulk_upload_archive_dir(self) -> str:
+        endpoint = (
+            getattr(self, "AUDIT_ENDPOINT", None)
+            or getattr(self, "throttle_scope", None)
+            or type(self).__name__.replace("ViewSet", "")
+        )
+        safe = "".join(
+            ch if ch.isalnum() or ch in ("-", "_") else "_"
+            for ch in str(endpoint)
+        ).strip("_") or "uploads"
+        return f"{self.bulk_upload_archive_subdir}/{safe.lower()}"
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
     def bulk_upload(self, request):
@@ -47,14 +64,23 @@ class BulkUploadMixin:
         try:
             raw = file.read() if hasattr(file, "read") else file
             if isinstance(raw, bytes):
+                content = raw
                 decoded = raw.decode("utf-8-sig")
             else:
                 decoded = str(raw)
+                content = decoded.encode("utf-8")
+            upload_name = getattr(file, "name", None) or "bulk_upload.csv"
         except Exception as exc:
             return Response(
                 {"error": "Unable to decode CSV file", "detail": str(exc)},
                 status=400,
             )
+
+        # Keep a server-side copy so the audit trail can show/download the
+        # exact file that was uploaded. Never blocks the import itself.
+        archived = archive_bytes(
+            content, upload_name, subdir=self._bulk_upload_archive_dir()
+        )
 
         try:
             reader = csv.DictReader(io.StringIO(decoded))
@@ -118,5 +144,8 @@ class BulkUploadMixin:
                 "error_count": len(errors),
                 "total_count": success_count + len(errors),
                 "errors": errors,
+                "file_name": upload_name,
+                # Server-side copy of the uploaded file for audit reference.
+                "file_url": archived.get("file_url") if archived.get("archived") else None,
             }
         )

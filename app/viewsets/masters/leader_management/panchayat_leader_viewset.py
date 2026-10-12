@@ -5,6 +5,8 @@ from rest_framework.decorators import action
 import csv
 import io
 
+from app.utils.file_archive import archive_bytes
+
 from app.models.masters.panchayat import Panchayat
 from app.utils.list_filters import ListParamFilter
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -103,7 +105,16 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not file:
             return Response({"error": "CSV file is required"}, status=400)
         try:
-            decoded = file.read().decode("utf-8")
+            _upload_content = file.read()
+            decoded = _upload_content.decode("utf-8")
+            try:
+                _archived = archive_bytes(
+                    _upload_content,
+                    getattr(file, "name", None) or "panchayat_leader_bulk_upload.csv",
+                    subdir="bulk_uploads/panchayat_leaders",
+                )
+            except Exception:
+                _archived = {"archived": False}
         except Exception as exc:
             return Response({"error": "Unable to decode CSV file", "detail": str(exc)}, status=400)
 
@@ -133,4 +144,6 @@ class PanchayatLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "error_count": len(errors),
             "total_count": success_count + len(errors),
             "errors": errors,
+            "file_name": getattr(file, "name", None),
+            "file_url": _archived.get("file_url") if _archived.get("archived") else None,
         })

@@ -37,6 +37,7 @@ from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.list_filters import ListParamFilter
 from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.file_archive import archive_bytes
 
 VEHICLE_CREATION_CACHE_SCOPES = ("vehicle_creation_list", "vehicle_creation_detail")
 
@@ -275,9 +276,20 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         decoded_file = None
         try:
-            decoded_file = file.read().decode("utf-8")
+            _upload_content = file.read()
+            decoded_file = _upload_content.decode("utf-8")
         except Exception as exc:
             return Response({"error": "Unable to decode CSV file", "detail": str(exc)}, status=400)
+
+        # Server-side copy for audit reference (never blocks the import).
+        try:
+            _archived = archive_bytes(
+                _upload_content,
+                getattr(file, "name", None) or "vehicle_bulk_upload.csv",
+                subdir="bulk_uploads/vehicles",
+            )
+        except Exception:
+            _archived = {"archived": False}
 
         io_string = io.StringIO(decoded_file)
         reader = csv.DictReader(io_string)
@@ -360,4 +372,6 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "error_count": len(errors),
             "total_count": success_count + len(errors),
             "errors": errors,
+            "file_name": getattr(file, "name", None),
+            "file_url": _archived.get("file_url") if _archived.get("archived") else None,
         })

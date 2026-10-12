@@ -45,7 +45,7 @@ def _resolve_local_body_model(local_body_type):
     return getattr(module, class_name)
 
 
-SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "view"}
+SUPPORTED_ACTION_NAMES = {"add", "edit", "delete", "view", "import", "export"}
 
 
 class UserScreenPermissionSerializer(serializers.ModelSerializer):

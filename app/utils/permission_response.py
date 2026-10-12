@@ -13,7 +13,7 @@ from app.models.superadmin.screen_management.userscreenpermission import UserScr
 from app.models.superadmin.screen_management.dashboardwidgetpermission import DashboardWidgetPermission
 
 
-ACTION_KEYS = ("view", "add", "edit", "delete")
+ACTION_KEYS = ("view", "add", "edit", "delete", "import", "export")
 
 APP_SURFACE_CONFIG = {
     "citizen": {
@@ -836,11 +836,9 @@ def permission_querysets(
 
 def resolve_permission_payload(**filters):
     action_queryset, column_queryset, dashboard_queryset = permission_querysets(**filters)
+    # Web permissions: explicit grants only. Role defaults are an app-only
+    # baseline — they feed `app_screens` below, never this map.
     permissions = build_action_permissions(action_queryset)
-    permissions = apply_role_default_permissions(
-        permissions,
-        filters.get("role_name"),
-    )
 
     # The staff member's own access configuration, layered on top of the role
     # resolution above (or replacing it in strict mode). No configuration means
@@ -850,11 +848,14 @@ def resolve_permission_payload(**filters):
     permissions = apply_staff_access_configuration(permissions, staff_unique_id)
 
     # Which apps this person may open, and which screens to render in each.
+    # Mobile screens keep the role-default baseline (app-only); the web map
+    # above stays limited to explicit grants.
     app_modules = filters.get("app_modules")
     if app_modules is None:
         app_modules = staff_app_modules(config)
+    app_defaulted = apply_role_default_permissions(permissions, filters.get("role_name"))
     app_screens = build_app_screens(
-        permissions, app_modules, citizen_screens=filters.get("citizen_screens")
+        app_defaulted, app_modules, citizen_screens=filters.get("citizen_screens")
     )
 
     payload = {
@@ -945,8 +946,9 @@ def resolve_intersected_permission_payload(
 
     super_admin_permissions = build_action_permissions(super_admin_action_qs)
     staff_permissions = build_action_permissions(staff_action_qs)
+    # Web permissions: the intersection of explicit grants only. Role
+    # defaults are app-only and are never merged here.
     final_permissions = _intersect_action_permissions(super_admin_permissions, staff_permissions)
-    final_permissions = apply_role_default_permissions(final_permissions, role_name)
 
     super_admin_dashboard = build_dashboard_permissions(super_admin_dashboard_qs)
     staff_dashboard = build_dashboard_permissions(staff_dashboard_qs)
