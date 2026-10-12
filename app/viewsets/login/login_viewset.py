@@ -29,7 +29,7 @@ def _client_ip(request):
 
 class LoginViewSet(ViewSet):
     permission_classes = [AllowAny]
-    # throttle_scope = "login"
+    throttle_scope = "platform_login"
 
     def create(self, request):
         login_identifier = request.data.get("username", "").strip()
