@@ -8,6 +8,7 @@ from rest_framework import filters, status
 from app.utils.plain_ref_search import PlainRefSearchFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from app.services.background_jobs import run_in_background
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
@@ -473,6 +474,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # =========================================================
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
+    @run_in_background
     def bulk_upload(self, request):
         file = request.FILES.get("file")
 

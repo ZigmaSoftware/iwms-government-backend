@@ -1,7 +1,10 @@
 """Single bulk-upload mechanism shared by every module.
 
 Every list page uploads the same way: Excel -> CSV -> POST
-``<resource>/bulk-upload/`` (multipart ``file``) -> standard response::
+``<resource>/bulk-upload/`` (multipart ``file``) -> 202 with a ``job_id``.
+The Celery worker imports the file (``run_in_background``, see
+app/services/background_jobs.py) and ``GET /api/v1/jobs/<job_id>/`` then
+returns the standard response::
 
     {
         "message": "Bulk upload completed",
@@ -15,8 +18,8 @@ Every list page uploads the same way: Excel -> CSV -> POST
 Mix this into any ``ModelViewSet`` to enable the endpoint. Modules with
 complex import rules (FK-by-name resolution, QR generation, password
 hashing, ...) override ``bulk_upload`` with their own implementation that
-keeps the same response shape — the frontend does not care which one
-served it.
+keeps the same response shape and is also decorated with
+``@run_in_background`` — the frontend does not care which one served it.
 """
 
 import csv
@@ -25,6 +28,7 @@ import io
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.services.background_jobs import run_in_background
 from app.utils.file_archive import archive_bytes
 
 
@@ -55,6 +59,7 @@ class BulkUploadMixin:
         return f"{self.bulk_upload_archive_subdir}/{safe.lower()}"
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
+    @run_in_background
     def bulk_upload(self, request):
         file = request.FILES.get("file") or request.data.get("file")
 

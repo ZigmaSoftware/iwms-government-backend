@@ -105,15 +105,11 @@ class ForgotPasswordView(APIView):
         PasswordResetOTP.objects.filter(customer_id=customer.unique_id, is_used=False).update(is_used=True)
 
         otp_record = PasswordResetOTP.create_for_customer(customer)
-        sent = send_otp_email(
+        send_otp_email(
             recipient_email=customer.email,
             otp_code=otp_record.otp_code,
             username=username,
         )
-
-        if not sent:
-            otp_record.delete()
-            return _err("Failed to send OTP email. Please try again later.", status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return _generic_ok(GENERIC_MSG, {"session_token": str(otp_record.session_token)})
 

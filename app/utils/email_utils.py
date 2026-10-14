@@ -1,14 +1,13 @@
-import logging
-from django.core.mail import send_mail
 from django.conf import settings
 
-logger = logging.getLogger(__name__)
+from app.tasks import enqueue
+from app.tasks.notification_tasks import send_email_task
 
 
-def send_otp_email(recipient_email: str, otp_code: str, username: str = "") -> bool:
+def send_otp_email(recipient_email: str, otp_code: str, username: str = "") -> None:
     """
-    Send OTP to the customer's email via SMTP.
-    Returns True on success, False on failure.
+    Queue the password-reset OTP email. Sent via SMTP by the Celery worker,
+    which retries transient SMTP failures.
     """
     expiry = getattr(settings, 'OTP_EXPIRY_MINUTES', 5)
     subject = "Your Password Reset OTP – IWMS"
@@ -21,25 +20,13 @@ def send_otp_email(recipient_email: str, otp_code: str, username: str = "") -> b
         f"If you did not request this, please ignore this email.\n\n"
         f"— IWMS Support"
     )
-    try:
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient_email],
-            fail_silently=False,
-        )
-        logger.info("OTP email sent to %s", recipient_email)
-        return True
-    except Exception as exc:
-        logger.error("Failed to send OTP email to %s: %s", recipient_email, exc)
-        return False
+    enqueue(send_email_task, subject, body, [recipient_email], "password reset OTP")
 
 
-def send_grievance_confirmation_email(recipient_email: str, ticket_no: str, person_name: str = "") -> bool:
+def send_grievance_confirmation_email(recipient_email: str, ticket_no: str, person_name: str = "") -> None:
     """
-    Send a public-grievance confirmation with the ticket number and follow-up
-    details to the citizen's email. Returns True on success, False on failure.
+    Queue a public-grievance confirmation with the ticket number and follow-up
+    details to the citizen's email (sent by the Celery worker).
     """
     subject = f"Grievance Received - Ticket {ticket_no}"
     body = (
@@ -51,16 +38,4 @@ def send_grievance_confirmation_email(recipient_email: str, ticket_no: str, pers
         f"Grievance portal.\n\n"
         f"- IWMS Support"
     )
-    try:
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient_email],
-            fail_silently=False,
-        )
-        logger.info("Grievance confirmation email sent to %s for ticket %s", recipient_email, ticket_no)
-        return True
-    except Exception as exc:
-        logger.error("Failed to send grievance confirmation email to %s: %s", recipient_email, exc)
-        return False
+    enqueue(send_email_task, subject, body, [recipient_email], f"grievance ticket {ticket_no}")

@@ -21,7 +21,7 @@
 | OTP / reset mail never arrives | `EMAIL_*` misconfigured, or SMTP blocks the login | Verify `EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD`; Gmail needs an app password |
 | Push notifications silently never send | `FIREBASE_CREDENTIALS_PATH` unset or pointing at a path that doesn't exist in the container | Confirm the path in `.env` and that the file is mounted into the container |
 | Route optimisation fails | `ORS_API_KEY` missing or over quota | Check the key in `.env` |
-| No trips generated overnight | The in-process scheduler thread didn't fire (`ENABLE_DAILY_TRIP_JOB_SCHEDULER=false`, container restarted at the scheduled time, or the DB lock race was lost) | Check logs around the scheduled time; backfill with `manage.py generate_daily_trips --date <missed-date>` (idempotent) |
+| No trips generated overnight | The `celery-beat` or `celery-worker` container isn't running, the scheduler is disabled on the scheduler-config screen, or the run failed (see `last_error` in `scheduler-status` and the `celery-worker` logs) | Check logs around the scheduled time; backfill with `manage.py generate_daily_trips --date <missed-date>` (idempotent) |
 | A staff member sees zero rows they should have access to | No `StaffDataScope` row resolves for them — default-deny, not a bug | Grant them a `StaffDataScope` for the right geography level |
 | Tests fail on MySQL-specific behavior | Tests run on SQLite in-memory (`config.test_settings`) | Expected — verify manually against MySQL if it matters |
 | `sudo: a password is required` in a CI step | Command string isn't an exact match in `deploy/sudoers/iwms-runner` | Use the exact allowed command, or add the new one to the sudoers file |

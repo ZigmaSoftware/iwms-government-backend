@@ -14,7 +14,6 @@ from app.models.core_modules.daily_operations.scheduler_config import SchedulerC
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.services import retrip_service
 from app.services.daily_trip_scheduler import (
-    notify_scheduler_config_changed,
     run_daily_trip_job,
     scheduler_status as get_scheduler_status,
 )
@@ -389,7 +388,6 @@ class DailyTripAssignmentViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.Mo
                 )
             config.is_enabled = parsed_enabled
         config.save()
-        notify_scheduler_config_changed()
         return Response(
             self._scheduler_config_payload(config),
             status=status.HTTP_200_OK,

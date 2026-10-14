@@ -1,5 +1,6 @@
 from rest_framework import filters, status
 from rest_framework.response import Response
+from app.services.background_jobs import run_in_background
 from rest_framework.decorators import action
 
 import csv
@@ -87,6 +88,7 @@ class StateLeaderLoginViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
+    @run_in_background
     def bulk_upload(self, request):
         file = request.FILES.get("file")
         if not file:

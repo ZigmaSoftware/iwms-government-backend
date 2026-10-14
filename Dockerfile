@@ -1,10 +1,9 @@
 # IWMS Government Backend — Django + gunicorn
 #
-# The nightly trip-generation job (generate_daily_trips) is NOT run via
-# cron here — the app already schedules it itself in-process
-# (app/services/daily_trip_scheduler.py, started from AppConfig.ready(),
-# DB-lock protected across gunicorn workers). No separate scheduler
-# process is needed inside this image.
+# The same image also runs the Celery worker and beat containers
+# (`celery -A config worker|beat`, see docker-compose*.yml), which handle
+# background tasks and the periodic jobs (daily trip generation, complaint
+# SLA sweep). The gunicorn container itself runs no scheduler.
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -29,4 +28,6 @@ RUN mkdir -p /app/static /app/media
 
 EXPOSE 9001
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:9001", "--workers", "3"]
+# --timeout above JOB_WAIT_SECONDS (50): bulk upload and Excel export
+# requests wait for the Celery worker to finish the job.
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:9001", "--workers", "3", "--timeout", "90"]

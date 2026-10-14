@@ -175,6 +175,7 @@ from ..viewsets.operator_mobile.trip_lifecycle_viewset import TripLifecycleViewS
 from ..viewsets.waste_collection_bluetooth.waste_bluetooth_viewset import WasteCollectionBluetoothViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_sub_viewset import WasteCollectionSubViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_main_viewset import WasteCollectionMainViewSet
+from ..viewsets.core_modules.background_job_viewset import BackgroundJobStatusView, ExcelExportView
 
 router = GroupedRouter()
 
@@ -466,6 +467,10 @@ router.register_group(
 # URLS
 # ============================================================
 urlpatterns = [
+    # Bulk upload status (Celery jobs) and one-request Excel export
+    path("jobs/<str:job_id>/", BackgroundJobStatusView.as_view(), name="jobs-status"),
+    path("exports/excel/", ExcelExportView.as_view(), name="exports-excel"),
+
     # Password reset flow (public — no authentication required)
     path("auth/forgot-password/", ForgotPasswordView.as_view(), name="auth-forgot-password"),
     path("auth/verify-otp/", VerifyOTPView.as_view(), name="auth-verify-otp"),

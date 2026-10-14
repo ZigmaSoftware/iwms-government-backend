@@ -1,10 +1,8 @@
 """Run one complaint escalation sweep: move tickets past their
 `next_escalation_due_at` up one Staff Hierarchy level.
 
-The in-process scheduler (app/services/complaint_escalation_scheduler.py)
-already runs this every 30 seconds. Use this command when that scheduler is
-disabled (ENABLE_COMPLAINT_ESCALATION_SCHEDULER=false), e.g. from cron:
-`* * * * * cd /path/to/iwms-government-backend && python manage.py escalate_overdue_complaint_tickets`
+Celery Beat already runs this every 30 seconds (iwms.complaint_sla_sweep).
+Use this command for a one-off sweep, or from cron when Celery isn't running.
 """
 from django.core.management.base import BaseCommand
 
@@ -17,6 +15,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         result = run_complaint_sla_sweep()
         if result.get("skipped"):
-            self.stdout.write("Another worker is running the sweep — skipped.")
+            self.stdout.write("Another sweep is running — skipped.")
             return
         self.stdout.write(self.style.SUCCESS(f"{result['escalated']} escalated."))
