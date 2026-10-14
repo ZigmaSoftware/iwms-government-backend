@@ -147,7 +147,7 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
             # Platform super admins must not be attached to any tenant/business identity.
             models.CheckConstraint(
                 name="platform_superuser_no_tenant_links",
-                check=(
+                condition=(
                     Q(is_superuser=False)
                     | (
                         Q(is_superuser=True)
