@@ -40,7 +40,7 @@ class UnassignedStaffPool(BaseMaster):
         constraints = [
             models.UniqueConstraint(fields=["operator_id"], condition=Q(operator_id__isnull=False), name="uniq_unassigned_operator"),
             models.UniqueConstraint(fields=["driver_id"], condition=Q(driver_id__isnull=False), name="uniq_unassigned_driver"),
-            models.CheckConstraint(check=(Q(operator_id__isnull=False, driver_id__isnull=True) | Q(operator_id__isnull=True, driver_id__isnull=False)), name="exactly_one_of_operator_or_driver"),
+            models.CheckConstraint(condition=(Q(operator_id__isnull=False, driver_id__isnull=True) | Q(operator_id__isnull=True, driver_id__isnull=False)), name="exactly_one_of_operator_or_driver"),
         ]
 
     def __str__(self):
