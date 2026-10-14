@@ -12,6 +12,7 @@ qrcode==7.4.2
 python-dateutil==2.9.0.post0
 requests==2.34.2
 PyMySQL==1.1.1
+mysqlclient==2.2.7
 drf-yasg==1.21.7
 PyYAML>=6.0
 inflection>=0.5.1

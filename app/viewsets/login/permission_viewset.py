@@ -4,22 +4,27 @@ from rest_framework import status
 from django.utils import timezone
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
+from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
+from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
+from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
-from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
-from app.utils.permission_response import resolve_permission_payload
-
+from app.serializers.login.login_serializer import LoginSerializer
 
 
 class PermissionViewSet(ViewSet):
     """
-    Fetch current user's permissions dynamically from DB.
-    Works with custom Staffcreation model (no dependency on Django User).
+    The signed-in user's permissions — the single source for both the web
+    app and the mobile app (login no longer returns them).
+
+    Built by the same LoginSerializer payload builders login uses, so the
+    result is exactly what ModulePermissionMiddleware enforces: local-body
+    intersection, Staff Access Configuration and app modules included.
     """
     throttle_scope = "permission"
 
     def list(self, request):
         """
-        GET /api/v1/my-permissions/
+        GET /api/v1/login/my-permissions/
         Returns latest permissions for current user.
         """
         payload = self._resolve_permission_payload_for_user(request.user)
@@ -31,6 +36,8 @@ class PermissionViewSet(ViewSet):
                 "column_permissions": payload.get("column_permissions", {}),
                 "module_access": payload.get("module_access", []),
                 "app_surfaces": payload.get("app_surfaces", []),
+                "app_modules": payload.get("app_modules", []),
+                "app_screens": payload.get("app_screens", {}),
                 "landing": payload.get("landing"),
                 "permission_version": payload.get("permission_version"),
                 "generated_at": payload.get("generated_at"),
@@ -40,280 +47,39 @@ class PermissionViewSet(ViewSet):
             status=status.HTTP_200_OK
         )
 
-    # ------------------------------------------------------------------
-    # CORE LOGIC
-    # ------------------------------------------------------------------
-
     def _resolve_permission_payload_for_user(self, user):
-        if getattr(user, "is_superuser", False):
-            return resolve_permission_payload(
-                include_all=True,
-                role_name="superadmin",
-                user_type="platform",
-            )
+        """Mirror of LoginSerializer's provider routing for an already
+        authenticated user (see JWTUserAuthentication for the user kinds)."""
+        builder = LoginSerializer()
 
-        staff_user = self._resolve_staff_user(user)
-        if staff_user:
-            user_type = getattr(staff_user, "user_type_id", None)
-            staff_usertype = getattr(staff_user, "staffusertype_id", None)
-            contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
-            government_usertype = getattr(staff_user, "governmentusertype_id", None)
-
-            if not user_type:
-                return {}
-
-            role_name = (
-                getattr(staff_usertype, "name", None)
-                or getattr(contractor_usertype, "name", None)
-                or getattr(government_usertype, "name", None)
-                or getattr(user_type, "name", None)
-            )
-            return resolve_permission_payload(
-                usertype_unique_id=user_type.unique_id,
-                staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
-                contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
-                governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
-                role_name=role_name,
-                user_type=getattr(user_type, "name", None),
-            )
-
-        customer_user = self._resolve_customer_user(user)
-        if customer_user:
-            user_type = getattr(customer_user, "user_type_id", None)
-            if not user_type:
-                return {}
-
-            return resolve_permission_payload(
-                usertype_unique_id=user_type.unique_id,
-                role_name="customer",
-                user_type=getattr(user_type, "name", None),
-            )
-
-        return {}
-
-    def _resolve_permissions_for_user(self, user):
-        """
-        Extract user's role and resolve permissions.
-        """
-
-        # ✅ SUPERADMIN → FULL ACCESS
-        if getattr(user, "is_superuser", False):
-            return self._get_all_permissions()
-
-        # ✅ Resolve staff user
-        staff_user = self._resolve_staff_user(user)
-        if not staff_user:
-            return {}
-
-        # ✅ Get user type and roles
-        user_type = getattr(staff_user, "user_type_id", None)
-        staff_usertype = getattr(staff_user, "staffusertype_id", None)
-        contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
-        government_usertype = getattr(staff_user, "governmentusertype_id", None)
-
-        if not user_type:
-            return {}
-
-        # ✅ Return filtered permissions
-        return self._format_permissions(
-            usertype_unique_id=user_type.unique_id,
-            staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
-            contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
-            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
-        )
-
-    def _resolve_permission_details_for_user(self, user):
-        if getattr(user, "is_superuser", False):
-            return resolve_permission_payload(include_all=True)["permission_details"]
-
-        staff_user = self._resolve_staff_user(user)
-        if not staff_user:
-            return {}
-
-        user_type = getattr(staff_user, "user_type_id", None)
-        staff_usertype = getattr(staff_user, "staffusertype_id", None)
-        contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
-        government_usertype = getattr(staff_user, "governmentusertype_id", None)
-
-        if not user_type:
-            return {}
-
-        return resolve_permission_payload(
-            usertype_unique_id=user_type.unique_id,
-            staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
-            contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
-            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
-        )["permission_details"]
-
-    def _resolve_column_permissions_for_user(self, user):
-        if getattr(user, "is_superuser", False):
-            return resolve_permission_payload(include_all=True)["column_permissions"]
-
-        staff_user = self._resolve_staff_user(user)
-        if not staff_user:
-            return {}
-
-        user_type = getattr(staff_user, "user_type_id", None)
-        staff_usertype = getattr(staff_user, "staffusertype_id", None)
-        contractor_usertype = getattr(staff_user, "contractorusertype_id", None)
-        government_usertype = getattr(staff_user, "governmentusertype_id", None)
-
-        if not user_type:
-            return {}
-
-        return resolve_permission_payload(
-            usertype_unique_id=user_type.unique_id,
-            staffusertype_unique_id=staff_usertype.unique_id if staff_usertype else None,
-            contractorusertype_unique_id=contractor_usertype.unique_id if contractor_usertype else None,
-            governmentusertype_unique_id=government_usertype.unique_id if government_usertype else None,
-        )["column_permissions"]
-
-    # ------------------------------------------------------------------
-    # SUPERADMIN FULL PERMISSION
-    # ------------------------------------------------------------------
-
-    def _get_all_permissions(self):
-        """
-        Return ALL permissions for superadmin
-        """
-
-        queryset = UserScreenPermission.objects.filter(
-            is_active=True,
-            is_deleted=False
-        )
-
-        permissions = {}
-
-        for perm in queryset.order_by("order_no"):
-            main_name = perm.mainscreen.mainscreen_name if perm.mainscreen else ""
-            screen_name = perm.userscreen.userscreen_name if perm.userscreen else ""
-            action_name = perm.userscreenaction.action_name if perm.userscreenaction else ""
-
-            module_map = permissions.setdefault(main_name, {})
-            action_list = module_map.setdefault(screen_name, [])
-
-            if action_name not in action_list:
-                action_list.append(action_name)
-
-        return permissions
-
-    # ------------------------------------------------------------------
-    # STAFF RESOLVER
-    # ------------------------------------------------------------------
-
-    def _resolve_staff_user(self, user):
-        """
-        Extract Staffcreation object from various user representations.
-        """
-
-        # Case 1: user itself is Staffcreation
         if isinstance(user, Staffcreation):
-            return user
+            # Login sends staff super admins through the platform path.
+            if user.is_superuser:
+                return builder._build_platform_payload(user)
+            return builder._build_staff_payload(user)
 
-        # Case 2: user has staff relation
+        if isinstance(user, CustomerCreation):
+            return builder._build_customer_payload(user)
+
+        if isinstance(user, PanchayatLeaderLogin):
+            return builder._build_panchayat_leader_payload(user)
+        if isinstance(user, DistrictLeaderLogin):
+            return builder._build_district_leader_payload(user)
+        if isinstance(user, StateLeaderLogin):
+            return builder._build_state_leader_payload(user)
+
+        # Platform User account, possibly linked to a staff or customer row.
         staff = getattr(user, "staff", None)
         if staff:
-            return staff
-        staff = getattr(user, "staff_id", None)
-        if staff:
-            return staff
-
-        # Case 3: try lookup using unique_id (from JWT)
-        user_unique_id = None
-
-        if hasattr(user, "unique_id"):
-            user_unique_id = user.unique_id
-        elif hasattr(user, "staff_unique_id"):
-            user_unique_id = user.staff_unique_id
-
-        if user_unique_id:
-            try:
-                return Staffcreation.objects.filter(
-                    staff_unique_id=user_unique_id
-                ).first()
-            except Exception:
-                return None
-
-        return None
-
-    def _resolve_customer_user(self, user):
-        if isinstance(user, CustomerCreation):
-            return user
+            if staff.is_superuser:
+                return builder._build_platform_payload(user)
+            return builder._build_staff_payload(staff, login_user=user)
 
         customer = getattr(user, "customer", None)
         if customer:
-            return customer
-        customer = getattr(user, "customer_id", None)
-        if customer:
-            return customer
+            return builder._build_customer_payload(customer, login_user=user)
 
-        user_unique_id = getattr(user, "unique_id", None)
-        if user_unique_id:
-            return CustomerCreation.objects.filter(unique_id=user_unique_id).first()
+        if getattr(user, "is_superuser", False):
+            return builder._build_platform_payload(user)
 
-        return None
-
-    # ------------------------------------------------------------------
-    # PERMISSION FORMATTER
-    # ------------------------------------------------------------------
-
-    def _format_permissions(
-        self,
-        usertype_unique_id=None,
-        staffusertype_unique_id=None,
-        contractorusertype_unique_id=None,
-        governmentusertype_unique_id=None,
-    ):
-        """
-        Build permission structure:
-        {
-            "Module": {
-                "Screen": ["view", "add", "edit"]
-            }
-        }
-        """
-
-        if not usertype_unique_id:
-            return {}
-
-        queryset = UserScreenPermission.objects.filter(
-            is_active=True,
-            is_deleted=False,
-            usertype_id=usertype_unique_id,
-        )
-
-        # Handle staffusertype condition
-        if staffusertype_unique_id:
-            queryset = queryset.filter(
-                staffusertype_id=staffusertype_unique_id
-            )
-        elif contractorusertype_unique_id:
-            queryset = queryset.filter(
-                contractorusertype_id=contractorusertype_unique_id
-            )
-        elif governmentusertype_unique_id:
-            queryset = queryset.filter(
-                governmentusertype_id=governmentusertype_unique_id
-            )
-        else:
-            queryset = queryset.filter(
-                staffusertype_id__isnull=True,
-                contractorusertype_id__isnull=True,
-                governmentusertype_id__isnull=True,
-            )
-
-        permissions = {}
-
-        for perm in queryset.order_by("order_no"):
-            main_name = perm.mainscreen.mainscreen_name if perm.mainscreen else ""
-            screen_name = perm.userscreen.userscreen_name if perm.userscreen else ""
-            action_name = perm.userscreenaction.action_name if perm.userscreenaction else ""
-
-            module_map = permissions.setdefault(main_name, {})
-            action_list = module_map.setdefault(screen_name, [])
-
-            if action_name not in action_list:
-                action_list.append(action_name)
-
-        return permissions
-    
+        return {}

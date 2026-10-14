@@ -94,7 +94,7 @@ class UserScreenPermission(BaseMaster):
     # relation/join) — matches the rest of the geo-hierarchy refactor's
     # convention.
     state_id = models.CharField(max_length=30, null=True, blank=True)
-    district_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
     area_type_id = models.CharField(max_length=30, null=True, blank=True)
 
     local_body_type = models.CharField(
@@ -102,7 +102,7 @@ class UserScreenPermission(BaseMaster):
         null=True, blank=True
     )
 
-    local_body_id = models.CharField(max_length=30, null=True, blank=True)
+    local_body_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
 
     permission_type = models.CharField(
         max_length=20, choices=PermissionType.choices,
@@ -114,7 +114,7 @@ class UserScreenPermission(BaseMaster):
         default=PermissionOwnerKind.SUPER_ADMIN
     )
 
-    staff_id = models.CharField(max_length=60, null=True, blank=True)
+    staff_id = models.CharField(max_length=60, null=True, blank=True, db_index=True)
 
     mainscreen_id = models.CharField(
         max_length=30,

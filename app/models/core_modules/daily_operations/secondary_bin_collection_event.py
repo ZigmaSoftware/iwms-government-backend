@@ -62,13 +62,13 @@ class BinCollectionEvent(BaseMaster):
     # CharFields holding the related row's unique_id (no DB relation/join),
     # matching the rest of the geo-hierarchy convention.
     state_id = models.CharField(max_length=30, null=True, blank=True)
-    district_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
     area_type_id = models.CharField(max_length=30, null=True, blank=True)
-    corporation_id = models.CharField(max_length=30, null=True, blank=True)
-    municipality_id = models.CharField(max_length=30, null=True, blank=True)
-    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
-    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
     ward_id = models.CharField(max_length=30, db_column="ward_id", null=True, blank=True, db_index=True)
 
     collected_weight_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

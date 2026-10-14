@@ -21,19 +21,27 @@ def waste_type_breakdown_for_assignment(assignment):
     combining secondary/bin collection events (each carries its own waste
     type + weight) and household collections (wet/dry/mixed columns, mapped
     to WasteType master names)."""
+    # WasteCollection / BinCollectionEvent trip_assignment_id are plain
+    # unique_id strings (no DB relation) — normalize an instance to its id.
+    assignment_id = getattr(assignment, "unique_id", assignment)
+    return waste_type_breakdown_for_assignments([assignment_id]).get(assignment_id, [])
+
+
+def waste_type_breakdown_for_assignments(assignment_ids):
+    """`waste_type_breakdown_for_assignment` for many assignments in a fixed
+    number of queries — for list pages. Returns {assignment_id: breakdown}."""
     from app.models.masters.waste_masters.wastetype import WasteType
     from app.models.core_modules.daily_operations.waste_collection import WasteCollection
     from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 
-    totals = {}
+    assignment_ids = {getattr(a, "unique_id", a) for a in assignment_ids if a}
+    if not assignment_ids:
+        return {}
+    totals = {assignment_id: {} for assignment_id in assignment_ids}
 
-    # WasteCollection / BinCollectionEvent trip_assignment_id are plain
-    # unique_id strings (no DB relation) — normalize an instance to its id.
-    assignment_id = getattr(assignment, "unique_id", assignment)
-
-    bin_rows = (
-        BinCollectionEvent.objects.filter(trip_assignment_id=assignment_id, is_deleted=False)
-        .values("waste_type_id")
+    bin_rows = list(
+        BinCollectionEvent.objects.filter(trip_assignment_id__in=assignment_ids, is_deleted=False)
+        .values("trip_assignment_id", "waste_type_id")
         .annotate(total_weight=Sum("collected_weight_kg"))
     )
     type_names = dict(
@@ -45,30 +53,34 @@ def waste_type_breakdown_for_assignment(assignment):
         name = type_names.get(row["waste_type_id"])
         if not name or not row["total_weight"]:
             continue
-        totals[name] = totals.get(name, Decimal("0")) + row["total_weight"]
+        trip_totals = totals.setdefault(row["trip_assignment_id"], {})
+        trip_totals[name] = trip_totals.get(name, Decimal("0")) + row["total_weight"]
 
-    household_rows = WasteCollection.objects.filter(
-        trip_assignment_id=assignment_id, is_deleted=False
-    ).aggregate(
-        wet_waste=Sum("wet_waste"),
-        dry_waste=Sum("dry_waste"),
-        mixed_waste=Sum("mixed_waste"),
-        sanitary_waste=Sum("sanitary_waste"),
+    household_rows = (
+        WasteCollection.objects.filter(trip_assignment_id__in=assignment_ids, is_deleted=False)
+        .values("trip_assignment_id")
+        .annotate(
+            wet_waste=Sum("wet_waste"),
+            dry_waste=Sum("dry_waste"),
+            mixed_waste=Sum("mixed_waste"),
+            sanitary_waste=Sum("sanitary_waste"),
+        )
     )
-    waste_type_names = set(
-        WasteType.objects.filter(is_deleted=False).values_list("waste_type_name", flat=True)
-    )
-    for column, label in HOUSEHOLD_WASTE_TYPE_NAMES.items():
-        value = household_rows.get(column)
-        if not value:
-            continue
-        name = label if label in waste_type_names else label
-        totals[name] = totals.get(name, Decimal("0")) + Decimal(str(value))
+    for row in household_rows:
+        trip_totals = totals.setdefault(row["trip_assignment_id"], {})
+        for column, label in HOUSEHOLD_WASTE_TYPE_NAMES.items():
+            value = row.get(column)
+            if not value:
+                continue
+            trip_totals[label] = trip_totals.get(label, Decimal("0")) + Decimal(str(value))
 
-    return [
-        {"waste_type_name": name, "collected_weight_kg": totals[name]}
-        for name in totals
-    ]
+    return {
+        assignment_id: [
+            {"waste_type_name": name, "collected_weight_kg": weight}
+            for name, weight in trip_totals.items()
+        ]
+        for assignment_id, trip_totals in totals.items()
+    }
 
 
 def _household_name_to_waste_type(waste_type_by_name):

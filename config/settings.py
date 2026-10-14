@@ -15,7 +15,14 @@ warnings.filterwarnings(
 )
 
 load_dotenv()
-pymysql.install_as_MySQLdb()
+
+# Prefer the C driver (mysqlclient) — several times faster than pure-Python
+# PyMySQL at decoding result rows. Fall back to PyMySQL where mysqlclient
+# isn't installed (it needs libmysqlclient-dev to build).
+try:
+    import MySQLdb  # noqa: F401
+except ImportError:
+    pymysql.install_as_MySQLdb()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 from django.conf import settings
@@ -143,6 +150,11 @@ DATABASES = {
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         },
+        # Reuse each worker's connection across requests instead of opening
+        # a new one per request; the health check reconnects if MySQL dropped
+        # it (wait_timeout, restart).
+        'CONN_MAX_AGE': int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 

@@ -57,17 +57,10 @@ class LoginViewSet(ViewSet):
             )
             raise
 
+        # Permissions are not returned here — clients fetch them from
+        # /login/my-permissions/ right after signing in. The serializer still
+        # resolves them, for the mobile App Module gate.
         user = serializer.validated_data["user"]
-        permissions = serializer.validated_data["permissions"]
-        permission_details = serializer.validated_data.get("permission_details", {})
-        column_permissions = serializer.validated_data.get("column_permissions", {})
-        module_access = serializer.validated_data.get("module_access", [])
-        app_surfaces = serializer.validated_data.get("app_surfaces", [])
-        app_modules = serializer.validated_data.get("app_modules", [])
-        app_screens = serializer.validated_data.get("app_screens", {})
-        landing = serializer.validated_data.get("landing")
-        permission_version = serializer.validated_data.get("permission_version")
-        generated_at = serializer.validated_data.get("generated_at")
         user_type = serializer.validated_data.get("user_type", "staff")
         profile_object = serializer.validated_data.get("profile_object")
         password_expired = serializer.validated_data.get("password_expired", False)
@@ -273,9 +266,6 @@ class LoginViewSet(ViewSet):
         access["role"] = role
         access["email"] = email
         access["staff_config_name"] = staff_config_name
-        # access["permissions"] = permissions
-        # access["permission_details"] = permission_details
-        # access["column_permissions"] = column_permissions
         access["emp_id"] = emp_id
         access["employee_id"] = employee_id
 
@@ -343,16 +333,6 @@ class LoginViewSet(ViewSet):
                 "name": name,
                 "role": role,
                 "staff_config_name": staff_config_name,
-                "permissions": permissions,
-                # "permission_details": permission_details,
-                # "column_permissions": column_permissions,
-                # "module_access": module_access,
-                "app_surfaces": app_surfaces,
-                "app_modules": app_modules,
-                "app_screens": app_screens,
-                "landing": landing,
-                "permission_version": permission_version,
-                "generated_at": generated_at,
                 "access_token": token,
                 "refresh_token": refresh_token,
                 "token_type": "Bearer",

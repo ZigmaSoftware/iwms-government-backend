@@ -168,18 +168,12 @@ class StaffTemplateSerializer(serializers.ModelSerializer):
         if not normalized_ids:
             return []
 
-        staff_by_id = {
-            staff.staff_unique_id: staff
-            for staff in Staffcreation.objects.filter(
-                staff_unique_id__in=normalized_ids,
-                is_deleted=False,
-            )
-        }
-
+        # Request-cached: list pages share the same few crews across rows.
+        ref_cache.prime(Staffcreation, normalized_ids, "staff_unique_id")
         names = []
         for staff_id in normalized_ids:
-            staff = staff_by_id.get(staff_id)
-            if staff and getattr(staff, "employee_name", None):
+            staff = ref_cache.get(Staffcreation, staff_id, "staff_unique_id")
+            if staff and not staff.is_deleted and getattr(staff, "employee_name", None):
                 names.append(staff.employee_name)
             else:
                 names.append(staff_id)

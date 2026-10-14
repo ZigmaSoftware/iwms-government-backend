@@ -1,4 +1,5 @@
 from django.db.models import Q
+from app.utils import ref_cache
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
@@ -112,7 +113,9 @@ def _resolve_geo_candidate(obj, field):
     if not value:
         return None
     if isinstance(value, str):
-        return _geo_model(field).objects.filter(unique_id=value).first()
+        # Request-cached: list pages resolve the same few local bodies on
+        # every row.
+        return ref_cache.get(_geo_model(field), value, "unique_id")
     return value
 
 
