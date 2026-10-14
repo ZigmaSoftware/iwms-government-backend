@@ -9,6 +9,38 @@ from app.models.core_modules.daily_operations.daily_trip_collection_point import
 )
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.hierarchy import flat_geo_display
+from app.utils import ref_cache
+
+
+class DailyTripCollectionPointListSerializer(serializers.ListSerializer):
+    """Loads every reference a page of stops resolves with one query per
+    model (request-cached model properties), instead of one per row."""
+
+    def to_representation(self, data):
+        from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+        from app.models.masters.waste_masters.wastetype import WasteType
+        from app.models.masters.ward import Ward
+
+        stops = list(data.all() if hasattr(data, "all") else data)
+        ref_cache.prime(DailyTripAssignment, {s.trip_assignment_id for s in stops}, "unique_id")
+        ref_cache.prime(Collection_point, {s.collection_point_id for s in stops}, "unique_id")
+        ref_cache.prime(Bins, {s.bin_id for s in stops}, "unique_id")
+        ref_cache.prime(Staffcreation, {s.collected_by_id for s in stops}, "staff_unique_id")
+        assignments = [a for a in (s.trip_assignment for s in stops) if a]
+        ref_cache.prime(TripPlan, {a.trip_plan_id for a in assignments}, "unique_id")
+        ref_cache.prime(WasteType, {b.wastetype_id for b in (s.bin for s in stops) if b})
+
+        cps = [cp for cp in (s.collection_point for s in stops) if cp]
+        wanted = {i for cp in cps for i in (cp.ward_ids or [])}
+        all_wards = list(Ward.objects.filter(unique_id__in=wanted)) if wanted else []
+        self.child._cp_wards = {
+            cp.unique_id: [w for w in all_wards if w.unique_id in set(cp.ward_ids or [])]
+            for cp in cps
+        }
+        try:
+            return super().to_representation(stops)
+        finally:
+            self.child._cp_wards = None
 
 
 class DailyTripCollectionPointSerializer(
@@ -48,8 +80,12 @@ class DailyTripCollectionPointSerializer(
     collected_by_staff = serializers.SerializerMethodField()
     hierarchy = serializers.SerializerMethodField()
 
+    # Set by DailyTripCollectionPointListSerializer while it renders a page.
+    _cp_wards = None
+
     class Meta:
         model = DailyTripCollectionPoint
+        list_serializer_class = DailyTripCollectionPointListSerializer
         fields = [
             "unique_id",
             "trip_assignment_id",
@@ -109,7 +145,10 @@ class DailyTripCollectionPointSerializer(
             "cp_name": cp.cp_name,
             "latitude": cp.latitude,
             "longitude": cp.longitude,
-            "wards": [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in cp.wards.all()],
+            "wards": [
+                {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
+                for ward in (self._cp_wards[cp.unique_id] if self._cp_wards is not None else cp.wards.all())
+            ],
         }
 
     def get_hierarchy(self, obj):

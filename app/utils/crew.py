@@ -13,6 +13,7 @@ class CrewPresenceCache:
 
     def __init__(self):
         self._cache = {}
+        self._extras = {}
 
     def present_staff_ids(self, trip_date):
         if trip_date in self._cache:
@@ -27,6 +28,18 @@ class CrewPresenceCache:
         )
         self._cache[trip_date] = present_ids
         return present_ids
+
+    def extra_operators(self, extra_ids):
+        """Live Staffcreation rows for a template's `extra_operator_id` list,
+        memoized per list — many rows of a page share a template."""
+        key = tuple(extra_ids)
+        if key not in self._extras:
+            from app.models.superadmin.staff_management.staffcreation import Staffcreation
+
+            self._extras[key] = list(
+                Staffcreation.objects.filter(staff_unique_id__in=extra_ids, is_deleted=False)
+            )
+        return self._extras[key]
 
 
 def crew_member_payload(staff, role, trip_date, *, request=None, presence_cache=None):
@@ -67,8 +80,6 @@ def crew_payload(template, alt, trip_date, *, request=None, presence_cache=None)
     its regular `staff_template` and (possibly None) active `alt_staff_template`.
     An active alternative overrides the regular crew for its date range — same
     source of truth as `get_effective_staff` on the desktop serializer."""
-    from app.models.superadmin.staff_management.staffcreation import Staffcreation
-
     source = alt if alt is not None else template
     if source is None:
         return None
@@ -77,11 +88,7 @@ def crew_payload(template, alt, trip_date, *, request=None, presence_cache=None)
         presence_cache = CrewPresenceCache()
 
     extra_ids = list(getattr(source, "extra_operator_id", None) or [])
-    extras = []
-    if extra_ids:
-        extras = list(
-            Staffcreation.objects.filter(staff_unique_id__in=extra_ids, is_deleted=False)
-        )
+    extras = presence_cache.extra_operators(extra_ids) if extra_ids else []
 
     def member(staff, role):
         return crew_member_payload(

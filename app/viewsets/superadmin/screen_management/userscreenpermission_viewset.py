@@ -224,7 +224,7 @@ class UserScreenPermissionViewSet(BulkUploadMixin, PermissionSnapshotAuditMixin,
         queryset = UserScreenPermission.objects.filter(is_deleted=False)
 
         request = getattr(self, "request", None)
-        if request is not None and getattr(self, "action", None) == "list":
+        if request is not None and getattr(self, "action", None) in ("list", "summary"):
             scope = self._local_body_from_request(request)
             if scope["local_body_type"] and scope["local_body_id"]:
                 # Super Admin's list shows the Local Body's own baseline
@@ -258,6 +258,80 @@ class UserScreenPermissionViewSet(BulkUploadMixin, PermissionSnapshotAuditMixin,
     @swagger_auto_schema(responses={200: UserScreenPermissionSerializer(many=True)})
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    # Display-name column of each local body type's master.
+    LOCAL_BODY_NAME_MODELS = {
+        "corporation": ("app.models.masters.corporation.Corporation", "corporation_name"),
+        "municipality": ("app.models.masters.municipality.Municipality", "municipality_name"),
+        "town_panchayat": ("app.models.masters.town_panchayat.TownPanchayat", "town_panchayat_name"),
+        "panchayat_union": ("app.models.masters.panchayat_union.PanchayatUnion", "union_name"),
+        "panchayat": ("app.models.masters.panchayat.Panchayat", "panchayat_name"),
+    }
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        """One row per (local body, permission type) for the list screen —
+        which MainScreens it grants and the local body's name — instead of
+        every permission row (thousands) grouped in the browser. Same
+        filters and ordering as `list`; rows without a local body ("legacy")
+        stay one row per permission + MainScreen, as the screen showed them."""
+        import importlib
+
+        from app.models.superadmin.screen_management.mainscreen import MainScreen
+
+        rows = self.filter_queryset(self.get_queryset()).values_list(
+            "unique_id", "local_body_type", "local_body_id", "permission_type",
+            "mainscreen_id", "is_active",
+        )
+        groups = {}
+        for unique_id, lb_type, lb_id, permission_type, mainscreen_id, is_active in rows:
+            lb_type, lb_id = lb_type or "", lb_id or ""
+            permission_type = permission_type or "screen"
+            mainscreen_id = mainscreen_id or ""
+            legacy = not lb_type or not lb_id
+            key = (
+                f"legacy__{unique_id}__{mainscreen_id}" if legacy
+                else f"{lb_type}__{lb_id}__{permission_type}"
+            )
+            group = groups.get(key)
+            if group is None:
+                group = groups[key] = {
+                    "composite_key": key,
+                    "local_body_type": lb_type,
+                    "local_body_id": lb_id,
+                    "local_body_name": None,
+                    "mainscreen_ids": [],
+                    "mainscreen_names": [],
+                    "permission_type": permission_type,
+                    "is_active": is_active,
+                    "legacy": legacy,
+                }
+            if mainscreen_id and mainscreen_id not in group["mainscreen_ids"]:
+                group["mainscreen_ids"].append(mainscreen_id)
+
+        screen_names = dict(
+            MainScreen.objects.filter(
+                unique_id__in={i for g in groups.values() for i in g["mainscreen_ids"]}
+            ).values_list("unique_id", "mainscreen_name")
+        )
+        ids_by_type = defaultdict(set)
+        for group in groups.values():
+            if not group["legacy"]:
+                ids_by_type[group["local_body_type"]].add(group["local_body_id"])
+        local_body_names = {}
+        for lb_type, ids in ids_by_type.items():
+            if lb_type not in self.LOCAL_BODY_NAME_MODELS:
+                continue
+            model_path, name_field = self.LOCAL_BODY_NAME_MODELS[lb_type]
+            module_path, class_name = model_path.rsplit(".", 1)
+            model = getattr(importlib.import_module(module_path), class_name)
+            for unique_id, name in model.objects.filter(unique_id__in=ids).values_list("unique_id", name_field):
+                local_body_names[(lb_type, unique_id)] = name
+
+        for group in groups.values():
+            group["mainscreen_names"] = [screen_names.get(i) for i in group["mainscreen_ids"]]
+            group["local_body_name"] = local_body_names.get((group["local_body_type"], group["local_body_id"]))
+        return Response(list(groups.values()))
 
     @swagger_auto_schema(
         request_body=UserScreenPermissionMultiScreenSerializer,

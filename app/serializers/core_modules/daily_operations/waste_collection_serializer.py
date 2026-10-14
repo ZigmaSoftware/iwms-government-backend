@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
-from app.utils.waste_images import capture_images_for_customer
+from app.utils.waste_images import capture_images_for_customer, capture_images_for_customers
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.superadmin.common_masters.state import State
@@ -37,6 +37,37 @@ class CustomerField(serializers.SlugRelatedField):
                 return self.get_queryset().get(pk=int(data))
             except (ValueError, TypeError, CustomerCreation.DoesNotExist):
                 raise serializers.ValidationError("Invalid customer reference")
+
+
+class WasteCollectionListSerializer(serializers.ListSerializer):
+    """Loads every reference a page of collections resolves (request-cached
+    model properties) with one query per model, and the page's capture
+    photos in one query, instead of per row."""
+
+    def to_representation(self, data):
+        from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+        from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+
+        collections = list(data.all() if hasattr(data, "all") else data)
+        ref_cache.prime(CustomerCreation, {c.customer_id for c in collections}, "unique_id")
+        ref_cache.prime(DailyTripAssignment, {c.trip_assignment_id for c in collections}, "unique_id")
+        ref_cache.prime(Ward, {c.ward_id for c in collections}, "unique_id")
+        assignments = [a for a in (c.trip_assignment for c in collections) if a]
+        ref_cache.prime(TripPlan, {a.trip_plan_id for a in assignments}, "unique_id")
+        plans = [p for p in (a.trip_plan for a in assignments) if p]
+        ref_cache.prime(
+            VehicleCreation,
+            {a.vehicle_id for a in assignments} | {p.vehicle_id for p in plans},
+            "unique_id",
+        )
+        self.child._images = capture_images_for_customers(
+            {(c.customer_id, c.collection_date) for c in collections},
+            self.context.get("request"),
+        )
+        try:
+            return super().to_representation(collections)
+        finally:
+            self.child._images = None
 
 
 class WasteCollectionSerializer(serializers.ModelSerializer):
@@ -115,8 +146,12 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
         required=False, allow_null=True, allow_blank=True
     )
 
+    # Set by WasteCollectionListSerializer while it renders a list page.
+    _images = None
+
     class Meta:
         model = WasteCollection
+        list_serializer_class = WasteCollectionListSerializer
         # Explicit list: the model's bare geo FKs (state/district/...) are written
         # via the *_id SlugRelatedFields above, so they are intentionally omitted
         # here to avoid duplicate writable fields on the same source.
@@ -197,6 +232,8 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     def get_capture_images(self, obj):
         """Capture photos for this collection, pulled from WasteCollectionSub
         (the mobile capture flow) for the same household + collection date."""
+        if self._images is not None:
+            return self._images.get((obj.customer_id, obj.collection_date), [])
         return capture_images_for_customer(
             obj.customer_id,
             obj.collection_date,

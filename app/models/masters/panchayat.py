@@ -43,7 +43,7 @@ class Panchayat(BaseMaster):
 
     state_id = models.CharField(max_length=30)
 
-    district_id = models.CharField(max_length=30)
+    district_id = models.CharField(max_length=30, db_index=True)
 
     area_type_id = models.CharField(max_length=30, null=True, blank=True)
 

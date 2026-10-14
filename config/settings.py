@@ -15,7 +15,14 @@ warnings.filterwarnings(
 )
 
 load_dotenv()
-pymysql.install_as_MySQLdb()
+
+# Prefer the C driver (mysqlclient) — several times faster than pure-Python
+# PyMySQL at decoding result rows. Fall back to PyMySQL where mysqlclient
+# isn't installed (it needs libmysqlclient-dev to build).
+try:
+    import MySQLdb  # noqa: F401
+except ImportError:
+    pymysql.install_as_MySQLdb()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 from django.conf import settings
@@ -143,6 +150,11 @@ DATABASES = {
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         },
+        # Reuse each worker's connection across requests instead of opening
+        # a new one per request; the health check reconnects if MySQL dropped
+        # it (wait_timeout, restart).
+        'CONN_MAX_AGE': int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
@@ -212,14 +224,15 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": None,
 
-    # Global defaults: per-IP for anonymous requests, per-user for
-    # authenticated ones, plus each view's own individual scope rate above.
+    # Global defaults plus each view's own individual scope rate above, all
+    # counted per person: per-user for authenticated requests, and per
+    # username/email/emp_id/phone/... for anonymous ones (IP only when the
+    # request names nobody) — see app/utils/throttling.py.
     # MethodScopedRateThrottle is a drop-in replacement for DRF's
     # ScopedRateThrottle that additionally supports per-HTTP-method rates
-    # (see app/utils/throttling.py) — existing plain-string scopes in
-    # API_THROTTLE_RATES behave exactly as before.
+    # — existing plain-string scopes in API_THROTTLE_RATES behave as before.
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
+        'app.utils.throttling.PersonAnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
         'app.utils.throttling.MethodScopedRateThrottle',
     ],

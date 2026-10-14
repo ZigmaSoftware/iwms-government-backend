@@ -159,6 +159,7 @@ from ..viewsets.statebody.statebody_waste_comparison_viewset import (
     StateDailyWasteComparisonViewSet,
 )
 from ..viewsets.dashboard_summary_viewset import DashboardSummaryViewSet
+from ..viewsets.admin_overview_viewset import AdminOverviewViewSet
 
 # Operator mobile
 from ..viewsets.operator_mobile.my_trip_today_viewset import (
@@ -394,6 +395,7 @@ router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComp
 # GROUP: DASHBOARD (operations dashboard aggregates)
 # ============================================================
 router.register_group("dashboard", "summary", DashboardSummaryViewSet, basename="dashboard-summary")
+router.register_group("dashboard", "admin-overview", AdminOverviewViewSet, basename="dashboard-admin-overview")
 
 # ============================================================
 # GROUP: OPERATOR MOBILE

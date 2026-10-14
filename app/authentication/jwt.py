@@ -27,7 +27,15 @@ class JWTUserAuthentication(BaseAuthentication):
     def authenticate(self, request):
         raw_request = getattr(request, "_request", None)
         existing_user = getattr(raw_request, "user", None)
-        
+
+        # ModulePermissionMiddleware already decoded this request's token and
+        # resolved its user (it sets jwt_payload alongside request.user) —
+        # reuse that instead of repeating the same table-by-table lookups.
+        existing_payload = getattr(raw_request, "jwt_payload", None)
+        if existing_payload is not None and getattr(existing_user, "is_authenticated", False):
+            request.jwt_payload = existing_payload
+            return (existing_user, None)
+
         # Check if already authenticated via other means
         if hasattr(existing_user, 'staff_unique_id'):
             return (existing_user, None)

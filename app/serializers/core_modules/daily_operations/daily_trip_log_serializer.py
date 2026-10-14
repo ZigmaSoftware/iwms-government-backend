@@ -1,7 +1,9 @@
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
 from app.models.masters.waste_masters.wastetype import WasteType
+from app.utils import ref_cache
 from app.utils.plain_ref import ref_value
 from app.utils.plain_ref import ref_id
 from app.models.masters.waste_masters.bins import Bins
@@ -12,7 +14,169 @@ from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.hierarchy import flat_geo_display
-from app.utils.waste_images import capture_images_for_customer
+from app.utils.waste_images import capture_images_for_customer, capture_images_for_customers
+
+
+def _pick(ordered_rows, key, ids):
+    """The rows of `ordered_rows` whose `key` is in `ids`, in the query's
+    order — what a per-row `.filter(<key>__in=ids)` would have returned."""
+    wanted = set(ids or [])
+    return [row for row in ordered_rows if getattr(row, key) in wanted]
+
+
+class _TripLogPage:
+    """Everything DailyTripLogSerializer resolves per row, loaded for a whole
+    list page in a fixed number of queries. References resolved through
+    model properties are primed into ref_cache; reverse lookups and
+    aggregates are kept here, keyed by trip assignment unique_id."""
+
+    def __init__(self, logs, request=None):
+        from app.models.core_modules.daily_operations.daily_trip_collection_point import (
+            DailyTripCollectionPoint,
+        )
+        from app.models.core_modules.daily_operations.daily_trip_household_collection import (
+            DailyTripHouseholdCollection,
+        )
+        from app.models.core_modules.daily_operations.secondary_bin_collection_event import (
+            BinCollectionEvent,
+        )
+        from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
+        from app.models.core_modules.schedule_setup.alternative_staff_template import (
+            AlternativeStaffTemplate,
+        )
+        from app.models.core_modules.schedule_setup.collection_point import Collection_point
+        from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+        from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+        from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+        from app.models.masters.ward import Ward
+        from app.utils.base_models import Account
+        from app.utils.waste_type_breakdown import waste_type_breakdown_for_assignments
+
+        ref_cache.prime(DailyTripAssignment, {log.trip_assignment_id for log in logs}, "unique_id")
+        assignments = [a for a in (log.trip_assignment for log in logs) if a]
+        assignment_ids = {a.unique_id for a in assignments}
+
+        ref_cache.prime(TripPlan, {a.trip_plan_id for a in assignments}, "unique_id")
+        template_ids = {log.staff_template_id for log in logs} | {a.staff_template_id for a in assignments}
+        alt_ids = {log.alt_staff_template_id for log in logs} | {a.alt_staff_template_id for a in assignments}
+        ref_cache.prime(StaffTemplate, template_ids, "unique_id")
+        ref_cache.prime(AlternativeStaffTemplate, alt_ids, "unique_id")
+        templates = [ref_cache.get(StaffTemplate, i, "unique_id") for i in template_ids]
+        templates += [ref_cache.get(AlternativeStaffTemplate, i, "unique_id") for i in alt_ids]
+        staff_ids = {log.driver_id for log in logs} | {log.operator_id for log in logs}
+        for template in filter(None, templates):
+            staff_ids |= {template.driver_id, template.operator_id}
+        ref_cache.prime(Staffcreation, staff_ids, "staff_unique_id")
+        ref_cache.prime(VehicleCreation, {log.vehicle_id for log in logs}, "unique_id")
+        ref_cache.prime(Account, {log.verified_by_id for log in logs})
+
+        # Stops: every row (collection_status checks is_deleted itself).
+        self.collection_points = {}
+        for tcp in DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id__in=assignment_ids
+        ).order_by("trip_assignment_id", "sequence"):
+            self.collection_points.setdefault(tcp.trip_assignment_id, []).append(tcp)
+        live_tcps = [
+            tcp for tcps in self.collection_points.values() for tcp in tcps if not tcp.is_deleted
+        ]
+        ref_cache.prime(
+            Collection_point,
+            {log.collection_point_id for log in logs} | {tcp.collection_point_id for tcp in live_tcps},
+            "unique_id",
+        )
+        self.cp_breakdown = {}
+        if live_tcps:
+            event_rows = (
+                BinCollectionEvent.objects.filter(
+                    trip_collection_point_id__in=[tcp.unique_id for tcp in live_tcps],
+                    is_deleted=False,
+                )
+                .annotate(waste_type_name=ref_value("waste_type_id", WasteType, "waste_type_name"))
+                .values("trip_collection_point_id", "waste_type_id", "waste_type_name")
+                .annotate(total_weight=Sum("collected_weight_kg"))
+            )
+            for row in event_rows:
+                if not row["total_weight"]:
+                    continue
+                self.cp_breakdown.setdefault(row["trip_collection_point_id"], []).append(
+                    {
+                        "waste_type_id": row["waste_type_id"],
+                        "waste_type_name": row["waste_type_name"],
+                        "collected_weight_kg": str(row["total_weight"]),
+                    }
+                )
+
+        self.households = {}
+        for hh in DailyTripHouseholdCollection.objects.filter(
+            trip_assignment_id__in=assignment_ids, is_deleted=False
+        ).order_by("trip_assignment_id", "sequence"):
+            self.households.setdefault(hh.trip_assignment_id, []).append(hh)
+        households = [hh for rows in self.households.values() for hh in rows]
+        ref_cache.prime(CustomerCreation, {hh.customer_id for hh in households}, "unique_id")
+        ref_cache.prime(WasteCollection, {hh.waste_collection_id for hh in households}, "unique_id")
+
+        self.retrip_remarks = {}
+        for row in TripRetripRequest.objects.filter(
+            assignment_id__in=assignment_ids,
+            status=TripRetripRequest.STATUS_APPROVED,
+            new_assignment_id__isnull=False,
+        ).values("assignment_id", "new_assignment_id", "review_remarks", "reason"):
+            self.retrip_remarks.setdefault(row["assignment_id"], {})[row["new_assignment_id"]] = (
+                row["review_remarks"] or row["reason"] or ""
+            )
+
+        all_wards = list(Ward.objects.filter(
+            unique_id__in={i for a in assignments for i in (a.ward_ids or [])}
+        ))
+        self.wards = {a.unique_id: _pick(all_wards, "unique_id", a.ward_ids) for a in assignments}
+
+        all_waste_types = list(WasteType.objects.filter(
+            unique_id__in={i for log in logs for i in (log.waste_type_ids or [])}
+        ))
+        all_bins = list(Bins.objects.filter(
+            unique_id__in={i for log in logs for i in (log.bin_ids or [])}
+        ))
+        all_extra = list(Staffcreation.objects.filter(
+            staff_unique_id__in={i for log in logs for i in (log.extra_operator_ids or [])}
+        ))
+        self.waste_types = {log.pk: _pick(all_waste_types, "unique_id", log.waste_type_ids) for log in logs}
+        self.bins = {log.pk: _pick(all_bins, "unique_id", log.bin_ids) for log in logs}
+        self.extra_operators = {
+            log.pk: _pick(all_extra, "staff_unique_id", log.extra_operator_ids) for log in logs
+        }
+
+        self.breakdown = waste_type_breakdown_for_assignments(assignment_ids)
+
+        collections = {}
+        for collection in WasteCollection.objects.filter(
+            trip_assignment_id__in=assignment_ids, is_deleted=False
+        ):
+            collections.setdefault(collection.trip_assignment_id, []).append(collection)
+        images_by_pair = capture_images_for_customers(
+            {(c.customer_id, c.collection_date) for rows in collections.values() for c in rows},
+            request,
+        )
+        self.capture_images = {}
+        for assignment_id, rows in collections.items():
+            images, seen = [], set()
+            for collection in rows:
+                for img in images_by_pair.get((collection.customer_id, collection.collection_date), []):
+                    if img["url"] not in seen:
+                        seen.add(img["url"])
+                        images.append(img)
+            self.capture_images[assignment_id] = images
+
+
+class DailyTripLogListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        logs = list(data.all() if hasattr(data, "all") else data)
+        self.child._page = _TripLogPage(logs, self.context.get("request"))
+        try:
+            return super().to_representation(logs)
+        finally:
+            self.child._page = None
 
 
 class DailyTripLogSerializer(serializers.ModelSerializer):
@@ -54,8 +218,12 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
     capture_images = serializers.SerializerMethodField(read_only=True)
     wards_detail = serializers.SerializerMethodField(read_only=True)
 
+    # Set by DailyTripLogListSerializer while it renders a list page.
+    _page = None
+
     class Meta:
         model = DailyTripLog
+        list_serializer_class = DailyTripLogListSerializer
         fields = [
             "unique_id",
             "trip_assignment_id",
@@ -131,10 +299,11 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         }
 
     def get_wards_detail(self, obj):
-        return [
-            {"unique_id": ward.unique_id, "ward_name": ward.ward_name}
-            for ward in obj.trip_assignment.wards.all()
-        ] if obj.trip_assignment else []
+        assignment = obj.trip_assignment
+        if not assignment:
+            return []
+        wards = self._page.wards[assignment.unique_id] if self._page else assignment.wards.all()
+        return [{"unique_id": ward.unique_id, "ward_name": ward.ward_name} for ward in wards]
 
     def get_staff_template(self, obj):
         # Fall back to trip assignment's templates for records created before the migration
@@ -176,6 +345,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         """
         from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 
+        if self._page:
+            return self._page.retrip_remarks.get(ref_id(assignment), {})
         # new_assignment_id holds the continuation's unique_id, the same
         # value every carried stop's `carried_to_assignment_id` holds.
         rows = TripRetripRequest.objects.filter(
@@ -189,21 +360,27 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         }
 
     def get_collection_points(self, obj):
-        from django.db.models import Sum
         from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 
         assignment = obj.trip_assignment
         if not assignment:
             return []
         retrip_remarks = self._retrip_remarks_by_new_assignment(assignment)
-        cps = (
-            assignment.trip_collection_points
-            .filter(is_deleted=False)
-            .order_by("sequence")
-        )
+        if self._page:
+            cps = [
+                tcp for tcp in self._page.collection_points.get(assignment.unique_id, [])
+                if not tcp.is_deleted
+            ]
+            breakdown_by_cp = self._page.cp_breakdown
+        else:
+            cps = (
+                assignment.trip_collection_points
+                .filter(is_deleted=False)
+                .order_by("sequence")
+            )
+            breakdown_by_cp = {}
         cp_ids = [tcp.unique_id for tcp in cps]
-        breakdown_by_cp = {}
-        if cp_ids:
+        if cp_ids and not self._page:
             event_rows = (
                 BinCollectionEvent.objects.filter(
                     trip_collection_point_id__in=cp_ids, is_deleted=False
@@ -268,12 +445,17 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         if assignment.status == DailyTripAssignment.STATUS_COMPLETED:
             return "Completed"
 
-        bin_stops = [cp for cp in assignment.trip_collection_points.all() if not cp.is_deleted]
-        hh_stops = list(
-            DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id=assignment.unique_id, is_deleted=False
+        if self._page:
+            all_stops = self._page.collection_points.get(assignment.unique_id, [])
+            hh_stops = self._page.households.get(assignment.unique_id, [])
+        else:
+            all_stops = assignment.trip_collection_points.all()
+            hh_stops = list(
+                DailyTripHouseholdCollection.objects.filter(
+                    trip_assignment_id=assignment.unique_id, is_deleted=False
+                )
             )
-        )
+        bin_stops = [cp for cp in all_stops if not cp.is_deleted]
         total = len(bin_stops) + len(hh_stops)
         if total == 0:
             return "Not Started"
@@ -297,11 +479,14 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         if not assignment:
             return []
         retrip_remarks = self._retrip_remarks_by_new_assignment(assignment)
-        hh_list = (
-            DailyTripHouseholdCollection.objects
-            .filter(trip_assignment_id=assignment.unique_id, is_deleted=False)
-            .order_by("sequence")
-        )
+        if self._page:
+            hh_list = self._page.households.get(assignment.unique_id, [])
+        else:
+            hh_list = (
+                DailyTripHouseholdCollection.objects
+                .filter(trip_assignment_id=assignment.unique_id, is_deleted=False)
+                .order_by("sequence")
+            )
         result = []
         for hh in hh_list:
             customer = hh.customer
@@ -348,6 +533,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         assignment_id = obj.trip_assignment
         if not assignment_id:
             return []
+        if self._page:
+            return self._page.capture_images.get(ref_id(assignment_id), [])
         request = self.context.get("request")
         images = []
         seen = set()
@@ -380,15 +567,15 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         if not source:
             source = obj
         name, level = flat_geo_display(source)
-        area_type_name = AreaType.objects.filter(
-            unique_id=getattr(source, "area_type_id", None)
-        ).values_list("name", flat=True).first()
-        district_name = District.objects.filter(
-            unique_id=getattr(source, "district_id", None)
-        ).values_list("name", flat=True).first()
-        state_name = State.objects.filter(
-            unique_id=getattr(source, "state_id", None)
-        ).values_list("name", flat=True).first()
+        area_type_name = getattr(
+            ref_cache.get(AreaType, getattr(source, "area_type_id", None), "unique_id"), "name", None
+        )
+        district_name = getattr(
+            ref_cache.get(District, getattr(source, "district_id", None), "unique_id"), "name", None
+        )
+        state_name = getattr(
+            ref_cache.get(State, getattr(source, "state_id", None), "unique_id"), "name", None
+        )
         return {
             "state": state_name,
             "district": district_name,
@@ -403,13 +590,16 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         return None if not cp else {"unique_id": cp.unique_id, "cp_name": cp.cp_name}
 
     def get_waste_types_detail(self, obj):
-        return [{"unique_id": wt.unique_id, "waste_type_name": wt.waste_type_name} for wt in obj.waste_types.all()]
+        waste_types = self._page.waste_types[obj.pk] if self._page else obj.waste_types.all()
+        return [{"unique_id": wt.unique_id, "waste_type_name": wt.waste_type_name} for wt in waste_types]
 
     def get_waste_type_breakdown(self, obj):
         from app.utils.waste_type_breakdown import waste_type_breakdown_for_assignment
         assignment = obj.trip_assignment
         if not assignment:
             return []
+        if self._page:
+            return self._page.breakdown.get(assignment.unique_id, [])
         return waste_type_breakdown_for_assignment(assignment)
 
     def _staff_dict(self, staff):
@@ -428,7 +618,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
         return self._staff_dict(obj.operator)
 
     def get_extra_operators(self, obj):
-        return [self._staff_dict(staff) for staff in obj.extra_operators]
+        staff_rows = self._page.extra_operators[obj.pk] if self._page else obj.extra_operators
+        return [self._staff_dict(staff) for staff in staff_rows]
 
     def get_vehicle(self, obj):
         vehicle = obj.vehicle
@@ -447,7 +638,7 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "bin_name": bin_obj.bin_name,
                 "bin_status": getattr(bin_obj, "bin_status", None),
             }
-            for bin_obj in obj.bins
+            for bin_obj in (self._page.bins[obj.pk] if self._page else obj.bins)
         ]
 
     def get_verified_by_name(self, obj):

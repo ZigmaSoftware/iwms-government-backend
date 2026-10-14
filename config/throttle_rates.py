@@ -132,6 +132,7 @@ API_THROTTLE_RATES = {
 
     # ── Dashboards — read-heavy summary/aggregation screens ────────
     "dashboard_summary": DASHBOARD,
+    "admin_overview": DASHBOARD,
     "district_body_dashboard": DASHBOARD,
     "state_body_dashboard": DASHBOARD,
     "local_body_dashboard": DASHBOARD,

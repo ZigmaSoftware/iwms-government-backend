@@ -71,7 +71,38 @@ class LoginConfigInputSerializer(serializers.Serializer):
     accountStatus = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
+class StaffAccessConfigurationListSerializer(serializers.ListSerializer):
+    """Loads the page's StaffDataScope rows and personal details in one
+    query each, instead of several per staff row."""
+
+    def to_representation(self, data):
+        from app.models.superadmin.staff_management.staffcreation import StaffPersonalDetails
+        from app.utils import ref_cache
+
+        items = list(data.all() if hasattr(data, "all") else data)
+        staff_rows = [i.get("staff") if isinstance(i, dict) else i for i in items]
+        staff_ids = {s.staff_unique_id for s in staff_rows}
+        ref_cache.prime(StaffPersonalDetails, staff_ids)
+        scopes = {}
+        # `.first()` per staff, in the order each would have used.
+        for scope in StaffDataScope.objects.filter(
+            staff_id__in=staff_ids, is_active=True, is_deleted=False
+        ).order_by(*(StaffDataScope._meta.ordering or ["pk"])):
+            scopes.setdefault(scope.staff_id, scope)
+        self.child._scopes = {staff_id: scopes.get(staff_id) for staff_id in staff_ids}
+        self.child._filters_memo = {}
+        try:
+            return super().to_representation(items)
+        finally:
+            self.child._scopes = None
+            self.child._filters_memo = None
+
+
 class StaffAccessConfigurationSerializer(serializers.Serializer):
+    # Set by StaffAccessConfigurationListSerializer while it renders a page.
+    _scopes = None
+    _filters_memo = None
+
     basicInfo = serializers.DictField()
     loginConfig = LoginConfigInputSerializer()
     permissions = serializers.ListField(
@@ -549,11 +580,24 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         )
         return scope
 
-    def _local_body_filters(self, staff):
-        scope = (
+    def _active_scope(self, staff):
+        if self._scopes is not None and staff.staff_unique_id in self._scopes:
+            return self._scopes[staff.staff_unique_id]
+        return (
             StaffDataScope.objects.filter(staff_id=staff.staff_unique_id, is_active=True, is_deleted=False)
             .first()
         )
+
+    def _local_body_filters(self, staff):
+        # Built twice per row (permissions + dashboard) — memoized per page.
+        if self._filters_memo is not None:
+            if staff.staff_unique_id not in self._filters_memo:
+                self._filters_memo[staff.staff_unique_id] = self._build_local_body_filters(staff)
+            return dict(self._filters_memo[staff.staff_unique_id])
+        return self._build_local_body_filters(staff)
+
+    def _build_local_body_filters(self, staff):
+        scope = self._active_scope(staff)
         access_scope = self._access_scope_payload(scope)
         if not access_scope.get("stateId"):
             return {}
@@ -702,10 +746,7 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
         ]
 
     def _data_scope_payload(self, staff):
-        scope = (
-            StaffDataScope.objects.filter(staff_id=staff.staff_unique_id, is_active=True, is_deleted=False)
-            .first()
-        )
+        scope = self._active_scope(staff)
         if not scope:
             # No dedicated StaffAccessConfiguration scope saved yet — fall back
             # to the geo scope captured directly on the staff record at
@@ -829,3 +870,4 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
 
     class Meta:
         model = Staffcreation
+        list_serializer_class = StaffAccessConfigurationListSerializer

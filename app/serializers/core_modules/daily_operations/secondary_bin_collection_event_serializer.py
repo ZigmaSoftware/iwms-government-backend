@@ -30,6 +30,53 @@ from app.utils.hierarchy import flat_geo_display
 from app.utils import ref_cache
 
 
+def _prime_page(events):
+    """Load every reference a page of events resolves (through request-
+    cached model properties) with one query per model, instead of one per
+    row."""
+    from app.models.core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
+    from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
+    from app.models.core_modules.schedule_setup.collection_point import Collection_point
+    from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+    from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+    from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+    from app.models.masters.waste_masters.wastetype import WasteType
+    from app.models.superadmin.staff_management.staffcreation import Staffcreation
+
+    ref_cache.prime(DailyTripAssignment, {e.trip_assignment_id for e in events}, "unique_id")
+    ref_cache.prime(Bins, {e.bin_id for e in events}, "unique_id")
+    ref_cache.prime(Collection_point, {e.collection_point_id for e in events}, "unique_id")
+    ref_cache.prime(Ward, {e.ward_id for e in events}, "unique_id")
+    ref_cache.prime(VehicleBreakdown, {e.vehicle_breakdown_id for e in events}, "unique_id")
+    bins = [b for b in (e.bin for e in events) if b]
+    ref_cache.prime(WasteType, {b.wastetype_id for b in bins})
+
+    assignments = [a for a in (e.trip_assignment for e in events) if a]
+    ref_cache.prime(TripPlan, {a.trip_plan_id for a in assignments}, "unique_id")
+    ref_cache.prime(StaffTemplate, {a.staff_template_id for a in assignments}, "unique_id")
+    ref_cache.prime(AlternativeStaffTemplate, {a.alt_staff_template_id for a in assignments}, "unique_id")
+    plans = [p for p in (a.trip_plan for a in assignments) if p]
+    ref_cache.prime(
+        VehicleCreation,
+        {a.vehicle_id for a in assignments} | {p.vehicle_id for p in plans},
+        "unique_id",
+    )
+    staff_ids = set()
+    for template in filter(None, [a.staff_template for a in assignments] + [a.alt_staff_template for a in assignments]):
+        staff_ids |= {template.driver_id, template.operator_id}
+        extra_ids = template.extra_operator_id
+        if isinstance(extra_ids, list):
+            staff_ids |= {str(i) for i in extra_ids if i not in ("", None)}
+    ref_cache.prime(Staffcreation, staff_ids, "staff_unique_id")
+
+
+class BinCollectionEventListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        events = list(data.all() if hasattr(data, "all") else data)
+        _prime_page(events)
+        return super().to_representation(events)
+
+
 class BinCollectionEventSerializer(serializers.ModelSerializer):
     # Plain unique_id references (no DB relation); resolved in validate().
     ward_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -107,6 +154,7 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BinCollectionEvent
+        list_serializer_class = BinCollectionEventListSerializer
         fields = [
             "unique_id",
             "trip_assignment_id",
@@ -358,9 +406,7 @@ class BinCollectionEventSerializer(serializers.ModelSerializer):
         )
         if not panchayat_uid:
             return None
-        return Panchayat.objects.filter(unique_id=panchayat_uid).values_list(
-            "panchayat_name", flat=True
-        ).first()
+        return getattr(ref_cache.get(Panchayat, panchayat_uid, "unique_id"), "panchayat_name", None)
 
     def get_location_name(self, obj):
         # Prefer the event's own geo; fall back to the collection point, then the trip assignment.
