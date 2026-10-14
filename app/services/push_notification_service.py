@@ -8,6 +8,10 @@ push isn't configured yet. Once a real Firebase service-account JSON is in
 place and the env var points to it, sending "just works" with no other code
 changes.
 
+Sends are queued to Celery (`send_push_task` in app/tasks/notification_tasks.py)
+so a slow or unreachable Firebase never delays the API request that triggered
+the notification; transient Firebase failures are retried there.
+
 Setup (one-time, ops side):
   1. Create/choose a Firebase project whose registered Android/iOS app package
      name matches this app's `applicationId` / bundle id.
@@ -73,80 +77,82 @@ def _get_firebase_app():
 
 
 def send_push_to_customer(customer, title, body, data=None):
-    """Send a push notification to a single customer's registered device.
+    """Queue a push notification to a single customer's registered device.
 
     Safe to call unconditionally from any code path (signals, viewsets): it
-    never raises. Returns True if a message was actually sent, False otherwise
-    (no token, push not configured, or the send failed).
+    never raises and never waits on Firebase — the send runs on a Celery
+    worker after the current transaction commits. Returns True if a push was
+    queued, False when there is nothing to send (no token, push not
+    configured).
     """
     if customer is None:
         return False
-
-    token = getattr(customer, "fcm_token", None)
-    if not token:
-        return False
-
-    app = _get_firebase_app()
-    if app is None:
-        return False
-
-    try:
-        from firebase_admin import messaging
-
-        message = messaging.Message(
-            token=token,
-            notification=messaging.Notification(title=title, body=body),
-            data={str(k): str(v) for k, v in (data or {}).items()},
-            android=messaging.AndroidConfig(
-                notification=messaging.AndroidNotification(
-                    channel_id="iwms_default_channel",
-                ),
-            ),
-        )
-        messaging.send(message, app=app)
-        return True
-    except Exception:
-        logger.exception(
-            "[push] Failed to send push to customer %s",
-            getattr(customer, "unique_id", customer),
-        )
-        return False
+    return _queue_push(
+        getattr(customer, "fcm_token", None), title, body, data,
+        recipient=f"customer {getattr(customer, 'unique_id', customer)}",
+    )
 
 
 def send_push_to_staff(staff, title, body, data=None):
-    """Send a push notification to a single staff member's registered device
+    """Queue a push notification to a single staff member's registered device
     (driver/operator/supervisor apps). Same contract as
-    `send_push_to_customer`: never raises, returns True only on an actual send.
+    `send_push_to_customer`.
     """
     if staff is None:
         return False
+    return _queue_push(
+        getattr(staff, "fcm_token", None), title, body, data,
+        recipient=f"staff {getattr(staff, 'staff_unique_id', staff)}",
+    )
 
-    token = getattr(staff, "fcm_token", None)
-    if not token:
+
+def _queue_push(token, title, body, data, recipient):
+    if not token or not getattr(settings, "FIREBASE_CREDENTIALS_PATH", ""):
         return False
 
+    from app.tasks import enqueue_on_commit
+    from app.tasks.notification_tasks import send_push_task
+
+    enqueue_on_commit(
+        send_push_task, token, str(title), str(body),
+        {str(k): str(v) for k, v in (data or {}).items()},
+        recipient,
+    )
+    return True
+
+
+def deliver_push(token, title, body, data):
+    """Send one FCM message now. Called by `send_push_task` on the Celery
+    worker. Returns False if push isn't configured; raises if the send
+    fails so the task can retry transient Firebase errors."""
     app = _get_firebase_app()
     if app is None:
         return False
 
-    try:
-        from firebase_admin import messaging
+    from firebase_admin import messaging
 
-        message = messaging.Message(
-            token=token,
-            notification=messaging.Notification(title=title, body=body),
-            data={str(k): str(v) for k, v in (data or {}).items()},
-            android=messaging.AndroidConfig(
-                notification=messaging.AndroidNotification(
-                    channel_id="iwms_default_channel",
-                ),
+    message = messaging.Message(
+        token=token,
+        notification=messaging.Notification(title=title, body=body),
+        data=data,
+        android=messaging.AndroidConfig(
+            notification=messaging.AndroidNotification(
+                channel_id="iwms_default_channel",
             ),
-        )
-        messaging.send(message, app=app)
-        return True
-    except Exception:
-        logger.exception(
-            "[push] Failed to send push to staff %s",
-            getattr(staff, "staff_unique_id", staff),
-        )
+        ),
+    )
+    messaging.send(message, app=app)
+    return True
+
+
+def is_transient_push_error(exc):
+    """True for Firebase errors worth retrying (outage/timeout), False for
+    permanent ones such as an unregistered token."""
+    try:
+        from firebase_admin import exceptions
+    except ImportError:
         return False
+    return isinstance(
+        exc,
+        (exceptions.UnavailableError, exceptions.InternalError, exceptions.DeadlineExceededError),
+    )

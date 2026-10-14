@@ -9,6 +9,7 @@ from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from app.services.background_jobs import run_in_background
 
 from app.models.masters.transport_masters.vehicleCreation import (
     VehicleCreation,
@@ -268,6 +269,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # =========================================================
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
+    @run_in_background
     def bulk_upload(self, request):
         file = request.FILES.get("file")
 
