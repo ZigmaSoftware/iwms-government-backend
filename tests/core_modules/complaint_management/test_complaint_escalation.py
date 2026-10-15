@@ -55,15 +55,17 @@ def setup(db):
         "admin": role("govt_district_admin", "district"),
     }
     # operator(1) -> supervisor(2) -> officer(3) -> admin (no row of its own)
-    for child, head, level in (
-        ("operator", "supervisor", 1),
-        ("supervisor", "officer", 2),
-        ("officer", "admin", 3),
+    # The operator level is kept out of escalation: tickets start at the supervisor.
+    for child, head, level, escalates in (
+        ("operator", "supervisor", 1, False),
+        ("supervisor", "officer", 2, True),
+        ("officer", "admin", 3, True),
     ):
         StaffHierarchy.objects.create(
             governmentusertype_id=roles[child].unique_id,
             reports_to_governmentusertype_id=roles[head].unique_id,
             hierarchy_level=level,
+            escalation_enabled=escalates,
         )
 
     def staff(name, role_key, **geo):
@@ -100,10 +102,9 @@ def setup(db):
     rule = ComplaintSlaRule.objects.create(
         category_id=category.unique_id, priority_id=priority.unique_id
     )
-    # Level 1 (operator) disabled: tickets start at the supervisor.
-    for level, enabled, minutes in ((1, False, 30), (2, True, 60), (3, True, 120), (4, True, 240)):
+    for level, minutes in ((2, 60), (3, 120), (4, 240)):
         ComplaintSlaEscalationLevel.objects.create(
-            sla_rule_id=rule.unique_id, level=level, is_enabled=enabled, resolve_within_minutes=minutes
+            sla_rule_id=rule.unique_id, level=level, resolve_within_minutes=minutes
         )
     return {"roles": roles, "people": people, "category": category, "priority": priority, "rule": rule}
 
@@ -136,10 +137,14 @@ class TestHierarchyLevels:
         assert levels[roles["officer"].unique_id] == 3
         assert levels[roles["admin"].unique_id] == 4
 
-    def test_level_options_list_roles_per_level(self, setup):
+    def test_escalation_only_drops_disabled_rows(self, setup):
+        levels = role_levels(ticket_geo(_ticket(setup)), escalation_only=True)
+        assert setup["roles"]["operator"].unique_id not in levels
+        assert levels[setup["roles"]["admin"].unique_id] == 4
+
+    def test_level_options_list_escalation_roles_per_level(self, setup):
         options = {o["level"]: [r["name"] for r in o["roles"]] for o in hierarchy_level_options()}
         assert options == {
-            1: ["govt_panchayat_operator"],
             2: ["govt_panchayat_supervisor"],
             3: ["govt_district_officer"],
             4: ["govt_district_admin"],
@@ -164,10 +169,12 @@ class TestEntryAssignment:
         ticket = _ticket(setup, panchayat=OTHER_PANCHAYAT)
         assert ticket.assigned_staff_id == setup["people"]["other_supervisor"].staff_unique_id
 
-    def test_rule_without_escalation_levels_leaves_ticket_unassigned(self, setup):
+    def test_rule_without_time_limits_assigns_but_never_escalates(self, setup):
+        # Levels come from the hierarchy; the rule only times them.
         ComplaintSlaEscalationLevel.objects.all().delete()
         ticket = _ticket(setup)
-        assert ticket.assigned_staff_id is None
+        assert ticket.assigned_staff_id == setup["people"]["supervisor"].staff_unique_id
+        assert ticket.escalation_level == 2
         assert ticket.next_escalation_due_at is None
 
 
@@ -221,7 +228,7 @@ class TestAutoEscalation:
         assert check_and_escalate_overdue_tickets() == 0
 
     def test_disabled_level_is_skipped_as_hop_target(self, setup):
-        ComplaintSlaEscalationLevel.objects.filter(level=3).update(is_enabled=False)
+        StaffHierarchy.objects.filter(hierarchy_level=3).update(escalation_enabled=False)
         ticket = _ticket(setup)
         _make_overdue(ticket)
         check_and_escalate_overdue_tickets()
@@ -251,7 +258,7 @@ class TestSlaRuleSerializer:
         rule = setup["rule"]
         serializer = ComplaintSlaRuleSerializer(
             instance=rule,
-            data={"escalation_levels": [{"level": 2, "is_enabled": True, "resolve_within_minutes": 90}]},
+            data={"escalation_levels": [{"level": 2, "resolve_within_minutes": 90}]},
             partial=True,
         )
         assert serializer.is_valid(), serializer.errors
@@ -326,7 +333,8 @@ class TestTicketApi:
     def test_hierarchy_levels_endpoint(self, setup, api_client):
         response = api_client.get("/api/v1/complaint-ticket/sla-rules/hierarchy-levels/")
         assert response.status_code == 200, response.content
-        assert [row["level"] for row in response.json()] == [1, 2, 3, 4]
+        # The operator row is kept out of escalation.
+        assert [row["level"] for row in response.json()] == [2, 3, 4]
 
     def test_teams_endpoint_is_gone(self, setup, api_client):
         assert api_client.get("/api/v1/complaint-ticket/teams/").status_code == 404
@@ -354,7 +362,7 @@ def _scoped_rule(setup, levels, **scope):
         "category_id": setup["category"].unique_id,
         "priority_id": setup["priority"].unique_id,
         "escalation_levels": [
-            {"level": level, "is_enabled": True, "resolve_within_minutes": minutes} for level, minutes in levels
+            {"level": level, "resolve_within_minutes": minutes} for level, minutes in levels
         ],
         **scope,
     })
@@ -672,7 +680,7 @@ def test_panchayat_union_ticket_follows_the_union_chain(setup):
     sup, insp, adm = union_staff("u-sup", union_supervisor), union_staff("u-insp", union_inspector), union_staff("u-adm", union_admin)
     # The union admin heads the chain one above the inspector (L5).
     ComplaintSlaEscalationLevel.objects.create(
-        sla_rule_id=setup["rule"].unique_id, level=5, is_enabled=True, resolve_within_minutes=480
+        sla_rule_id=setup["rule"].unique_id, level=5, resolve_within_minutes=480
     )
 
     ticket = _ticket_at(setup, district_id=DISTRICT, panchayat_union_id=UNION)
@@ -697,7 +705,7 @@ def test_panchayat_union_ticket_follows_the_union_chain(setup):
 class TestRuleEditReschedulesOpenTickets:
     def _edit_levels(self, rule, levels, capture):
         serializer = ComplaintSlaRuleSerializer(instance=rule, partial=True, data={"escalation_levels": [
-            {"level": level, "is_enabled": True, "resolve_within_minutes": minutes} for level, minutes in levels
+            {"level": level, "resolve_within_minutes": minutes} for level, minutes in levels
         ]})
         assert serializer.is_valid(), serializer.errors
         with capture(execute=True):
@@ -719,14 +727,14 @@ class TestRuleEditReschedulesOpenTickets:
         ticket.refresh_from_db()
         assert 29 <= _window_minutes(ticket) <= 30
 
-    def test_ticket_never_placed_on_chain_joins_once_levels_exist(self, setup, django_capture_on_commit_callbacks):
+    def test_untimed_ticket_gets_a_deadline_once_time_limits_exist(self, setup, django_capture_on_commit_callbacks):
         ComplaintSlaEscalationLevel.objects.all().delete()
         ticket = _ticket(setup)
-        assert ticket.escalation_level == 0
+        assert ticket.escalation_level == 2
+        assert ticket.next_escalation_due_at is None
         self._edit_levels(setup["rule"], [(2, 60), (3, 120)], django_capture_on_commit_callbacks)
         ticket.refresh_from_db()
-        assert ticket.escalation_level == 2
-        assert ticket.assigned_staff_id == setup["people"]["supervisor"].staff_unique_id
+        assert 59 <= _window_minutes(ticket) <= 60
 
 
 def _report(user, **params):

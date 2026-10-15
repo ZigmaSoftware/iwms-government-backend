@@ -103,7 +103,7 @@ class ComplaintSubcategorySerializer(BareIdKeysMixin, AutoSortOrderSerializerMix
 class ComplaintSlaEscalationLevelSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComplaintSlaEscalationLevel
-        fields = ["unique_id", "level", "is_enabled", "resolve_within_minutes"]
+        fields = ["unique_id", "level", "resolve_within_minutes"]
         read_only_fields = ["unique_id"]
 
     def validate_resolve_within_minutes(self, value):
@@ -115,8 +115,9 @@ class ComplaintSlaEscalationLevelSerializer(serializers.ModelSerializer):
 class ComplaintSlaRuleSerializer(BareIdKeysMixin, serializers.ModelSerializer):
     category_code = serializers.CharField(source="category.category_code", read_only=True)
     priority_code = serializers.CharField(source="priority.priority_code", read_only=True)
-    # Per-Staff-Hierarchy-level resolve windows. Written wholesale on every
-    # save: the incoming list replaces the rule's existing rows.
+    # Resolve window per Staff Hierarchy escalation level (which levels take
+    # part comes from the hierarchy). Written wholesale on every save: the
+    # incoming list replaces the rule's existing rows.
     escalation_levels = ComplaintSlaEscalationLevelSerializer(many=True, required=False)
     scope_label = serializers.SerializerMethodField()
     scope_level = serializers.SerializerMethodField()
@@ -219,7 +220,6 @@ class ComplaintSlaRuleSerializer(BareIdKeysMixin, serializers.ModelSerializer):
             ComplaintSlaEscalationLevel(
                 sla_rule_id=rule.unique_id,
                 level=row["level"],
-                is_enabled=row.get("is_enabled", True),
                 resolve_within_minutes=row["resolve_within_minutes"],
             )
             for row in levels

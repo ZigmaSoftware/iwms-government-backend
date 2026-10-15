@@ -127,6 +127,10 @@ class ComplaintTicket(BaseMaster):
     # legitimately produce more than one row with this key over time.
     idempotency_key = models.CharField(max_length=150, db_index=True, null=True, blank=True)
     is_sensitive = models.BooleanField(default=False)
+    # "I saw this too" taps on the public complaint map (one per browser,
+    # enforced client-side — it is a signal of how visible the problem is,
+    # not a vote).
+    seen_count = models.PositiveIntegerField(default=0)
 
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)

@@ -7,17 +7,21 @@ row (see app/utils/staff_hierarchy.py). A role that only appears as a
 of its own — sits one level above the highest role reporting to it, so the
 chain's head is still reachable.
 
-Each SLA rule configures a resolve window per level
-(`ComplaintSlaEscalationLevel`). Only enabled levels take part:
+Which levels take part is decided by the Staff Hierarchy that applies in
+the ticket's area (the ULB / RLB chain): rows with `escalation_enabled`
+off (e.g. Driver, Operator) are skipped. Each SLA rule — per category /
+sub-category — only gives every level its resolve window
+(`ComplaintSlaEscalationLevel`):
 
-- On creation the ticket goes to the lowest enabled level that has a staff
-  member covering the ticket's area, and `next_escalation_due_at` is set
-  from that level's window.
+- On creation the ticket goes to the lowest escalation level that has a
+  staff member covering the ticket's area, and `next_escalation_due_at` is
+  set from that level's window.
 - If the ticket is still open at `next_escalation_due_at`, the sweep
   (`check_and_escalate_overdue_tickets`, run by the in-process scheduler or
   the `escalate_overdue_complaint_tickets` command) hops it to the next
-  enabled level above that has covering staff. Running out of levels stops
-  escalating.
+  escalation level above that has covering staff. Running out of levels
+  stops escalating; a level the rule has no window for holds the ticket
+  without a deadline.
 
 A staff member covers a ticket when every geo column set on their record
 matches the ticket's area — a District Officer covers every panchayat in the
@@ -59,8 +63,11 @@ def ticket_geo(ticket):
     return complete_geo({field: getattr(ticket, field, None) for field in SCOPE_FIELDS})
 
 
-def role_levels(geo, rows=None):
-    """{governmentusertype_id: level} for the chain that applies in `geo`."""
+def role_levels(geo, rows=None, escalation_only=False):
+    """{governmentusertype_id: level} for the chain that applies in `geo`.
+
+    With `escalation_only`, roles whose hierarchy row has escalation turned
+    off are dropped (a head with no row of its own always takes part)."""
     rows = _hierarchy_rows() if rows is None else rows
     levels = {}
     entries = []
@@ -75,13 +82,18 @@ def role_levels(geo, rows=None):
         head = entry.reports_to_governmentusertype_id
         if head and head not in levels:
             heads[head] = max(heads.get(head, 0), entry.hierarchy_level + 1)
+    if escalation_only:
+        for entry in entries:
+            if not entry.escalation_enabled:
+                levels.pop(entry.governmentusertype_id, None)
     levels.update(heads)
     return levels
 
 
 def hierarchy_level_options(geo=None):
-    """Staff Hierarchy levels with the role names at each — for the SLA rule
-    screen's escalation-level editor.
+    """Escalation levels of the Staff Hierarchy with the role names at each —
+    for the SLA rule screen's time-limit editor and the public map's chain.
+    Levels whose rows have escalation turned off are left out.
 
     With `geo` (an SLA rule's scope) only the chain that applies in that area
     is listed; without it, every level configured anywhere.
@@ -98,13 +110,14 @@ def hierarchy_level_options(geo=None):
         area_level = scope_government_level(geo)
         allowed = None if area_level is None else {area_level, *LEVEL_ANCESTORS.get(area_level, ())}
         role_gov_levels = dict(GovernmentStaffUserType.objects.values_list("unique_id", "level"))
-        for role, level in role_levels(geo, rows).items():
+        for role, level in role_levels(geo, rows, escalation_only=True).items():
             if allowed is None or role_gov_levels.get(role) in allowed:
                 by_level.setdefault(level, set()).add(role)
     else:
         own_roles = {row.governmentusertype_id for row in rows}
         for row in rows:
-            by_level.setdefault(row.hierarchy_level, set()).add(row.governmentusertype_id)
+            if row.escalation_enabled:
+                by_level.setdefault(row.hierarchy_level, set()).add(row.governmentusertype_id)
             head = row.reports_to_governmentusertype_id
             if head and head not in own_roles:
                 by_level.setdefault(row.hierarchy_level + 1, set()).add(head)
@@ -186,26 +199,19 @@ def compute_due(minutes, working_hours_only, start=None):
     return start + timedelta(minutes=minutes)
 
 
-def _enabled_levels(sla_rule):
-    """[(level, resolve_within_minutes)] of the rule's enabled levels, lowest first."""
-    if not sla_rule:
-        return []
-    return list(
-        sla_rule.escalation_levels.filter(is_enabled=True).values_list("level", "resolve_within_minutes")
-    )
-
-
 def _level_due(sla_rule, level, start=None):
-    minutes = dict(_enabled_levels(sla_rule)).get(level)
-    return compute_due(minutes, sla_rule.working_hours_only if sla_rule else False, start)
+    if not sla_rule:
+        return None
+    minutes = dict(sla_rule.escalation_levels.values_list("level", "resolve_within_minutes")).get(level)
+    return compute_due(minutes, sla_rule.working_hours_only, start)
 
 
-def _next_level_staff(ticket, sla_rule, above_level):
-    """(level, staff) for the first enabled level above `above_level` with
-    staff covering the ticket's area, or (None, None)."""
+def _next_level_staff(ticket, above_level):
+    """(level, staff) for the first escalation level above `above_level`
+    with staff covering the ticket's area, or (None, None)."""
     geo = ticket_geo(ticket)
-    levels = role_levels(geo)
-    for level, _minutes in _enabled_levels(sla_rule):
+    levels = role_levels(geo, escalation_only=True)
+    for level in sorted(set(levels.values())):
         if level <= above_level:
             continue
         staff = staff_for_level(level, geo, levels)
@@ -225,7 +231,7 @@ def set_initial_escalation(ticket, sla_rule):
     """
     from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
-    if not _enabled_levels(sla_rule):
+    if not sla_rule:
         return []
 
     updated = []
@@ -233,9 +239,9 @@ def set_initial_escalation(ticket, sla_rule):
         staff = StaffcreationOfficeDetails.objects.filter(staff_unique_id=ticket.assigned_staff_id).first()
         level = role_levels(ticket_geo(ticket)).get(getattr(staff, "governmentusertype_id", None))
         if level is None:
-            level, _ = _next_level_staff(ticket, sla_rule, above_level=0)
+            level, _ = _next_level_staff(ticket, above_level=0)
     else:
-        level, staff = _next_level_staff(ticket, sla_rule, above_level=0)
+        level, staff = _next_level_staff(ticket, above_level=0)
         if staff:
             ticket.assigned_staff_id = staff.staff_unique_id
             updated.append("assigned_staff_id")
@@ -343,7 +349,7 @@ def _level_label(level, staff):
 
 @transaction.atomic
 def escalate_ticket(ticket, reason=None, actor_user=None, by_system=True):
-    """Escalate `ticket` to the next enabled hierarchy level above its
+    """Escalate `ticket` to the next escalation level of the hierarchy above its
     current one. Locks the ticket row so the sweep and a manual escalation
     can't double-hop it. Raises ValueError when there is no next level."""
     from app.models.core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
@@ -357,7 +363,7 @@ def escalate_ticket(ticket, reason=None, actor_user=None, by_system=True):
 
     ticket = ComplaintTicket.objects.select_for_update().get(pk=ticket.pk)
     sla_rule = resolve_sla_rule(ticket)
-    to_level, to_staff = _next_level_staff(ticket, sla_rule, above_level=ticket.escalation_level)
+    to_level, to_staff = _next_level_staff(ticket, above_level=ticket.escalation_level)
     if to_staff is None:
         raise ValueError("No higher Staff Hierarchy level is configured for this ticket.")
 

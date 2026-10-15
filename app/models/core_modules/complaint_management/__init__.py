@@ -17,6 +17,7 @@ from .routing_rule import ComplaintRoutingRule
 from .escalation_history import ComplaintEscalationHistory
 from .feedback import ComplaintFeedback
 from .reopen_history import ComplaintReopenHistory
+from .cleanup_report import ComplaintCleanupReport
 from .address_change_request import ComplaintAddressChangeRequest
 from .notification import ComplaintNotification
 

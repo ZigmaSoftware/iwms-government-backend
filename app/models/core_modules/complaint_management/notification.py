@@ -21,6 +21,7 @@ class ComplaintNotification(BaseMaster):
     EVENT_ESCALATED_TO = "ESCALATED_TO"
     EVENT_RESOLVED = "RESOLVED"
     EVENT_REOPENED = "REOPENED"
+    EVENT_CLEANUP_REPORTED = "CLEANUP_REPORTED"
 
     EVENT_CHOICES = [
         (EVENT_ASSIGNED, "Assigned"),
@@ -28,6 +29,7 @@ class ComplaintNotification(BaseMaster):
         (EVENT_ESCALATED_TO, "Escalated To You"),
         (EVENT_RESOLVED, "Resolved"),
         (EVENT_REOPENED, "Reopened"),
+        (EVENT_CLEANUP_REPORTED, "Cleanup Reported"),
     ]
 
     unique_id = models.CharField(

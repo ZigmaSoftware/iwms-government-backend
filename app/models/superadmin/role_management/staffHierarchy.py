@@ -64,6 +64,14 @@ class StaffHierarchy(BaseMaster):
         default=1,
         help_text="Display/ordering rank (1 = lowest level).",
     )
+    # Whether this role holds complaints on the escalation chain in this
+    # row's area (ULB / RLB / one local body). Field roles such as Driver
+    # and Operator are left out, so tickets start at the supervisor tier
+    # and escalate past them. SLA rules only set the time limit per level.
+    escalation_enabled = models.BooleanField(
+        default=True,
+        help_text="Whether this level takes part in complaint escalation.",
+    )
 
     class Meta:
         ordering = ["hierarchy_level", "created_at"]

@@ -14,6 +14,7 @@ EVENT_TITLES = {
     ComplaintNotification.EVENT_ESCALATED_TO: "Grievance escalated to you",
     ComplaintNotification.EVENT_RESOLVED: "Grievance resolved",
     ComplaintNotification.EVENT_REOPENED: "Grievance reopened",
+    ComplaintNotification.EVENT_CLEANUP_REPORTED: "Citizen reported a cleanup",
 }
 
 
