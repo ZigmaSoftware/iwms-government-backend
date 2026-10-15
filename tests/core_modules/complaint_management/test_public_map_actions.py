@@ -190,3 +190,21 @@ def test_cleanup_approval_shows_in_complaint_audit(ticket):
     assert len(cleanup) == 1
     assert cleanup[0]["cleanup_status"] == ComplaintCleanupReport.STATUS_APPROVED
     assert cleanup[0]["review_remarks"] == "Checked on site"
+
+
+@pytest.mark.django_db
+def test_status_lookup_links_to_the_complaint_on_the_map(ticket):
+    client = APIClient()
+    # no local body: nothing to open on the map
+    assert client.get("/api/v1/publicgrievance/status/", {"ticket_no": ticket.ticket_no}).json()[0]["map"] is None
+
+    ComplaintTicket.objects.filter(pk=ticket.pk).update(
+        district_id="DIST-T", panchayat_id="PANCHAYAT-T", latitude="11.4", longitude="77.5",
+    )
+    link = client.get("/api/v1/publicgrievance/status/", {"ticket_no": ticket.ticket_no}).json()[0]["map"]
+    assert link == {"district": "DIST-T", "type": "panchayat", "id": "PANCHAYAT-T", "ticket": ticket.ticket_no}
+
+    # a sensitive complaint has no pin: the link opens its panchayat only
+    ComplaintTicket.objects.filter(pk=ticket.pk).update(is_sensitive=True)
+    link = client.get("/api/v1/publicgrievance/status/", {"ticket_no": ticket.ticket_no}).json()[0]["map"]
+    assert link["ticket"] is None and link["id"] == "PANCHAYAT-T"

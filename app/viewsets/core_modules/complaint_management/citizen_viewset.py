@@ -630,6 +630,8 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             ComplaintTicket.objects.filter(is_deleted=False)
         )
         qs = qs.filter(ticket_no__iexact=ticket_no) if ticket_no else qs.filter(wa_phone=mobile)
+        from app.utils import public_grievance_map as gmap
+
         tickets = list(qs.order_by("-created")[:20])
         if not tickets:
             return Response({"detail": "No grievance found."}, status=http_status.HTTP_404_NOT_FOUND)
@@ -658,6 +660,8 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
                 "location_text": t.location_text,
                 "created": t.created,
                 "timeline": timeline_for(t),
+                # opens this complaint on the public complaint map
+                "map": gmap.ticket_map_link(t),
             }
             for t in tickets
         ])
