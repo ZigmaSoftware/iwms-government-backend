@@ -48,6 +48,12 @@ class ComplaintTicketSerializer(BareIdKeysMixin, serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.category_name", read_only=True)
     category_code = serializers.CharField(source="category.category_code", read_only=True)
     waste_type_names = serializers.SerializerMethodField()
+    # A citizen's "Verify Cleanup" photo waiting for the handler's check (My
+    # Tasks and the ticket screen show it), and whether the logged-in user is
+    # the one who may approve/reject it.
+    has_pending_cleanup = serializers.SerializerMethodField()
+    cleanup_report = serializers.SerializerMethodField()
+    can_review_cleanup = serializers.SerializerMethodField()
     waste_type_name = serializers.SerializerMethodField()
     # WasteType unique_ids, stored in the plain `waste_type_ids` JSON list.
     waste_types = serializers.ListField(
@@ -109,6 +115,41 @@ class ComplaintTicketSerializer(BareIdKeysMixin, serializers.ModelSerializer):
 
     def get_waste_type_names(self, obj):
         return [w.waste_type_name for w in obj.waste_types.all()]
+
+    def _pending_cleanup(self, obj):
+        # The list queryset annotates `has_pending_cleanup`, so tickets without
+        # one cost no extra query.
+        if not hasattr(obj, "_pending_cleanup_cache"):
+            from app.services.complaint_cleanup import pending_report
+
+            annotated = getattr(obj, "has_pending_cleanup", None)
+            obj._pending_cleanup_cache = pending_report(obj) if annotated is None or annotated else None
+        return obj._pending_cleanup_cache
+
+    def get_has_pending_cleanup(self, obj):
+        return self._pending_cleanup(obj) is not None
+
+    def get_cleanup_report(self, obj):
+        report = self._pending_cleanup(obj)
+        if not report:
+            return None
+        attachment = report.attachment
+        request = self.context.get("request")
+        url = None
+        if attachment and attachment.file:
+            url = request.build_absolute_uri(attachment.file.url) if request else attachment.file.url
+        return {
+            "unique_id": report.unique_id,
+            "photo": url,
+            "note": report.note,
+            "created": report.created,
+        }
+
+    def get_can_review_cleanup(self, obj):
+        from app.services.complaint_cleanup import can_review
+
+        request = self.context.get("request")
+        return bool(self._pending_cleanup(obj) and request and can_review(obj, request.user))
 
     # ---- plain unique_id validators (no DB relation) --------------------
     def validate_source_id(self, value):
@@ -406,6 +447,8 @@ class ComplaintTicketExtraDetailSerializer(serializers.ModelSerializer):
 
 class ComplaintAttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
+    # For a citizen's "Verify Cleanup" photo: its review result and remarks.
+    cleanup_review = serializers.SerializerMethodField()
 
     class Meta:
         model = ComplaintAttachment
@@ -417,6 +460,22 @@ class ComplaintAttachmentSerializer(serializers.ModelSerializer):
         if obj.file and request:
             return request.build_absolute_uri(obj.file.url)
         return None
+
+    def get_cleanup_review(self, obj):
+        from app.models.core_modules.complaint_management.cleanup_report import ComplaintCleanupReport
+        from app.services.complaint_cleanup import CLEANUP_PROOF
+
+        if obj.file_type != CLEANUP_PROOF:
+            return None
+        report = ComplaintCleanupReport.objects.filter(attachment_id=obj.unique_id, is_deleted=False).first()
+        if not report:
+            return None
+        return {
+            "status": report.status,
+            "note": report.note,
+            "review_remarks": report.review_remarks,
+            "reviewed_at": report.reviewed_at,
+        }
 
 
 class ComplaintStatusHistorySerializer(serializers.ModelSerializer):

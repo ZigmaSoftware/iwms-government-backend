@@ -130,6 +130,7 @@ from .core_modules.complaint_management.status_history import ComplaintStatusHis
 from .core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
 from .core_modules.complaint_management.escalation_history import ComplaintEscalationHistory
 from .core_modules.complaint_management.reopen_history import ComplaintReopenHistory
+from .core_modules.complaint_management.cleanup_report import ComplaintCleanupReport
 from .core_modules.complaint_management.comment import ComplaintComment
 from .core_modules.complaint_management.feedback import ComplaintFeedback
 from .core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest

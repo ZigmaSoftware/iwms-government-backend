@@ -206,7 +206,10 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
 
     # Actions only the level a ticket currently sits with may take; staff it
     # has escalated past can still view it and add comments/attachments.
-    OWNER_ONLY_ACTIONS = {"change_status", "assign", "resolve", "escalate", "reopen", "update", "partial_update", "destroy"}
+    OWNER_ONLY_ACTIONS = {
+        "change_status", "assign", "resolve", "escalate", "reopen", "update", "partial_update", "destroy",
+        "review_cleanup",
+    }
 
     def get_object(self):
         ticket = super().get_object()
@@ -222,7 +225,17 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
         # Converted relation fields are plain CharFields — no select_related possible.
         # status/escalation histories, attachments and extra details are now
         # plain-string reverse @properties (no prefetch possible).
-        qs = ComplaintTicket.objects.filter(is_deleted=False).order_by("-created")
+        from app.models.core_modules.complaint_management.cleanup_report import ComplaintCleanupReport
+
+        qs = ComplaintTicket.objects.filter(is_deleted=False).order_by("-created").annotate(
+            has_pending_cleanup=models.Exists(
+                ComplaintCleanupReport.objects.filter(
+                    ticket_id=models.OuterRef("unique_id"),
+                    status=ComplaintCleanupReport.STATUS_PENDING,
+                    is_deleted=False,
+                )
+            )
+        )
         params = self.request.query_params
 
         # ----------------------------------------------------------
@@ -617,6 +630,37 @@ class ComplaintTicketViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelV
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ticket).data)
+
+    # ----------------------------------------------------------
+    # POST /tickets/{id}/cleanup/{approve|reject}/
+    # A citizen's "Verify Cleanup" photo from the public map: the handler the
+    # ticket currently sits with approves it (ticket closes) or rejects it.
+    # ----------------------------------------------------------
+    @action(detail=True, methods=["post"], url_path=r"cleanup/(?P<decision>approve|reject)")
+    def review_cleanup(self, request, unique_id=None, decision=None):
+        from app.services import complaint_cleanup
+
+        ticket = self.get_object()
+        report = complaint_cleanup.pending_report(ticket)
+        if not report:
+            return Response({"detail": "No cleanup report is waiting for review."}, status=http_status.HTTP_404_NOT_FOUND)
+        if not complaint_cleanup.can_review(ticket, request.user):
+            return Response(
+                {"detail": "Only the officer handling this complaint now can verify the cleanup."},
+                status=http_status.HTTP_403_FORBIDDEN,
+            )
+        remarks = str(request.data.get("remarks") or "").strip()
+        if not remarks:
+            return Response({"remarks": "Remarks are required."}, status=http_status.HTTP_400_BAD_REQUEST)
+        try:
+            if decision == "approve":
+                complaint_cleanup.approve(ticket, report, request.user, remarks)
+            else:
+                complaint_cleanup.reject(ticket, report, request.user, remarks)
+        except complaint_cleanup.CleanupError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        ticket.refresh_from_db()
+        return Response(ComplaintTicketDetailSerializer(ticket, context={"request": request}).data)
 
     # ----------------------------------------------------------
     # POST /tickets/{id}/comments/

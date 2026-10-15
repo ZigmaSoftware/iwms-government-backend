@@ -343,6 +343,88 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         options.sort(key=lambda item: (item["name"] or "").lower())
         return Response(options)
 
+    # ---- GET /publicgrievance/map/?state=<id> | ?district=<id> ----
+    # Public complaint map (see app/utils/public_grievance_map.py): the
+    # state's districts, or with `district` that district's ULBs/RLBs with
+    # their geofences. Defaults to Tamil Nadu.
+    @action(detail=False, methods=["get"])
+    def map(self, request):
+        from app.utils import public_grievance_map as gmap
+
+        district_id = request.query_params.get("district")
+        if district_id:
+            district = District.objects.filter(unique_id=district_id, is_deleted=False).first()
+            if not district:
+                return Response({"detail": "District not found."}, status=http_status.HTTP_404_NOT_FOUND)
+            return Response(gmap.build_district(district))
+
+        state_id = request.query_params.get("state")
+        state = (
+            State.objects.filter(unique_id=state_id, is_deleted=False).first()
+            if state_id else gmap.default_state()
+        )
+        if not state:
+            return Response({"detail": "State not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response(gmap.build_state(state))
+
+    # ---- GET /publicgrievance/map-area/?type=corporation&id=<id> ----
+    # One ULB/RLB: its geofence, complaint counts, escalation hierarchy and pins.
+    @action(detail=False, methods=["get"], url_path="map-area")
+    def map_area(self, request):
+        from app.utils import public_grievance_map as gmap
+
+        entry, obj = gmap.find_local_body(request.query_params.get("type"), request.query_params.get("id"))
+        if not obj:
+            return Response({"detail": "Local body not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response(gmap.build_local_body(entry, obj, request))
+
+    # ---- POST /publicgrievance/map-ticket/<ticket_no>/seen/ ----
+    # "I saw this too" on a map pin. One per browser (enforced client-side).
+    @action(detail=False, methods=["post"], url_path=r"map-ticket/(?P<ticket_no>[^/]+)/seen")
+    def map_ticket_seen(self, request, ticket_no=None):
+        from app.utils import public_grievance_map as gmap
+
+        ticket = gmap.find_public_ticket(ticket_no)
+        if not ticket:
+            return Response({"detail": "Complaint not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response({"seen_count": gmap.mark_seen(ticket)})
+
+    # ---- POST /publicgrievance/map-ticket/<ticket_no>/verify-cleanup/ ----
+    # multipart: photo (required image), note (optional). Waits as a pending
+    # cleanup report for the officer handling the ticket — approving it
+    # closes the ticket (app/services/complaint_cleanup.py).
+    @action(detail=False, methods=["post"], url_path=r"map-ticket/(?P<ticket_no>[^/]+)/verify-cleanup")
+    def map_ticket_verify_cleanup(self, request, ticket_no=None):
+        from app.services import complaint_cleanup
+        from app.utils import public_grievance_map as gmap
+
+        ticket = gmap.find_public_ticket(ticket_no)
+        if not ticket:
+            return Response({"detail": "Complaint not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        if not gmap.is_open(ticket):
+            return Response({"detail": "This complaint is already closed."}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        photo = request.FILES.get("photo")
+        if not photo:
+            return Response({"photo": "Add a photo of the cleaned spot."}, status=http_status.HTTP_400_BAD_REQUEST)
+        if not str(getattr(photo, "content_type", "") or "").startswith("image/"):
+            return Response({"photo": "Only image files are allowed."}, status=http_status.HTTP_400_BAD_REQUEST)
+        if photo.size > gmap.CLEANUP_MAX_BYTES:
+            return Response({"photo": "The photo must be 8 MB or smaller."}, status=http_status.HTTP_400_BAD_REQUEST)
+        note = str(request.data.get("note") or "").strip()[: gmap.CLEANUP_NOTE_MAX]
+
+        try:
+            report = complaint_cleanup.submit(ticket, photo, note)
+        except complaint_cleanup.CleanupError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_409_CONFLICT)
+        return Response(
+            {
+                "message": "Thanks! The officer handling this complaint will check your photo.",
+                "photo": request.build_absolute_uri(report.attachment.file.url),
+            },
+            status=http_status.HTTP_201_CREATED,
+        )
+
     @transaction.atomic
     def create(self, request):
         data = request.data

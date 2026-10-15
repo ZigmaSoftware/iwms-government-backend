@@ -13,10 +13,10 @@ class ComplaintSlaEscalationLevel(BaseMaster):
 
     `level` matches `StaffHierarchy.hierarchy_level` (a top-of-chain role
     with no row of its own sits one above the roles reporting to it — see
-    app/services/complaint_escalation.py). Only `is_enabled` rows take part:
-    a ticket is first assigned to the lowest enabled level's staff, and on
-    breach hops to the next enabled level above it — disabled levels (e.g.
-    Driver, Operator) are skipped both as an entry point and as a hop target.
+    app/services/complaint_escalation.py). Which levels take part is decided
+    by the Staff Hierarchy itself (`StaffHierarchy.escalation_enabled`, per
+    ULB / RLB chain); these rows only give each level its time limit for the
+    SLA rule's category / sub-category.
     """
 
     unique_id = models.CharField(
@@ -29,10 +29,6 @@ class ComplaintSlaEscalationLevel(BaseMaster):
     sla_rule_id = models.CharField(db_index=True, max_length=30)
     level = models.PositiveIntegerField(
         help_text="Staff Hierarchy level this window applies to (matches StaffHierarchy.hierarchy_level).",
-    )
-    is_enabled = models.BooleanField(
-        default=True,
-        help_text="Whether this hierarchy level participates in escalation for this SLA rule.",
     )
     resolve_within_minutes = models.IntegerField(
         help_text="Minutes this level has to resolve the ticket before it escalates further.",

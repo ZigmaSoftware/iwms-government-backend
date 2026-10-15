@@ -17,7 +17,7 @@ from app.models.core_modules.complaint_management import (
 )
 from app.models.masters.district import District
 from app.models.superadmin.common_masters.state import State
-from app.services.complaint_audit import LOCAL_BODY_SOURCES, summarize_tickets, ticket_timeline
+from app.services.complaint_audit import LOCAL_BODY_SOURCES, summarize_tickets, ticket_photos, ticket_timeline
 from app.utils.pagination import LimitOffsetWithPage
 from app.viewsets.core_modules.complaint_management.ticket_viewset import (
     _area_type_q,
@@ -143,7 +143,11 @@ class ComplaintAuditViewSet(viewsets.ViewSet):
         ticket = self._scoped_base_queryset().filter(unique_id=unique_id).first()
         if ticket is None:
             raise Http404
-        return Response({**summarize_tickets([ticket])[0], **ticket_timeline(ticket)})
+        return Response({
+            **summarize_tickets([ticket])[0],
+            **ticket_timeline(ticket),
+            "photos": ticket_photos(ticket, request),
+        })
 
     @action(detail=False, methods=["get"], url_path="filter-options")
     def filter_options(self, request):

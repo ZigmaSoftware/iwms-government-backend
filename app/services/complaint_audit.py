@@ -4,8 +4,8 @@ Nothing here is stored — the audit is assembled on read from the ticket and
 the history tables the ticket workflow already writes:
 
   * ComplaintStatusHistory     every status change, with remarks (the
-                               resolution note is the remark on the change
-                               to RESOLVED)
+                               resolution note is the latest remark on a
+                               change to RESOLVED or CLOSED)
   * ComplaintReopenHistory     each reopen and its reason
   * ComplaintEscalationHistory each escalation (level, from/to whom, why,
                                auto or manual)
@@ -58,6 +58,9 @@ from app.services.complaint_escalation import CLOSED_STATUS_CODES
 from app.utils.common_audit import CommonAudit
 
 RESOLVED_CODE = "RESOLVED"
+CLOSED_CODE = "CLOSED"
+# status changes that complete a ticket: its resolution time and remarks
+COMPLETED_CODES = (RESOLVED_CODE, CLOSED_CODE)
 REOPENED_CODE = "REOPENED"
 ESCALATED_CODE = "ESCALATED"
 # A status-history row and the reopen/escalation/assignment row the same
@@ -204,7 +207,10 @@ def summarize_tickets(tickets):
     summaries = []
     for t in tickets:
         rows = status_rows.get(t.unique_id, [])
-        resolved = [r for r in rows if statuses.get(r.to_status_id, {}).get("code") == RESOLVED_CODE]
+        # A ticket is completed by a change to RESOLVED or straight to CLOSED
+        # (e.g. an approved citizen cleanup closes it without a RESOLVED step).
+        resolved = [r for r in rows if statuses.get(r.to_status_id, {}).get("code") in COMPLETED_CODES]
+        resolution_remarks = next((r.remarks.strip() for r in reversed(resolved) if (r.remarks or "").strip()), None)
         reopens = reopen_rows.get(t.unique_id, [])
         escalations = escalation_rows.get(t.unique_id, [])
         status = statuses.get(t.status_id, {})
@@ -251,7 +257,9 @@ def summarize_tickets(tickets):
             "first_resolution_seconds": _seconds(t.created, resolved[0].changed_at) if resolved else None,
             "total_resolution_seconds": _seconds(t.created, completed_at),
             "open_seconds": None if completed_at else _seconds(t.created, now),
-            "resolution_remarks": resolved[-1].remarks if resolved else None,
+            # the latest remark given when resolving or closing it (a resolve,
+            # a status change to Resolved/Closed, or a cleanup approval)
+            "resolution_remarks": resolution_remarks,
             "reopen_count": max(t.reopened_count or 0, len(reopens)),
             "last_reopen_reason": reopens[-1].reopen_reason if reopens else None,
             "escalation_count": len(escalations),
@@ -522,3 +530,40 @@ def _status_durations(ticket, rows, statuses):
         totals[key]["seconds"] += _seconds(row.changed_at, end) or 0
         totals[key]["times_entered"] += 1
     return [totals[key] for key in order]
+
+
+def ticket_photos(ticket, request=None):
+    """The ticket's attachments for the audit, oldest first, each tagged as a
+    complaint photo or a citizen's cleanup photo (with that cleanup's review
+    result and remarks)."""
+    from app.models.core_modules.complaint_management.cleanup_report import ComplaintCleanupReport
+    from app.models.core_modules.complaint_management.ticket_attachment import ComplaintAttachment
+    from app.services.complaint_cleanup import CLEANUP_PROOF
+
+    attachments = [
+        a for a in ComplaintAttachment.objects.filter(ticket_id=ticket.unique_id, is_deleted=False).order_by("created")
+        if a.file
+    ]
+    reviews = {
+        r.attachment_id: r
+        for r in ComplaintCleanupReport.objects.filter(
+            attachment_id__in=[a.unique_id for a in attachments], is_deleted=False,
+        )
+    }
+    photos = []
+    for a in attachments:
+        url = a.file.url
+        review = reviews.get(a.unique_id)
+        photos.append({
+            "unique_id": a.unique_id,
+            "kind": "cleanup" if a.file_type == CLEANUP_PROOF else "complaint",
+            "url": request.build_absolute_uri(url) if request else url,
+            "file_name": a.file_name,
+            "mime_type": a.mime_type,
+            "created": a.created,
+            "cleanup_status": review.status if review else None,
+            "cleanup_note": review.note if review else None,
+            "review_remarks": review.review_remarks if review else None,
+            "reviewed_at": review.reviewed_at if review else None,
+        })
+    return photos

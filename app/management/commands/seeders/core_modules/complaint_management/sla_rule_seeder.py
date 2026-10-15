@@ -19,10 +19,6 @@ class ComplaintSlaRuleSeeder(BaseSeeder):
     }
     DEFAULT_LEVEL_MINUTES = 1440
 
-    # Field roles don't own grievances: levels made up only of these are
-    # seeded disabled, so tickets start at the supervisor tier.
-    NON_ENTRY_ROLE_SUFFIXES = ("_driver", "_operator")
-
     def run(self):
         total = 0
         for category in ComplaintCategory.objects.filter(is_deleted=False):
@@ -49,7 +45,8 @@ class ComplaintSlaRuleSeeder(BaseSeeder):
 
     def _seed_escalation_levels(self):
         """Give every SLA rule that has no escalation levels yet one window
-        per Staff Hierarchy level. Rules already configured are left alone."""
+        per Staff Hierarchy escalation level. Rules already configured are
+        left alone."""
         seeded = 0
         for rule in ComplaintSlaRule.objects.filter(is_deleted=False):
             if rule.escalation_levels.exists():
@@ -66,9 +63,6 @@ class ComplaintSlaRuleSeeder(BaseSeeder):
                 ComplaintSlaEscalationLevel(
                     sla_rule_id=rule.unique_id,
                     level=option["level"],
-                    is_enabled=not all(
-                        role["name"].endswith(self.NON_ENTRY_ROLE_SUFFIXES) for role in option["roles"]
-                    ),
                     resolve_within_minutes=minutes,
                 )
                 for option in levels
