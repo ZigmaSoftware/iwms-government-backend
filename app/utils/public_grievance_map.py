@@ -249,7 +249,7 @@ def build_local_body(entry, obj, request=None):
     open_by_level = _by_level(tickets.exclude(status_id__in=closed))
 
     # pins: open complaints plus anything closed in the last 30 days
-    recent = now - timedelta(days=30)
+    recent = now - timedelta(days=PIN_RECENT_DAYS)
     pin_qs = (
         tickets.filter(is_sensitive=False, latitude__isnull=False, longitude__isnull=False)
         .filter(~Q(status_id__in=closed) | Q(updated__gte=recent))
@@ -324,6 +324,35 @@ def build_local_body(entry, obj, request=None):
 # ------------------------------------------------------------------
 # Anonymous actions on a pin
 # ------------------------------------------------------------------
+# how long a closed complaint stays pinned on the map
+PIN_RECENT_DAYS = 30
+
+
+def ticket_map_link(ticket):
+    """Where `ticket` sits on the public complaint map: {"district", "type",
+    "id", "ticket"} — `ticket` is None when it has no pin there (sensitive,
+    no coordinates, or closed more than PIN_RECENT_DAYS ago), so the link
+    opens its local body instead. None when it has no local body."""
+    for type_key, _category, _model, _name, column in LOCAL_BODY_TYPES:
+        body_id = getattr(ticket, column, None)
+        if body_id:
+            break
+    else:
+        return None
+    pinned = (
+        not ticket.is_sensitive
+        and ticket.latitude is not None
+        and ticket.longitude is not None
+        and (is_open(ticket) or ticket.updated >= timezone.now() - timedelta(days=PIN_RECENT_DAYS))
+    )
+    return {
+        "district": ticket.district_id,
+        "type": type_key,
+        "id": body_id,
+        "ticket": ticket.ticket_no if pinned else None,
+    }
+
+
 def find_public_ticket(ticket_no):
     """The ticket behind a map pin, or None — sensitive tickets are never on
     the map, so they can't be acted on from it either."""
