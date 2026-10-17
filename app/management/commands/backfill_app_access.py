@@ -54,7 +54,9 @@ def surface_for_role(role_name):
 
 
 def role_name_for(staff):
-    for attr in ("staffusertype_id", "governmentusertype_id", "contractorusertype_id"):
+    # The *_id columns are plain unique_id strings; these properties resolve
+    # them to the user-type rows (which carry `name`).
+    for attr in ("staffusertype", "governmentusertype", "contractorusertype"):
         name = getattr(getattr(staff, attr, None), "name", None)
         if name:
             return name
@@ -99,8 +101,6 @@ class Command(BaseCommand):
     def _backfill_staff(self, options, apply_changes):
         queryset = StaffcreationOfficeDetails.objects.filter(
             is_deleted=False
-        ).select_related(
-            "staffusertype_id", "governmentusertype_id", "contractorusertype_id"
         )
         if options["username"]:
             queryset = queryset.filter(username=options["username"])
