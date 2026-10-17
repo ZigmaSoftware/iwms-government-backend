@@ -10,11 +10,12 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 AREA_TYPE_CACHE_SCOPES = ("area_type_list", "area_type_detail")
 
 
-class AreaTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class AreaTypeViewSet(BulkUploadMixin, LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "area_type"
 
     serializer_class = AreaTypeSerializer

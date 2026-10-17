@@ -15,7 +15,10 @@ class ContinentSeeder(BaseSeeder):
 
     def run(self):
         for name in self.CONTINENTS:
-            Continent.objects.update_or_create(
+            # upsert (not update_or_create): `name` isn't unique, and a used DB
+            # can hold duplicate rows (soft-deleted + re-created).
+            self.upsert(
+                Continent,
                 name=name,
                 defaults={"is_active": True, "is_deleted": False},
             )

@@ -3,6 +3,7 @@ from django.contrib.auth.hashers import make_password
 
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.models.masters.district import District
+from app.utils import ref_cache
 
 
 class DistrictLeaderLoginSerializer(serializers.ModelSerializer):
@@ -11,11 +12,7 @@ class DistrictLeaderLoginSerializer(serializers.ModelSerializer):
     district_name = serializers.SerializerMethodField(read_only=True)
 
     def get_district_name(self, obj):
-        return (
-            District.objects.filter(unique_id=obj.district_id)
-            .values_list("name", flat=True)
-            .first()
-        )
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     password = serializers.CharField(
         required=False,

@@ -2,10 +2,10 @@ from decimal import Decimal
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
-from app.models.masters.district import District
 from app.models.masters.waste_masters.bins import Bins, BinType
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.masters.district import District
 
 # Secondary bin collection points accept all 9 segregated waste streams —
 # each ward's collection point gets a representative spread of 3 so every
@@ -29,23 +29,21 @@ CAPACITY_BY_TYPE = {BinType.SMALL: 120, BinType.MEDIUM: 240, BinType.LARGE: 660}
 class BinSeeder(BaseSeeder):
     """3 bins per ward-level collection point, cycling through all 9 waste
     types so every ward offers a representative spread and every waste
-    type is collected somewhere in each district. Ward FK set from the
+    type is collected somewhere in each district. Ward set from the
     collection point's own ward (Bins.save() copies the rest of the flat
     geo block from collection_point_id automatically, but not ward)."""
 
     name = "BinSeeder"
 
     def run(self):
-        # Collection_point.district_id is a plain unique_id CharField (no DB
-        # relation), so district__name is no longer a valid lookup —
-        # resolve the names to ids first, then filter on the id column.
-        district_ids = District.objects.filter(
-            name__in=DISTRICTS.keys()
-        ).values_list("unique_id", flat=True)
         cps = list(
             Collection_point.objects.filter(
                 is_deleted=False,
-                district_id__in=list(district_ids),
+                # district_id is a plain unique_id CharField (no relation to
+                # join through), so resolve the seeded districts' ids first.
+                district_id__in=District.objects.filter(
+                    name__in=DISTRICTS.keys()
+                ).values_list("unique_id", flat=True),
                 # Every ward-scoped collection point this seeder owns carries
                 # exactly one Ward (see CollectionPointSeeder). Excludes
                 # driver_user.py's own hand-picked demo collection points
@@ -53,10 +51,8 @@ class BinSeeder(BaseSeeder):
                 # single dedicated bin directly from driver_user.py, and
                 # should not also gain 3 generic segregated-waste bins once
                 # they exist in a later seed run.
-                wards__isnull=False,
             )
-            .distinct()
-            .prefetch_related("wards")
+            .exclude(ward_ids=[])
             .order_by("cp_name")
         )
         if not cps:
@@ -88,11 +84,11 @@ class BinSeeder(BaseSeeder):
 
                 bin_name = f"{waste_name.split(' ')[0]} Bin - {cp.cp_name}"
                 _, created = Bins.objects.update_or_create(
-                    collection_point_id=cp,
+                    collection_point_id=cp.unique_id,
                     bin_name=bin_name,
-                    wastetype_id=waste_type,
+                    wastetype_id=waste_type.unique_id,
                     defaults={
-                        "ward": ward,
+                        "ward_id": ward.unique_id if ward else None,
                         "bin_capacity": CAPACITY_BY_TYPE[bin_type],
                         "bin_type": bin_type,
                         "bin_image": f"bin_images/{bin_name.replace(' ', '_').lower()}.png",

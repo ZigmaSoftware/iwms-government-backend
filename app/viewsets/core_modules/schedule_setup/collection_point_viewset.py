@@ -6,7 +6,11 @@ from app.serializers.core_modules.schedule_setup.collection_point_serializer imp
 from rest_framework.response import Response
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.plain_ref import json_contains_any
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
+from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 # TripPlanSerializer embeds Collection_point details (cp_name, ward names,
 # bin names) via get_plan_collection_points, so a collection point write
@@ -19,22 +23,38 @@ COLLECTION_POINT_CACHE_SCOPES = (
 )
 
 
-class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class CollectionPointViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "collection_point"
     serializer_class = CollectionPointSerializer
     lookup_field = "unique_id"
 
     permission_resource = "CollectionPoint"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["cp_name"]
+    # The list's search box matches what the table shows: collection point
+    # name/id plus the resolved state, district, ULB/RLB and ward names.
+    # Geo/ward columns are plain unique_id (or JSON-list) columns with no DB
+    # join, so they use the `column=Model.field` (`[]` for JSON lists)
+    # syntax of PlainRefSearchFilter.
+    search_fields = [
+        "cp_name",
+        "unique_id",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+        "ward_ids[]=app.models.masters.ward.Ward.ward_name",
+    ]
     ordering_fields = ["cp_name", "collection_type", "is_active"]
 
     AUDIT_MODULE = "assets"
     AUDIT_ENDPOINT ="collection-point"
 
     def get_queryset(self):
-        queryset = Collection_point.objects.prefetch_related("wards").filter(is_deleted=False)
+        queryset = Collection_point.objects.filter(is_deleted=False)
 
         for field in (
             "country_id",
@@ -56,7 +76,7 @@ class CollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             or self.request.query_params.get("ward_id")
         )
         if ward_uid:
-            queryset = queryset.filter(wards__unique_id=ward_uid)
+            queryset = queryset.filter(json_contains_any("ward_ids", [ward_uid]))
 
         queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 

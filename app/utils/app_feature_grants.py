@@ -124,16 +124,16 @@ ADDED_SCHEDULE_OPERATION_SCREENS = [
 
 SCREEN_PERMISSIONS = {
     # ---- Supervisor ----
-    "supervisor.dashboard": ("schedule-operations", "daily-trip-assignments", "view"),
-    "supervisor.trips": ("schedule-operations", "daily-trip-assignments", "view"),
-    "supervisor.crew": ("schedule-setup", "staff-templates", "view"),
-    "supervisor.households": ("customers", "customercreations", "view"),
-    "supervisor.waste": ("schedule-operations", "wastecollections", "view"),
-    "supervisor.breakdowns": ("schedule-operations", "vehicle-breakdowns", "view"),
-    "supervisor.retrips": ("schedule-operations", "retrip-requests", "view"),
-    "supervisor.complaints": ("complaint-ticket", "tickets", "view"),
-    "supervisor.notifications": ("schedule-operations", "staff-notifications", "view"),
-    "supervisor.livemap": ("schedule-operations", "daily-trip-collection-points", "view"),
+    "supervisor.dashboard": ("daily-operations", "daily-trip-plan", "view"),
+    "supervisor.trips": ("daily-operations", "daily-trip-plan", "view"),
+    "supervisor.crew": ("schedule-setup", "staff-template", "view"),
+    "supervisor.households": ("customer-masters", "customer-creation", "view"),
+    "supervisor.waste": ("daily-operations", "household-collection-event", "view"),
+    "supervisor.breakdowns": ("daily-operations", "vehicle-breakdown", "view"),
+    "supervisor.retrips": ("daily-operations", "re-trip-requests", "view"),
+    "supervisor.complaints": ("complaint-management", "complaint-tickets", "view"),
+    "supervisor.notifications": ("daily-operations", "staff-notifications", "view"),
+    "supervisor.livemap": ("daily-operations", "daily-trip-tracking", "view"),
     "supervisor.vehicles": ("transport-masters", "vehicle-creation", "view"),
     # This codebase registers no attendance route group, so there is nothing
     # to authorize against — the tab is always available, exactly as it was
@@ -142,23 +142,23 @@ SCREEN_PERMISSIONS = {
     "supervisor.profile": None,
 
     # ---- Driver ----
-    "driver.trips": ("schedule-operations", "daily-trip-assignments", "view"),
+    "driver.trips": ("daily-operations", "daily-trip-plan", "view"),
     # This codebase's screen for the household-collection route.
-    "driver.households": ("schedule-operations", "householdcollection-events", "view"),
-    "driver.bins": ("schedule-operations", "secondary-bin-collection-events", "view"),
-    "driver.breakdowns": ("schedule-operations", "vehicle-breakdowns", "view"),
-    "driver.retrips": ("schedule-operations", "retrip-requests", "view"),
-    "driver.notifications": ("schedule-operations", "staff-notifications", "view"),
-    "driver.customers": ("customers", "customercreations", "view"),
+    "driver.households": ("daily-operations", "household-collection-event", "view"),
+    "driver.bins": ("daily-operations", "secondary-bin-collection-event", "view"),
+    "driver.breakdowns": ("daily-operations", "vehicle-breakdown", "view"),
+    "driver.retrips": ("daily-operations", "re-trip-requests", "view"),
+    "driver.notifications": ("daily-operations", "staff-notifications", "view"),
+    "driver.customers": ("customer-masters", "customer-creation", "view"),
     "driver.attendance": None,
     "driver.profile": None,
 
     # ---- Operator ----
-    "operator.trips": ("schedule-operations", "daily-trip-assignments", "view"),
-    "operator.households": ("schedule-operations", "householdcollection-events", "view"),
-    "operator.bins": ("schedule-operations", "secondary-bin-collection-events", "view"),
-    "operator.breakdowns": ("schedule-operations", "vehicle-breakdowns", "view"),
-    "operator.notifications": ("schedule-operations", "staff-notifications", "view"),
+    "operator.trips": ("daily-operations", "daily-trip-plan", "view"),
+    "operator.households": ("daily-operations", "household-collection-event", "view"),
+    "operator.bins": ("daily-operations", "secondary-bin-collection-event", "view"),
+    "operator.breakdowns": ("daily-operations", "vehicle-breakdown", "view"),
+    "operator.notifications": ("daily-operations", "staff-notifications", "view"),
     "operator.attendance": None,
     "operator.profile": None,
 
@@ -219,57 +219,79 @@ def visible_screens(permissions, surface, citizen_screens=None):
 
 ROLE_SCREEN_TEMPLATES = {
     "driver": {
-        "customers": {"customercreations": ["view"]},
-        "schedule-operations": {
-            "daily-trip-assignments": ["view", "edit"],
-            "daily-trip-collection-points": ["view", "edit"],
-            "householdcollection-events": ["view", "edit"],
-            "secondary-bin-collection-events": ["view", "add"],
-            "daily-trip-logs": ["view", "add", "edit"],
-            "vehicle-breakdowns": ["view", "add"],
-            "staff-notifications": ["view", "add", "edit"],
-            "retrip-requests": ["view"],
+        "customer-masters": {
+            "customer-creation": ["view"],
         },
-        "schedule-setup": {"collection-points": ["view"]},
-        "transport-masters": {"vehicle-creation": ["view"], "vehicle-type": ["view"]},
-    },
-    "operator": {
-        "customers": {"customercreations": ["view"]},
-        "schedule-operations": {
-            "daily-trip-assignments": ["view", "edit"],
-            "daily-trip-collection-points": ["view", "edit"],
-            "householdcollection-events": ["view", "edit"],
-            "secondary-bin-collection-events": ["view", "add"],
+        "daily-operations": {
+            # One grant for the trip and its collection-point / household
+            # stops (permission_catalog.DAILY_TRIP_PLAN_TABLES).
+            "daily-trip-plan": ["view", "edit"],
+            "household-collection-event": ["view", "edit"],
+            "secondary-bin-collection-event": ["view", "add"],
             "daily-trip-logs": ["view", "add", "edit"],
-            "vehicle-breakdowns": ["view", "add"],
+            "vehicle-breakdown": ["view", "add"],
             "staff-notifications": ["view", "add", "edit"],
-            "retrip-requests": ["view"],
-        },
-        "schedule-setup": {"collection-points": ["view"]},
-        "transport-masters": {"vehicle-creation": ["view"], "vehicle-type": ["view"]},
-    },
-    "supervisor": {
-        "schedule-operations": {
-            "daily-trip-assignments": ["view", "edit"],
-            "daily-trip-collection-points": ["view"],
-            "daily-trip-logs": ["view"],
-            "householdcollection-events": ["view"],
-            "secondary-bin-collection-events": ["view"],
-            "wastecollections": ["view"],
-            "vehicle-breakdowns": ["view", "edit"],
-            "staff-notifications": ["view", "add", "edit"],
-            "retrip-requests": ["view", "add"],
+            "re-trip-requests": ["view"],
         },
         "schedule-setup": {
-            "staff-templates": ["view", "add", "edit"],
-            "alternative-staff-templates": ["view", "add"],
-            "collection-points": ["view"],
+            "collection-point": ["view"],
+        },
+        "transport-masters": {
+            "vehicle-creation": ["view"],
+            "vehicle-type": ["view"],
+        },
+    },
+    "operator": {
+        "customer-masters": {
+            "customer-creation": ["view"],
+        },
+        "daily-operations": {
+            # One grant for the trip and its collection-point / household
+            # stops (permission_catalog.DAILY_TRIP_PLAN_TABLES).
+            "daily-trip-plan": ["view", "edit"],
+            "household-collection-event": ["view", "edit"],
+            "secondary-bin-collection-event": ["view", "add"],
+            "daily-trip-logs": ["view", "add", "edit"],
+            "vehicle-breakdown": ["view", "add"],
+            "staff-notifications": ["view", "add", "edit"],
+            "re-trip-requests": ["view"],
+        },
+        "schedule-setup": {
+            "collection-point": ["view"],
+        },
+        "transport-masters": {
+            "vehicle-creation": ["view"],
+            "vehicle-type": ["view"],
+        },
+    },
+    "supervisor": {
+        "daily-operations": {
+            # One grant for the trip and its collection-point / household
+            # stops (permission_catalog.DAILY_TRIP_PLAN_TABLES).
+            "daily-trip-plan": ["view", "edit"],
+            "daily-trip-logs": ["view"],
+            "household-collection-event": ["view"],
+            "secondary-bin-collection-event": ["view"],
+            "vehicle-breakdown": ["view", "edit"],
+            "staff-notifications": ["view", "add", "edit"],
+            "re-trip-requests": ["view", "add"],
+        },
+        "schedule-setup": {
+            "staff-template": ["view", "add", "edit"],
+            "alternative-staff-template": ["view", "add"],
+            "collection-point": ["view"],
             "trip-plans": ["view"],
         },
-        "customers": {"customercreations": ["view"]},
-        "transport-masters": {"vehicle-creation": ["view"]},
+        "customer-masters": {
+            "customer-creation": ["view"],
+        },
+        "transport-masters": {
+            "vehicle-creation": ["view"],
+        },
         # Every ticket action (resolve/escalate/assign/status) is a POST, which
         # HTTP_ACTION_MAP scores as "add", not "edit".
-        "complaint-ticket": {"tickets": ["view", "add", "edit"]},
+        "complaint-management": {
+            "complaint-tickets": ["view", "add", "edit"],
+        },
     },
 }

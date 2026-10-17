@@ -11,8 +11,8 @@ def generate_ward_id():
 class Ward(BaseMaster):
     """A ward sits under exactly one local body — Corporation/Municipality/
     TownPanchayat (ULB) or PanchayatUnion/Panchayat (RLB) — mirroring the same
-    flat-geo FK block used by TripPlan/StaffTemplate/CustomerCreation. Exactly
-    one of the five local-body FKs is populated per row; enforced in
+    flat-geo field block used by TripPlan/StaffTemplate/CustomerCreation. Exactly
+    one of the five local-body fields is populated per row; enforced in
     `WardSerializer.validate` via `normalize_flat_geo_attrs`, not at the DB
     level, matching that existing convention.
 
@@ -49,8 +49,6 @@ class Ward(BaseMaster):
 
     ward_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["ward_name"]
@@ -61,3 +59,36 @@ class Ward(BaseMaster):
 
     def __str__(self):
         return self.ward_name
+
+    @property
+    def bins(self):
+        """Bins in this ward (Bins.ward_id is a plain unique_id string);
+        replaces the reverse accessor CASCADE_SOFT_DELETE expects."""
+        from app.models.masters.waste_masters.bins import Bins
+
+        return Bins.objects.filter(ward_id=self.unique_id)
+
+    @property
+    def bin_collection_events(self):
+        """BinCollectionEvent rows in this ward (plain ward_id)."""
+        from app.models.core_modules.daily_operations.secondary_bin_collection_event import (
+            BinCollectionEvent,
+        )
+
+        return BinCollectionEvent.objects.filter(ward_id=self.unique_id)
+
+    @property
+    def waste_collections(self):
+        """WasteCollection rows in this ward (plain ward_id)."""
+        from app.models.core_modules.daily_operations.waste_collection import WasteCollection
+
+        return WasteCollection.objects.filter(ward_id=self.unique_id)
+
+    @property
+    def customers(self):
+        """CustomerCreation rows in this ward. CustomerCreation.ward_id is a
+        plain unique_id string (no DB relation), so this replaces the reverse
+        accessor that CASCADE_SOFT_DELETE above expects."""
+        from app.models.masters.customer_masters.customercreation import CustomerCreation
+
+        return CustomerCreation.objects.filter(ward_id=self.unique_id)

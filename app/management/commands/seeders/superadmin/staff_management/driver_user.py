@@ -6,6 +6,7 @@ from django.contrib.auth.hashers import make_password
 from django.db.models import Count, Q
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.management.commands.seeders.base import BaseSeeder
 from app.signals.trip_plan_signals import sync_daily_assignment_stops_from_plan
 from app.models.masters.waste_masters.bins import Bins
@@ -103,7 +104,7 @@ class DriverUserSeeder(BaseSeeder):
             return
         operator_role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.OPERATOR_ROLE,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
@@ -282,13 +283,13 @@ class DriverUserSeeder(BaseSeeder):
         )
 
         bin_cp_count = DailyTripCollectionPoint.objects.filter(
-            trip_assignment_id=bin_assignment, is_deleted=False
+            trip_assignment_id=ref_id(bin_assignment), is_deleted=False
         ).count()
         pm_bin_cp_count = DailyTripCollectionPoint.objects.filter(
-            trip_assignment_id=pm_bin_assignment, is_deleted=False
+            trip_assignment_id=ref_id(pm_bin_assignment), is_deleted=False
         ).count()
         hh_count = DailyTripHouseholdCollection.objects.filter(
-            trip_assignment_id=household_assignment, is_deleted=False
+            trip_assignment_id=ref_id(household_assignment), is_deleted=False
         ).count()
         self.log(
             f"---driver_user wired properly | template={template.display_code} "
@@ -323,8 +324,8 @@ class DriverUserSeeder(BaseSeeder):
             defaults={
                 "employee_name": name,
                 "password": make_password(password),
-                "user_type_id": user_type,
-                "governmentusertype_id": role,
+                "user_type_id": user_type.unique_id,
+                "governmentusertype_id": role.unique_id,
                 "is_active": True,
                 "is_deleted": False,
                 "is_superuser": False,
@@ -335,8 +336,8 @@ class DriverUserSeeder(BaseSeeder):
         if not created:
             staff.employee_name = name
             staff.password = make_password(password)
-            staff.user_type_id = user_type
-            staff.governmentusertype_id = role
+            staff.user_type_id = user_type.unique_id
+            staff.governmentusertype_id = role.unique_id
             staff.staffusertype_id = None
             staff.is_active = True
             staff.is_deleted = False
@@ -355,7 +356,7 @@ class DriverUserSeeder(BaseSeeder):
         present_address, permanent_address, contact_mobile, contact_email,
     ):
         StaffPersonalDetails.objects.update_or_create(
-            staff=staff,
+            staff_id=staff.staff_unique_id,
             defaults={
                 "staff_unique_id": staff.staff_unique_id,
                 "dob": dob,
@@ -405,17 +406,16 @@ class DriverUserSeeder(BaseSeeder):
 
     def _get_or_create_template(self, driver, operator, panchayat):
         template = StaffTemplate.objects.filter(
-            driver_id=driver, operator_id=operator, is_deleted=False
+            driver_id=driver.staff_unique_id, operator_id=operator.staff_unique_id, is_deleted=False
         ).first()
         if template is None:
             template = StaffTemplate.objects.create(
-                driver_id=driver,
-                operator_id=operator,
+                driver_id=driver.staff_unique_id,
+                operator_id=operator.staff_unique_id,
                 state_id=panchayat.state_id,
                 district_id=panchayat.district_id,
                 area_type_id=panchayat.area_type_id,
                 panchayat_id=panchayat.unique_id,
-                approval_status=StaffTemplate.ApprovalStatus.APPROVED,
                 status=StaffTemplate.Status.ACTIVE,
                 is_active=True,
                 is_deleted=False,
@@ -425,7 +425,6 @@ class DriverUserSeeder(BaseSeeder):
             template.district_id = panchayat.district_id
             template.area_type_id = panchayat.area_type_id
             template.panchayat_id = panchayat.unique_id
-            template.approval_status = StaffTemplate.ApprovalStatus.APPROVED
             template.status = StaffTemplate.Status.ACTIVE
             template.is_active = True
             template.is_deleted = False
@@ -466,7 +465,7 @@ class DriverUserSeeder(BaseSeeder):
                 fixed += 1
 
         # ...and templates that merely list a demo user in extra_operator_id
-        # (JSON list — not covered by the FK filter above).
+        # (JSON list — not covered by the driver/operator filter above).
         for tmpl in StaffTemplate.objects.exclude(pk=keep.pk):
             extras = tmpl.extra_operator_id or []
             if demo_ids & set(extras):
@@ -479,11 +478,11 @@ class DriverUserSeeder(BaseSeeder):
         """Remove the demo users from a single template (driver/operator FKs and
         the extra_operator_id list). Returns True if anything changed."""
         changed = False
-        if tmpl.driver_id_id in demo_ids:
-            tmpl.driver_id = fb_driver
+        if tmpl.driver_id in demo_ids:
+            tmpl.driver_id = ref_id(fb_driver)
             changed = True
-        if tmpl.operator_id_id in demo_ids:
-            tmpl.operator_id = fb_operator
+        if tmpl.operator_id in demo_ids:
+            tmpl.operator_id = ref_id(fb_operator)
             changed = True
         extras = tmpl.extra_operator_id or []
         kept = [e for e in extras if e not in demo_ids]
@@ -502,11 +501,11 @@ class DriverUserSeeder(BaseSeeder):
         flow validates)."""
         trip_waste_type_ids = {str(wt.unique_id) for wt in assignment.waste_types.all()}
         cps = DailyTripCollectionPoint.objects.filter(
-            trip_assignment_id=assignment, is_deleted=False
-        ).select_related("bin_id")
+            trip_assignment_id=ref_id(assignment), is_deleted=False
+        )
         for cp in cps:
-            if cp.bin_id_id and str(
-                getattr(cp.bin_id, "wastetype_id_id", None)
+            if cp.bin_id and str(
+                getattr(cp.bin, "wastetype_id", None)
             ) not in trip_waste_type_ids:
                 return False
         return True
@@ -546,7 +545,7 @@ class DriverUserSeeder(BaseSeeder):
         self.log("WARNING: driver_user resolution did not converge after 30 heals.")
 
     def _neutralize_foreign_assignment(self, assignment, demo_ids, fb_driver, fb_operator):
-        tmpl = assignment.staff_template_id
+        tmpl = assignment.staff_template
         changed = False
         if tmpl is not None and fb_driver is not None:
             changed = self._strip_demo_users(tmpl, demo_ids, fb_driver, fb_operator)
@@ -607,16 +606,17 @@ class DriverUserSeeder(BaseSeeder):
                     "latitude", "longitude", "is_active", "is_deleted", "updated_at"
                 ])
             if ward:
-                cp.wards.set([ward])
+                cp.ward_ids = [ward.unique_id]
+                cp.save(update_fields=["ward_ids"])
 
             bin_obj = Bins.objects.filter(
-                collection_point_id=cp, wastetype_id=wet_waste
+                collection_point_id=cp.unique_id, wastetype_id=wet_waste.unique_id
             ).first()
             if bin_obj is None:
                 bin_obj = Bins.objects.create(
-                    collection_point_id=cp,
-                    wastetype_id=wet_waste,
-                    ward=ward,
+                    collection_point_id=cp.unique_id,
+                    wastetype_id=wet_waste.unique_id,
+                    ward_id=ward.unique_id if ward else None,
                     bin_name=f"Wet Waste Bin{suffix} {seq} (driver_user)",
                     bin_capacity=120,
                     bin_type="large",
@@ -625,10 +625,10 @@ class DriverUserSeeder(BaseSeeder):
                     is_deleted=False,
                 )
             else:
-                bin_obj.ward = ward
+                bin_obj.ward_id = ward.unique_id if ward else None
                 bin_obj.is_active = True
                 bin_obj.is_deleted = False
-                bin_obj.save(update_fields=["ward", "is_active", "is_deleted", "updated_at"])
+                bin_obj.save(update_fields=["ward_id", "is_active", "is_deleted", "updated_at"])
             bins.append((cp, bin_obj))
         return bins
 
@@ -637,7 +637,7 @@ class DriverUserSeeder(BaseSeeder):
         (idempotent across re-runs); otherwise claim the first vehicle no
         other active TripPlan is currently using."""
         existing_vehicle_id = (
-            TripPlan.objects.filter(staff_template_id=template, is_deleted=False)
+            TripPlan.objects.filter(staff_template_id=template.unique_id, is_deleted=False)
             .exclude(vehicle_id__isnull=True)
             .values_list("vehicle_id", flat=True)
             .first()
@@ -649,7 +649,9 @@ class DriverUserSeeder(BaseSeeder):
 
         return (
             VehicleCreation.objects.filter(is_deleted=False)
-            .exclude(trip_plans__is_deleted=False)
+            .exclude(
+                unique_id__in=TripPlan.objects.filter(is_deleted=False).values("vehicle_id")
+            )
             .order_by("vehicle_no")
             .first()
         )
@@ -670,7 +672,7 @@ class DriverUserSeeder(BaseSeeder):
         # first instead of creating it.
         scheduled_time = scheduled_time or self.SCHEDULED_TIME
         plan, _ = TripPlan.objects.update_or_create(
-            staff_template_id=template,
+            staff_template_id=template.unique_id,
             collection_type=collection_type,
             panchayat_id=panchayat.unique_id,
             scheduled_time=scheduled_time,
@@ -679,7 +681,7 @@ class DriverUserSeeder(BaseSeeder):
                 "state_id": panchayat.state_id,
                 "district_id": panchayat.district_id,
                 "area_type_id": panchayat.area_type_id,
-                "vehicle_id": vehicle,
+                "vehicle_id": vehicle.unique_id,
                 "trip_trigger_weight_kg": 100,
                 "max_vehicle_capacity_kg": 5000,
                 "approval_status": TripPlan.ApprovalStatus.APPROVED,
@@ -690,9 +692,10 @@ class DriverUserSeeder(BaseSeeder):
                 "repeat_days": [0, 1, 2, 3, 4, 5, 6],
             },
         )
-        plan.waste_types.set(waste_types)
+        plan.waste_type_ids = [wt.unique_id for wt in waste_types]
         if ward:
-            plan.wards.set([ward])
+            plan.ward_ids = [ward.unique_id]
+        plan.save(update_fields=["waste_type_ids", "ward_ids"])
         return plan
 
     def _retire_stale_plans(self, template, keep):
@@ -703,13 +706,13 @@ class DriverUserSeeder(BaseSeeder):
         today = timezone.localdate()
         stale = (
             TripPlan.objects
-            .filter(staff_template_id=template, is_deleted=False)
+            .filter(staff_template_id=template.unique_id, is_deleted=False)
             .exclude(pk__in=keep)
         )
         retired = 0
         for plan in stale:
             DailyTripAssignment.objects.filter(
-                trip_plan_id=plan, trip_date=today, is_deleted=False
+                trip_plan_id=plan.unique_id, trip_date=today, is_deleted=False
             ).update(
                 status=DailyTripAssignment.STATUS_CANCELLED,
                 is_active=False,
@@ -738,12 +741,12 @@ class DriverUserSeeder(BaseSeeder):
         # colliding with the DB's uniq_sequence_per_trip_plan constraint.
         for seq, (cp, bin_obj) in enumerate(bins, start=1):
             TripPlanCollectionPoint.objects.update_or_create(
-                trip_plan_id=plan,
+                trip_plan_id=plan.unique_id,
                 collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
                 sequence=seq,
                 defaults={
-                    "collection_point_id": cp,
-                    "bin_id": bin_obj,
+                    "collection_point_id": cp.unique_id,
+                    "bin_id": bin_obj.unique_id,
                     "is_active": True,
                     "is_deleted": False,
                 },
@@ -752,7 +755,7 @@ class DriverUserSeeder(BaseSeeder):
         # from a run with a different NUM_COLLECTION_POINTS or duplicate
         # underlying collection points), so they don't pile up or collide.
         TripPlanCollectionPoint.objects.filter(
-            trip_plan_id=plan,
+            trip_plan_id=plan.unique_id,
             collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_BIN,
             sequence__gt=len(bins),
         ).update(is_active=False, is_deleted=True)
@@ -761,7 +764,7 @@ class DriverUserSeeder(BaseSeeder):
         # Area-scoped household stop (customer_id=None) — the assignment signal
         # fans it out to every active customer in the plan's panchayat.
         TripPlanCollectionPoint.objects.update_or_create(
-            trip_plan_id=plan,
+            trip_plan_id=plan.unique_id,
             collection_type=TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
             customer_id=None,
             defaults={
@@ -772,36 +775,44 @@ class DriverUserSeeder(BaseSeeder):
         )
 
     def _generate_assignment(self, plan, trip_date):
-        assignment, _ = DailyTripAssignment.objects.get_or_create(
-            trip_plan_id=plan,
-            trip_date=trip_date,
-            is_deleted=False,
-            defaults={
-                "staff_template_id": plan.staff_template_id,
-                "vehicle_id": plan.vehicle_id,
-                "state_id": plan.state_id,
-                "district_id": plan.district_id,
-                "area_type_id": plan.area_type_id,
-                "corporation_id": plan.corporation_id,
-                "municipality_id": plan.municipality_id,
-                "town_panchayat_id": plan.town_panchayat_id,
-                "panchayat_union_id": plan.panchayat_union_id,
-                "panchayat_id": plan.panchayat_id,
-                "scheduled_time": plan.scheduled_time,
-                "status": DailyTripAssignment.STATUS_SCHEDULED,
-                "approval_status": DailyTripAssignment.APPROVAL_APPROVED,
-            },
-        )
-        if not assignment.waste_types.exists():
-            assignment.waste_types.set(plan.waste_types.all())
+        # A plan can legitimately hold several trips on one date (a
+        # "proceed to next trip" creates another), so reuse the first one
+        # rather than get_or_create, which fails on a re-seed once there are
+        # more than one.
+        lookup = {
+            "trip_plan_id": plan.unique_id,
+            "trip_date": trip_date,
+            "is_deleted": False,
+        }
+        assignment = DailyTripAssignment.objects.filter(**lookup).order_by("pk").first()
+        if assignment is None:
+            assignment = DailyTripAssignment.objects.create(
+                **lookup,
+                staff_template_id=plan.staff_template_id,
+                vehicle_id=plan.vehicle_id,
+                state_id=plan.state_id,
+                district_id=plan.district_id,
+                area_type_id=plan.area_type_id,
+                corporation_id=plan.corporation_id,
+                municipality_id=plan.municipality_id,
+                town_panchayat_id=plan.town_panchayat_id,
+                panchayat_union_id=plan.panchayat_union_id,
+                panchayat_id=plan.panchayat_id,
+                scheduled_time=plan.scheduled_time,
+                status=DailyTripAssignment.STATUS_SCHEDULED,
+                approval_status=DailyTripAssignment.APPROVAL_APPROVED,
+            )
+        if not assignment.waste_type_ids:
+            assignment.waste_type_ids = list(plan.waste_type_ids or [])
+            assignment.save(update_fields=["waste_type_ids"])
         return assignment
 
     def _reset_bin_assignment(self, assignment):
         """Return the bin trip to a fresh, collectable demo state (idempotent)."""
-        BinCollectionEvent.objects.filter(trip_assignment_id=assignment).delete()
-        DailyTripLog.objects.filter(trip_assignment_id=assignment).delete()
+        BinCollectionEvent.objects.filter(trip_assignment_id=ref_id(assignment)).delete()
+        DailyTripLog.objects.filter(trip_assignment_id=ref_id(assignment)).delete()
         DailyTripCollectionPoint.objects.filter(
-            trip_assignment_id=assignment
+            trip_assignment_id=ref_id(assignment)
         ).update(
             status=DailyTripCollectionPoint.STATUS_PENDING,
             is_collected=False,
@@ -823,7 +834,7 @@ class DriverUserSeeder(BaseSeeder):
             ).values_list("collection_point_id", flat=True)
         )
         DailyTripCollectionPoint.objects.filter(
-            trip_assignment_id=assignment
+            trip_assignment_id=ref_id(assignment)
         ).exclude(collection_point_id__in=valid_cp_ids).delete()
         sync_daily_assignment_stops_from_plan(assignment)
 
@@ -837,9 +848,9 @@ class DriverUserSeeder(BaseSeeder):
         ])
 
     def _reset_household_assignment(self, assignment):
-        DailyTripLog.objects.filter(trip_assignment_id=assignment).delete()
+        DailyTripLog.objects.filter(trip_assignment_id=ref_id(assignment)).delete()
         DailyTripHouseholdCollection.objects.filter(
-            trip_assignment_id=assignment
+            trip_assignment_id=ref_id(assignment)
         ).update(
             status=DailyTripHouseholdCollection.STATUS_PENDING,
             is_collected=False,

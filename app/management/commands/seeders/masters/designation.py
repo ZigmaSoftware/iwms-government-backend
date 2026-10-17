@@ -33,7 +33,7 @@ class DesignationSeeder(BaseSeeder):
 
                 Designation.objects.update_or_create(
                     designation_name=desig_name,
-                    department_id=dept,
+                    department_id=dept.unique_id,
                     defaults={
                         "designation_group": desig_group,
                         "description": description,

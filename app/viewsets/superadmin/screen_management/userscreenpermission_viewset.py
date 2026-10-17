@@ -21,9 +21,12 @@ from app.serializers.superadmin.screen_management.userscreencolumnpermission_ser
 )
 
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.list_filters import ListParamFilter
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenPermissionViewSet(BulkUploadMixin, PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_screen_permission"
     serializer_class = UserScreenPermissionSerializer
     lookup_field = "unique_id"
@@ -34,7 +37,7 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     permission_resource = "userscreenpermissions"
 
     # Makes newest records appear first on page 1
-    filter_backends = [OrderingFilter]
+    filter_backends = [ListParamFilter, OrderingFilter]
     ordering_fields = ["created_at", "updated_at"]
     ordering = ["-updated_at", "-created_at"]
 
@@ -134,11 +137,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         payloads = self._normalize_permission_payloads(request.data)
         results = []
 
+        account = self._account_for_request_user()
+
         with transaction.atomic():
             for payload in payloads:
                 serializer = UserScreenPermissionMultiScreenSerializer(
                     data=payload,
-                    context={"update_only": update_only},
+                    context={"update_only": update_only, "updated_by": account},
                 )
                 serializer.is_valid(raise_exception=True)
                 results.append(serializer.save())
@@ -188,10 +193,12 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         payload["districtId"] = scope.get("district_id")
         payload["areaTypeId"] = scope.get("area_type_id")
 
+        account = self._account_for_request_user()
+
         with transaction.atomic():
             serializer = UserScreenPermissionMultiScreenSerializer(
                 data=payload,
-                context={"update_only": update_only},
+                context={"update_only": update_only, "updated_by": account},
             )
             serializer.is_valid(raise_exception=True)
             result = serializer.save()
@@ -214,18 +221,10 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # Queryset
     # ---------------------------------------------------------
     def get_queryset(self):
-        queryset = UserScreenPermission.objects.filter(is_deleted=False).select_related(
-            "usertype_id",
-            "staffusertype_id",
-            "contractorusertype_id",
-            "governmentusertype_id",
-            "mainscreen_id",
-            "userscreen_id",
-            "userscreenaction_id",
-        )
+        queryset = UserScreenPermission.objects.filter(is_deleted=False)
 
         request = getattr(self, "request", None)
-        if request is not None and getattr(self, "action", None) == "list":
+        if request is not None and getattr(self, "action", None) in ("list", "summary"):
             scope = self._local_body_from_request(request)
             if scope["local_body_type"] and scope["local_body_id"]:
                 # Super Admin's list shows the Local Body's own baseline
@@ -233,12 +232,106 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 # written by Staff Access Configuration) live in the same
                 # table but are a separate, independently-managed row set.
                 queryset = queryset.filter(**self._local_body_filter_kwargs(scope))
+            else:
+                # The list page's Location filter sends the flat
+                # ?corporation_id= / ?panchayat_id= ... params; this table
+                # stores the local body as (local_body_type, local_body_id),
+                # so match on the most specific one sent. state / district /
+                # area type are plain columns, handled by ListParamFilter.
+                for local_body_type in (
+                    "panchayat",
+                    "town_panchayat",
+                    "municipality",
+                    "corporation",
+                    "panchayat_union",
+                ):
+                    value = request.query_params.get(f"{local_body_type}_id")
+                    if value:
+                        queryset = queryset.filter(
+                            local_body_type=local_body_type,
+                            local_body_id=value,
+                        )
+                        break
 
         return queryset
 
     @swagger_auto_schema(responses={200: UserScreenPermissionSerializer(many=True)})
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    # Display-name column of each local body type's master.
+    LOCAL_BODY_NAME_MODELS = {
+        "corporation": ("app.models.masters.corporation.Corporation", "corporation_name"),
+        "municipality": ("app.models.masters.municipality.Municipality", "municipality_name"),
+        "town_panchayat": ("app.models.masters.town_panchayat.TownPanchayat", "town_panchayat_name"),
+        "panchayat_union": ("app.models.masters.panchayat_union.PanchayatUnion", "union_name"),
+        "panchayat": ("app.models.masters.panchayat.Panchayat", "panchayat_name"),
+    }
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        """One row per (local body, permission type) for the list screen —
+        which MainScreens it grants and the local body's name — instead of
+        every permission row (thousands) grouped in the browser. Same
+        filters and ordering as `list`; rows without a local body ("legacy")
+        stay one row per permission + MainScreen, as the screen showed them."""
+        import importlib
+
+        from app.models.superadmin.screen_management.mainscreen import MainScreen
+
+        rows = self.filter_queryset(self.get_queryset()).values_list(
+            "unique_id", "local_body_type", "local_body_id", "permission_type",
+            "mainscreen_id", "is_active",
+        )
+        groups = {}
+        for unique_id, lb_type, lb_id, permission_type, mainscreen_id, is_active in rows:
+            lb_type, lb_id = lb_type or "", lb_id or ""
+            permission_type = permission_type or "screen"
+            mainscreen_id = mainscreen_id or ""
+            legacy = not lb_type or not lb_id
+            key = (
+                f"legacy__{unique_id}__{mainscreen_id}" if legacy
+                else f"{lb_type}__{lb_id}__{permission_type}"
+            )
+            group = groups.get(key)
+            if group is None:
+                group = groups[key] = {
+                    "composite_key": key,
+                    "local_body_type": lb_type,
+                    "local_body_id": lb_id,
+                    "local_body_name": None,
+                    "mainscreen_ids": [],
+                    "mainscreen_names": [],
+                    "permission_type": permission_type,
+                    "is_active": is_active,
+                    "legacy": legacy,
+                }
+            if mainscreen_id and mainscreen_id not in group["mainscreen_ids"]:
+                group["mainscreen_ids"].append(mainscreen_id)
+
+        screen_names = dict(
+            MainScreen.objects.filter(
+                unique_id__in={i for g in groups.values() for i in g["mainscreen_ids"]}
+            ).values_list("unique_id", "mainscreen_name")
+        )
+        ids_by_type = defaultdict(set)
+        for group in groups.values():
+            if not group["legacy"]:
+                ids_by_type[group["local_body_type"]].add(group["local_body_id"])
+        local_body_names = {}
+        for lb_type, ids in ids_by_type.items():
+            if lb_type not in self.LOCAL_BODY_NAME_MODELS:
+                continue
+            model_path, name_field = self.LOCAL_BODY_NAME_MODELS[lb_type]
+            module_path, class_name = model_path.rsplit(".", 1)
+            model = getattr(importlib.import_module(module_path), class_name)
+            for unique_id, name in model.objects.filter(unique_id__in=ids).values_list("unique_id", name_field):
+                local_body_names[(lb_type, unique_id)] = name
+
+        for group in groups.values():
+            group["mainscreen_names"] = [screen_names.get(i) for i in group["mainscreen_ids"]]
+            group["local_body_name"] = local_body_names.get((group["local_body_type"], group["local_body_id"]))
+        return Response(list(groups.values()))
 
     @swagger_auto_schema(
         request_body=UserScreenPermissionMultiScreenSerializer,
@@ -329,23 +422,23 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # 🔥 OPTIMIZED QUERY (NO MODEL LOAD)
         perms = UserScreenPermission.objects.filter(
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
             is_deleted=False,
             **local_body_filters,
         ).values(
             "unique_id",
-            "userscreen_id_id",
-            "userscreenaction_id_id",
+            "userscreen_id",
+            "userscreenaction_id",
             "description",
         )
 
         column_perms = UserScreenColumnPermission.objects.filter(
-            userscreen_id__mainscreen_id_id=mainscreen_id,
+            userscreen_id__in=UserScreen.objects.filter(mainscreen_id=mainscreen_id).values("unique_id"),
             is_deleted=False,
             **column_local_body_filters,
         ).values(
-            "userscreen_id_id",
-            "column_id_id",
+            "userscreen_id",
+            "column_id",
             "field_permission_state",
         )
 
@@ -355,21 +448,21 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         description = ""
 
         for p in perms:
-            screen_map[p["userscreen_id_id"]]["actions"].append(p["userscreenaction_id_id"])
+            screen_map[p["userscreen_id"]]["actions"].append(p["userscreenaction_id"])
 
             if not description:
                 description = p["description"]
 
         # Build column permissions map
         for cp in column_perms:
-            column_map[cp["userscreen_id_id"]].append({
-                "column_id": cp["column_id_id"],
+            column_map[cp["userscreen_id"]].append({
+                "column_id": cp["column_id"],
                 "can_view": cp["field_permission_state"] != UserScreenColumnPermission.HIDDEN,
             })
 
         # 🔥 LIGHTWEIGHT QUERY
         screens_qs = UserScreen.objects.filter(
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
             is_deleted=False,
         ).values(
             "unique_id",
@@ -435,11 +528,13 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         local_body_filters = self._local_body_filter_kwargs(scope)
 
-        # Get ALL permissions for this Local Body (no mainscreen filter)
+        # Get ALL permissions for this Local Body (no mainscreen filter).
+        # Grants left on retired (soft-deleted) screens are not shown.
         qs = UserScreenPermission.objects.filter(
             is_deleted=False,
+            userscreen_id__in=UserScreen.objects.filter(is_deleted=False).values("unique_id"),
             **local_body_filters,
-        ).select_related("mainscreen_id")
+        )
 
         if not qs.exists():
             return Response(
@@ -456,8 +551,9 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         mainscreen_map = {}
 
         for perm in qs:
-            mainscreen_id = perm.mainscreen_id_id
-            mainscreen_name = perm.mainscreen_id.mainscreen_name if perm.mainscreen_id else "Unknown"
+            mainscreen_id = perm.mainscreen_id
+            mainscreen = perm.mainscreen
+            mainscreen_name = mainscreen.mainscreen_name if mainscreen else "Unknown"
 
             if mainscreen_id not in mainscreen_map:
                 mainscreen_map[mainscreen_id] = {
@@ -466,8 +562,8 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     "screens": {},
                 }
 
-            scr_id = perm.userscreen_id_id
-            act_id = perm.userscreenaction_id_id
+            scr_id = perm.userscreen_id
+            act_id = perm.userscreenaction_id
 
             if scr_id not in mainscreen_map[mainscreen_id]["screens"]:
                 mainscreen_map[mainscreen_id]["screens"][scr_id] = {
@@ -524,27 +620,50 @@ class UserScreenPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         column_local_body_filters = {k: v for k, v in local_body_filters.items() if k != "permission_type"}
 
         qs = UserScreenPermission.objects.filter(
-            mainscreen_id_id=mainscreen_id,
+            mainscreen_id=mainscreen_id,
             is_deleted=False,
             **local_body_filters,
         )
 
+        from django.utils import timezone
+
+        from app.utils.delete_reason import read_delete_reason
+
+        reason = read_delete_reason(request) or getattr(self, "_delete_reason", None)
+        account_fn = getattr(self, "_account_for_request_user", None)
+        account = account_fn() if callable(account_fn) else None
+        deleted_by = account.pk if account is not None else None
+        now = timezone.now()
         deleted_count = qs.count()
         if deleted_count > 0:
-            # Per-instance saves (not a queryset .update()) so post_save
-            # fires for each row and log_permission_change actually records
-            # this bulk soft-delete in PermissionAuditLog — a queryset
-            # .update() bypasses signals entirely and would leave these
-            # deletions un-audited.
+            # The User Access Audit row for this request comes from
+            # PermissionSnapshotAuditMixin (whole access before/after), not
+            # per-row signals. Per-instance saves are kept so any other
+            # post_save receivers still see each soft-delete.
+            # (deleted_at is auto-stamped by BaseMaster.save().)
             for permission in qs:
                 permission.is_deleted = True
                 permission.is_active = False
-                permission.save(update_fields=["is_deleted", "is_active", "updated_at"])
-            UserScreenColumnPermission.objects.filter(
-                userscreen_id__mainscreen_id_id=mainscreen_id,
+                update_fields = ["is_deleted", "is_active", "updated_at"]
+                if reason:
+                    permission.delete_reason = reason
+                    update_fields.append("delete_reason")
+                if deleted_by is not None:
+                    permission.deleted_by = deleted_by
+                    update_fields.append("deleted_by")
+                permission.save(update_fields=update_fields)
+            col_qs = UserScreenColumnPermission.objects.filter(
+                userscreen_id__in=UserScreen.objects.filter(mainscreen_id=mainscreen_id).values("unique_id"),
                 is_deleted=False,
                 **column_local_body_filters,
-            ).update(is_deleted=True, is_active=False)
+            )
+            # Bulk .update() bypasses save(), so stamp everything explicitly.
+            col_update = {"is_deleted": True, "is_active": False, "deleted_at": now, "updated_at": now}
+            if reason:
+                col_update["delete_reason"] = reason
+            if deleted_by is not None:
+                col_update["deleted_by"] = deleted_by
+            col_qs.update(**col_update)
 
         return Response(
             {

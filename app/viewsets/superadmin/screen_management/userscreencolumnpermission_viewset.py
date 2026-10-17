@@ -14,9 +14,10 @@ from app.serializers.superadmin.screen_management.userscreencolumnpermission_ser
     UserScreenColumnPermissionWriteSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
-class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserScreenColumnPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Dedicated CRUD API for UserScreenColumnPermission.
 
@@ -46,14 +47,11 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
     def get_queryset(self):
         qs = UserScreenColumnPermission.objects.filter(
             is_deleted=False,
-        ).select_related(
-            "userscreen_id",
-            "column_id",
         )
 
         userscreen_id = self.request.query_params.get("userscreen_id")
         if userscreen_id:
-            qs = qs.filter(userscreen_id_id=userscreen_id)
+            qs = qs.filter(userscreen_id=userscreen_id)
 
         local_body_type = (
             self.request.query_params.get("local_body_type")
@@ -102,8 +100,8 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
         serializer = UserScreenColumnPermissionSerializer(instance)
         return Response(
             {
-                "userscreen_id": str(instance.userscreen_id_id),
-                "userscreen_name": instance.userscreen_id.userscreen_name,
+                "userscreen_id": str(instance.userscreen_id),
+                "userscreen_name": getattr(instance.userscreen, "userscreen_name", None),
                 "column_permissions": [serializer.data],
             }
         )
@@ -120,7 +118,7 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
         write_ser.is_valid(raise_exception=True)
         vd = write_ser.validated_data
 
-        # Resolve FK objects
+        # Resolve related objects
         userscreen = UserScreen.objects.get(unique_id=vd["userscreen_id"])
         column = UserScreenColumn.objects.get(unique_id=vd["column_id"])
 
@@ -140,14 +138,14 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
                     "field_permission_state": vd.get("field_permission_state"),
                     "order_no": vd.get("order_no", 1),
                     "description": vd.get("description") or "",
-                    "created_by": account,
+                    "created_by": account.pk if account else None,
                 },
             )
 
             if not created:
                 instance.field_permission_state = vd.get("field_permission_state")
                 if hasattr(instance, "updated_by"):
-                    instance.updated_by = account
+                    instance.updated_by = account.pk if account else None
                 instance.save()
 
         instance.refresh_from_db()
@@ -189,7 +187,7 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
 
         account = None
         if hasattr(instance, "updated_by"):
-            instance.updated_by = account
+            instance.updated_by = account.pk if account else None
 
         instance.save()
 
@@ -203,7 +201,7 @@ class UserScreenColumnPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet
         read_ser = UserScreenColumnPermissionSerializer(instance)
         return Response(
             {
-                "userscreen_id": str(instance.userscreen_id_id),
+                "userscreen_id": str(instance.userscreen_id),
                 "column_permissions": [read_ser.data],
             }
         )

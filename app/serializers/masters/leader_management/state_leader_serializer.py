@@ -3,6 +3,7 @@ from django.contrib.auth.hashers import make_password
 
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.models.superadmin.common_masters.state import State
+from app.utils import ref_cache
 
 
 class StateLeaderLoginSerializer(serializers.ModelSerializer):
@@ -11,11 +12,7 @@ class StateLeaderLoginSerializer(serializers.ModelSerializer):
     state_name = serializers.SerializerMethodField(read_only=True)
 
     def get_state_name(self, obj):
-        return (
-            State.objects.filter(unique_id=obj.state_id)
-            .values_list("name", flat=True)
-            .first()
-        )
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     password = serializers.CharField(
         required=False,

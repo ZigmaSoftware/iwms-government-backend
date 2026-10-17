@@ -5,13 +5,15 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.utils.plain_ref import json_contains_any, ref_q
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.management.commands.generate_daily_trips import run_for_date
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.scheduler_config import SchedulerConfig
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.services import retrip_service
 from app.services.daily_trip_scheduler import (
-    notify_scheduler_config_changed,
     run_daily_trip_job,
     scheduler_status as get_scheduler_status,
 )
@@ -28,9 +30,10 @@ from app.utils.hierarchy import (
 from app.utils.pagination import LimitOffsetWithPage
 from app.utils.roles import can_manage_trips
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DailyTripAssignmentViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     CRUD + state-machine actions for daily trip assignments.
 
@@ -40,24 +43,34 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     throttle_scope = "daily_trip_assignment"
 
-    queryset = DailyTripAssignment.objects.select_related(
-        "trip_plan_id",
-        "trip_plan_id__vehicle_id",
-        "staff_template_id",
-        "staff_template_id__driver_id",
-        "staff_template_id__operator_id",
-        "alt_staff_template_id",
-        "alt_staff_template_id__driver_id",
-        "alt_staff_template_id__operator_id",
-        "vehicle_id",
-    ).prefetch_related("trip_plan_id__waste_types", "waste_types").filter(is_deleted=False)
+    queryset = DailyTripAssignment.objects.filter(is_deleted=False)
 
     serializer_class = DailyTripAssignmentSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripAssignment"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "vehicle_id__vehicle_no", "staff_template_id__driver_id__employee_name"]
+    search_fields = [
+        "unique_id",
+        "status",
+        "approval_status",
+        "vehicle_id=app.models.masters.transport_masters.vehicleCreation.VehicleCreation.vehicle_no",
+        "trip_plan_id=app.models.core_modules.schedule_setup.trip_plan.TripPlan.display_code",
+        "trip_plan_id=app.models.core_modules.schedule_setup.trip_plan.TripPlan.collection_type",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.display_code",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.driver_id"
+        "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.operator_id"
+        "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+        "ward_ids[]=app.models.masters.ward.Ward.ward_name",
+    ]
     ordering_fields = ["trip_date", "scheduled_time", "status", "approval_status"]
 
     AUDIT_MODULE = "trip-assignments"
@@ -114,9 +127,9 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(status=trip_status)
 
         if waste_type:
-            qs = qs.filter(waste_types__unique_id=waste_type).distinct()
+            qs = qs.filter(json_contains_any("waste_type_ids", [waste_type]))
         if ward_id:
-            qs = qs.filter(wards__unique_id=ward_id).distinct()
+            qs = qs.filter(json_contains_any("ward_ids", [ward_id]))
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
 
@@ -137,7 +150,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
             if not staff_uid:
                 return qs.none()
-            return qs.filter(trip_plan_id__supervisor_id=staff_uid)
+            return qs.filter(ref_q("trip_plan_id", TripPlan, supervisor_id=staff_uid))
 
         return filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
@@ -150,14 +163,12 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         supervisor app substitutes staff, starts/ends trips, and approves
         stops on assignments it owns via a single-object PATCH, with no
         listing step in between where a `mine` flag would even apply. A
-        supervisor whose broader geo scope doesn't happen to cover this one
-        trip (routinely true — a panchayat supervisor can be scoped to a
-        corporation, see daily_trip_assignment_serializer/supervisor seeder
-        notes) would otherwise get a 404 on every one of those actions
-        despite genuinely owning the trip. Fall back to trip-plan ownership
-        whenever the default (geo-scoped) queryset doesn't contain the
-        object; this only ever widens access to trips the requester was
-        explicitly assigned, never sideways to unrelated ones.
+        supervisor whose broader geo scope doesn't cover this one trip
+        would otherwise get a 404 on every one of those actions despite
+        genuinely owning the trip. Fall back to trip-plan ownership whenever
+        the default (geo-scoped) queryset doesn't contain the object; this
+        only ever widens access to trips the requester was explicitly
+        assigned, never sideways to unrelated ones.
         """
         queryset = self.filter_queryset(self.get_queryset())
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
@@ -168,8 +179,8 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
             if staff_uid:
                 obj = DailyTripAssignment.objects.filter(
+                    ref_q("trip_plan_id", TripPlan, supervisor_id=staff_uid),
                     is_deleted=False,
-                    trip_plan_id__supervisor_id=staff_uid,
                     **filter_kwargs,
                 ).first()
 
@@ -209,7 +220,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "status", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
 
@@ -421,7 +432,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 )
             config.is_enabled = parsed_enabled
         config.save()
-        notify_scheduler_config_changed()
         return Response(
             self._scheduler_config_payload(config),
             status=status.HTTP_200_OK,

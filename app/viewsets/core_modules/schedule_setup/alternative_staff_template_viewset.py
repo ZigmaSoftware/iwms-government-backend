@@ -1,12 +1,16 @@
-from rest_framework import filters, viewsets, status, serializers
-from rest_framework.response import Response
+from django.db.models import Q
+from rest_framework import filters, viewsets, serializers
 from rest_framework.exceptions import NotAuthenticated
+from rest_framework import status
+from rest_framework.response import Response
 
+from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.plain_ref import json_contains_any
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.core_modules.schedule_setup.alternative_staff_template import AlternativeStaffTemplate
-from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
-from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.serializers.core_modules.schedule_setup.alternative_staff_template_serializer import (
     AlternativeStaffTemplateSerializer
 )
@@ -18,6 +22,7 @@ from app.utils.hierarchy import (
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES = (
     "alternative_staff_template_list",
@@ -25,50 +30,81 @@ ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES = (
 )
 
 
-class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class AlternativeStaffTemplateViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     API Contract:
     - Create alternative staff mapping
-    - Approve / Reject mapping
-    - Filter by status, date, template
+    - Filter by date, template
     """
     throttle_scope = "alternative_staff_template"
 
-    # driver_id__corporation/operator_id__corporation (Staffcreation's own
-    # geo columns) are plain unique_id CharFields now — not select_related-able.
-    queryset = AlternativeStaffTemplate.objects.select_related(
-        "staff_template",
-        "driver_id",
-        "driver_id__designation_id",
-        "operator_id",
-        "operator_id__designation_id",
-    )
+    # staff_template / driver / operator are plain unique_ids
+    # now (no DB relation) — nothing to select_related.
+    queryset = AlternativeStaffTemplate.objects.all()
     serializer_class = AlternativeStaffTemplateSerializer
 
     #  CRITICAL: single source of truth for middleware
     permission_resource = "AlternativeStaffTemplate"
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "driver_id__employee_name", "operator_id__employee_name"]
-    ordering_fields = ["from_date", "to_date", "approval_status"]
+    # the list's search box matches what the table shows: template id,
+    # staff template, driver, operator, extra operators and the reason
+    search_fields = [
+        "unique_id",
+        "display_code",
+        "change_reason",
+        "change_remarks",
+        "staff_template_id",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.display_code",
+        "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "extra_operator_id[]=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+    ]
+    ordering_fields = ["from_date", "to_date"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "alternative-staff-templates"
+
+    def _apply_list_search(self, qs):
+        terms = PlainRefSearchFilter().get_search_terms(self.request)
+        if not terms:
+            return qs
+
+        for term in terms:
+            matching_template_ids = StaffTemplate.objects.filter(
+                Q(unique_id__icontains=term) | Q(display_code__icontains=term)
+            ).values("unique_id")
+
+            matching_staff_ids = StaffcreationOfficeDetails.objects.filter(
+                Q(staff_unique_id__icontains=term) | Q(employee_name__icontains=term),
+                is_deleted=False,
+            ).values_list("staff_unique_id", flat=True)
+
+            clause = (
+                Q(unique_id__icontains=term)
+                | Q(display_code__icontains=term)
+                | Q(staff_template_id__icontains=term)
+                | Q(staff_template_id__in=matching_template_ids)
+                | Q(change_reason__icontains=term)
+                | Q(change_remarks__icontains=term)
+                | Q(driver_id__in=matching_staff_ids)
+                | Q(operator_id__in=matching_staff_ids)
+                | json_contains_any("extra_operator_id", matching_staff_ids)
+            )
+            qs = qs.filter(clause)
+
+        return qs
 
     def get_queryset(self):
         qs = super().get_queryset()
 
         staff_template = self.request.query_params.get("staff_template")
-        approval_status = self.request.query_params.get("approval_status")
         from_date = self.request.query_params.get("from_date")
         to_date = self.request.query_params.get("to_date")
 
         if staff_template:
             qs = qs.filter(staff_template_id=staff_template)
-
-        if approval_status:
-            qs = qs.filter(approval_status=approval_status)
 
         if from_date:
             qs = qs.filter(from_date__gte=from_date)
@@ -78,19 +114,9 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+        qs = self._apply_list_search(qs)
 
-        # state/district/area_type/corporation/municipality/town_panchayat/
-        # panchayat_union/panchayat are plain unique_id CharFields now (no DB
-        # relation) — not select_related-able.
-        return qs.select_related(
-            "staff_template",
-            "driver_id",
-            "driver_id__designation_id",
-            "operator_id",
-            "operator_id__designation_id",
-            # "requested_by",
-            "approved_by",
-        )
+        return qs
 
     @cache_api("alternative_staff_template_list", vary_on_user=True)
     def list(self, request, *args, **kwargs):
@@ -99,41 +125,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     @cache_api("alternative_staff_template_detail", vary_on_user=True)
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
-
-    # --------------------------------------------------
-    # ✅ USER RESOLUTION (NO SUPERADMIN CREATION)
-    # --------------------------------------------------
-
-    def _resolve_request_user(self):
-        from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
-
-        # 1. Try JWT payload (BEST METHOD)
-        payload = getattr(self.request, "jwt_payload", None)
-        if isinstance(payload, dict):
-            unique_id = payload.get("unique_id")
-            if unique_id:
-                staff = StaffcreationOfficeDetails.objects.filter(
-                    staff_unique_id=unique_id
-                ).first()
-                if staff:
-                    return staff
-
-        # 2. Fallback → username match
-        user = getattr(self.request, "user", None)
-
-        if user and not getattr(user, "is_anonymous", False):
-            # Try to map logged-in user to staff
-            staff = Staffcreation.objects.filter(username=user.username).first()
-            return staff  # may be None (allowed)
-
-        # JWT fallback
-        payload = getattr(self.request, "jwt_payload", None)
-        unique_id = payload.get("unique_id") if isinstance(payload, dict) else None
-
-        if unique_id:
-            return Staffcreation.objects.filter(staff_unique_id=unique_id).first()
-
-        return None
 
     def _matching_substitution(self, data):
         """An identical substitution that already covers the requested dates.
@@ -171,10 +162,11 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         candidates = AlternativeStaffTemplate.objects.filter(
             staff_template_id=staff_template,
-            driver_id_id=driver,
-            operator_id_id=operator,
+            driver_id=driver,
+            operator_id=operator,
             from_date__lte=from_date,
             to_date__gte=to_date,
+            is_deleted=False,
         )
         for row in candidates:
             existing_extra = {
@@ -196,10 +188,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        user = self._resolve_request_user()
-
         instance = serializer.save(
-            approval_status="PENDING",
             # requested_by=user,  # can be None if allowed in model
         )
 
@@ -212,21 +201,12 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=new_data
         )
 
-        self._log_audit(
-            user=user,
-            action=StaffTemplateAuditLog.Action.CREATE,
-            entity_id=instance.unique_id,
-            remarks=instance.change_remarks,
-        )
-
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
 
     def perform_update(self, serializer):
 
         if not self.request.user.is_authenticated:
             raise NotAuthenticated("Authentication required")
-
-        staff_user = self._resolve_request_user()
 
         previous_data = self._serialize_instance(serializer.instance)
 
@@ -241,26 +221,19 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=new_data
         )
 
-        if staff_user:
-            self._log_audit(
-                user=staff_user,
-                action=StaffTemplateAuditLog.Action.MODIFY,
-                entity_id=instance.unique_id,
-                remarks=instance.change_remarks,
-            )
-
         if (
-            previous_data.get("approval_status") != "APPROVED"
-            and new_data.get("approval_status") == "APPROVED"
+            previous_data.get("driver_id") != new_data.get("driver_id")
+            or previous_data.get("operator_id") != new_data.get("operator_id")
+            or previous_data.get("staff_template_id") != new_data.get("staff_template_id")
         ):
-            for staff in (instance.driver_id, instance.operator_id):
+            for staff in (instance.driver, instance.operator):
                 notify_staff(
                     staff,
                     StaffNotification.TYPE_TEAM_SUBSTITUTED,
                     title="You've been added to a team",
                     body=(
                         f"You've been substituted onto team "
-                        f"{instance.staff_template.display_code}"
+                        f"{getattr(instance.staff_template, 'display_code', instance.staff_template_id)}"
                         + (
                             f" from {instance.from_date} to {instance.to_date}."
                             if instance.from_date and instance.to_date
@@ -275,38 +248,6 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
 
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-
-        if instance.approval_status == "APPROVED":
-            return Response(
-                {"detail": "Approved records cannot be modified."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return super().update(request, *args, **kwargs)
-
     def perform_destroy(self, instance):
         super().perform_destroy(instance)
         invalidate_on_commit(*ALTERNATIVE_STAFF_TEMPLATE_CACHE_SCOPES)
-
-    def _resolve_performed_role(self, user):
-        role = getattr(getattr(user, "staffusertype_id", None), "name", "") or ""
-        role = role.lower()
-        if role == "admin":
-            return StaffTemplateAuditLog.PerformedRole.ADMIN
-        if role == "supervisor":
-            return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
-        return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
-
-    def _log_audit(self, user, action, entity_id, remarks=None):
-        if not user:
-            return
-        StaffTemplateAuditLog.objects.create(
-            entity_type=StaffTemplateAuditLog.EntityType.ALT_STAFF_TEMPLATE,
-            entity_id=str(entity_id),
-            action=action,
-            performed_by=user,
-            performed_role=self._resolve_performed_role(user),
-            change_remarks=remarks if isinstance(remarks, str) else None,
-        )

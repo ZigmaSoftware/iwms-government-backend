@@ -28,9 +28,75 @@ An entry in settings.API_THROTTLE_RATES may be either:
     A method not listed uses "default". A dict without "default" and
     without an entry for the current method disables throttling for that
     method (matches ScopedRateThrottle's own "no scope -> allow" rule).
+
+Every limit is counted per PERSON, never shared across people. A logged-in
+request is keyed by the user's pk. A request without a token (login, OTP,
+forgot/reset password, token refresh, attendance kiosk, public grievance)
+is keyed by whoever the request body/query names (username, email, emp_id,
+phone, ...) — so N different people logging in from one office IP each get
+their own 5/minute, instead of all N sharing one IP-wide 5/minute. Only a
+request naming nobody falls back to the client IP.
 """
 
-from rest_framework.throttling import ScopedRateThrottle
+import hashlib
+
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
+
+# Request fields (body first, then query string) that identify the person
+# behind an unauthenticated request, in priority order. Values are hashed
+# into the cache key, so tokens/emails never sit in Redis key names.
+PERSON_IDENT_FIELDS = (
+    "username",
+    "email",
+    "emp_id",
+    "staff_id_id",
+    "phone",
+    "wa_phone",
+    "device_id",
+    "session_token",
+    "reset_token",
+    "refresh",
+)
+
+
+def _request_value(request, field):
+    for source in ("data", "query_params"):
+        try:
+            values = getattr(request, source)
+            value = values.get(field) if hasattr(values, "get") else None
+        except Exception:
+            # Unparseable body: let the view report the parse error; the
+            # throttle just falls back to the next source / the IP.
+            continue
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    return None
+
+
+def person_ident(throttle, request):
+    """Stable per-person identity for a throttle cache key."""
+    if request.user and request.user.is_authenticated:
+        return f"user:{request.user.pk}"
+
+    for field in PERSON_IDENT_FIELDS:
+        value = _request_value(request, field)
+        if value:
+            digest = hashlib.sha256(value.encode()).hexdigest()[:32]
+            return f"{field}:{digest}"
+
+    return f"ip:{throttle.get_ident(request)}"
+
+
+class PersonAnonRateThrottle(AnonRateThrottle):
+    """AnonRateThrottle keyed per person (see person_ident) instead of per IP."""
+
+    def get_cache_key(self, request, view):
+        if request.user and request.user.is_authenticated:
+            return None  # UserRateThrottle covers logged-in requests.
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": person_ident(self, request),
+        }
 
 
 class MethodScopedRateThrottle(ScopedRateThrottle):
@@ -59,16 +125,12 @@ class MethodScopedRateThrottle(ScopedRateThrottle):
         return super(ScopedRateThrottle, self).allow_request(request, view)
 
     def get_cache_key(self, request, view):
-        if request.user and request.user.is_authenticated:
-            ident = request.user.pk
-        else:
-            ident = self.get_ident(request)
-
         # Method folded into the scope portion of the key so GET/POST/PUT/
-        # PATCH/DELETE each get their own independent counter, e.g.:
-        #   throttle_customer_creation_GET_10.0.0.5
-        #   throttle_customer_creation_POST_10.0.0.5
+        # PATCH/DELETE each get their own independent counter, and the
+        # person (not the IP) as the ident, e.g.:
+        #   throttle_customer_creation_GET_user:STF-0001
+        #   throttle_platform_login_POST_username:<sha256 prefix>
         return self.cache_format % {
             "scope": f"{self.scope}_{request.method}",
-            "ident": ident,
+            "ident": person_ident(self, request),
         }

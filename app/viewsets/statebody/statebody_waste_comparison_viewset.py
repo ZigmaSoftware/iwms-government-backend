@@ -11,8 +11,9 @@ DailyWasteComparisonViewSet (app/viewsets/schedule_masters/), but:
     type, since a state-wide comparison is most meaningful per-district.
 
 Query params (both endpoints):
-  source  bin (default) | household | all
-  sort    weight (default) | trips
+  source       bin (default) | household | all
+  sort         weight (default) | trips
+  district_id  optional — narrow to one district of the leader's state
 
 Monthly-only:
   month   YYYY-MM — optional; omitted returns every month on record (a true
@@ -33,6 +34,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from app.models.masters.district import District
+from app.models.superadmin.common_masters.state import State
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignments
@@ -40,7 +42,7 @@ from app.utils.waste_type_breakdown import bulk_waste_type_rows_for_trip_assignm
 
 def _district_names_by_id(district_ids):
     """DailyTripLog.district_id is a plain unique_id CharField, not a
-    ForeignKey (see docs/geo_hierarchy_fk_removal.md) — there is no
+    relation field (see docs/geo_hierarchy_fk_removal.md) — there is no
     "district__name" to join across, so names are looked up explicitly in
     one query for every district id actually present in the result set."""
     ids = {d for d in district_ids if d}
@@ -96,10 +98,7 @@ class _StateWasteComparisonBase(ViewSet):
         return None
 
     def _base_queryset(self, state_uid):
-        # district_id is a plain unique_id CharField now (no DB relation —
-        # see _district_names_by_id above), so there is nothing to
-        # select_related; it was left over from before that refactor.
-        return DailyTripLog.objects.prefetch_related("waste_types").filter(
+        return DailyTripLog.objects.filter(
             is_deleted=False,
             state_id=state_uid,
             log_status__in=[
@@ -113,14 +112,14 @@ class _StateWasteComparisonBase(ViewSet):
         collection records (a trip can legitimately span multiple waste
         types) — grouped by trip_assignment_id__daily_trip_log__<field> for
         each field in extra_group_by, joined back onto qs's own rows."""
-        trip_assignment_ids = list(qs.values_list("trip_assignment_id_id", flat=True).distinct())
+        trip_assignment_ids = list(qs.values_list("trip_assignment_id", flat=True).distinct())
         wt_rows = bulk_waste_type_rows_for_trip_assignments(
             trip_assignment_ids, source=source, extra_group_by=extra_group_by,
         )
-        info_fields = ["trip_assignment_id_id", *extra_group_by]
+        info_fields = ["trip_assignment_id", *extra_group_by]
         info_by_assignment = {}
         for r in qs.values(*info_fields):
-            info_by_assignment.setdefault(r["trip_assignment_id_id"], []).append(r)
+            info_by_assignment.setdefault(r["trip_assignment_id"], []).append(r)
         return wt_rows, info_by_assignment
 
     def _district_comparison(self, rows, weight_key):
@@ -214,9 +213,16 @@ class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
         state = self._get_state(request)
         if not state:
             return Response({"detail": "State not found for this leader."}, status=403)
-        state_uid = state.unique_id
+        # leader.state_id is a plain unique_id string since the FK removal
+        state_uid = state
 
         qs = self._base_queryset(state_uid)
+        # optional single-district scope (the dashboard map's picked district);
+        # qs is already limited to the leader's own state, so a district id
+        # from another state simply matches nothing
+        district_param = request.query_params.get("district_id")
+        if district_param:
+            qs = qs.filter(district_id=district_param)
 
         month_param = request.query_params.get("month")
         if month_param:
@@ -328,7 +334,7 @@ class StateMonthlyWasteComparisonViewSet(_StateWasteComparisonBase):
 
         return Response({
             "state_id": state_uid,
-            "state_name": getattr(state, "name", "") or "",
+            "state_name": getattr(State.objects.filter(unique_id=state_uid).first(), "name", "") or "",
             "source": source,
             "results": rows,
             "monthly_trends": trends_list,
@@ -345,9 +351,16 @@ class StateDailyWasteComparisonViewSet(_StateWasteComparisonBase):
         state = self._get_state(request)
         if not state:
             return Response({"detail": "State not found for this leader."}, status=403)
-        state_uid = state.unique_id
+        # leader.state_id is a plain unique_id string since the FK removal
+        state_uid = state
 
         qs = self._base_queryset(state_uid)
+        # optional single-district scope (the dashboard map's picked district);
+        # qs is already limited to the leader's own state, so a district id
+        # from another state simply matches nothing
+        district_param = request.query_params.get("district_id")
+        if district_param:
+            qs = qs.filter(district_id=district_param)
 
         date_param = request.query_params.get("date")
         month_param = request.query_params.get("month")
@@ -458,7 +471,7 @@ class StateDailyWasteComparisonViewSet(_StateWasteComparisonBase):
 
         return Response({
             "state_id": state_uid,
-            "state_name": getattr(state, "name", "") or "",
+            "state_name": getattr(State.objects.filter(unique_id=state_uid).first(), "name", "") or "",
             "source": source,
             "results": rows[:300],
             "date_trends": trends_list,

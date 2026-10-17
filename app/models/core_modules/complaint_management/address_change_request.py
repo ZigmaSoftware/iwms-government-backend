@@ -1,9 +1,7 @@
-from django.conf import settings
 from django.db import models
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
-from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.core_modules.complaint_management.ticket import ComplaintTicket
+from app.utils import ref_cache
 
 
 def generate_address_change_id():
@@ -44,16 +42,8 @@ class ComplaintAddressChangeRequest(BaseMaster):
         editable=False,
     )
 
-    ticket = models.OneToOneField(
-        ComplaintTicket,
-        on_delete=models.CASCADE,
-        related_name="address_change_request",
-    )
-    customer = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.PROTECT,
-        related_name="address_change_requests",
-    )
+    ticket_id = models.CharField(max_length=30, unique=True)
+    customer_id = models.CharField(db_index=True, max_length=30)
 
     change_type = models.CharField(
         max_length=40,
@@ -104,23 +94,11 @@ class ComplaintAddressChangeRequest(BaseMaster):
         choices=VerificationStatus.choices,
         default=VerificationStatus.PENDING,
     )
-    verified_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_address_verified",
-    )
+    verified_by_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     verification_remarks = models.TextField(null=True, blank=True)
 
-    approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="complaint_address_approved",
-    )
+    approved_by_id = models.CharField(db_index=True, max_length=100, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(null=True, blank=True)
 
@@ -134,3 +112,38 @@ class ComplaintAddressChangeRequest(BaseMaster):
 
     def __str__(self):
         return f"AddrChange {self.ticket_id}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def ticket(self):
+        return self._lookup(
+            "app.models.core_modules.complaint_management.ticket.ComplaintTicket",
+            self.ticket_id,
+        )
+
+    @property
+    def customer(self):
+        return self._lookup(
+            "app.models.masters.customer_masters.customercreation.CustomerCreation",
+            self.customer_id,
+        )
+
+    @property
+    def verified_by(self):
+        return self._lookup(
+            "app.models.superadmin_masters.auth_user.User", self.verified_by_id
+        )
+
+    @property
+    def approved_by(self):
+        return self._lookup(
+            "app.models.superadmin_masters.auth_user.User", self.approved_by_id
+        )

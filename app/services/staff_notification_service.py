@@ -19,7 +19,7 @@ def notify_staff(staff, notification_type, title, body, data=None):
         return None
 
     notification = StaffNotification.objects.create(
-        recipient_staff=staff,
+        recipient_staff_id=staff.staff_unique_id,
         notification_type=notification_type,
         title=title,
         message=body,

@@ -56,6 +56,7 @@ from ..viewsets.superadmin.role_management.usertype_viewset import UserTypeViewS
 from ..viewsets.superadmin.role_management.staffusertype_viewset import StaffUserTypeViewSet
 from ..viewsets.superadmin.role_management.contractorusertype_viewset import ContractorUserTypeViewSet
 from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
+from ..viewsets.superadmin.role_management.staffhierarchy_viewset import StaffHierarchyViewSet
 
 # User creations
 from ..viewsets.superadmin.staff_management.staff_viewset import StaffViewSet
@@ -91,7 +92,6 @@ from ..viewsets.core_modules.complaint_management.master_viewsets import (
     ComplaintLanguageViewSet,
     ComplaintPriorityViewSet,
     ComplaintStatusViewSet,
-    ComplaintTeamViewSet,
     ComplaintModuleViewSet,
     ComplaintCategoryViewSet,
     ComplaintSubcategoryViewSet,
@@ -109,6 +109,7 @@ from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintReopenHistoryViewSet,
 )
 from ..viewsets.core_modules.complaint_management.notification_viewset import ComplaintNotificationViewSet
+from ..viewsets.reports.complaint_reports.complaints_report_viewset import ComplaintsReportViewSet
 from ..viewsets.core_modules.notifications.staff_notification_viewset import StaffNotificationViewSet
 
 # Transport masters
@@ -136,22 +137,30 @@ from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import Dail
 from ..viewsets.superadmin.audits.login_audit_viewset import LoginAuditViewSet
 from ..viewsets.superadmin.audits.common_audit_viewset import CommonAuditViewSet
 from ..viewsets.superadmin.audits.permission_audit_viewset import PermissionAuditLogViewSet
-from ..viewsets.superadmin.audits.staff_change_request_viewset import StaffChangeRequestViewSet
-from ..viewsets.superadmin.audits.staff_audit_viewset import StaffAuditViewSet
+from ..viewsets.superadmin.audits.complaint_audit_viewset import ComplaintAuditViewSet
+from ..viewsets.superadmin.audits.audit_dashboard_viewset import AuditDashboardViewSet
 
 # Localbody
 from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardViewSet
 
 # Districtbody
 from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyDashboardViewSet
+from ..viewsets.districtbody.districtbody_map_viewset import (
+    DistrictBodyDailyComparisonViewSet,
+    DistrictBodyMapViewSet,
+    DistrictBodyMonthlyComparisonViewSet,
+    DistrictBodySummaryViewSet,
+)
 
 # Statebody
 from ..viewsets.statebody.statebody_dashboard_viewset import StateBodyDashboardViewSet
+from ..viewsets.statebody.statebody_map_viewset import StateBodyMapViewSet, StateBodySummaryViewSet
 from ..viewsets.statebody.statebody_waste_comparison_viewset import (
     StateMonthlyWasteComparisonViewSet,
     StateDailyWasteComparisonViewSet,
 )
 from ..viewsets.dashboard_summary_viewset import DashboardSummaryViewSet
+from ..viewsets.admin_overview_viewset import AdminOverviewViewSet
 
 # Operator mobile
 from ..viewsets.operator_mobile.my_trip_today_viewset import (
@@ -167,6 +176,7 @@ from ..viewsets.operator_mobile.trip_lifecycle_viewset import TripLifecycleViewS
 from ..viewsets.waste_collection_bluetooth.waste_bluetooth_viewset import WasteCollectionBluetoothViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_sub_viewset import WasteCollectionSubViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_main_viewset import WasteCollectionMainViewSet
+from ..viewsets.core_modules.background_job_viewset import BackgroundJobStatusView, ExcelExportView
 
 router = GroupedRouter()
 
@@ -235,6 +245,7 @@ router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeV
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet, basename="contractorusertype-roletype")
 router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet)
 router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet, basename="governmentusertype-roletype")
+router.register_group("role-assigns", "staff-hierarchy",     StaffHierarchyViewSet)
 
 # ============================================================
 # GROUP: USER CREATION
@@ -280,13 +291,13 @@ router.register_group("complaint-ticket", "priorities", ComplaintPriorityViewSet
 router.register_group("complaint-ticket", "statuses", ComplaintStatusViewSet)
 router.register_group("complaint-ticket", "sources", ComplaintSourceViewSet)
 router.register_group("complaint-ticket", "languages", ComplaintLanguageViewSet)
-router.register_group("complaint-ticket", "teams", ComplaintTeamViewSet)
 router.register_group("complaint-ticket", "sla-rules", ComplaintSlaRuleViewSet)
 router.register_group("complaint-ticket", "routing-rules", ComplaintRoutingRuleViewSet)
 router.register_group("complaint-ticket", "feedback", ComplaintFeedbackViewSet)
 router.register_group("complaint-ticket", "reopen-history", ComplaintReopenHistoryViewSet)
 router.register_group("complaint-ticket", "notifications", ComplaintNotificationViewSet, basename="complaint-notifications")
 router.register_group("complaint-ticket", "address-change", ComplaintAddressChangeViewSet)
+router.register_group("complaint-ticket", "complaints-report", ComplaintsReportViewSet, basename="complaints-report")
 
 # ============================================================
 # GROUP: CITIZEN (mobile app, auth-only — no module permission check)
@@ -356,9 +367,9 @@ router.register_group("reports", "daily-waste-comparisons", DailyWasteComparison
 # ============================================================
 router.register_group("audits", "login-audit", LoginAuditViewSet)
 router.register_group("audits", "common-audit", CommonAuditViewSet)
-router.register_group("audits", "staff-audit", StaffAuditViewSet)
 router.register_group("audits", "permission-audit", PermissionAuditLogViewSet)
-router.register_group("audits", "staff-change-requests", StaffChangeRequestViewSet)
+router.register_group("audits", "complaint-audit", ComplaintAuditViewSet, basename="complaint-audit")
+router.register_group("audits", "audit-dashboard", AuditDashboardViewSet, basename="audit-dashboard")
 
 # ============================================================
 # GROUP: LOCALBODY (panchayat leader portal — auth-only, no module permission check)
@@ -369,11 +380,17 @@ router.register_group("localbody", "dashboard", LocalBodyDashboardViewSet, basen
 # GROUP: DISTRICTBODY (district leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("districtbody", "dashboard", DistrictBodyDashboardViewSet, basename="districtbody-dashboard")
+router.register_group("districtbody", "map", DistrictBodyMapViewSet, basename="districtbody-map")
+router.register_group("districtbody", "summary", DistrictBodySummaryViewSet, basename="districtbody-summary")
+router.register_group("districtbody", "monthly-waste-comparison", DistrictBodyMonthlyComparisonViewSet, basename="districtbody-monthly-waste-comparison")
+router.register_group("districtbody", "daily-waste-comparison", DistrictBodyDailyComparisonViewSet, basename="districtbody-daily-waste-comparison")
 
 # ============================================================
 # GROUP: STATEBODY (state leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("statebody", "dashboard", StateBodyDashboardViewSet, basename="statebody-dashboard")
+router.register_group("statebody", "map", StateBodyMapViewSet, basename="statebody-map")
+router.register_group("statebody", "summary", StateBodySummaryViewSet, basename="statebody-summary")
 router.register_group("statebody", "monthly-waste-comparison", StateMonthlyWasteComparisonViewSet, basename="statebody-monthly-waste-comparison")
 router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComparisonViewSet, basename="statebody-daily-waste-comparison")
 
@@ -381,6 +398,7 @@ router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComp
 # GROUP: DASHBOARD (operations dashboard aggregates)
 # ============================================================
 router.register_group("dashboard", "summary", DashboardSummaryViewSet, basename="dashboard-summary")
+router.register_group("dashboard", "admin-overview", AdminOverviewViewSet, basename="dashboard-admin-overview")
 
 # ============================================================
 # GROUP: OPERATOR MOBILE
@@ -451,6 +469,10 @@ router.register_group(
 # URLS
 # ============================================================
 urlpatterns = [
+    # Bulk upload status (Celery jobs) and one-request Excel export
+    path("jobs/<str:job_id>/", BackgroundJobStatusView.as_view(), name="jobs-status"),
+    path("exports/excel/", ExcelExportView.as_view(), name="exports-excel"),
+
     # Password reset flow (public — no authentication required)
     path("auth/forgot-password/", ForgotPasswordView.as_view(), name="auth-forgot-password"),
     path("auth/verify-otp/", VerifyOTPView.as_view(), name="auth-verify-otp"),

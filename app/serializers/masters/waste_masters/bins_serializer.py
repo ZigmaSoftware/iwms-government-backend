@@ -11,8 +11,10 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.validators.unique_name_validator import unique_name_validator
-from app.serializers.superadmin.staff_management.user_serializer import UniqueIdOrPkField
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.utils.hierarchy import validate_wards_for_flat_geo
+from app.utils import ref_cache
 
 class BinsSerializer(serializers.ModelSerializer):
 
@@ -41,42 +43,64 @@ class BinsSerializer(serializers.ModelSerializer):
     panchayat_name = serializers.SerializerMethodField()
 
     def get_country_name(self, obj):
-        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Country, obj.country_id, "unique_id"), "name", None)
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
-    ward_id = UniqueIdOrPkField(
-        source="ward",
-        slug_field="unique_id",
-        queryset=Ward.objects.filter(is_deleted=False),
-        required=True,
-        allow_null=False,
-    )
-    ward_name = serializers.CharField(source="ward.ward_name", read_only=True)
-    wastetype_name = serializers.CharField(source="wastetype_id.waste_type_name", read_only = True)
-    collection_point_name = serializers.CharField(source="collection_point_id.cp_name", read_only = True)
+    # Ward / WasteType / Collection_point are plain unique_id strings (no DB
+    # relation); existence is checked in the validate_* methods below.
+    ward_id = serializers.CharField(required=True, allow_null=False)
+    ward_name = serializers.SerializerMethodField()
+    wastetype_id = serializers.CharField()
+    wastetype_name = serializers.SerializerMethodField()
+    collection_point_id = serializers.CharField()
+    collection_point_name = serializers.SerializerMethodField()
+
+    def get_ward_name(self, obj):
+        return getattr(obj.ward, "ward_name", None)
+
+    def get_wastetype_name(self, obj):
+        return getattr(obj.wastetype, "waste_type_name", None)
+
+    def get_collection_point_name(self, obj):
+        return getattr(obj.collection_point, "cp_name", None)
+
+    def validate_ward_id(self, value):
+        if not Ward.objects.filter(unique_id=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f'Invalid ward "{value}".')
+        return value
+
+    def validate_wastetype_id(self, value):
+        if not WasteType.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
+
+    def validate_collection_point_id(self, value):
+        if not Collection_point.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
 
     class Meta:
         model = Bins
@@ -143,11 +167,17 @@ class BinsSerializer(serializers.ModelSerializer):
 
 
     def validate(self, attrs):
-        collection_point = attrs.get(
+        collection_point_uid = attrs.get(
             "collection_point_id",
             getattr(self.instance, "collection_point_id", None),
         )
-        ward = attrs.get("ward", getattr(self.instance, "ward", None))
+        collection_point = (
+            Collection_point.objects.filter(unique_id=collection_point_uid).first()
+            if collection_point_uid
+            else None
+        )
+        ward_uid = attrs.get("ward_id", getattr(self.instance, "ward_id", None))
+        ward = Ward.objects.filter(unique_id=ward_uid).first() if ward_uid else None
         if not ward:
             if not self.instance or not self.partial:
                 raise serializers.ValidationError({"ward_id": "Ward is required."})

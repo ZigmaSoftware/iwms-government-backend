@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db.models import Sum
+from app.utils.plain_ref import ref_id
 
 HOUSEHOLD_WASTE_TYPE_NAMES = {
     "wet_waste": "Wet Waste",
@@ -20,45 +21,66 @@ def waste_type_breakdown_for_assignment(assignment):
     combining secondary/bin collection events (each carries its own waste
     type + weight) and household collections (wet/dry/mixed columns, mapped
     to WasteType master names)."""
+    # WasteCollection / BinCollectionEvent trip_assignment_id are plain
+    # unique_id strings (no DB relation) — normalize an instance to its id.
+    assignment_id = getattr(assignment, "unique_id", assignment)
+    return waste_type_breakdown_for_assignments([assignment_id]).get(assignment_id, [])
+
+
+def waste_type_breakdown_for_assignments(assignment_ids):
+    """`waste_type_breakdown_for_assignment` for many assignments in a fixed
+    number of queries — for list pages. Returns {assignment_id: breakdown}."""
     from app.models.masters.waste_masters.wastetype import WasteType
     from app.models.core_modules.daily_operations.waste_collection import WasteCollection
     from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 
-    totals = {}
+    assignment_ids = {getattr(a, "unique_id", a) for a in assignment_ids if a}
+    if not assignment_ids:
+        return {}
+    totals = {assignment_id: {} for assignment_id in assignment_ids}
 
-    bin_rows = (
-        BinCollectionEvent.objects.filter(trip_assignment_id=assignment, is_deleted=False)
-        .values("waste_type_id", "waste_type_id__waste_type_name")
+    bin_rows = list(
+        BinCollectionEvent.objects.filter(trip_assignment_id__in=assignment_ids, is_deleted=False)
+        .values("trip_assignment_id", "waste_type_id")
         .annotate(total_weight=Sum("collected_weight_kg"))
     )
+    type_names = dict(
+        WasteType.objects.filter(
+            unique_id__in={row["waste_type_id"] for row in bin_rows}
+        ).values_list("unique_id", "waste_type_name")
+    )
     for row in bin_rows:
-        name = row["waste_type_id__waste_type_name"]
+        name = type_names.get(row["waste_type_id"])
         if not name or not row["total_weight"]:
             continue
-        totals[name] = totals.get(name, Decimal("0")) + row["total_weight"]
+        trip_totals = totals.setdefault(row["trip_assignment_id"], {})
+        trip_totals[name] = trip_totals.get(name, Decimal("0")) + row["total_weight"]
 
-    household_rows = WasteCollection.objects.filter(
-        trip_assignment_id=assignment, is_deleted=False
-    ).aggregate(
-        wet_waste=Sum("wet_waste"),
-        dry_waste=Sum("dry_waste"),
-        mixed_waste=Sum("mixed_waste"),
-        sanitary_waste=Sum("sanitary_waste"),
+    household_rows = (
+        WasteCollection.objects.filter(trip_assignment_id__in=assignment_ids, is_deleted=False)
+        .values("trip_assignment_id")
+        .annotate(
+            wet_waste=Sum("wet_waste"),
+            dry_waste=Sum("dry_waste"),
+            mixed_waste=Sum("mixed_waste"),
+            sanitary_waste=Sum("sanitary_waste"),
+        )
     )
-    waste_type_names = set(
-        WasteType.objects.filter(is_deleted=False).values_list("waste_type_name", flat=True)
-    )
-    for column, label in HOUSEHOLD_WASTE_TYPE_NAMES.items():
-        value = household_rows.get(column)
-        if not value:
-            continue
-        name = label if label in waste_type_names else label
-        totals[name] = totals.get(name, Decimal("0")) + Decimal(str(value))
+    for row in household_rows:
+        trip_totals = totals.setdefault(row["trip_assignment_id"], {})
+        for column, label in HOUSEHOLD_WASTE_TYPE_NAMES.items():
+            value = row.get(column)
+            if not value:
+                continue
+            trip_totals[label] = trip_totals.get(label, Decimal("0")) + Decimal(str(value))
 
-    return [
-        {"waste_type_name": name, "collected_weight_kg": totals[name]}
-        for name in totals
-    ]
+    return {
+        assignment_id: [
+            {"waste_type_name": name, "collected_weight_kg": weight}
+            for name, weight in trip_totals.items()
+        ]
+        for assignment_id, trip_totals in totals.items()
+    }
 
 
 def _household_name_to_waste_type(waste_type_by_name):
@@ -121,7 +143,7 @@ def bulk_waste_type_rows_for_trip_assignments(
     from app.models.core_modules.daily_operations.waste_collection import WasteCollection
     from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 
-    trip_assignment_ids = list(trip_assignment_ids)
+    trip_assignment_ids = [getattr(x, "unique_id", x) for x in trip_assignment_ids]
     rows_by_key = {}
     bin_detail_keys = set()
     household_detail_keys = set()
@@ -146,22 +168,35 @@ def bulk_waste_type_rows_for_trip_assignments(
         return []
 
     if source in ("bin", "all"):
-        bin_group_fields = [
-            "trip_assignment_id",
-            *(f"trip_assignment_id__daily_trip_log__{f}" for f in extra_group_by),
-            "waste_type_id",
-            "waste_type_id__waste_type_name",
-        ]
-        bin_rows = (
+        # BinCollectionEvent's trip_assignment_id / waste_type_id are plain
+        # unique_ids (no joins) — group by them, then resolve the report's
+        # extra DailyTripLog columns and the waste type names in bulk.
+        from app.models.core_modules.daily_operations.daily_trip_log import (
+            DailyTripLog as _BinDTL,
+        )
+        from app.models.masters.waste_masters.wastetype import WasteType as _BinWasteType
+
+        bin_log_extra = {
+            row["trip_assignment_id"]: row
+            for row in _BinDTL.objects.filter(
+                trip_assignment_id__in=trip_assignment_ids, is_deleted=False
+            ).values("trip_assignment_id", *extra_group_by)
+        } if extra_group_by else {}
+        bin_rows = list(
             BinCollectionEvent.objects.filter(
                 trip_assignment_id__in=trip_assignment_ids, is_deleted=False
             )
-            .values(*bin_group_fields)
+            .values("trip_assignment_id", "waste_type_id")
             .annotate(total_weight=Sum("collected_weight_kg"))
+        )
+        bin_type_names = dict(
+            _BinWasteType.objects.filter(
+                unique_id__in={row["waste_type_id"] for row in bin_rows}
+            ).values_list("unique_id", "waste_type_name")
         )
         for row in bin_rows:
             extra_values = tuple(
-                row[f"trip_assignment_id__daily_trip_log__{f}"] for f in extra_group_by
+                bin_log_extra.get(row["trip_assignment_id"], {}).get(f) for f in extra_group_by
             )
             key_tuple = (row["trip_assignment_id"],) + extra_values
             if row["total_weight"]:
@@ -170,15 +205,26 @@ def bulk_waste_type_rows_for_trip_assignments(
                 key_tuple,
                 extra_values,
                 row["waste_type_id"],
-                row["waste_type_id__waste_type_name"] or row["waste_type_id"],
+                bin_type_names.get(row["waste_type_id"]) or row["waste_type_id"],
                 row["total_weight"],
             )
 
     if source in ("household", "all"):
-        household_group_fields = [
-            "trip_assignment_id",
-            *(f"trip_assignment_id__daily_trip_log__{f}" for f in extra_group_by),
-        ]
+        # WasteCollection.trip_assignment_id is a plain string (no join to
+        # DailyTripLog possible) — group by it alone, then resolve the
+        # report's extra columns from the DailyTripLog rows fetched below.
+        from app.models.core_modules.daily_operations.daily_trip_log import (
+            DailyTripLog as _DTL,
+        )
+
+        _log_extra_map = {
+            row["trip_assignment_id"]: row
+            for row in _DTL.objects.filter(
+                trip_assignment_id__in=trip_assignment_ids,
+                is_deleted=False,
+            ).values("trip_assignment_id", *extra_group_by)
+        }
+        household_group_fields = ["trip_assignment_id"]
         household_rows = (
             WasteCollection.objects.filter(
                 trip_assignment_id__in=trip_assignment_ids, is_deleted=False
@@ -198,7 +244,8 @@ def bulk_waste_type_rows_for_trip_assignments(
 
         for row in household_rows:
             extra_values = tuple(
-                row[f"trip_assignment_id__daily_trip_log__{f}"] for f in extra_group_by
+                _log_extra_map.get(row["trip_assignment_id"], {}).get(f)
+                for f in extra_group_by
             )
             key_tuple = (row["trip_assignment_id"],) + extra_values
             has_household_detail = False
@@ -224,34 +271,54 @@ def bulk_waste_type_rows_for_trip_assignments(
     )
     from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 
-    assignments = (
+    # Resolved in bulk (3 queries total). `assignment.waste_types` /
+    # `trip_plan.waste_types` are per-row QuerySet properties since the M2M
+    # removal, so looping over them cost 2 queries per trip — ~17k queries
+    # (25 s) for one month of a state's trips.
+    from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+
+    assignments = list(
         DailyTripAssignment.objects.filter(
             unique_id__in=trip_assignment_ids,
             is_deleted=False,
-        )
-        .select_related("trip_plan_id")
-        .prefetch_related(
-            "waste_types",
-            "household_waste_type_ids",
-            "trip_plan_id__waste_types",
-        )
+        ).values("unique_id", "trip_plan_id", "waste_type_ids", "household_waste_type_ids")
     )
+    plan_type_ids = dict(
+        TripPlan.objects.filter(
+            unique_id__in={a["trip_plan_id"] for a in assignments if not a["waste_type_ids"] and a["trip_plan_id"]}
+        ).values_list("unique_id", "waste_type_ids")
+    )
+    all_type_ids = set()
+    for a in assignments:
+        all_type_ids.update(a["waste_type_ids"] or [])
+        all_type_ids.update(a["household_waste_type_ids"] or [])
+    for ids in plan_type_ids.values():
+        all_type_ids.update(ids or [])
+    # default model ordering, exactly as the per-row `.filter(unique_id__in=…)`
+    # QuerySets returned them (the order decides who gets the split remainder)
+    ordered_types = list(WasteType.objects.filter(unique_id__in=all_type_ids))
+    type_by_id = {wt.unique_id: wt for wt in ordered_types}
+    type_rank = {wt.unique_id: i for i, wt in enumerate(ordered_types)}
+
+    def _resolve(ids):
+        return [type_by_id[i] for i in sorted({i for i in (ids or []) if i in type_by_id}, key=type_rank.__getitem__)]
+
     configured_types = {}
-    for assignment in assignments:
-        standard = list(assignment.waste_types.all())
-        if not standard and assignment.trip_plan_id:
-            standard = list(assignment.trip_plan_id.waste_types.all())
-        household = list(assignment.household_waste_type_ids.all()) or standard
-        configured_types[assignment.unique_id] = {
+    for a in assignments:
+        standard = _resolve(a["waste_type_ids"])
+        if not standard and a["trip_plan_id"]:
+            standard = _resolve(plan_type_ids.get(a["trip_plan_id"]))
+        household = _resolve(a["household_waste_type_ids"]) or standard
+        configured_types[a["unique_id"]] = {
             "bin": standard,
             "household": household,
         }
 
     log_rows = DailyTripLog.objects.filter(
-        trip_assignment_id_id__in=trip_assignment_ids,
+        trip_assignment_id__in=trip_assignment_ids,
         is_deleted=False,
     ).values(
-        "trip_assignment_id_id",
+        "trip_assignment_id",
         *extra_group_by,
         "collected_weight_kg",
         "household_collected_weight_kg",
@@ -275,7 +342,7 @@ def bulk_waste_type_rows_for_trip_assignments(
             )
 
     for log_row in log_rows:
-        assignment_id = log_row["trip_assignment_id_id"]
+        assignment_id = log_row["trip_assignment_id"]
         extra_values = tuple(log_row[field] for field in extra_group_by)
         key_tuple = (assignment_id,) + extra_values
         types = configured_types.get(assignment_id, {})

@@ -114,29 +114,27 @@ def local_bodies_for_district(district_name):
 
     district_uid = District.objects.filter(name=district_name).values_list("unique_id", flat=True).first()
 
-    municipality = Municipality.objects.filter(district_id=district_uid, is_deleted=False).first()
-    if municipality:
-        result.append({
-            "parent_type": "municipality", "parent": municipality,
-            "ward_count": WARDS_PER_LOCAL_BODY["municipality"],
-        })
-
-    town_panchayat = TownPanchayat.objects.filter(district_id=district_uid, is_deleted=False).first()
-    if town_panchayat:
-        result.append({
-            "parent_type": "town_panchayat", "parent": town_panchayat,
-            "ward_count": WARDS_PER_LOCAL_BODY["town_panchayat"],
-        })
-
-    panchayat_union = PanchayatUnion.objects.filter(district_id=district_uid, is_deleted=False).first()
-    if panchayat_union:
-        result.append({
-            "parent_type": "panchayat_union", "parent": panchayat_union,
-            "ward_count": WARDS_PER_LOCAL_BODY["panchayat_union"],
-        })
+    # Every district holds dozens of these (seeders/tn_local_bodies.py), so
+    # the demo one is picked by name — never by .first() over a name-ordered
+    # table, which would silently move the demo data when bodies are added.
+    for parent_type, model, name_field, demo_name in (
+        ("municipality", Municipality, "municipality_name", geo["municipality_name"]),
+        ("town_panchayat", TownPanchayat, "town_panchayat_name", geo["town_panchayat_name"]),
+        ("panchayat_union", PanchayatUnion, "union_name", geo["panchayat_union_name"]),
+    ):
+        parent = model.objects.filter(
+            district_id=district_uid, is_deleted=False, **{name_field: demo_name}
+        ).order_by("pk").first()
+        if parent:
+            result.append({
+                "parent_type": parent_type, "parent": parent,
+                "ward_count": WARDS_PER_LOCAL_BODY[parent_type],
+            })
 
     for panchayat_name, _lat, _lon, _pincode in geo["panchayats"]:
-        panchayat = Panchayat.objects.filter(panchayat_name=panchayat_name, is_deleted=False).first()
+        panchayat = Panchayat.objects.filter(
+            district_id=district_uid, panchayat_name=panchayat_name, is_deleted=False
+        ).order_by("pk").first()
         if panchayat:
             result.append({
                 "parent_type": "panchayat", "parent": panchayat,
@@ -149,20 +147,18 @@ def local_bodies_for_district(district_name):
 def geo_defaults_for_local_body(parent_type, parent, include_country=False, as_strings=False):
     """Flat-geo {field: value} dict pointing a model at this exact local
     body (state/district/area_type inherited from the local body itself,
-    plus the local body's own FK set, every other local-body FK cleared).
+    plus the local body's own field set, every other local-body field cleared).
     Pass include_country=True for models (VehicleCreation, Collection_point,
     Bins) that also carry a `country_id` field alongside the usual block.
     Pass as_strings=True for models whose OWN state/district/area_type/
     local-body columns are plain CharFields literally named "<field>_id"
     (Ward, CustomerCreation, VehicleCreation, Collection_point, Bins, ...)
-    rather than live FKs — the dict then holds "<field>_id" keys mapped to
-    plain unique_id strings, matching those models' fields. TripPlan/
-    StaffTemplate are still FK-based and must keep calling without
-    as_strings."""
+    rather than live related objects — the dict then holds "<field>_id" keys
+    mapped to plain unique_id strings, matching those models' fields."""
     values = {field: None for field in FLAT_GEO_FIELDS}
     # Every local-body model (Corporation, Municipality, TownPanchayat,
     # PanchayatUnion, Panchayat) now stores state_id/district_id/area_type_id
-    # as plain unique_id strings rather than FKs, so they're all resolved
+    # as plain unique_id strings rather than related objects, so they're all resolved
     # back into real instances uniformly here.
     parent_state = State.objects.filter(unique_id=parent.state_id).first()
     parent_district = District.objects.filter(unique_id=parent.district_id).first()

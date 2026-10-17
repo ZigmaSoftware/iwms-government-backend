@@ -44,8 +44,6 @@ class PanchayatUnion(BaseMaster):
     area_type_id = models.CharField(max_length=30)
     union_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["union_name"]
@@ -58,7 +56,7 @@ class PanchayatUnion(BaseMaster):
     def wards(self):
         """Wards under this panchayat union. Ward.panchayat_union_id is a
         plain unique_id string (no DB relation), so this replaces the
-        reverse FK accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE
+        reverse accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE
         above) and other callers expect; returns a QuerySet, so `.all()`/
         `.filter()`/`.first()` etc. all still work the same as before."""
         from app.models.masters.ward import Ward

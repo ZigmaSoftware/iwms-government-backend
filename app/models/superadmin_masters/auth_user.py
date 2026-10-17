@@ -9,10 +9,7 @@ from django.contrib.auth.models import (
 from app.utils.base_models import BaseMaster
 
 from app.utils.comfun import generate_unique_id
-from app.models.superadmin.role_management.userType import UserType
-from app.models.superadmin.role_management.staffUserType import StaffUserType
-from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.utils import ref_cache
 
 
 
@@ -82,44 +79,42 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
         editable=False,
     )
 
-    user_type_id = models.ForeignKey(
-        UserType,
-        on_delete=models.SET_NULL,
-        null=True,
+    user_type_id = models.CharField(
+        max_length=30,
         db_column="user_type_id",
-        related_name="users"
+        db_index=True,
+        null=True,
+        blank=True,
     )
 
     # -----------------------------
     # STAFF-RELATED FIELDS
     # -----------------------------
-    staffusertype_id = models.ForeignKey(
-        StaffUserType,
-        on_delete=models.SET_NULL,
-        null=True,
+    staffusertype_id = models.CharField(
+        max_length=30,
         db_column="staffusertype_id",
-        related_name="users_staff_usertype"
+        db_index=True,
+        null=True,
+        blank=True,
     )
 
-    staff_id = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="users_staff",
+    staff_id = models.CharField(
+        max_length=30,
         db_column="staff_id",
-        to_field="staff_unique_id"
+        db_index=True,
+        null=True,
+        blank=True,
     )
 
     # -----------------------------
     # CUSTOMER-RELATED FIELD
     # -----------------------------
-    customer_id = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="users_customer",
+    customer_id = models.CharField(
+        max_length=30,
         db_column="customer_id",
-        to_field="unique_id"
+        db_index=True,
+        null=True,
+        blank=True,
     )
 
     # -----------------------------
@@ -129,24 +124,9 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
     # matches the rest of the geo-hierarchy refactor's convention.
     district_id = models.CharField(max_length=30, null=True, blank=True)
 
-    # Dynamic geography: the hierarchy node this user is scoped to. Replaces
-    # the static district_id (kept temporarily for zero-downtime migration).
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
-        on_delete=models.SET_NULL,
-        related_name="users_location",
-        to_field="unique_id",
-        db_column="location_node_id",
-        null=True,
-        blank=True,
-    )
-
     # -----------------------------
     # SYSTEM FIELDS
     # -----------------------------
-    created_at = models.DateTimeField(auto_now_add=True, null=True)
-    updated_at = models.DateTimeField(auto_now=True, null=True)
-
     is_staff = models.BooleanField(
         default=False,
         help_text="Django admin-site access flag (not a business role).",
@@ -167,7 +147,7 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
             # Platform super admins must not be attached to any tenant/business identity.
             models.CheckConstraint(
                 name="platform_superuser_no_tenant_links",
-                check=(
+                condition=(
                     Q(is_superuser=False)
                     | (
                         Q(is_superuser=True)
@@ -182,3 +162,29 @@ class User(BaseMaster, AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username or self.unique_id
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def user_type(self):
+        return self._lookup("app.models.superadmin.role_management.userType.UserType", self.user_type_id)
+
+    @property
+    def staffusertype(self):
+        return self._lookup("app.models.superadmin.role_management.staffUserType.StaffUserType", self.staffusertype_id)
+
+    @property
+    def staff(self):
+        return self._lookup("app.models.superadmin.staff_management.staffcreation.Staffcreation", self.staff_id, field="staff_unique_id")
+
+    @property
+    def customer(self):
+        return self._lookup("app.models.masters.customer_masters.customercreation.CustomerCreation", self.customer_id)
+

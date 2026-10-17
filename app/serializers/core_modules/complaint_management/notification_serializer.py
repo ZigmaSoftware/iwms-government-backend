@@ -11,7 +11,7 @@ class ComplaintNotificationSerializer(serializers.ModelSerializer):
         model = ComplaintNotification
         fields = [
             "unique_id",
-            "ticket",
+            "ticket_id",
             "ticket_no",
             "ticket_status_code",
             "event_type",

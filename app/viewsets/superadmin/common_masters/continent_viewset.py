@@ -6,11 +6,12 @@ from app.serializers.superadmin.common_masters.continent_serializer import Conti
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.cascade_delete import collect_cascade_cache_scopes
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 CONTINENT_CACHE_SCOPES = ("continent_list", "continent_detail")
 
 
-class ContinentViewSet(AuditViewSetMixin,viewsets.ModelViewSet):
+class ContinentViewSet(BulkUploadMixin, AuditViewSetMixin,viewsets.ModelViewSet):
     throttle_scope = "continent"
     queryset = Continent.objects.filter(is_deleted=False)
     serializer_class = ContinentSerializer

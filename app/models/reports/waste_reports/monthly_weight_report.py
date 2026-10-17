@@ -1,6 +1,7 @@
 from django.db import models
 
 from app.models.masters.waste_masters.wastetype import WasteType
+from app.utils import ref_cache
 from app.utils.comfun import generate_unique_id
 
 def generate_monthlyweightreport_id():
@@ -16,14 +17,10 @@ class MonthlyWeightReport(models.Model):
         editable=False,
     )
     month = models.CharField(max_length=20)
-    waste_type_id = models.ForeignKey(
-        WasteType,
-        on_delete=models.DO_NOTHING,
-        db_column="waste_type_id",
-        db_constraint=False,
-    )
+    # WasteType.unique_id (plain string, no DB relation).
+    waste_type_id = models.CharField(max_length=30, db_column="waste_type_id", db_index=True)
 
-    # Plain unique_id references (no ForeignKey/DB relation) — see
+    # Plain unique_id references (no DB relation) — see
     # docs/geo_hierarchy_fk_removal.md.
     state = models.CharField(max_length=30, null=True, blank=True, db_column="state_id")
     district = models.CharField(max_length=30, null=True, blank=True, db_column="district_id")
@@ -41,3 +38,7 @@ class MonthlyWeightReport(models.Model):
     class Meta:
         managed = True
         db_table = "monthly_weight_report"
+
+    @property
+    def waste_type(self):
+        return ref_cache.get(WasteType, self.waste_type_id)

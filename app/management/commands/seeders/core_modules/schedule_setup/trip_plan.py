@@ -103,9 +103,9 @@ class TripPlanSeeder(BaseSeeder):
                 defaults = {
                     **geo_fields,
                     "collection_type": collection_type,
-                    "staff_template_id": template,
-                    "vehicle_id": vehicle,
-                    "supervisor_id": supervisor,
+                    "staff_template_id": template.unique_id,
+                    "vehicle_id": vehicle.unique_id,
+                    "supervisor_id": supervisor.staff_unique_id if supervisor else None,
                     "scheduled_time": sched_time,
                     "trip_trigger_weight_kg": max(50, max_kg // 4),
                     "max_vehicle_capacity_kg": max_kg,
@@ -126,16 +126,13 @@ class TripPlanSeeder(BaseSeeder):
                         is_deleted=False,
                         **geo_fields,
                     )
-                    .prefetch_related("wards")
                     .order_by("created_at")
                 )
                 plan = next(
                     (
                         candidate
                         for candidate in candidates
-                        if set(
-                            candidate.wards.values_list("unique_id", flat=True)
-                        ) == {ward.unique_id}
+                        if set(candidate.ward_ids or []) == {ward.unique_id}
                     ),
                     None,
                 )
@@ -147,8 +144,9 @@ class TripPlanSeeder(BaseSeeder):
                         setattr(plan, field, value)
                     plan.save(update_fields=[*defaults.keys(), "updated_at"])
 
-                plan.waste_types.set(waste_types)
-                plan.wards.set([ward])
+                plan.waste_type_ids = [wt.unique_id for wt in waste_types]
+                plan.ward_ids = [ward.unique_id]
+                plan.save(update_fields=["waste_type_ids", "ward_ids"])
                 if created:
                     created_count += 1
 

@@ -13,6 +13,7 @@ from app.serializers.masters.customer_masters.customer_notification_serializer i
 from app.services.push_notification_service import send_push_to_customer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref import ref_value
 
 
 class CustomerNotificationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
@@ -28,10 +29,10 @@ class CustomerNotificationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_ENDPOINT = "customer-notifications"
 
     def get_queryset(self):
-        return (
-            CustomerNotification.objects.filter(is_deleted=False)
-            .select_related("customer")
-            .order_by("customer__customer_name")
+        # customer_id is a plain unique_id — order by the customer's name
+        # through a subquery instead of a join.
+        return CustomerNotification.objects.filter(is_deleted=False).order_by(
+            ref_value("customer_id", CustomerCreation, "customer_name").asc(nulls_last=True)
         )
 
     @action(detail=False, methods=["get"], url_path="customer-options")
@@ -64,6 +65,11 @@ class CustomerNotificationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     def test(self, request, unique_id=None):
         instance = self.get_object()
         customer = instance.customer
+        if customer is None:
+            return Response(
+                {"detail": f"Customer '{instance.customer_id}' no longer exists."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         title = "Collection notification"
         body = "This is a test collection notification from IWMS."
         sent = send_push_to_customer(
@@ -78,8 +84,10 @@ class CustomerNotificationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         instance.last_tested_at = timezone.now()
         instance.last_test_sent = sent
+        # send_push_to_customer only queues the push (a Celery worker sends
+        # it after commit), so True means "queued", not "delivered".
         instance.last_test_message = (
-            "Notification sent."
+            "Notification queued for delivery."
             if sent
             else "Notification was not sent. Check Firebase configuration and customer device token."
         )

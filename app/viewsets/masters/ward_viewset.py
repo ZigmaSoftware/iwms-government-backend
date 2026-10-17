@@ -9,6 +9,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 WARD_CACHE_SCOPES = ("ward_list", "ward_detail")
 
@@ -19,9 +20,21 @@ class WardViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     lite_serializer_class = LiteWardSerializer
     lookup_field = "unique_id"
     permission_resource = "Ward"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["ward_name"]
+    # The list's search box matches what the table shows: ward plus its
+    # state/district/local-body names (plain unique_id columns, no join).
+    search_fields = [
+        "ward_name",
+        "unique_id",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+    ]
     ordering_fields = ["ward_name", "is_active"]
 
     AUDIT_MODULE = "masters"

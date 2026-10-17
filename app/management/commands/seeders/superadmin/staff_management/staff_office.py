@@ -78,7 +78,7 @@ class StaffOfficeSeeder(BaseSeeder):
 
                 defaults = {
                     "employee_name": full_name,
-                    "department_id": dept,
+                    "department_id": dept.unique_id if dept else None,
                     "state_id": district.state_id,
                     "district_id": district.unique_id,
                     # Supervisor/inspector additionally scoped to the corporation
@@ -87,8 +87,8 @@ class StaffOfficeSeeder(BaseSeeder):
                     "department": dept.department_name if dept else "",
                     "designation": designation,
                     "designation_id": None,
-                    "user_type_id": government_type,
-                    "governmentusertype_id": role,
+                    "user_type_id": government_type.unique_id,
+                    "governmentusertype_id": role.unique_id,
                     "staffusertype_id": None,
                     "contractorusertype_id": None,
                     "active_status": True,

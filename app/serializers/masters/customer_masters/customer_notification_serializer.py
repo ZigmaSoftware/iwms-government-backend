@@ -9,9 +9,10 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 class CustomerNotificationSerializer(serializers.ModelSerializer):
     customer_unique_id = serializers.CharField(write_only=True, required=False)
     customer_id = serializers.CharField(read_only=True)
-    customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
-    contact_no = serializers.CharField(source="customer.contact_no", read_only=True)
-    username = serializers.CharField(source="customer.username", read_only=True)
+    # `customer` is a ref_cache-backed property (customer_id is a plain id).
+    customer_name = serializers.CharField(source="customer.customer_name", read_only=True, default=None)
+    contact_no = serializers.CharField(source="customer.contact_no", read_only=True, default=None)
+    username = serializers.CharField(source="customer.username", read_only=True, default=None)
     has_fcm_token = serializers.SerializerMethodField()
 
     class Meta:
@@ -74,7 +75,8 @@ class CustomerNotificationSerializer(serializers.ModelSerializer):
         customer = validated_data.pop("resolved_customer")
         validated_data.pop("customer_unique_id", None)
         instance, _ = CustomerNotification.objects.update_or_create(
-            customer=customer,
+            customer_id=customer.unique_id,
+            is_deleted=False,
             defaults={"is_active": True, "is_deleted": False},
         )
         return instance
@@ -83,6 +85,6 @@ class CustomerNotificationSerializer(serializers.ModelSerializer):
         customer = validated_data.pop("resolved_customer", None)
         validated_data.pop("customer_unique_id", None)
         if customer:
-            instance.customer = customer
+            instance.customer_id = customer.unique_id
         instance.save()
         return instance

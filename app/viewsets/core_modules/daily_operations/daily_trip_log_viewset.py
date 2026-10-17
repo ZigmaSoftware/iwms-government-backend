@@ -1,10 +1,26 @@
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
+from app.utils.plain_ref import json_contains_any, ref_q
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.core_modules.daily_operations.daily_trip_log_serializer import (
     DailyTripLogSerializer,
@@ -21,39 +37,7 @@ from app.utils.pagination import LimitOffsetWithPage
 
 class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "daily_trip_log"
-    queryset = (
-        DailyTripLog.objects.select_related(
-            "trip_assignment_id",
-            "trip_assignment_id__trip_plan_id",
-            "trip_assignment_id__staff_template_id",
-            "trip_assignment_id__staff_template_id__driver_id",
-            "trip_assignment_id__staff_template_id__operator_id",
-            "trip_assignment_id__alt_staff_template_id",
-            "trip_assignment_id__alt_staff_template_id__driver_id",
-            "trip_assignment_id__alt_staff_template_id__operator_id",
-            "collection_point_id",
-            "driver_id",
-            "operator_id",
-            "vehicle_id",
-            "staff_template_id",
-            "staff_template_id__driver_id",
-            "staff_template_id__operator_id",
-            "alt_staff_template_id",
-            "alt_staff_template_id__driver_id",
-            "alt_staff_template_id__operator_id",
-            "verified_by",
-            "verified_by__staff",
-            "verified_by__user",
-        )
-        .prefetch_related(
-            "bin_ids",
-            "extra_operator_ids",
-            "waste_types",
-            "trip_assignment_id__trip_collection_points",
-            "trip_assignment_id__trip_collection_points__collection_point_id",
-        )
-        .filter(is_deleted=False)
-    )
+    queryset = DailyTripLog.objects.filter(is_deleted=False)
     serializer_class = DailyTripLogSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripLog"
@@ -120,20 +104,54 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if collection_point:
             qs = qs.filter(collection_point_id=collection_point)
         if waste_types:
-            qs = qs.filter(waste_types__unique_id__in=waste_types)
+            qs = qs.filter(json_contains_any("waste_type_ids", waste_types))
         if driver:
             qs = qs.filter(driver_id=driver)
         if operator:
             qs = qs.filter(operator_id=operator)
         if search:
+            # NOTE: trip_assignment_id stores DailyTripAssignment.unique_id
+            # while that model's pk is an auto int id, so hops through the
+            # assignment (template codes, ward names) go through explicit
+            # unique_id subqueries.
+            template_ids = StaffTemplate.objects.filter(
+                Q(display_code__icontains=search) | Q(unique_id__icontains=search)
+            ).values("unique_id")
+            ward_ids = Ward.objects.filter(
+                ward_name__icontains=search
+            ).values("unique_id")
+            assignment_ids = DailyTripAssignment.objects.filter(
+                Q(unique_id__icontains=search)
+                | Q(staff_template_id__in=template_ids)
+                | Q(alt_staff_template_id__in=template_ids)
+                | json_contains_any("ward_ids", list(ward_ids.values_list("unique_id", flat=True)))
+            ).values("unique_id")
             qs = qs.filter(
                 Q(unique_id__icontains=search)
-                | Q(trip_assignment_id__unique_id__icontains=search)
-                | Q(collection_point_id__cp_name__icontains=search)
-                | Q(waste_types__waste_type_name__icontains=search)
-                | Q(driver_id__employee_name__icontains=search)
-                | Q(operator_id__employee_name__icontains=search)
-                | Q(vehicle_id__vehicle_no__icontains=search)
+                | Q(trip_assignment_id__icontains=search)
+                | Q(trip_assignment_id__in=assignment_ids)
+                | Q(log_status__icontains=search)
+                | Q(staff_template_id__in=template_ids)
+                | Q(alt_staff_template_id__in=template_ids)
+                | ref_q("collection_point_id", Collection_point, cp_name__icontains=search)
+                | json_contains_any(
+                    "waste_type_ids",
+                    list(
+                        WasteType.objects.filter(waste_type_name__icontains=search)
+                        .values_list("unique_id", flat=True)
+                    ),
+                )
+                | ref_q("driver_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                | ref_q("operator_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                | ref_q("vehicle_id", VehicleCreation, vehicle_no__icontains=search)
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
             )
 
         if waste_types or search:
@@ -168,9 +186,14 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
             if not staff_uid:
                 return qs.none()
-            return qs.filter(
-                trip_assignment_id__trip_plan_id__supervisor_id=staff_uid
-            )
+            # trip_assignment_id / trip_plan_id are plain unique_id columns —
+            # resolve the supervisor's plans, then their assignments, by id.
+            from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+
+            owned_assignments = DailyTripAssignment.objects.filter(
+                ref_q("trip_plan_id", TripPlan, supervisor_id=staff_uid)
+            ).values("unique_id")
+            return qs.filter(trip_assignment_id__in=owned_assignments)
 
         return filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
@@ -195,7 +218,7 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
         self.log_audit(
@@ -204,6 +227,50 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=previous_data,
             new_data=self._serialize_instance(instance),
         )
+
+    # ----------------------------------------------------------
+    # GET /schedule-operations/daily-trip-logs/summary/
+    # ----------------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        """KPI totals for the list page over EVERY log matching the list's
+        own filters (search, date, waste type, status, location) — not just
+        the page on screen."""
+        qs = self.get_queryset().order_by()
+        today = timezone.localdate()
+
+        totals = qs.aggregate(
+            total_logs=Count("pk", distinct=True),
+            trips=Count("trip_assignment_id", distinct=True),
+            bin_weight_kg=Sum("collected_weight_kg"),
+            household_weight_kg=Sum("household_collected_weight_kg"),
+        )
+        today_totals = qs.filter(trip_date=today).aggregate(
+            bin=Sum("collected_weight_kg"),
+            household=Sum("household_collected_weight_kg"),
+        )
+        status_counts = {
+            row["log_status"]: row["n"]
+            for row in qs.values("log_status").annotate(n=Count("pk", distinct=True))
+        }
+
+        def kg(value):
+            return round(float(value or 0), 2)
+
+        bin_kg = kg(totals["bin_weight_kg"])
+        household_kg = kg(totals["household_weight_kg"])
+        return Response({
+            "total_logs": totals["total_logs"],
+            "trips": totals["trips"],
+            "bin_weight_kg": bin_kg,
+            "household_weight_kg": household_kg,
+            "total_weight_kg": round(bin_kg + household_kg, 2),
+            "today_weight_kg": round(kg(today_totals["bin"]) + kg(today_totals["household"]), 2),
+            "status_counts": {
+                status_value: status_counts.get(status_value, 0)
+                for status_value, _ in DailyTripLog.LOG_STATUS_CHOICES
+            },
+        })
 
     @swagger_auto_schema(request_body=DailyTripLogVerifySerializer)
     @action(detail=True, methods=["patch"], url_path="verify")

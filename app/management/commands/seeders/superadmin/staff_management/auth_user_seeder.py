@@ -40,10 +40,10 @@ class AuthUserSeeder(BaseSeeder):
                 # Normalize legacy staff/contractor logins to government
                 # (without touching the password) so re-seeding fixes old rows.
                 changed = False
-                if existing.user_type_id_id != government_user_type.pk:
-                    existing.user_type_id = government_user_type
+                if existing.user_type_id != government_user_type.pk:
+                    existing.user_type_id = government_user_type.pk
                     changed = True
-                if existing.staffusertype_id_id is not None:
+                if existing.staffusertype_id is not None:
                     existing.staffusertype_id = None
                     changed = True
                 if changed:
@@ -56,9 +56,9 @@ class AuthUserSeeder(BaseSeeder):
 
             user = UserModel(
                 username=staff.username,
-                user_type_id=government_user_type,
+                user_type_id=government_user_type.pk,
                 staffusertype_id=None,
-                staff_id=staff,
+                staff_id=staff.staff_unique_id,
                 is_active=True,
                 is_deleted=False,
             )

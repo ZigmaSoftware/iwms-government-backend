@@ -7,6 +7,8 @@ from django.db import transaction
 from rest_framework import serializers
 
 from app.models.superadmin.screen_management.userscreen import UserScreen
+from app.models.superadmin.screen_management.mainscreen import MainScreen
+from app.utils import ref_cache
 
 from app.utils.userscreen_column_sync import (
     sync_screen_columns
@@ -24,20 +26,10 @@ class UserScreenSerializer(
     # READ ONLY FIELDS
     # =====================================================
 
-    mainscreen_name = serializers.CharField(
-        source="mainscreen_id.mainscreen_name",
-        read_only=True
-    )
-
-    mainscreentype_id = serializers.CharField(
-        source="mainscreen_id.mainscreentype_id.unique_id",
-        read_only=True
-    )
-
-    mainscreentype_name = serializers.CharField(
-        source="mainscreen_id.mainscreentype_id.type_name",
-        read_only=True
-    )
+    mainscreen_id = serializers.CharField()
+    mainscreen_name = serializers.SerializerMethodField()
+    mainscreentype_id = serializers.SerializerMethodField()
+    mainscreentype_name = serializers.SerializerMethodField()
 
     # =====================================================
     # OPTIONAL FIELDS
@@ -245,3 +237,12 @@ class UserScreenSerializer(
             sync_screen_columns(instance)
 
         return instance
+
+    def get_mainscreen_name(self, obj):
+        return getattr(obj.mainscreen, "mainscreen_name", None)
+
+    def get_mainscreentype_id(self, obj):
+        return getattr(obj.mainscreen, "mainscreentype_id", None)
+
+    def get_mainscreentype_name(self, obj):
+        return getattr(obj.mainscreen.mainscreentype if obj.mainscreen else None, "type_name", None)

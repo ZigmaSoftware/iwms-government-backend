@@ -22,6 +22,7 @@ after `CustomerUserSeeder`. Fully idempotent: households are keyed by a stable
 
 from django.contrib.auth.hashers import make_password
 
+from app.utils.plain_ref import ref_id
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.geo import spread_points
 from app.management.commands.seeders.tn_geo_data import STREET_NAMES, TAMIL_NAME_POOL
@@ -158,8 +159,9 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
                 "latitude": f"{lat:.6f}",
                 "longitude": f"{lon:.6f}",
                 "id_proof_type": ID_PROOF_CYCLE[idx % len(ID_PROOF_CYCLE)],
-                "property_ref": prop,
-                "sub_property": sub_prop,
+                "property_id": prop.unique_id,
+                "sub_property_id": sub_prop.unique_id,
+                "waste_type_ids": [wt.unique_id for wt in waste_types],
                 "member_count": spec["member_count"],
                 "sqft": spec["sqft"],
                 "water_consumption_lpd": None,
@@ -178,7 +180,7 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
                 "town_panchayat_id": plan.town_panchayat_id,
                 "panchayat_union_id": plan.panchayat_union_id,
                 "panchayat_id": plan.panchayat_id,
-                "ward": ward,
+                "ward_id": ward.unique_id if ward else None,
                 # Apartment identity only for the apartment flats; every other
                 # kind must clear these or the model groups them into a block.
                 "apartment_name": APARTMENT_NAME if spec["kind"] == "apartment" else None,
@@ -195,7 +197,6 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
             customer, was_created = CustomerCreation.objects.update_or_create(
                 id_no=id_no, defaults=defaults
             )
-            customer.waste_types.set(waste_types)
             if was_created:
                 created += 1
             else:
@@ -220,10 +221,10 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
         ).first()
         if not driver:
             return None
-        templates = StaffTemplate.objects.filter(driver_id=driver, is_deleted=False)
+        templates = StaffTemplate.objects.filter(driver_id=driver.staff_unique_id, is_deleted=False)
         return (
             TripPlan.objects.filter(
-                staff_template_id__in=templates,
+                staff_template_id__in=templates.values("unique_id"),
                 collection_type=TripPlan.COLLECTION_TYPE_HOUSEHOLD,
                 is_deleted=False,
             )
@@ -254,7 +255,7 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
             ).first()
             sub = (
                 SubProperty.objects.filter(
-                    property_id=prop, sub_property_name=sub_name, is_deleted=False
+                    property_id=prop.unique_id, sub_property_name=sub_name, is_deleted=False
                 ).first()
                 if prop
                 else None
@@ -315,7 +316,7 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
         sync. Completed/cancelled trips are left alone — back-filling stops onto
         a finished trip would reopen it."""
         assignments = DailyTripAssignment.objects.filter(
-            trip_plan_id=plan, is_deleted=False
+            trip_plan_id=plan.unique_id, is_deleted=False
         ).exclude(
             status__in=[
                 DailyTripAssignment.STATUS_COMPLETED,
@@ -326,7 +327,7 @@ class DriverHouseholdCustomerSeeder(BaseSeeder):
         for assignment in assignments:
             added += sync_daily_assignment_stops_from_plan(assignment)
             total = DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
+                trip_assignment_id=ref_id(assignment), is_deleted=False
             ).count()
             self.log(f"{assignment.unique_id}: {total} household stop(s)")
         return added

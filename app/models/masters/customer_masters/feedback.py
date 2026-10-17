@@ -3,6 +3,7 @@ from app.utils.base_models import BaseMaster
 from enum import Enum
 from .customercreation import CustomerCreation
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 
@@ -27,12 +28,8 @@ class FeedBack(BaseMaster):
         editable=False,
     )
 
-    # Link to customer
-    customer = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.PROTECT,
-        related_name="feedbacks"
-    )
+    # Plain CustomerCreation unique_id (no DB relation).
+    customer_id = models.CharField(max_length=30, db_column="customer_id", db_index=True)
 
     # Enum-based feedback category
     category = models.CharField(
@@ -50,12 +47,18 @@ class FeedBack(BaseMaster):
         verbose_name_plural = "Feedbacks"
         ordering = ["-created_on"]
 
+    @property
+    def customer(self):
+        return ref_cache.get(CustomerCreation, self.customer_id, "unique_id")
+
     def __str__(self):
         """Readable entry with linked customer and location."""
-        customer_name = self.customer.customer_name if self.customer else "Unknown"
-        district = getattr(getattr(self.customer, "district", None), "name", "")
-        panchayat = getattr(getattr(self.customer, "panchayat_id", None), "panchayat_name", "")
-        return f"{customer_name} - {panchayat or district}"
+        from app.utils.hierarchy import flat_geo_display
+
+        customer = self.customer
+        customer_name = customer.customer_name if customer else "Unknown"
+        location = flat_geo_display(customer)[0] if customer else ""
+        return f"{customer_name} - {location or ''}"
 
     def delete(self, *args, **kwargs):
         """Soft delete this record."""

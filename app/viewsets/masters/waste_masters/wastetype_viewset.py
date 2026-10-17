@@ -7,18 +7,20 @@ from app.serializers.masters.waste_masters.wastetype_serializer import (
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
 from rest_framework import filters, viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 WASTE_TYPE_CACHE_SCOPES = ("waste_type_list", "waste_type_detail")
 
 
-class WasteTypeViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
+class WasteTypeViewSet(BulkUploadMixin, LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "waste_type"
 
     serializer_class = WasteTypeSerializer
     lite_serializer_class = make_lite_serializer(WasteType, "waste_type_name")
     permission_resource = "WasteType"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["waste_type_name"]
     ordering_fields = ["waste_type_name", "is_active"]

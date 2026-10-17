@@ -9,7 +9,6 @@ from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
-from app.models.superadmin.audits.staff_template_audit_log import StaffTemplateAuditLog
 from app.utils.base_models import Account
 
 from app.serializers.core_modules.schedule_setup.staff_template_serializer import (
@@ -23,15 +22,15 @@ from app.utils.hierarchy import (
     filter_staff_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
-from app.utils.roles import is_admin_role, is_super_admin
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 # TripPlanSerializer embeds StaffTemplate.display_code + driver/operator
 # names, and AlternativeStaffTemplateSerializer embeds
 # staff_template.display_code + driver/operator names — both go stale if
-# a StaffTemplate's driver/operator/approval changes without invalidating
-# them too.
+# a StaffTemplate's driver/operator changes without invalidating them too.
 STAFF_TEMPLATE_CACHE_SCOPES = (
     "staff_template_list",
     "staff_template_detail",
@@ -42,7 +41,7 @@ STAFF_TEMPLATE_CACHE_SCOPES = (
 )
 
 
-class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class StaffTemplateViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     Staff Template API
     """
@@ -51,10 +50,17 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     serializer_class = StaffTemplateSerializer
     lookup_field = "unique_id"
     permission_resource = "StaffTemplateCreation"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "display_code", "driver_id__employee_name", "operator_id__employee_name"]
-    ordering_fields = ["display_code", "status", "approval_status"]
+    search_fields = [
+        "unique_id",
+        "display_code",
+        "status",
+        "driver_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "operator_id=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "extra_operator_id[]=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+    ]
+    ordering_fields = ["display_code", "status"]
 
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staff-templates"
@@ -66,26 +72,14 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if status_param:
             qs = qs.filter(status=status_param)
 
-        approval_status = self.request.query_params.get("approval_status")
-        if approval_status:
-            qs = qs.filter(approval_status=approval_status)
-
         qs = filter_flat_geo_queryset_by_params(qs, self.request.query_params)
         qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         # state/district/area_type/corporation/municipality/town_panchayat/
         # panchayat_union/panchayat are plain unique_id CharFields now (no DB
-        # relation), same for driver_id__corporation/operator_id__corporation
-        # (Staffcreation's own geo columns) — none of these are select_related-able.
-        return qs.select_related(
-            "driver_id",
-            "driver_id__designation_id",
-            "operator_id",
-            "operator_id__designation_id",
-            "created_by",
-            "updated_by",
-            "approved_by",
-        )
+        # relation), and so are driver_id / operator_id (plain
+        # staff_unique_ids) — none of these are select_related-able.
+        return qs
 
     # ── available-staff action ────────────────────────────────────────
     # Staff NOT already driver/operator on another ACTIVE team, so the "Add
@@ -116,9 +110,24 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # Role names vary by scope (govt_panchayat_driver, govt_district_driver,
         # ...) — match on "contains" rather than an exact/scoped name, same as
         # the frontend's own driver/operator dropdown fetch.
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        from app.models.superadmin.role_management.staffUserType import StaffUserType
+        
+        govt_type_ids = GovernmentStaffUserType.objects.filter(
+            name__icontains=role,
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+        
+        staff_type_ids = StaffUserType.objects.filter(
+            name__icontains=role,
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+        
         qs = Staffcreation.objects.filter(
-            Q(governmentusertype_id__name__icontains=role)
-            | Q(staffusertype_id__name__icontains=role),
+            Q(governmentusertype_id__in=list(govt_type_ids))
+            | Q(staffusertype_id__in=list(staff_type_ids)),
             is_deleted=False,
             active_status=True,
         ).exclude(staff_unique_id__in=busy_ids)
@@ -213,12 +222,11 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._get_account(staff_user, request_user)
 
         if not account:
-            raise Exception("Account not found or created")  # 🔥 fail fast
+            raise Exception("Account not found or created")  
 
         instance = serializer.save(
-            created_by=account,
-            updated_by=account,
-            approved_by=serializer.validated_data.get("approved_by"),
+            created_by=account.pk,
+            updated_by=account.pk,
         )
 
         new_data = self._serialize_instance(instance)
@@ -229,14 +237,6 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=None,
             new_data=new_data
         )
-
-        if staff_user:
-            self._log_audit(
-                user=staff_user,
-                action=StaffTemplateAuditLog.Action.CREATE,
-                entity_id=instance.unique_id,
-                remarks=None,
-            )
 
         invalidate_on_commit(*STAFF_TEMPLATE_CACHE_SCOPES)
     # ================= UPDATE =================
@@ -251,22 +251,10 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # ✅ FIX: Convert to Account
         account = self._get_account(staff_user, request_user)
 
-        # instance = serializer.save(
-        #     updated_by=account,
-        #     approved_by=serializer.validated_data.get(
-        #         "approved_by",
-        #         serializer.instance.approved_by
-        #     ),
-        # )
-
         previous_data = self._serialize_instance(serializer.instance)
 
         instance = serializer.save(
-            updated_by=account,
-            approved_by=serializer.validated_data.get(
-                "approved_by",
-                serializer.instance.approved_by
-            ),
+            updated_by=account.pk,
         )
 
         new_data = self._serialize_instance(instance)
@@ -277,14 +265,6 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=previous_data,
             new_data=new_data
         )
-
-        if staff_user:
-            self._log_audit(
-                user=staff_user,
-                action=StaffTemplateAuditLog.Action.MODIFY,
-                entity_id=instance.unique_id,
-                remarks=None,
-            )
 
         self._notify_team_change(previous_data, new_data, instance)
 
@@ -312,27 +292,3 @@ class StaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 data={"staff_template_id": instance.unique_id},
             )
 
-    # ================= AUDIT =================
-
-    def _resolve_performed_role(self, user):
-        # Recognise admin/supervisor across all three role axes (company /
-        # contractor / government) rather than only ``staffusertype_id``, so a
-        # ``govt_corporation_admin`` is logged as ADMIN and a
-        # ``govt_corporation_supervisor`` as SUPERVISOR.
-        if is_super_admin(user) or is_admin_role(user):
-            return StaffTemplateAuditLog.PerformedRole.ADMIN
-
-        return StaffTemplateAuditLog.PerformedRole.SUPERVISOR
-
-    def _log_audit(self, user, action, entity_id, remarks=None):
-        if not user:
-            return
-
-        StaffTemplateAuditLog.objects.create(
-            entity_type=StaffTemplateAuditLog.EntityType.STAFF_TEMPLATE,
-            entity_id=str(entity_id),
-            action=action,
-            performed_by=user,
-            performed_role=self._resolve_performed_role(user),
-            change_remarks=remarks if isinstance(remarks, str) else None,
-        )

@@ -14,6 +14,7 @@ EVENT_TITLES = {
     ComplaintNotification.EVENT_ESCALATED_TO: "Grievance escalated to you",
     ComplaintNotification.EVENT_RESOLVED: "Grievance resolved",
     ComplaintNotification.EVENT_REOPENED: "Grievance reopened",
+    ComplaintNotification.EVENT_CLEANUP_REPORTED: "Citizen reported a cleanup",
 }
 
 
@@ -22,9 +23,9 @@ def notify(ticket, event_type, message, *, staff=None, user=None):
     if not staff and not user:
         return None
     return ComplaintNotification.objects.create(
-        ticket=ticket,
-        recipient_staff=staff,
-        recipient_user=user,
+        ticket_id=getattr(ticket, "unique_id", ticket),
+        recipient_staff_id=getattr(staff, "staff_unique_id", None) if staff else None,
+        recipient_user_id=getattr(user, "unique_id", None) if user else None,
         event_type=event_type,
         title=EVENT_TITLES.get(event_type, "Grievance update"),
         message=message,

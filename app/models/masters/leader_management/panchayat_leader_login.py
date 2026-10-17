@@ -20,22 +20,8 @@ class PanchayatLeaderLogin(BaseMaster):
 
     # Plain CharField holding Panchayat.unique_id (no DB relation/join) —
     # matches the rest of the geo-hierarchy refactor's convention. Was
-    # NOT NULL as a ForeignKey, so kept required here too.
+    # NOT NULL before, so kept required here too.
     panchayat_id = models.CharField(max_length=30)
-
-    # Dynamic geography: the hierarchy node this leader is scoped to. Replaces
-    # the static panchayat_id (kept temporarily for zero-downtime migration).
-    location_node = models.ForeignKey(
-        "app.HierarchyNode",
-        on_delete=models.SET_NULL,
-        related_name="panchayat_leader_logins",
-        to_field="unique_id",
-        db_column="location_node_id",
-        null=True,
-        blank=True,
-    )
-
-
 
     username = models.CharField(
         max_length=150,
@@ -59,9 +45,6 @@ class PanchayatLeaderLogin(BaseMaster):
         null=True,
         help_text="Full name of the panchayat leader.",
     )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]

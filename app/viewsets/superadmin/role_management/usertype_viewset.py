@@ -7,11 +7,13 @@ from app.models.superadmin.role_management.userType import UserType
 from app.serializers.superadmin.role_management.usertype_serializer import UserTypeSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 USER_TYPE_CACHE_SCOPES = ("user_type_list", "user_type_detail")
 
 
-class UserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class UserTypeViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "user_type"
     queryset = UserType.objects.filter(is_deleted=False)
     serializer_class = UserTypeSerializer
@@ -33,6 +35,7 @@ class UserTypeViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         """
         # Apply parent search/ordering filters but skip company scoping
         from rest_framework.filters import SearchFilter, OrderingFilter
+        queryset = ListParamFilter().filter_queryset(self.request, queryset, self)
         queryset = SearchFilter().filter_queryset(self.request, queryset, self)
         queryset = OrderingFilter().filter_queryset(self.request, queryset, self)
         return queryset

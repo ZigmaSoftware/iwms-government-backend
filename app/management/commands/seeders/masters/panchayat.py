@@ -1,49 +1,28 @@
-from app.management.commands.seeders.base import BaseSeeder
+from app.management.commands.seeders import tn_local_bodies
 from app.management.commands.seeders.geo import coordinates
+from app.management.commands.seeders.masters.local_body import LocalBodySeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
-from app.models.superadmin.common_masters.state import State
-from app.models.masters.areatype import AreaType
-from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 
 
-class PanchayatSeeder(BaseSeeder):
-    """Rural panchayats for the three fully-built-out operational districts
-    (Erode/Coimbatore/Salem) — real district-appropriate panchayat/town
-    names, sourced from tn_geo_data.DISTRICTS."""
+class PanchayatSeeder(LocalBodySeeder):
+    """Every Tamil Nadu village panchayat, plus the demo panchayats the
+    three operational districts' seed data is built on (tn_geo_data) —
+    those keep their own point location unless a real village panchayat
+    already has that name."""
 
     name = "PanchayatSeeder"
+    model = Panchayat
+    name_field = "panchayat_name"
+    area_type_name = "Rural Local Body"
+    label = "Panchayats"
 
-    def run(self):
-        tamil_nadu = State.objects.filter(name="Tamil Nadu").first()
-        if not tamil_nadu:
-            self.log("Tamil Nadu state not found — run StateSeeder first.")
-            return
-
-        count = 0
-        for district_name, geo in DISTRICTS.items():
-            district = District.objects.filter(state_id=tamil_nadu.unique_id, name=district_name).first()
-            area_type = AreaType.objects.filter(
-                state_id=tamil_nadu.unique_id,
-                district_id=district.unique_id,
-                name="Rural Local Body",
-            ).first()
-            if not district or not area_type:
-                self.log(f"Rural area type for '{district_name}' not found — skipping.")
-                continue
-
-            for panchayat_name, lat, lon, _pincode in geo["panchayats"]:
-                Panchayat.objects.update_or_create(
-                    panchayat_name=panchayat_name,
-                    state_id=tamil_nadu.unique_id,
-                    district_id=district.unique_id,
-                    area_type_id=area_type.unique_id,
-                    defaults={
-                        "coordinates": coordinates((lat, lon)),
-                        "is_active": True,
-                        "is_deleted": False,
-                    },
-                )
-                count += 1
-
-        self.log(f"---Panchayats seeded ({count} records)---")
+    def local_bodies(self):
+        panchayats = tn_local_bodies.panchayats()
+        real = {(p["district"], p["name"]) for p in panchayats}
+        return panchayats + [
+            {"district": district_name, "name": name, "coordinates": coordinates((lat, lon))}
+            for district_name, geo in DISTRICTS.items()
+            for name, lat, lon, _pincode in geo["panchayats"]
+            if (district_name, name) not in real
+        ]

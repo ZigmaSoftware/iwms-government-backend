@@ -62,9 +62,6 @@ def subproperty_data(request):
 @api_view(['GET'])
 @authentication_classes([]) 
 @permission_classes([AllowAny])
-@api_view(['GET'])
-@authentication_classes([]) 
-@permission_classes([AllowAny])
 def panchayat_data(request):
     api_key = request.META.get('HTTP_X_API_KEY', '').strip()
 

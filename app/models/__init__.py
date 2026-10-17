@@ -27,8 +27,6 @@ from .masters.town_panchayat import TownPanchayat
 from .masters.panchayat_union import PanchayatUnion
 from .masters.panchayat import Panchayat
 from .masters.ward import Ward
-from .masters.hierarchy_tree import HierarchyLevel, HierarchyNode, HierarchyClosure
-from .masters.hierarchy_assignment import HierarchyAssignment
 
 
 # ============================================================
@@ -55,6 +53,7 @@ from .masters.waste_masters.subproperty import SubProperty
 from .superadmin.role_management.userType import UserType
 from .superadmin.role_management.staffUserType import StaffUserType
 from .superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from .superadmin.role_management.staffHierarchy import StaffHierarchy
 
 
 # ============================================================
@@ -94,10 +93,8 @@ from .superadmin.staff_management.staff_data_scope import StaffDataScope
 # GROUP: AUTH / LOGIN / AUDIT (USER)
 # ============================================================
 from .superadmin.audits.login_audit import LoginAudit
-from .superadmin.audits.audit_log import AuditLog
 from app.utils.common_audit import CommonAudit
 from .superadmin.audits.permission_audit import PermissionAuditLog
-from .superadmin.audits.staff_change_request import StaffChangeRequest
 
 
 # ============================================================
@@ -124,8 +121,8 @@ from .core_modules.complaint_management.status_master import ComplaintStatus
 from .core_modules.complaint_management.module_master import ComplaintModule
 from .core_modules.complaint_management.category_master import ComplaintCategory
 from .core_modules.complaint_management.subcategory_master import ComplaintSubcategory
-from .core_modules.complaint_management.team_master import ComplaintTeam
 from .core_modules.complaint_management.sla_rule_master import ComplaintSlaRule
+from .core_modules.complaint_management.sla_escalation_level import ComplaintSlaEscalationLevel
 from .core_modules.complaint_management.routing_rule import ComplaintRoutingRule
 from .core_modules.complaint_management.ticket import ComplaintTicket
 from .core_modules.complaint_management.ticket_extra_detail import ComplaintTicketExtraDetail
@@ -134,6 +131,7 @@ from .core_modules.complaint_management.status_history import ComplaintStatusHis
 from .core_modules.complaint_management.assignment_history import ComplaintAssignmentHistory
 from .core_modules.complaint_management.escalation_history import ComplaintEscalationHistory
 from .core_modules.complaint_management.reopen_history import ComplaintReopenHistory
+from .core_modules.complaint_management.cleanup_report import ComplaintCleanupReport
 from .core_modules.complaint_management.comment import ComplaintComment
 from .core_modules.complaint_management.feedback import ComplaintFeedback
 from .core_modules.complaint_management.address_change_request import ComplaintAddressChangeRequest
@@ -166,7 +164,7 @@ from .core_modules.attendance import DailyAttendanceReg
 # GROUP: TRANSPORT MASTERS & TRIPS
 # ============================================================
 from .masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
-from .masters.transport_masters.vehicleCreation import VehicleCreation
+from .masters.transport_masters.vehicleCreation import VehicleCreation, VehicleDocumentHistory
 from .core_modules.schedule_setup.trip_plan import TripPlan
 from .core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
 from .masters.transport_masters.trip_attendance import TripAttendance
@@ -176,6 +174,7 @@ from .core_modules.daily_operations.daily_trip_collection_point import DailyTrip
 from .core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollection
 from .core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from .core_modules.daily_operations.scheduler_config import SchedulerConfig
+from .core_modules.background_job import BackgroundJob
 from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 from .core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 
@@ -205,10 +204,6 @@ __all__ = [
     "Ward",
 
     # Hierarchy Tree (closure-table)
-    "HierarchyLevel",
-    "HierarchyNode",
-    "HierarchyClosure",
-    "HierarchyAssignment",
 
     # Assets
     "Fuel",
@@ -224,6 +219,7 @@ __all__ = [
     "UserType",
     "StaffUserType",
     "GovernmentStaffUserType",
+    "StaffHierarchy",
 
     # Screen Management
     "MainScreenType",
@@ -245,7 +241,6 @@ __all__ = [
 
     # Auth / Audit
     "LoginAudit",
-    "AuditLog",
 
     # Customers
     "CustomerCreation",
@@ -261,8 +256,8 @@ __all__ = [
     "ComplaintStatus",
     "ComplaintCategory",
     "ComplaintSubcategory",
-    "ComplaintTeam",
     "ComplaintSlaRule",
+    "ComplaintSlaEscalationLevel",
     "ComplaintRoutingRule",
     "ComplaintTicket",
     "ComplaintTicketExtraDetail",
@@ -286,13 +281,13 @@ __all__ = [
     # Transport
     "VehicleTypeCreation",
     "VehicleCreation",
+    "VehicleDocumentHistory",
     "TripPlan",
     "TripPlanCollectionPoint",
     "TripAttendance",
 
     # Audits
     "PermissionAuditLog",
-    "StaffChangeRequest",
 
     # Daily Trip Assignment
     "DailyTripAssignment",

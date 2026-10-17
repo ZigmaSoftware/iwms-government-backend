@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from app.models.core_modules.daily_operations.waste_collection import WasteCollection
-from app.utils.waste_images import capture_images_for_customer
+from app.utils.waste_images import capture_images_for_customer, capture_images_for_customers
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.superadmin.common_masters.state import State
@@ -13,6 +13,7 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.models.masters.ward import Ward
 from app.utils.hierarchy import flat_geo_display
+from app.utils import ref_cache
 from app.serializers.masters.transport_masters.vehicleCreation_serializer import (
     VehicleCreationSerializer,
 )
@@ -38,21 +39,44 @@ class CustomerField(serializers.SlugRelatedField):
                 raise serializers.ValidationError("Invalid customer reference")
 
 
+class WasteCollectionListSerializer(serializers.ListSerializer):
+    """Loads every reference a page of collections resolves (request-cached
+    model properties) with one query per model, and the page's capture
+    photos in one query, instead of per row."""
+
+    def to_representation(self, data):
+        from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+        from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+
+        collections = list(data.all() if hasattr(data, "all") else data)
+        ref_cache.prime(CustomerCreation, {c.customer_id for c in collections}, "unique_id")
+        ref_cache.prime(DailyTripAssignment, {c.trip_assignment_id for c in collections}, "unique_id")
+        ref_cache.prime(Ward, {c.ward_id for c in collections}, "unique_id")
+        assignments = [a for a in (c.trip_assignment for c in collections) if a]
+        ref_cache.prime(TripPlan, {a.trip_plan_id for a in assignments}, "unique_id")
+        plans = [p for p in (a.trip_plan for a in assignments) if p]
+        ref_cache.prime(
+            VehicleCreation,
+            {a.vehicle_id for a in assignments} | {p.vehicle_id for p in plans},
+            "unique_id",
+        )
+        self.child._images = capture_images_for_customers(
+            {(c.customer_id, c.collection_date) for c in collections},
+            self.context.get("request"),
+        )
+        try:
+            return super().to_representation(collections)
+        finally:
+            self.child._images = None
+
+
 class WasteCollectionSerializer(serializers.ModelSerializer):
-    ward_id = serializers.SlugRelatedField(
-        source="ward", slug_field="unique_id", queryset=Ward.objects.filter(is_deleted=False),
-        required=False, allow_null=True,
-    )
-    ward_name = serializers.CharField(source="ward.ward_name", read_only=True, allow_null=True)
-    customer = CustomerField(
-        slug_field="unique_id",
-        queryset=CustomerCreation.objects.all(),
-        write_only=True,
-    )
-    # Expose customer unique identifier as `customer_id`
-    customer_id = serializers.CharField(
-        source="customer.unique_id", read_only=True
-    )
+    ward_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    ward_name = serializers.SerializerMethodField()
+    # Writable plain unique_id string (no DB relation).
+    # Accept both 'customer_id' (legacy) and 'customer' (frontend).
+    customer_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    customer = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
     # Household (customer) contact & address, surfaced read-only for the list/form
     contact_no = serializers.CharField(source="customer.contact_no", read_only=True)
@@ -82,28 +106,28 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     panchayat_name = serializers.SerializerMethodField()
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
     # Most-specific local body (corporation/municipality/.../panchayat) + its level
     location_name = serializers.SerializerMethodField(read_only=True)
@@ -118,25 +142,25 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     # household + collection date. Read-only convenience for the desktop screen.
     capture_images = serializers.SerializerMethodField(read_only=True)
 
-    trip_assignment_id = serializers.SlugRelatedField(
-        slug_field="unique_id",
-        queryset=DailyTripAssignment.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
+    trip_assignment_id = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
     )
-    trip_assignment_display = serializers.CharField(
-        source="trip_assignment_id.unique_id", read_only=True, default=None
-    )
+
+    # Set by WasteCollectionListSerializer while it renders a list page.
+    _images = None
 
     class Meta:
         model = WasteCollection
+        list_serializer_class = WasteCollectionListSerializer
         # Explicit list: the model's bare geo FKs (state/district/...) are written
         # via the *_id SlugRelatedFields above, so they are intentionally omitted
         # here to avoid duplicate writable fields on the same source.
+        # Disable automatic UniqueTogetherValidator since we handle it manually in create()
+        validators = []
         fields = [
             "unique_id",
-            "customer",
             "customer_id",
+            "customer",
             "customer_name",
             "contact_no",
             "building_no",
@@ -165,7 +189,6 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
             "vehicle",
             "capture_images",
             "trip_assignment_id",
-            "trip_assignment_display",
             "wet_waste",
             "dry_waste",
             "mixed_waste",
@@ -178,6 +201,9 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
             "is_deleted",
         ]
         read_only_fields = ["unique_id", "total_quantity", "collection_time"]
+
+    def get_ward_name(self, obj):
+        return getattr(obj.ward, "ward_name", None)
 
     def get_location_name(self, obj):
         # Prefer the record's own geo; fall back to the household's.
@@ -193,11 +219,11 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
         return level
 
     def get_vehicle(self, obj):
-        assignment = obj.trip_assignment_id
+        assignment = obj.trip_assignment
         if not assignment:
             return None
-        vehicle = getattr(assignment, "vehicle_id", None) or getattr(
-            getattr(assignment, "trip_plan_id", None), "vehicle_id", None
+        vehicle = getattr(assignment, "vehicle", None) or getattr(
+            getattr(assignment, "trip_plan", None), "vehicle", None
         )
         if not vehicle:
             return None
@@ -206,8 +232,70 @@ class WasteCollectionSerializer(serializers.ModelSerializer):
     def get_capture_images(self, obj):
         """Capture photos for this collection, pulled from WasteCollectionSub
         (the mobile capture flow) for the same household + collection date."""
+        if self._images is not None:
+            return self._images.get((obj.customer_id, obj.collection_date), [])
         return capture_images_for_customer(
             obj.customer_id,
             obj.collection_date,
             self.context.get("request"),
         )
+
+    def validate_customer_id(self, value):
+        if value is not None and value != "":
+            if not CustomerCreation.objects.filter(unique_id=value).exists():
+                raise serializers.ValidationError("Invalid customer reference")
+        return value
+
+    def validate_customer(self, value):
+        if value is not None and value != "":
+            if not CustomerCreation.objects.filter(unique_id=value).exists():
+                raise serializers.ValidationError("Invalid customer reference")
+        return value
+
+    def validate(self, attrs):
+        # Accept customer from either 'customer' or 'customer_id'
+        customer_id = attrs.get("customer_id") or attrs.get("customer")
+        if not customer_id:
+            raise serializers.ValidationError({"customer_id": "Customer is required"})
+        if not CustomerCreation.objects.filter(unique_id=customer_id).exists():
+            raise serializers.ValidationError({"customer_id": "Invalid customer reference"})
+        attrs["customer_id"] = customer_id
+        # Remove 'customer' field as it's write-only and the model has no setter
+        attrs.pop("customer", None)
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("customer", None)
+        
+        # Check for existing record for this customer + trip assignment
+        customer_id = validated_data.get("customer_id")
+        trip_assignment_id = validated_data.get("trip_assignment_id")
+        
+        if customer_id and trip_assignment_id:
+            existing = WasteCollection.objects.filter(
+                customer_id=customer_id,
+                trip_assignment_id=trip_assignment_id,
+                is_deleted=False
+            ).first()
+            if existing:
+                # Update existing record instead of creating duplicate
+                for key, value in validated_data.items():
+                    setattr(existing, key, value)
+                existing.save()
+                return existing
+        
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("customer", None)
+        return super().update(instance, validated_data)
+
+    def validate_ward_id(self, value):
+        if value and not Ward.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid ward.")
+        return value or None
+
+    def validate_trip_assignment_id(self, value):
+        if value and not DailyTripAssignment.objects.filter(unique_id=value).exists():
+            raise serializers.ValidationError("Invalid trip assignment.")
+        return value or None

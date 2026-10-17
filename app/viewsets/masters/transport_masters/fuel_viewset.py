@@ -8,16 +8,18 @@ from app.models.masters.transport_masters.fuel import Fuel
 from app.serializers.masters.transport_masters.fuel_serializer import FuelSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 FUEL_CACHE_SCOPES = ("fuel_list", "fuel_detail")
 
 
-class FuelViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class FuelViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "fuel"
     queryset = Fuel.objects.filter(is_deleted=False)
     serializer_class = FuelSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["fuel_type", "description"]
     ordering_fields = ["fuel_type", "is_active"]

@@ -27,22 +27,26 @@ must match ``AppSidebar.tsx``.
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
 from app.models.masters.corporation import Corporation
+from app.models.superadmin.screen_management.mainscreen import MainScreen
+from app.models.superadmin.screen_management.mainscreentype import MainScreenType
 from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreenaction import UserScreenAction
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 
-ACTIONS = ["view", "add", "edit", "delete"]
+ACTIONS = ["view", "add", "edit", "delete", "import", "export"]
 
 # Schedule / daily-trip screens a Corporation Supervisor may WRITE (decision D4).
 SCHEDULE_WRITE_SCREENS = {
     "trip-plans",
-    "daily-trip-assignments",
-    "daily-trip-collection-points",
-    "householdcollection-events",
+    # The trip, its collection points and household stops are one grant
+    # (permission_catalog.DAILY_TRIP_PLAN_TABLES).
+    "daily-trip-plan",
+    "daily-trip-tracking",
+    "household-collection-event",
     "daily-trip-logs",
-    "secondary-bin-collection-events",
-    "vehicle-breakdowns",
+    "secondary-bin-collection-event",
+    "vehicle-breakdown",
 }
 
 
@@ -62,11 +66,14 @@ class CorporationPermissionSeeder(BaseSeeder):
             UserScreen.objects.filter(
                 is_deleted=False,
                 is_active=True,
-                mainscreen_id__is_deleted=False,
-                mainscreen_id__is_active=True,
-                mainscreen_id__mainscreentype_id__type_name="megamenu",
+                mainscreen_id__in=MainScreen.objects.filter(
+                    is_deleted=False,
+                    is_active=True,
+                    mainscreentype_id__in=MainScreenType.objects.filter(
+                        type_name="megamenu"
+                    ).values("unique_id"),
+                ).values("unique_id"),
             )
-            .select_related("mainscreen_id")
         )
 
         baseline_rows = admin_rows = supervisor_rows = managed_view_rows = 0
@@ -151,8 +158,8 @@ class CorporationPermissionSeeder(BaseSeeder):
             permission_owner_kind=owner_kind,
             staff_id=staff_id,
             mainscreen_id=screen.mainscreen_id,
-            userscreen_id=screen,
-            userscreenaction_id=action,
+            userscreen_id=screen.unique_id,
+            userscreenaction_id=action.unique_id,
             is_deleted=False,
             **scope,
             defaults={

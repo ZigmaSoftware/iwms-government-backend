@@ -3,6 +3,7 @@ import hashlib
 from django.core.cache import cache
 from rest_framework import serializers
 
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
@@ -132,7 +133,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     _HOUSEHOLD_TYPES = ("household_collection", "bulk_waste_collection")
 
     def get_collection_type(self, obj):
-        plan = getattr(obj, "trip_plan_id", None)
+        plan = getattr(obj, "trip_plan", None)
         return getattr(plan, "collection_type", None)
 
     def get_retrip_request(self, obj):
@@ -203,8 +204,7 @@ class MyTripTodaySerializer(serializers.Serializer):
 
         return list(
             DailyTripHouseholdCollection.objects
-            .filter(trip_assignment_id=obj, is_deleted=False)
-            .select_related("customer_id")
+            .filter(trip_assignment_id=obj.unique_id, is_deleted=False)
             .order_by("sequence")
         )
 
@@ -300,7 +300,7 @@ class MyTripTodaySerializer(serializers.Serializer):
 
     @staticmethod
     def _waste_breakdown(hh):
-        if not hh.is_collected or not hh.trip_assignment_id_id or not hh.customer_id_id:
+        if not hh.is_collected or not hh.trip_assignment_id or not hh.customer_id:
             return []
 
         from app.models.core_modules.daily_operations.waste_collection import (
@@ -315,8 +315,8 @@ class MyTripTodaySerializer(serializers.Serializer):
         record = (
             WasteCollection.objects
             .filter(
-                trip_assignment_id_id=hh.trip_assignment_id_id,
-                customer_id=hh.customer_id_id,
+                trip_assignment_id=ref_id(hh.trip_assignment_id),
+                customer_id=hh.customer_id,
                 is_deleted=False,
             )
             # collection_time is auto_now_add — the closest thing this model
@@ -370,7 +370,6 @@ class MyTripTodaySerializer(serializers.Serializer):
         children = (
             obj.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id", "bin_id")
             .order_by("sequence")
         )
         return TripCollectionPointSerializer(
@@ -400,7 +399,6 @@ class MyTripTodaySerializer(serializers.Serializer):
         stops = list(
             obj.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id")
             .order_by("sequence")
         )
         route_input = []
@@ -441,7 +439,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     def _latest_vehicle_start(self, assignment):
         latest_event = (
             BinCollectionEvent.objects
-            .filter(trip_assignment_id=assignment)
+            .filter(trip_assignment_id=ref_id(assignment))
             .exclude(driver_latitude=None)
             .exclude(driver_longitude=None)
             .order_by("-created_at")

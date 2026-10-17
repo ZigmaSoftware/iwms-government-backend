@@ -4,50 +4,45 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.utils.hierarchy import flat_geo_display
 
 
-class CustomerField(serializers.SlugRelatedField):
-    """Accept customer unique_id or PK, serialize as unique_id."""
-
-    def to_representation(self, value):
-        return value.unique_id if value else None
-
-    def to_internal_value(self, data):
-        if data in [None, ""]:
-            raise serializers.ValidationError("Customer is required")
-        # try unique_id
-        try:
-            return self.get_queryset().get(unique_id=str(data))
-        except CustomerCreation.DoesNotExist:
-            # fallback to pk
-            try:
-                return self.get_queryset().get(pk=int(data))
-            except (ValueError, TypeError, CustomerCreation.DoesNotExist):
-                raise serializers.ValidationError("Invalid customer reference")
-
-
 class FeedBackSerializer(serializers.ModelSerializer):
-    customer = CustomerField(
-        slug_field="unique_id",
-        queryset=CustomerCreation.objects.all(),
-        write_only=True,
-    )
-    # Expose customer identifier as `customer_id`
-    customer_id = serializers.CharField(source="customer.unique_id", read_only=True)
-    customer_name = serializers.CharField(source="customer.customer_name", read_only=True)
+    # Write the customer's unique_id as `customer`; read it back as
+    # `customer_id` (a plain unique_id column, no DB relation).
+    customer = serializers.CharField(write_only=True)
+    customer_id = serializers.CharField(read_only=True)
+    customer_name = serializers.SerializerMethodField(read_only=True)
     location_name = serializers.SerializerMethodField(read_only=True)
     location_level = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = FeedBack
         fields = "__all__"
-        extra_kwargs = {
-            "customer": {"write_only": True},
-        }
+
+    def validate_customer(self, value):
+        if value in (None, ""):
+            raise serializers.ValidationError("Customer is required")
+        if not CustomerCreation.objects.filter(unique_id=str(value)).exists():
+            raise serializers.ValidationError("Invalid customer reference")
+        return str(value)
+
+    def validate(self, attrs):
+        if "customer" in attrs:
+            attrs["customer_id"] = attrs.pop("customer")
+        return attrs
+
+    def _customer(self, obj):
+        cache = self.context.setdefault("_customers", {})
+        if obj.customer_id not in cache:
+            cache[obj.customer_id] = obj.customer
+        return cache[obj.customer_id]
+
+    def get_customer_name(self, obj):
+        return getattr(self._customer(obj), "customer_name", None)
 
     def get_location_name(self, obj):
-        name, _ = flat_geo_display(obj.customer)
-        return name
+        customer = self._customer(obj)
+        return flat_geo_display(customer)[0] if customer else None
 
     def get_location_level(self, obj):
-        _, level = flat_geo_display(obj.customer)
-        return level
+        customer = self._customer(obj)
+        return flat_geo_display(customer)[1] if customer else None
 

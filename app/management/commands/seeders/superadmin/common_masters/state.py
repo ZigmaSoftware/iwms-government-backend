@@ -21,11 +21,12 @@ class StateSeeder(BaseSeeder):
     ]
 
     def run(self):
-        asia = Continent.objects.get(name="Asia")
-        india = Country.objects.get(name="India")
+        asia = self.pick_existing(Continent, name="Asia")
+        india = self.pick_existing(Country, name="India")
 
         for name, label in self.STATES:
-            State.objects.update_or_create(
+            self.upsert(
+                State,
                 name=name,
                 country_id=india.unique_id,
                 continent_id=asia.unique_id,

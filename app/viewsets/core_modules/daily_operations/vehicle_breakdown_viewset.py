@@ -21,37 +21,26 @@ from app.services.staff_notification_service import notify_staff
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.base_models import Account
 from app.utils.hierarchy import (
-    STAFF_GEO_LEVEL_FIELDS,
     filter_assignable_staff_by_requester_scope,
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref import ref_q
+from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
 
 
 class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "vehicle_breakdown"
-    queryset = (
-        VehicleBreakdown.objects.select_related(
-            "trip_assignment_id",
-            "trip_assignment_id__trip_plan_id",
-            "trip_assignment_id__staff_template_id",
-            "trip_assignment_id__staff_template_id__driver_id",
-            "trip_assignment_id__staff_template_id__operator_id",
-            # corporation/municipality/town_panchayat/panchayat_union/panchayat
-            # are plain unique_id CharFields on DailyTripAssignment now (no DB
-            # relation) and aren't read by the serializer, so there is
-            # nothing to select_related for them.
-            "breakdown_vehicle_id",
-            "replacement_vehicle_id",
-            "replacement_driver_id",
-            "replacement_operator_id",
-            "alt_staff_template_id",
-            "approved_by",
-        )
-        .prefetch_related("photos")
-        .filter(is_deleted=False)
-    )
+    queryset = VehicleBreakdown.objects.filter(is_deleted=False)
     serializer_class = VehicleBreakdownSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = "unique_id"
@@ -79,9 +68,9 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         search = params.get("search") or params.get("q")
 
         if trip_date:
-            qs = qs.filter(trip_assignment_id__trip_date=trip_date)
+            qs = qs.filter(ref_q("trip_assignment_id", DailyTripAssignment, trip_date=trip_date))
         if trip_assignment:
-            qs = qs.filter(trip_assignment_id__unique_id=trip_assignment)
+            qs = qs.filter(trip_assignment_id=trip_assignment)
         if approval_status:
             qs = qs.filter(approval_status=approval_status)
         if breakdown_status:
@@ -91,26 +80,31 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if search:
             qs = qs.filter(
                 Q(unique_id__icontains=search)
-                | Q(trip_assignment_id__unique_id__icontains=search)
-                | Q(breakdown_vehicle_id__vehicle_no__icontains=search)
-                | Q(replacement_vehicle_id__vehicle_no__icontains=search)
-                | Q(replacement_driver_id__employee_name__icontains=search)
-                | Q(replacement_operator_id__employee_name__icontains=search)
+                | Q(trip_assignment_id__icontains=search)
+                | ref_q("breakdown_vehicle_id", VehicleCreation, vehicle_no__icontains=search)
+                | ref_q("replacement_vehicle_id", VehicleCreation, vehicle_no__icontains=search)
+                | ref_q("replacement_driver_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                | ref_q("replacement_operator_id", Staffcreation, "staff_unique_id", employee_name__icontains=search)
+                # Table columns: location (local-body/district/state names),
+                # reason, status and the free-text breakdown spot.
+                | Q(breakdown_location__icontains=search)
+                | Q(breakdown_reason__icontains=search)
+                | Q(status__icontains=search)
+                | Q(approval_status__icontains=search)
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
             )
 
-        qs = filter_flat_geo_queryset_by_params(
-            qs,
-            params,
-            prefix="trip_assignment_id__",
-        )
-
-        # Breakdowns carry no geo columns of their own — scope through the
-        # linked assignment's flat geo fields.
-        qs = filter_flat_geo_queryset_by_requester_scope(
-            qs,
-            self.request.user,
-            field_map={f: f"trip_assignment_id__{f}" for f in STAFF_GEO_LEVEL_FIELDS},
-        )
+        # Breakdowns copy the assignment's flat geo block on save
+        # (VehicleBreakdown.save), so they are scoped on their own columns.
+        qs = filter_flat_geo_queryset_by_params(qs, params)
+        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         return qs
 
@@ -159,7 +153,7 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
         self.log_audit(
@@ -194,21 +188,21 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=self._serialize_instance(instance),
         )
 
-        driver = instance.replacement_driver_id
+        driver = instance.replacement_driver
         if driver is not None:
             notify_staff(
                 driver,
                 StaffNotification.TYPE_VEHICLE_REPLACEMENT_APPROVED,
                 title="Vehicle replaced",
                 body=(
-                    f"Trip {instance.trip_assignment_id.unique_id} has a breakdown replacement. "
-                    f"Your assigned trip {getattr(instance.new_assignment, 'unique_id', '')} uses "
-                    f"{getattr(instance.replacement_vehicle_id, 'vehicle_no', 'a new vehicle')}."
+                    f"Trip {instance.trip_assignment_id} has a breakdown replacement. "
+                    f"Your assigned trip {instance.new_assignment_id or ''} uses "
+                    f"{getattr(instance.replacement_vehicle, 'vehicle_no', 'a new vehicle')}."
                 ),
                 data={
                     "vehicle_breakdown_id": instance.unique_id,
-                    "trip_assignment_id": instance.trip_assignment_id.unique_id,
-                    "new_assignment_id": getattr(instance.new_assignment, "unique_id", None),
+                    "trip_assignment_id": instance.trip_assignment_id,
+                    "new_assignment_id": instance.new_assignment_id,
                 },
             )
 
@@ -243,10 +237,8 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # Notify the assignment's current driver — the replacement request
         # never went through, so the original vehicle/crew stands.
-        template = instance.trip_assignment_id.alt_staff_template_id or (
-            instance.trip_assignment_id.staff_template_id
-        )
-        driver = getattr(template, "driver_id", None)
+        template = getattr(instance.trip_assignment, "effective_template", None)
+        driver = getattr(template, "driver", None)
         if driver is not None:
             notify_staff(
                 driver,
@@ -254,12 +246,12 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 title="Vehicle replacement rejected",
                 body=(
                     f"Your vehicle replacement request on trip "
-                    f"{instance.trip_assignment_id.unique_id} was rejected"
+                    f"{instance.trip_assignment_id} was rejected"
                     f"{': ' + instance.rejection_remarks if instance.rejection_remarks else '.'}"
                 ),
                 data={
                     "vehicle_breakdown_id": instance.unique_id,
-                    "trip_assignment_id": instance.trip_assignment_id.unique_id,
+                    "trip_assignment_id": instance.trip_assignment_id,
                 },
             )
 
@@ -299,7 +291,7 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 DailyTripAssignment.STATUS_IN_PROGRESS,
             ],
             is_deleted=False,
-        ).select_related("staff_template_id", "alt_staff_template_id")
+        )
 
         # A crew normally runs several rounds a day (a 06:00 and an 08:00 trip
         # is the standard pattern here), so "has any trip today" is not a
@@ -334,13 +326,13 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         busy_driver_ids = set()
         busy_operator_ids = set()
         for a in active_assignments:
-            tmpl = a.alt_staff_template_id or a.staff_template_id
+            tmpl = a.effective_template
             if not tmpl:
                 continue
-            if tmpl.driver_id_id:
-                busy_driver_ids.add(tmpl.driver_id_id)
-            if tmpl.operator_id_id:
-                busy_operator_ids.add(tmpl.operator_id_id)
+            if tmpl.driver_id:
+                busy_driver_ids.add(tmpl.driver_id)
+            if tmpl.operator_id:
+                busy_operator_ids.add(tmpl.operator_id)
 
         # Government staff carry their role on `governmentusertype_id` (e.g.
         # `govt_panchayat_driver`/`govt_district_driver`), not
@@ -355,9 +347,24 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             else "operator" if is_operator_role
             else role_value
         )
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        from app.models.superadmin.role_management.staffUserType import StaffUserType
+        
+        govt_type_ids = GovernmentStaffUserType.objects.filter(
+            name__icontains=match_token,
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+        
+        staff_type_ids = StaffUserType.objects.filter(
+            name__icontains=match_token,
+            is_active=True,
+            is_deleted=False
+        ).values_list("unique_id", flat=True)
+        
         qs = Staffcreation.objects.filter(
-            Q(governmentusertype_id__name__icontains=match_token)
-            | Q(staffusertype_id__name__icontains=match_token),
+            Q(governmentusertype_id__in=list(govt_type_ids))
+            | Q(staffusertype_id__in=list(staff_type_ids)),
             is_deleted=False,
             active_status=True,
         )
@@ -403,7 +410,7 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         # so its own replacement vehicle is still shown as available.
         current_breakdown_id = request.query_params.get("exclude_id")
         pending_qs = VehicleBreakdown.objects.filter(
-            trip_assignment_id__trip_date=trip_date,
+            ref_q("trip_assignment_id", DailyTripAssignment, trip_date=trip_date),
             approval_status=VehicleBreakdown.APPROVAL_PENDING,
             replacement_vehicle_id__isnull=False,
             is_deleted=False,
@@ -435,7 +442,7 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         photos = self.request.FILES.getlist("photos")
         for photo in photos:
-            VehicleBreakdownPhoto.objects.create(breakdown=instance, photo=photo)
+            VehicleBreakdownPhoto.objects.create(breakdown_id=instance.unique_id, photo=photo)
 
         self.log_audit(
             self.request,
@@ -444,11 +451,11 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             new_data=self._serialize_instance(instance),
         )
 
-        assignment = instance.trip_assignment_id
-        trip_plan = getattr(assignment, "trip_plan_id", None)
-        supervisor = getattr(trip_plan, "supervisor_id", None)
+        assignment = instance.trip_assignment
+        trip_plan = getattr(assignment, "trip_plan", None)
+        supervisor = getattr(trip_plan, "supervisor", None)
         if supervisor is not None:
-            vehicle_no = getattr(instance.breakdown_vehicle_id, "vehicle_no", "A vehicle")
+            vehicle_no = getattr(instance.breakdown_vehicle, "vehicle_no", "A vehicle")
             notify_staff(
                 supervisor,
                 StaffNotification.TYPE_VEHICLE_BREAKDOWN_REPORTED,

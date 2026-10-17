@@ -30,9 +30,7 @@ class StaffProfileViewSet(viewsets.ViewSet):
             )
 
         try:
-            staff = Staffcreation.objects.select_related(
-                "personal_details"
-            ).get(staff_unique_id=staff_unique_id)
+            staff = Staffcreation.objects.get(staff_unique_id=staff_unique_id)
         except Staffcreation.DoesNotExist:
             return Response(
                 {"status": "error", "message": "Staff profile not found"},
@@ -74,7 +72,7 @@ class StaffProfileViewSet(viewsets.ViewSet):
         blood_group = request.data.get("blood_group")
 
         personal, _ = StaffPersonalDetails.objects.get_or_create(
-            staff=staff
+            staff_id=staff.staff_unique_id
         )
         if dob:
             personal.dob = dob
