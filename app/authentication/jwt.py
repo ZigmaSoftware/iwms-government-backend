@@ -8,6 +8,7 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
+from app.services.login_session import validate_session
 
 
 class JWTUserAuthentication(BaseAuthentication):
@@ -58,6 +59,10 @@ class JWTUserAuthentication(BaseAuthentication):
             raise AuthenticationFailed("Token expired") from exc
         except jwt.InvalidTokenError as exc:
             raise AuthenticationFailed("Invalid token") from exc
+
+        session_error = validate_session(payload)
+        if session_error:
+            raise AuthenticationFailed(session_error, code="session_ended")
 
         unique_id = payload.get("unique_id")
         if not unique_id:

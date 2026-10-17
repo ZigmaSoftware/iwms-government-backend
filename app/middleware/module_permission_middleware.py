@@ -12,6 +12,7 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
+from app.services.login_session import validate_session
 from app.utils.hierarchy import local_body_scope_for_staff
 from app.utils.permission_catalog import ROUTE_MODULES, ROUTE_OWNERS
 from app.utils.screen_dependencies import INCLUDED_BY, LOOKUP_FOR
@@ -403,6 +404,12 @@ def _authenticate_request(request):
         return JsonResponse({"detail": "Token expired"}, status=401)
     except jwt.InvalidTokenError:
         return JsonResponse({"detail": "Invalid token"}, status=401)
+
+    session_error = validate_session(payload)
+    if session_error:
+        return JsonResponse(
+            {"detail": session_error, "code": "session_ended"}, status=401
+        )
 
     unique_id = payload.get("unique_id")
     if not unique_id:
