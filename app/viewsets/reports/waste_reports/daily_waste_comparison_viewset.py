@@ -16,8 +16,15 @@ Response:
   waste_type_breakdown  totals per waste type (for composition charts)
   kpis                  overall totals
 
+Each results row also carries its verification state — a Submitted trip log
+is unverified until someone verifies it in Daily Trip Logs:
+  verification_status   verified | unverified | partial (row mixes both)
+  verification_label    display text for verification_status
+  verified_trips / unverified_trips
+
 Query params:
   source  bin (default) | household | all
+  verification  verified | unverified — only Verified / only Submitted logs
   date, month  optional date filters
   Any of: state_id | district_id | area_type_id | corporation_id |
           municipality_id | town_panchayat_id | panchayat_union_id |
@@ -50,6 +57,14 @@ from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 ZERO = Decimal("0")
 TWO_PLACES = Decimal("0.01")
+
+# ?verification= value -> the trip log status it keeps.
+VERIFICATION_LOG_STATUS = {
+    "verified": DailyTripLog.LOG_STATUS_VERIFIED,
+    "unverified": DailyTripLog.LOG_STATUS_SUBMITTED,
+}
+
+VERIFICATION_SORT_RANK = {"verified": 0, "partial": 1, "unverified": 2}
 
 UNCLASSIFIED_WASTE_TYPE_ID = "UNCLASSIFIED"
 UNCLASSIFIED_WASTE_TYPE_NAME = "Unclassified"
@@ -96,6 +111,22 @@ def _bulk_local_body_names(ids_by_field):
     return names
 
 
+def verification_status(verified, unverified):
+    if verified and not unverified:
+        return "verified"
+    if verified:
+        return "partial"
+    return "unverified"
+
+
+def verification_label(verified, unverified):
+    """Display text, e.g. for the Excel export: "Partly verified (2/3)"."""
+    status = verification_status(verified, unverified)
+    if status == "partial":
+        return f"Partly verified ({verified}/{verified + unverified})"
+    return status.capitalize()
+
+
 def decimal_value(value):
     if value is None:
         return ZERO
@@ -139,6 +170,10 @@ class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
             queryset, request.user, request.query_params.get("ward_id")
         )
         queryset = self.filter_queryset(queryset)
+
+        verification = (request.query_params.get("verification") or "").lower()
+        if verification in VERIFICATION_LOG_STATUS:
+            queryset = queryset.filter(log_status=VERIFICATION_LOG_STATUS[verification])
 
         # ── date / month / local body / waste_type filters ───────────────
         date_param = request.query_params.get("date")
@@ -221,11 +256,15 @@ class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
         # Map (trip_date, local_body_field, local_body_id) -> waste type weight,
         # by joining wt_rows back onto the per-trip-log local-body/date info.
         trip_log_info = queryset.values(
-            "trip_assignment_id", "trip_date", *group_fields,
+            "trip_assignment_id", "trip_date", "log_status", *group_fields,
         )
         info_by_assignment = {}
+        # A trip counts as verified only when every one of its logs is.
+        unverified_assignment_ids = set()
         for r in trip_log_info:
             info_by_assignment.setdefault(r["trip_assignment_id"], []).append(r)
+            if r["log_status"] != DailyTripLog.LOG_STATUS_VERIFIED:
+                unverified_assignment_ids.add(r["trip_assignment_id"])
 
         # If waste_type_id filter is supplied, keep only matching wt_rows.
         if waste_type_param:
@@ -302,6 +341,8 @@ class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
         for (trip_date, local_body_field, local_body_id, waste_type_id), bucket in bucket_totals.items():
             actual = bucket["weight_kg"]
             total_trips = len(bucket["trip_assignment_ids"])
+            unverified_trips = len(bucket["trip_assignment_ids"] & unverified_assignment_ids)
+            verified_trips = total_trips - unverified_trips
             local_body_name = local_body_names.get((local_body_field, local_body_id), local_body_id)
 
             unique_id = f"DWC-{trip_date}-{local_body_id}-{waste_type_id}"
@@ -317,6 +358,10 @@ class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
                 "waste_type": bucket["waste_type_name"],
                 "actual_weight_kg": float(rounded(actual)),
                 "total_trips": total_trips,
+                "verified_trips": verified_trips,
+                "unverified_trips": unverified_trips,
+                "verification_status": verification_status(verified_trips, unverified_trips),
+                "verification_label": verification_label(verified_trips, unverified_trips),
                 # collection_points_covered isn't meaningfully splittable per
                 # waste type from BinCollectionEvent/WasteCollection alone
                 # (a collection point can serve multiple waste types on the
@@ -344,11 +389,18 @@ class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
             )
             row["collection_points_covered"] = points_by_bucket.get(key, 0)
 
+        # Trips logged with no weight at all (empty trip logs) would only
+        # list as "Unclassified · 0 kg" — keep them out of the detail table
+        # and the waste-type breakdown. They still count in the trip KPIs.
+        rows = [r for r in rows if r["actual_weight_kg"] > 0]
+
+        # Verified rows first, then partly verified, then unverified; the
+        # chosen sort (weight / trips) orders rows within each group.
         sort_mode = request.query_params.get("sort", "weight").lower()
-        if sort_mode == "trips":
-            rows.sort(key=lambda r: r["total_trips"], reverse=True)
-        else:
-            rows.sort(key=lambda r: r["actual_weight_kg"], reverse=True)
+        sort_field = "total_trips" if sort_mode == "trips" else "actual_weight_kg"
+        rows.sort(key=lambda r: (
+            VERIFICATION_SORT_RANK[r["verification_status"]], -r[sort_field],
+        ))
 
         location_rows = self._build_location_rows(location_qs, weight_field)
 
@@ -359,6 +411,9 @@ class DailyWasteComparisonViewSet(BulkUploadMixin, viewsets.ModelViewSet):
         location_comparison = self._build_location_comparison(location_rows)
         waste_type_breakdown = self._build_waste_type_breakdown(rows)
         kpis = self._build_totals(location_rows, rows)
+        all_assignment_ids = set(info_by_assignment)
+        kpis["unverified_trips"] = len(all_assignment_ids & unverified_assignment_ids)
+        kpis["verified_trips"] = len(all_assignment_ids) - kpis["unverified_trips"]
 
         offset, limit = self._pagination_params(request)
         page_rows = rows[offset:offset + limit] if limit is not None else rows

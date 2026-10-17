@@ -392,7 +392,17 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": COMPLAINT_ESCALATION_INTERVAL_SECONDS,
         "options": {"expires": COMPLAINT_ESCALATION_INTERVAL_SECONDS},
     },
+    # Closes login sessions nobody logged out of, so the login audit's
+    # logout time / used hours stay correct (app/services/login_session.py).
+    "close-idle-login-sessions": {
+        "task": "iwms.close_idle_login_sessions",
+        "schedule": 300.0,
+        "options": {"expires": 290},
+    },
 }
+
+# Web sessions log out automatically after this much inactivity.
+LOGIN_IDLE_TIMEOUT_SECONDS = int(os.getenv("LOGIN_IDLE_TIMEOUT_SECONDS", str(40 * 60)))
 
 # -------------------------------------------------------
 # Custom User Model

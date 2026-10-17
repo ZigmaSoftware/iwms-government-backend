@@ -1,16 +1,33 @@
 # api/views/desktopView/users/login_viewset.py
 
+from datetime import timedelta
+
+import jwt
+from django.conf import settings
+from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
-from app.models.superadmin.audits.login_audit import LoginAudit
+from app.models.superadmin.audits.login_audit import LoginAudit, generate_login_id
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.login.login_serializer import LoginSerializer
+from app.services.login_session import (
+    close_session,
+    close_stale_sessions_throttled,
+    idle_timeout_seconds,
+    resolve_login_audit_id,
+    stamp_session_claims,
+    touch_session,
+    validate_session,
+)
 from app.utils.hierarchy import staff_scope_payload
+from app.utils.request_client import is_mobile_client
+from app.utils.roles import is_admin_portal_role
 from app.utils import ref_cache
 from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
@@ -25,6 +42,37 @@ def _client_ip(request):
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
+
+
+def _session_payload(request):
+    """Decode the caller's bearer token for logout/heartbeat.
+
+    Signature is verified but expiry is not: an expired token must still be
+    able to close its own session.
+    """
+    auth = request.headers.get("Authorization") or ""
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = "".join(auth.split(" ", 1)[1].split())
+    try:
+        return jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            options={"verify_exp": False},
+        )
+    except jwt.InvalidTokenError:
+        return None
+
+
+def _parse_client_time(value, upper_bound):
+    """Parse a client-reported ISO timestamp, never trusting it past now."""
+    parsed = parse_datetime(value) if isinstance(value, str) else None
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return min(parsed, upper_bound)
 
 
 class LoginViewSet(ViewSet):
@@ -276,6 +324,14 @@ class LoginViewSet(ViewSet):
         access["valid_hours"] = round((exp - iat) / 3600, 2)
         access["valid_days"] = round((exp - iat) / 86400, 4)
 
+        # Browser logins get an idle limit; the mobile app (`client:
+        # "mobile"`) keeps its long-lived session.
+        session_idle_timeout = (
+            None if is_mobile_client(request.data) else idle_timeout_seconds()
+        )
+        login_audit_id = generate_login_id()
+        stamp_session_claims(access, login_audit_id, session_idle_timeout)
+
         token = str(access)
 
         # -------------------------
@@ -294,6 +350,9 @@ class LoginViewSet(ViewSet):
         refresh["staff_config_name"] = staff_config_name
         refresh["emp_id"] = emp_id
         refresh["employee_id"] = employee_id
+        # Same session claims, so a refreshed access token stays tied to
+        # this login row (refresh_token_viewset.py copies them across).
+        stamp_session_claims(refresh, login_audit_id, session_idle_timeout)
         refresh_token = str(refresh)
 
         if user_type in ["staff", "contractor"]:
@@ -315,6 +374,7 @@ class LoginViewSet(ViewSet):
         # LOGIN SUCCESS AUDIT 
         # -------------------------
         LoginAudit.objects.create(
+            unique_id=login_audit_id,
             user_unique_id=user_unique_id,
             module_name=user_type,
             username=login_identifier,
@@ -323,8 +383,12 @@ class LoginViewSet(ViewSet):
             ip_address=ip_address or "",
             user_agent=getattr(request, "user_agent", ""),
             success=True,
-            reason=None
+            reason=None,
+            idle_timeout_seconds=session_idle_timeout,
+            last_activity_at=timezone.now(),
         )
+
+        close_stale_sessions_throttled()
 
         return Response(
             {
@@ -332,11 +396,14 @@ class LoginViewSet(ViewSet):
                 "user_type": user_type,
                 "name": name,
                 "role": role,
+                "is_admin": is_admin_portal_role(role),
                 "staff_config_name": staff_config_name,
                 "access_token": token,
                 "refresh_token": refresh_token,
                 "token_type": "Bearer",
                 "expires_in": exp - iat,
+                "login_audit_id": login_audit_id,
+                "idle_timeout_seconds": session_idle_timeout,
                 "email": email,
                 "emp_id": emp_id,
                 "employee_id": employee_id,
@@ -345,3 +412,88 @@ class LoginViewSet(ViewSet):
             },
             status=status.HTTP_200_OK
         )
+
+    # ----------------------------------------------------------
+    # POST /api/v1/login/login-user/logout/
+    # ----------------------------------------------------------
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="logout",
+        authentication_classes=[],
+        throttle_scope="login_session",
+    )
+    def logout(self, request):
+        """Close the caller's login session on its LoginAudit row.
+
+        Body: {"reason": "manual" | "idle_timeout" | "token_expired",
+               "last_activity_at": ISO timestamp (idle_timeout only)}
+        For an idle timeout the logout is stamped at last activity + idle
+        limit, i.e. when the auto-logout actually fell due.
+        """
+        payload = _session_payload(request)
+        audit_id = resolve_login_audit_id(payload) if payload else None
+        if not audit_id:
+            # No token, or no matching login row: nothing to close, and the
+            # client clears its own storage regardless.
+            return Response({"detail": "No active session"}, status=status.HTTP_200_OK)
+
+        reason = request.data.get("reason") or LoginAudit.LOGOUT_MANUAL
+        if reason not in dict(LoginAudit.LOGOUT_TYPE_CHOICES):
+            reason = LoginAudit.LOGOUT_MANUAL
+
+        now = timezone.now()
+        logout_at = now
+        if reason == LoginAudit.LOGOUT_IDLE_TIMEOUT and payload.get("idle_timeout"):
+            last_activity = _parse_client_time(request.data.get("last_activity_at"), now)
+            if last_activity:
+                logout_at = min(
+                    last_activity + timedelta(seconds=payload["idle_timeout"]),
+                    now,
+                )
+
+        audit = close_session(audit_id, reason, logout_at)
+        if audit is None:
+            return Response({"detail": "No active session"}, status=status.HTTP_200_OK)
+
+        return Response(
+            {
+                "login_audit_id": audit.unique_id,
+                "login_at": audit.timestamp,
+                "logout_at": audit.logout_at,
+                "logout_type": audit.logout_type,
+                "session_duration_seconds": audit.session_duration_seconds,
+                "used_hours": audit.used_hours,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ----------------------------------------------------------
+    # POST /api/v1/login/login-user/heartbeat/
+    # ----------------------------------------------------------
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="heartbeat",
+        authentication_classes=[],
+        throttle_scope="login_session",
+    )
+    def heartbeat(self, request):
+        """Record user activity so the server-side idle check stays in step
+        with the browser. Sent only while the user is actually interacting
+        (background polling does not count as activity)."""
+        payload = _session_payload(request)
+        audit_id = (payload or {}).get("login_audit_id")
+        if not audit_id:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        ended = validate_session(payload)
+        if ended:
+            return Response({"detail": ended}, status=status.HTTP_401_UNAUTHORIZED)
+
+        now = timezone.now()
+        touch_session(
+            audit_id,
+            _parse_client_time(request.data.get("last_activity_at"), now) or now,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -22,3 +22,14 @@ def complaint_sla_sweep():
     result = run_complaint_sla_sweep()
     if result.get("escalated"):
         logger.info("Complaint SLA sweep: %s", result)
+
+
+@shared_task(name="iwms.close_idle_login_sessions")
+def close_idle_login_sessions():
+    """Stamp logout time on web sessions whose browser never reported the
+    logout (tab closed, machine asleep) and on sessions past their lifetime."""
+    from app.services.login_session import close_stale_sessions
+
+    closed = close_stale_sessions()
+    if closed:
+        logger.info("Closed %s stale login session(s)", closed)

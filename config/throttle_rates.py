@@ -124,6 +124,9 @@ API_THROTTLE_RATES = {
     "admin_change_password": AUTH_SENSITIVE,
     "platform_login": AUTH_SENSITIVE,
     "refresh_token": AUTH_SENSITIVE,
+    # Logout + activity heartbeat (about one a minute while a user works) —
+    # not a credential check, so not held to the login limits.
+    "login_session": REALTIME_MOBILE,
     "district_leader_login": AUTH_SENSITIVE,
     "panchayat_leader_login": AUTH_SENSITIVE,
     "state_leader_login": AUTH_SENSITIVE,

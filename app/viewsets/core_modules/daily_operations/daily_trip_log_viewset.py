@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, viewsets
@@ -208,6 +208,50 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             previous_data=previous_data,
             new_data=self._serialize_instance(instance),
         )
+
+    # ----------------------------------------------------------
+    # GET /schedule-operations/daily-trip-logs/summary/
+    # ----------------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        """KPI totals for the list page over EVERY log matching the list's
+        own filters (search, date, waste type, status, location) — not just
+        the page on screen."""
+        qs = self.get_queryset().order_by()
+        today = timezone.localdate()
+
+        totals = qs.aggregate(
+            total_logs=Count("pk", distinct=True),
+            trips=Count("trip_assignment_id", distinct=True),
+            bin_weight_kg=Sum("collected_weight_kg"),
+            household_weight_kg=Sum("household_collected_weight_kg"),
+        )
+        today_totals = qs.filter(trip_date=today).aggregate(
+            bin=Sum("collected_weight_kg"),
+            household=Sum("household_collected_weight_kg"),
+        )
+        status_counts = {
+            row["log_status"]: row["n"]
+            for row in qs.values("log_status").annotate(n=Count("pk", distinct=True))
+        }
+
+        def kg(value):
+            return round(float(value or 0), 2)
+
+        bin_kg = kg(totals["bin_weight_kg"])
+        household_kg = kg(totals["household_weight_kg"])
+        return Response({
+            "total_logs": totals["total_logs"],
+            "trips": totals["trips"],
+            "bin_weight_kg": bin_kg,
+            "household_weight_kg": household_kg,
+            "total_weight_kg": round(bin_kg + household_kg, 2),
+            "today_weight_kg": round(kg(today_totals["bin"]) + kg(today_totals["household"]), 2),
+            "status_counts": {
+                status_value: status_counts.get(status_value, 0)
+                for status_value, _ in DailyTripLog.LOG_STATUS_CHOICES
+            },
+        })
 
     @swagger_auto_schema(request_body=DailyTripLogVerifySerializer)
     @action(detail=True, methods=["patch"], url_path="verify")

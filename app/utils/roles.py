@@ -69,6 +69,15 @@ def is_supervisor_role(user):
     return role.startswith("govt_") and role.endswith("_supervisor")
 
 
+def is_admin_portal_role(role):
+    """True when a login `role` name opens the web admin portal: superadmin or
+    any admin-shaped role (``company_admin``, ``company_project_admin``,
+    ``contractor_admin``, ``govt_<level>_admin``). Sent to the frontend as
+    ``is_admin`` at login so it never keeps its own list of admin roles."""
+    role = (role or "").strip().lower()
+    return role == "superadmin" or "admin" in role
+
+
 def can_manage_trips(user):
     """Who may create/edit/approve trips & daily trips: super admin, any admin,
     or any supervisor. (Screen-level write access is still enforced separately

@@ -9,6 +9,7 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.superadmin.audits.login_audit import LoginAudit
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.serializers.superadmin.audits.login_audit_serializer import LoginAuditSerializer
+from app.services.login_session import close_stale_sessions_throttled
 from app.utils.hierarchy import (
     FLAT_GEO_QUERY_FIELDS,
     filter_flat_geo_queryset_by_params,
@@ -34,7 +35,20 @@ class LoginAuditViewSet(viewsets.ReadOnlyModelViewSet):
         "user_agent",
         "reason",
     ]
-    ordering_fields = ["timestamp", "module_name", "username", "ip_address", "success"]
+    ordering_fields = [
+        "timestamp",
+        "module_name",
+        "username",
+        "ip_address",
+        "success",
+        "session_duration_seconds",
+    ]
+
+    def list(self, request, *args, **kwargs):
+        # Close sessions nobody logged out of, so rows don't read "Active"
+        # long after the session died (works without the beat task).
+        close_stale_sessions_throttled()
+        return super().list(request, *args, **kwargs)
 
     @staticmethod
     def _getlist(query_params, *names):
@@ -117,6 +131,15 @@ class LoginAuditViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(
                 success=success.lower() in ("1", "true", "yes")
             )
+
+        # active | manual | idle_timeout | token_expired | failed
+        session_state = params.get("session_state")
+        if session_state == "failed":
+            queryset = queryset.filter(success=False)
+        elif session_state == "active":
+            queryset = queryset.filter(success=True, logout_at__isnull=True)
+        elif session_state in dict(LoginAudit.LOGOUT_TYPE_CHOICES):
+            queryset = queryset.filter(success=True, logout_type=session_state)
 
         user_unique_id = params.get("user_unique_id")
         if user_unique_id:
