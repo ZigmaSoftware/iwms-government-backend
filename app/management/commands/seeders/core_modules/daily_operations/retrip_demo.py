@@ -124,7 +124,9 @@ class RetripDemoSeeder(BaseSeeder):
                 "staff_template_id__operator_id",
                 "vehicle_id",
                 "supervisor_id",
-                "district",
+                # district_id is a plain unique_id CharField now (no DB
+                # relation) — plan.district_id below reads it directly, no
+                # join to prefetch.
             )
             .prefetch_related("waste_types", "wards")
         )

@@ -135,6 +135,66 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         return None
 
+    def _matching_substitution(self, data):
+        """An identical substitution that already covers the requested dates.
+
+        The mobile "substitute staff" flow creates a substitution and then
+        attaches it to one assignment, so substituting the same team onto a
+        second trip the same day — or simply retrying after a dropped
+        response — re-POSTs a byte-identical record. The overlap rule in the
+        serializer (rightly) refuses two *competing* substitutions for one
+        staff template on one date, but it cannot tell a competing one from a
+        repeat, so it turned that ordinary case into a dead end: every
+        attempt after the first failed and the supervisor could not
+        substitute again for the rest of the day.
+
+        A request naming the same crew over a range the existing row already
+        covers is a repeat, not a conflict — hand that row back so the caller
+        can attach it. Anything else (a different driver, operator or extra
+        crew) is still a real clash and still rejected.
+        """
+        def _text(value):
+            return value.strip() if isinstance(value, str) else value
+
+        staff_template = _text(data.get("staff_template"))
+        driver = _text(data.get("driver"))
+        operator = _text(data.get("operator"))
+        from_date = _text(data.get("from_date"))
+        to_date = _text(data.get("to_date"))
+        if not all([staff_template, driver, operator, from_date, to_date]):
+            return None
+
+        extra = data.get("extra_operator") or []
+        if isinstance(extra, str):
+            extra = [part.strip() for part in extra.split(",")]
+        requested_extra = {str(item) for item in extra if item not in ("", None)}
+
+        candidates = AlternativeStaffTemplate.objects.filter(
+            staff_template_id=staff_template,
+            driver_id_id=driver,
+            operator_id_id=operator,
+            from_date__lte=from_date,
+            to_date__gte=to_date,
+        )
+        for row in candidates:
+            existing_extra = {
+                str(item)
+                for item in (row.extra_operator_id or [])
+                if item not in ("", None)
+            }
+            if existing_extra == requested_extra:
+                return row
+        return None
+
+    def create(self, request, *args, **kwargs):
+        existing = self._matching_substitution(request.data)
+        if existing is not None:
+            return Response(
+                self.get_serializer(existing).data,
+                status=status.HTTP_200_OK,
+            )
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         user = self._resolve_request_user()
 
@@ -243,7 +303,7 @@ class AlternativeStaffTemplateViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if not user:
             return
         StaffTemplateAuditLog.objects.create(
-            entity_type=StaffTemplateAuditLog.EntityType.ALTERNATIVE_TEMPLATE,
+            entity_type=StaffTemplateAuditLog.EntityType.ALT_STAFF_TEMPLATE,
             entity_id=str(entity_id),
             action=action,
             performed_by=user,

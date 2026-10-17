@@ -201,6 +201,7 @@ API_THROTTLE_RATES = {
     "country": READ_MASTER_DATA,
     "customer_access_configuration": READ_MASTER_DATA,
     "customer_creation": {**READ_MASTER_DATA, "GET": "120/minute"},
+    "customer_notification": READ_MASTER_DATA,
     "daily_waste_comparison": READ_MASTER_DATA,
     "department": READ_MASTER_DATA,
     "designation": READ_MASTER_DATA,

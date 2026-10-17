@@ -113,9 +113,9 @@ class CorporationAccessSeeder(BaseSeeder):
                     staff=staff,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id,
-                        "district_id": corporation.district_id,
-                        "area_type_id": corporation.area_type_id,
+                        "state": corporation.state_id,
+                        "district": corporation.district_id,
+                        "area_type": corporation.area_type_id,
                         "is_active": True,
                     },
                 )
@@ -154,9 +154,9 @@ class CorporationAccessSeeder(BaseSeeder):
                     staff=staff,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id,
-                        "district_id": corporation.district_id,
-                        "area_type_id": corporation.area_type_id,
+                        "state": corporation.state_id,
+                        "district": corporation.district_id,
+                        "area_type": corporation.area_type_id,
                         "is_active": True,
                     },
                 )

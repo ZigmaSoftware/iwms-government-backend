@@ -32,6 +32,22 @@ PASSWORD_RULE_MESSAGE = (
 )
 
 
+class _BlankableIntegerField(serializers.IntegerField):
+    """An IntegerField that accepts "" as None, like DecimalField already does.
+
+    See `DecimalField.validate_empty_values` in DRF: it special-cases a blank
+    string to None when the field allows null. `IntegerField` has no such
+    override, so an optional integer left empty on a form that otherwise
+    submits "" for every unset optional field 400s where the equivalent
+    decimal field silently accepts it.
+    """
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and data.strip() == "" and self.allow_null:
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class CustomerCreationSerializer(serializers.ModelSerializer):
 
     # ---- geography: state/district/area type/local body -------------------
@@ -39,28 +55,35 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     # columns are literally named "<field>_id" (matching Corporation/District/
     # etc.'s convention), so these need no `source=` override. Display names
     # resolved via explicit lookups, mirroring CorporationSerializer/DistrictSerializer.
-    state_id = serializers.CharField(required=False, allow_null=True)
+    #
+    # `allow_blank=True`: only one local-body level applies to a given
+    # customer, so the form submits "" (not omitted, not null) for every
+    # level that doesn't — CharField rejects a bare "" unless told to allow
+    # it, which 400'd every save/update with a local body selected at all.
+    # `normalize_flat_geo_attrs` below already treats "" as "not selected"
+    # (it's falsy), so accepting it here doesn't change what gets resolved.
+    state_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     state_name = serializers.SerializerMethodField()
 
-    district_id = serializers.CharField(required=False, allow_null=True)
+    district_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     district_name = serializers.SerializerMethodField()
 
-    area_type_id = serializers.CharField(required=False, allow_null=True)
+    area_type_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     area_type_name = serializers.SerializerMethodField()
 
-    corporation_id = serializers.CharField(required=False, allow_null=True)
+    corporation_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     corporation_name = serializers.SerializerMethodField()
 
-    municipality_id = serializers.CharField(required=False, allow_null=True)
+    municipality_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     municipality_name = serializers.SerializerMethodField()
 
-    town_panchayat_id = serializers.CharField(required=False, allow_null=True)
+    town_panchayat_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     town_panchayat_name = serializers.SerializerMethodField()
 
-    panchayat_union_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_union_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     panchayat_union_name = serializers.SerializerMethodField()
 
-    panchayat_id = serializers.CharField(required=False, allow_null=True)
+    panchayat_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     panchayat_name = serializers.SerializerMethodField()
 
     def get_state_name(self, obj):
@@ -124,7 +147,12 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     industry_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     industry_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
-    member_count = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    # DRF's DecimalField (what sqft/water_consumption_lpd/... resolve to,
+    # auto-built from the model) already treats "" as None when allow_null is
+    # set — IntegerField has no such override, so it 400'd on the same blank
+    # string every optional numeric field on this form submits when left
+    # empty. Mirror DecimalField's own validate_empty_values here.
+    member_count = _BlankableIntegerField(required=False, allow_null=True, min_value=0)
     family_members = serializers.ListField(
         child=serializers.DictField(), required=False, allow_empty=True,
     )

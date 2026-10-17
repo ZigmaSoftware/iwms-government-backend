@@ -96,9 +96,10 @@ class _StateWasteComparisonBase(ViewSet):
         return None
 
     def _base_queryset(self, state_uid):
-        return DailyTripLog.objects.select_related(
-            "district"
-        ).prefetch_related("waste_types").filter(
+        # district_id is a plain unique_id CharField now (no DB relation —
+        # see _district_names_by_id above), so there is nothing to
+        # select_related; it was left over from before that refactor.
+        return DailyTripLog.objects.prefetch_related("waste_types").filter(
             is_deleted=False,
             state_id=state_uid,
             log_status__in=[

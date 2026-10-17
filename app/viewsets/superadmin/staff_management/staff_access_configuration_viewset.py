@@ -157,60 +157,57 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         ).first()
 
         if request.method == "GET":
+            selected = config.app_module if config else None
+            if selected is not None and selected.is_deleted:
+                selected = None
             return Response({
                 "staff_id": staff_id,
-                "app_module_ids": (
-                    [m.unique_id for m in config.app_modules.filter(is_deleted=False)]
-                    if config else []
-                ),
+                "app_module_id": selected.unique_id if selected else None,
+                # The list form is still echoed so an older web build reading
+                # `app_module_ids` keeps working through a rollout.
+                "app_module_ids": [selected.unique_id] if selected else [],
                 "app_module": staff.app_module,
             })
 
-        module_ids = request.data.get("app_module_ids") or []
+        # `app_module_id` is the current contract — one app per person. The
+        # older `app_module_ids` list is still accepted so a web build that
+        # has not been redeployed yet does not start failing; only its first
+        # entry is honoured, since the rest never had a coherent meaning.
+        if "app_module_id" in request.data:
+            module_id = request.data.get("app_module_id") or None
+        else:
+            legacy_ids = request.data.get("app_module_ids") or []
+            module_id = legacy_ids[0] if legacy_ids else None
+
+        module = (
+            AppModule.objects.filter(unique_id=module_id, is_deleted=False).first()
+            if module_id
+            else None
+        )
+        if module_id and module is None:
+            return Response(
+                {"app_module_id": f"No app module '{module_id}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if config is None:
             config = StaffAccessConfiguration.objects.create(staff_id=staff)
-        config.app_modules.set(
-            AppModule.objects.filter(unique_id__in=module_ids, is_deleted=False)
-        )
+        config.app_module = module
+        config.save(update_fields=["app_module", "updated_at"])
 
         # Keep the landing app (Staffcreation.app_module, the "Mobile App"
-        # dropdown on the Staff Creation form) in step with the ticks.
+        # dropdown on the Staff Creation form) in step with the selection.
         #
-        # The rule: the landing app must always be one of the granted
-        # modules, or empty. It only ever decides which granted app opens
-        # FIRST (see build_landing/app_surfaces in permission_response.py) —
-        # it never grants anything by itself, so correcting it here can't
-        # widen anyone's access.
-        #
-        # This used to fire only when exactly one module was ticked AND the
-        # landing was still empty, which left the two screens disagreeing the
-        # moment anything changed: revoking every module left the landing
-        # pointing at an app the person could no longer open, and switching
-        # someone from Driver to Supervisor kept the landing on Driver
-        # forever because it was no longer empty. Runtime tolerated it (a
-        # landing that isn't granted is ignored when ordering surfaces), but
-        # the Staff Creation form then showed an app the person had no access
-        # to — exactly the "changes don't reflect on either side" confusion.
-        surfaces = list(
-            config.app_modules.filter(is_deleted=False).values_list(
-                "surface_key", flat=True
-            )
-        )
-        if not surfaces:
-            # No mobile access at all — a landing app would be meaningless.
-            new_landing = None
-        elif len(surfaces) == 1:
-            # Unambiguous: the one granted module is the landing app.
-            new_landing = surfaces[0]
-        elif staff.app_module in surfaces:
-            # Several granted and the existing choice is still one of them —
-            # respect the admin's explicit pick rather than reordering it.
-            new_landing = staff.app_module
-        else:
-            # Several granted but the stored landing isn't among them (or was
-            # never set). Leave it empty rather than guessing which of the
-            # granted apps should open first.
-            new_landing = None
+        # With one app per person this is a straight derivation rather than a
+        # reconciliation: the landing app IS the selected module, or empty
+        # when there is none. It only ever decides which granted app opens
+        # first (see build_landing/app_surfaces in permission_response.py) and
+        # never grants anything by itself, so setting it here cannot widen
+        # access. While several modules could be ticked the two screens could
+        # hold different answers — revoking every module left a landing app
+        # pointing at a shell the person could no longer open — which is no
+        # longer representable.
+        new_landing = module.surface_key if module else None
 
         if new_landing != staff.app_module:
             StaffcreationOfficeDetails.objects.filter(pk=staff.pk).update(
@@ -220,9 +217,10 @@ class StaffAccessConfigurationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         cache.clear()
         return Response({
             "staff_id": staff_id,
-            "app_module_ids": module_ids,
-            # Echo the landing back so the form can reflect the correction
-            # without a second round trip.
+            "app_module_id": module.unique_id if module else None,
+            "app_module_ids": [module.unique_id] if module else [],
+            # Echo the landing back so the form can reflect it without a
+            # second round trip.
             "app_module": new_landing,
         })
 

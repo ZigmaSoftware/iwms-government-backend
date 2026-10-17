@@ -80,6 +80,7 @@ from ..viewsets.auth.change_password_viewset import (
 
 # Customer modules
 from ..viewsets.masters.customer_masters.customercreation_viewset import CustomerCreationViewSet
+from ..viewsets.masters.customer_masters.customer_notification_viewset import CustomerNotificationViewSet
 from ..viewsets.core_modules.daily_operations.waste_collection_viewset import WasteCollectionViewSet
 from ..viewsets.masters.customer_masters.feedback_viewset import FeedBackViewSet
 from ..viewsets.masters.customer_masters.userchargerule_viewset import UserChargeRuleViewSet
@@ -266,6 +267,7 @@ router.register_group("customer-masters", "user-charge-rules", UserChargeRuleVie
 router.register_group(
     "customer-masters", "customer-access-configuration", CustomerAccessConfigurationViewSet
 )
+router.register_group("customer-masters", "customer-notifications", CustomerNotificationViewSet)
 
 # ============================================================
 # GROUP: COMPLAINT TICKETING

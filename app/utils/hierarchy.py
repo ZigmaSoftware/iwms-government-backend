@@ -567,9 +567,12 @@ def sync_staff_data_scope(staff, source):
         staff_id=staff.staff_unique_id,
         is_deleted=False,
         defaults={
-            "state_id": getattr(source, "state_id", None),
-            "district_id": getattr(source, "district_id", None),
-            "area_type_id": getattr(source, "area_type_id", None),
+            # StaffDataScope names these fields "state"/"district"/"area_type"
+            # (db_column keeps the old "*_id" suffix, but the Python
+            # attribute — and therefore the kwarg here — does not).
+            "state": getattr(source, "state_id", None),
+            "district": getattr(source, "district_id", None),
+            "area_type": getattr(source, "area_type_id", None),
             "is_active": True,
         },
     )
@@ -770,15 +773,83 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
     for scope_field, queryset_field in fields.items():
         if scope_field in LOCAL_BODY_SCOPE_FIELDS:
             continue
+        # `scope_field` (e.g. "state_id") named the field's FK attname back
+        # when StaffDataScope.state/.district/.area_type were still real
+        # ForeignKeys. They're now plain CharFields named "state"/"district"/
+        # "area_type" (db_column keeps the "_id" suffix, the Python field
+        # name does not), so `get_field(scope_field)` no longer resolves and
+        # silently fell through to `getattr(scope, scope_field, None)` — always
+        # None, since that attribute doesn't exist either. That made state/
+        # district/area_type-level scoping a silent no-op: a staff member
+        # scoped only that high (no specific local body) saw completely
+        # unscoped data at this level. Try the "_id"-stripped name too before
+        # giving up.
         try:
             attname = scope._meta.get_field(scope_field).attname
         except Exception:
-            attname = scope_field
+            bare_field = scope_field[:-3] if scope_field.endswith("_id") else scope_field
+            try:
+                attname = scope._meta.get_field(bare_field).attname
+            except Exception:
+                attname = scope_field
         value = getattr(scope, attname, None)
         if value:
             return _narrow_by_ward(queryset.filter(**{queryset_field: value}), scope)
 
     return _narrow_by_ward(queryset, scope)
+
+
+def filter_assignable_staff_by_requester_scope(queryset, user):
+    """
+    Scope a staff queryset for "who may I assign to this trip?" pickers.
+
+    `filter_staff_queryset_by_requester_scope` answers a different question —
+    "whose records may I read?" — so it matches the requester's local body
+    exactly. That is too narrow for an assignment dropdown: a
+    `govt_district_driver` carries a district but no local body because they
+    work anywhere in that district, so a Corporation supervisor sitting
+    inside that district must still be able to pull them onto a replacement
+    trip. Without this, every local-body supervisor sees an empty driver and
+    operator list.
+
+    Staff belonging to a *different* local body, or to another district
+    entirely, are still excluded — this widens the scope upwards along the
+    requester's own hierarchy branch only, never sideways.
+    """
+    scope = _staff_scope(user)
+    if not scope:
+        return _unscoped_result(queryset, user)
+
+    combined = Q()
+    matched = False
+
+    # At or below the requester: the local bodies they were granted.
+    for _, scope_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+        ids = list(getattr(scope, m2m_field).values_list("unique_id", flat=True))
+        if ids:
+            combined |= Q(**{f"{scope_field}__in": ids})
+            matched = True
+
+    # Above the requester: staff with no local body of their own, whose
+    # district (or state) covers the requester's area.
+    no_local_body = Q()
+    for _, scope_field, _m2m in STAFF_LOCAL_BODY_M2M_LEVELS:
+        no_local_body &= Q(**{f"{scope_field}__isnull": True}) | Q(**{scope_field: ""})
+
+    if scope.district:
+        combined |= no_local_body & Q(district_id=scope.district)
+        matched = True
+    if scope.state:
+        combined |= (
+            no_local_body
+            & (Q(district_id__isnull=True) | Q(district_id=""))
+            & Q(state_id=scope.state)
+        )
+        matched = True
+
+    if not matched:
+        return _narrow_by_ward(queryset, scope)
+    return _narrow_by_ward(queryset.filter(combined).distinct(), scope)
 
 
 def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):

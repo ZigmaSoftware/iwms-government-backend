@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from app.management.commands.seeders.base import BaseSeeder
 from app.management.commands.seeders.tn_geo_data import DISTRICTS
+from app.models.masters.district import District
 from app.models.masters.waste_masters.bins import Bins, BinType
 from app.models.core_modules.schedule_setup.collection_point import Collection_point
 from app.models.masters.waste_masters.wastetype import WasteType
@@ -35,10 +36,16 @@ class BinSeeder(BaseSeeder):
     name = "BinSeeder"
 
     def run(self):
+        # Collection_point.district_id is a plain unique_id CharField (no DB
+        # relation), so district__name is no longer a valid lookup —
+        # resolve the names to ids first, then filter on the id column.
+        district_ids = District.objects.filter(
+            name__in=DISTRICTS.keys()
+        ).values_list("unique_id", flat=True)
         cps = list(
             Collection_point.objects.filter(
                 is_deleted=False,
-                district__name__in=DISTRICTS.keys(),
+                district_id__in=list(district_ids),
                 # Every ward-scoped collection point this seeder owns carries
                 # exactly one Ward (see CollectionPointSeeder). Excludes
                 # driver_user.py's own hand-picked demo collection points

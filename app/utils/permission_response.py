@@ -535,7 +535,7 @@ def staff_access_config(staff_unique_id):
     return (
         StaffAccessConfiguration.objects
         .filter(staff_id_id=staff_unique_id, is_active=True, is_deleted=False)
-        .prefetch_related("app_modules")
+        .select_related("app_module")
         .first()
     )
 
@@ -588,13 +588,20 @@ def apply_staff_access_configuration(permissions, staff_unique_id):
 
 
 def staff_app_modules(config):
-    """Surface keys ticked on a StaffAccessConfiguration."""
+    """Surface key of the one app selected on a StaffAccessConfiguration.
+
+    Still a list, even though a staff member now has at most one app: every
+    caller downstream (`surfaces_from_app_modules`, `build_app_screens`, the
+    payload builders) is written against a collection of surfaces, and the
+    customer side genuinely still has several. Returning a list of one keeps
+    all of that working untouched.
+    """
     if config is None:
         return []
-    return list(
-        config.app_modules.filter(is_active=True, is_deleted=False)
-        .values_list("surface_key", flat=True)
-    )
+    module = config.app_module
+    if module is None or not module.is_active or module.is_deleted:
+        return []
+    return [module.surface_key]
 
 
 def surfaces_from_app_modules(app_modules):

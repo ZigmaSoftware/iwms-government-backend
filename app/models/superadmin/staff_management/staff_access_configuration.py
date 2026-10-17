@@ -7,9 +7,9 @@ so the M2Ms below mirror `Staffcreation`'s own FKs rather than private's.
 
 What this adds on top of the existing permission system:
 
-* `app_modules` — which mobile apps this person may sign into. No module
-  ticked means the mobile login is refused outright. This is the piece the
-  Flutter app depends on; it has no counterpart in the role/geography-keyed
+* `app_module` — the ONE mobile app this person signs into. Nothing selected
+  means the mobile login is refused outright. This is the piece the Flutter
+  app depends on; it has no counterpart in the role/geography-keyed
   `UserScreenPermission` rows, which say what a role can do, not which app a
   particular person opens.
 
@@ -65,13 +65,24 @@ class StaffAccessConfiguration(BaseMaster):
         related_name="access_configuration",
     )
 
-    # Mobile apps this staff member may sign into. No module ticked means the
-    # mobile login is refused — what they can do once inside comes from the
-    # ordinary screen permissions, which also govern web.
-    app_modules = models.ManyToManyField(
+    # The ONE mobile app this staff member signs into. Nothing selected means
+    # the mobile login is refused — what they can do once inside comes from
+    # the ordinary screen permissions, which also govern web.
+    #
+    # A person belongs to a single app — a Driver does not also open the
+    # Supervisor shell — so this is a single FK rather than a set of ticks.
+    # While it was a many-to-many, "which apps may they sign into" could hold
+    # several answers while "which app opens after sign-in"
+    # (Staffcreation.app_module) held one, and the two screens drifted apart:
+    # revoking every module left a landing app pointing at a shell the person
+    # could no longer open. With one selection the landing app is simply
+    # derived from it and the two can no longer disagree.
+    app_module = models.ForeignKey(
         AppModule,
-        related_name="staff_access_configurations",
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
+        related_name="staff_access_configurations",
     )
 
     # Geography, mirroring Staffcreation's own hierarchy. An empty selection

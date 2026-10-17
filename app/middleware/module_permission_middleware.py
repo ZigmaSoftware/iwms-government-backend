@@ -170,6 +170,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "FeedBack",
         "UserChargeRule",
         "CustomerAccessConfiguration",
+        "CustomerNotification",
     },
     "complaint-ticket": {
         "ComplaintTicket",
@@ -273,6 +274,7 @@ RESOURCE_PERMISSION_ALIASES = {
     "StaffNotification": ("staff-notifications",),
     "AppModule": ("app-modules",),
     "CustomerAccessConfiguration": ("customer-access-configuration",),
+    "CustomerNotification": ("customer-notifications",),
     "FeedBack": ("feedbacks", "feedback"),
     "ComplaintTicket": ("tickets",),
     "ComplaintModule": ("modules",),

@@ -300,19 +300,23 @@ class LoginSerializer(serializers.Serializer):
             .prefetch_related("app_modules", "app_screens")
             .first()
         )
-        app_modules = (
-            list(
+        if access_config:
+            app_modules = list(
                 access_config.app_modules.filter(is_active=True, is_deleted=False)
                 .values_list("surface_key", flat=True)
             )
-            if access_config else []
-        )
+        else:
+            # Older/customer-creation-only records still carry the intended
+            # citizen app access on the customer row. Keep them login-capable
+            # while the dedicated Customer Access Configuration row catches up.
+            legacy_module = getattr(customer_record, "app_module", None)
+            app_modules = [legacy_module] if legacy_module and legacy_module != "none" else []
         citizen_screens = (
             set(
                 access_config.app_screens.filter(is_active=True, is_deleted=False)
                 .values_list("userscreen_name", flat=True)
             )
-            if access_config else set()
+            if access_config else None
         )
 
         permission_payload = finalize_permission_payload(

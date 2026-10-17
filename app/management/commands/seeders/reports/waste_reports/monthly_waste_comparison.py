@@ -31,7 +31,7 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
             collection_date = today - timedelta(days=idx)
 
             already_exists = DailyWasteComparison.objects.filter(
-                panchayat=panchayat,
+                panchayat=panchayat.unique_id,
                 collection_date=collection_date,
                 waste_type_id=waste_type,
             ).exists()
@@ -42,7 +42,7 @@ class MonthlyWasteComparisonSeeder(BaseSeeder):
             actual = Decimal("480.00") - (Decimal("20.00") * Decimal(idx))
 
             DailyWasteComparison.objects.create(
-                panchayat=panchayat,
+                panchayat=panchayat.unique_id,
                 district=panchayat.district_id,
                 state=panchayat.state_id,
                 area_type=panchayat.area_type_id,

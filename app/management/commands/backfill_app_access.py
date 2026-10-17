@@ -129,8 +129,9 @@ class Command(BaseCommand):
             config = existing or StaffAccessConfiguration.objects.create(staff_id=staff)
 
             module = self.modules.get(surface)
-            if module:
-                config.app_modules.add(module)
+            if module and config.app_module_id != module.unique_id:
+                config.app_module = module
+                config.save(update_fields=["app_module", "updated_at"])
 
             for order, (screen, action_names) in enumerate(screens, start=1):
                 for name in action_names:

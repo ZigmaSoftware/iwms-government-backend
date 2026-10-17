@@ -143,6 +143,50 @@ class VehicleBreakdownSerializer(serializers.ModelSerializer):
                     }
                 )
 
+        # A crew may legitimately run several rounds a day, so a clash is only
+        # a clash when the other trip occupies the same slot. The available-
+        # staff dropdown cannot always narrow that far (it is not always told
+        # which trip is being replaced), so the double-booking guard lives
+        # here, where the target trip is always known.
+        if assignment:
+            clashing = DailyTripAssignment.objects.filter(
+                trip_date=assignment.trip_date,
+                status__in=[
+                    DailyTripAssignment.STATUS_SCHEDULED,
+                    DailyTripAssignment.STATUS_IN_PROGRESS,
+                ],
+                is_deleted=False,
+            ).exclude(pk=assignment.pk)
+            if assignment.scheduled_time:
+                clashing = clashing.filter(scheduled_time=assignment.scheduled_time)
+
+            busy_drivers = set()
+            busy_operators = set()
+            for other in clashing.select_related(
+                "staff_template_id", "alt_staff_template_id"
+            ):
+                tmpl = other.alt_staff_template_id or other.staff_template_id
+                if not tmpl:
+                    continue
+                if tmpl.driver_id_id:
+                    busy_drivers.add(tmpl.driver_id_id)
+                if tmpl.operator_id_id:
+                    busy_operators.add(tmpl.operator_id_id)
+
+            for field, staff, busy, label in (
+                ("replacement_driver_id", attrs.get("replacement_driver_id"), busy_drivers, "driver"),
+                ("replacement_operator_id", attrs.get("replacement_operator_id"), busy_operators, "operator"),
+            ):
+                if staff and staff.staff_unique_id in busy:
+                    raise serializers.ValidationError(
+                        {
+                            field: (
+                                f"That {label} is already on another active trip "
+                                f"at this time on {assignment.trip_date}."
+                            )
+                        }
+                    )
+
         return attrs
 
     # ── Detail helpers ───────────────────────────────────────────────

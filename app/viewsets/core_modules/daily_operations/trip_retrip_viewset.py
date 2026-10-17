@@ -36,7 +36,9 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
                 "assignment",
                 "assignment__trip_plan_id",
                 "assignment__vehicle_id",
-                "assignment__panchayat",
+                # assignment.panchayat_id is a plain unique_id CharField (no
+                # DB relation) — the serializer resolves it separately via a
+                # Panchayat.objects.filter(unique_id=...) lookup.
                 "requested_by",
                 "reviewed_by",
                 "new_assignment",

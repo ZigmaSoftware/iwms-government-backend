@@ -119,17 +119,67 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(wards__unique_id=ward_id).distinct()
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
-        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         # `mine=true` → only trips this supervisor is responsible for
         # (TripPlan.supervisor_id == the requesting staff). Used by the
         # supervisor mobile app to list the trips it owns.
+        #
+        # Being named supervisor on a trip plan is an explicit, per-plan
+        # grant, and supervisors are routinely given plans outside their own
+        # geo branch (a panchayat supervisor scoped to a corporation, say).
+        # ANDing that grant with the geo scope silently returned nothing in
+        # exactly that case, so an assigned supervisor saw an empty trip list
+        # — and with it empty Trips/Vehicles/Teams counts. The filter matches
+        # only the requester's own staff id, so it is self-scoping already and
+        # needs no geo narrowing on top.
         mine = params.get("mine")
         if mine and str(mine).lower() in ("1", "true", "yes"):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
-            qs = qs.filter(trip_plan_id__supervisor_id=staff_uid) if staff_uid else qs.none()
+            if not staff_uid:
+                return qs.none()
+            return qs.filter(trip_plan_id__supervisor_id=staff_uid)
 
-        return qs
+        return filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+
+    def get_object(self):
+        """
+        Detail-level access (retrieve/update/destroy, and the `status`/
+        `approval` actions below) must not depend on the caller remembering
+        to pass `?mine=true` the way the list endpoint does. Being named
+        supervisor on a trip's plan is an explicit, standing grant — the
+        supervisor app substitutes staff, starts/ends trips, and approves
+        stops on assignments it owns via a single-object PATCH, with no
+        listing step in between where a `mine` flag would even apply. A
+        supervisor whose broader geo scope doesn't happen to cover this one
+        trip (routinely true — a panchayat supervisor can be scoped to a
+        corporation, see daily_trip_assignment_serializer/supervisor seeder
+        notes) would otherwise get a 404 on every one of those actions
+        despite genuinely owning the trip. Fall back to trip-plan ownership
+        whenever the default (geo-scoped) queryset doesn't contain the
+        object; this only ever widens access to trips the requester was
+        explicitly assigned, never sideways to unrelated ones.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+
+        obj = queryset.filter(**filter_kwargs).first()
+        if obj is None:
+            staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
+            if staff_uid:
+                obj = DailyTripAssignment.objects.filter(
+                    is_deleted=False,
+                    trip_plan_id__supervisor_id=staff_uid,
+                    **filter_kwargs,
+                ).first()
+
+        if obj is None:
+            from django.http import Http404
+
+            raise Http404("No DailyTripAssignment matches the given query.")
+
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     # ----------------------------------------------------------
     # UPDATE — only allowed when Scheduled

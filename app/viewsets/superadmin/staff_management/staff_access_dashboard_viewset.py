@@ -38,7 +38,6 @@ SCOPE_CONFIG = {
         "scope_m2m": None,
         "geo_field": "district",
         "label": "District",
-        "relations": ("state_id",),
     },
     "corporation": {
         "model": Corporation,
@@ -47,7 +46,6 @@ SCOPE_CONFIG = {
         "scope_m2m": "corporations",
         "geo_field": "corporation",
         "label": "Corporation",
-        "relations": ("state_id", "district_id", "area_type_id"),
     },
     "panchayat_union": {
         "model": PanchayatUnion,
@@ -56,7 +54,6 @@ SCOPE_CONFIG = {
         "scope_m2m": "panchayat_unions",
         "geo_field": "panchayat_union",
         "label": "Panchayat Union",
-        "relations": ("state_id", "district_id", "area_type_id"),
     },
     "panchayat": {
         "model": Panchayat,
@@ -65,7 +62,6 @@ SCOPE_CONFIG = {
         "scope_m2m": "panchayats",
         "geo_field": "panchayat",
         "label": "Panchayat",
-        "relations": ("state_id", "district_id", "area_type_id"),
     },
 }
 
@@ -280,9 +276,9 @@ class StaffAccessDashboardViewSet(ViewSet):
                 # A single configured body is immutable. Multiple bodies stay
                 # selectable, but the backend still limits them to this scope.
                 resolved_id = entries[0].unique_id if len(entries) == 1 else None
-        if resolved_type is None and scope.district_id:
+        if resolved_type is None and scope.district:
             resolved_type = "district"
-            resolved_id = scope.district_id
+            resolved_id = scope.district
 
         role_name = getattr(
             getattr(staff, "governmentusertype_id", None),
@@ -378,32 +374,37 @@ class StaffAccessDashboardViewSet(ViewSet):
             else None
         )
         if scope:
+            # scope is a StaffDataScope row: its geo fields are named
+            # "state"/"district"/"area_type" (db_column keeps the old "_id"
+            # suffix, the Python attribute does not) — unlike the
+            # Corporation/District/etc. instances read elsewhere in this
+            # method, which do carry plain "*_id" attributes.
             if scope.state and (
-                not selected_state_id or scope.state_id == selected_state_id
+                not selected_state_id or scope.state == selected_state_id
             ):
-                state_name = State.objects.filter(unique_id=scope.state_id).values_list(
+                state_name = State.objects.filter(unique_id=scope.state).values_list(
                     "name", flat=True
                 ).first()
                 hierarchy.append(
-                    {"level": "state", "id": scope.state_id, "name": state_name}
+                    {"level": "state", "id": scope.state, "name": state_name}
                 )
             if scope.district and (
                 not selected_district_id
-                or scope.district_id == selected_district_id
+                or scope.district == selected_district_id
             ):
                 district_name = District.objects.filter(
-                    unique_id=scope.district_id
+                    unique_id=scope.district
                 ).values_list("name", flat=True).first()
                 hierarchy.append(
                     {
                         "level": "district",
-                        "id": scope.district_id,
+                        "id": scope.district,
                         "name": district_name,
                     }
                 )
                 default_scope = {
                     "scope_type": "district",
-                    "scope_id": scope.district_id,
+                    "scope_id": scope.district,
                 }
             for level, relation, name_field in (
                 ("corporation", "corporations", "corporation_name"),
@@ -542,11 +543,15 @@ class StaffAccessDashboardViewSet(ViewSet):
             if scope_type == "district"
             else selected_scope.district_id
         )
-        if admin_scope.state_id and admin_scope.state_id != selected_state_id:
+        # admin_scope is a StaffDataScope row: "state"/"district" are its real
+        # attribute names (db_column keeps the "_id" suffix, the Python
+        # attribute does not) — selected_scope above is a plain geo-master
+        # instance (Corporation/District/etc.), which does carry "*_id".
+        if admin_scope.state and admin_scope.state != selected_state_id:
             return False
         if (
-            admin_scope.district_id
-            and admin_scope.district_id != selected_district_id
+            admin_scope.district
+            and admin_scope.district != selected_district_id
         ):
             return False
         relation = SCOPE_CONFIG[scope_type]["scope_m2m"]
@@ -576,9 +581,10 @@ class StaffAccessDashboardViewSet(ViewSet):
 
     def _scope_queryset(self, request, scope_type, selected_admin=None):
         config = SCOPE_CONFIG[scope_type]
-        queryset = _active(config["model"].objects.all()).select_related(
-            *config["relations"]
-        )
+        # state_id/district_id/area_type_id are plain unique_id CharFields on
+        # every SCOPE_CONFIG model now (no DB relation), so there is nothing
+        # left to select_related — they're read straight off each row below.
+        queryset = _active(config["model"].objects.all())
         scope_field_map = {
             "state_id": "state_id",
             "district_id": (
@@ -601,13 +607,18 @@ class StaffAccessDashboardViewSet(ViewSet):
             admin_scope = self._active_data_scope(selected_admin)
             if not admin_scope:
                 return queryset.none()
-            if admin_scope.state_id:
-                queryset = queryset.filter(state_id=admin_scope.state_id)
-            if admin_scope.district_id:
+            # admin_scope is a StaffDataScope row ("state"/"district" are its
+            # real attribute names); the filter KEYS below target `config`'s
+            # model (Corporation/District/etc.), which does use "state_id"/
+            # "district_id" — only the values read off admin_scope needed
+            # the "_id"-less names.
+            if admin_scope.state:
+                queryset = queryset.filter(state_id=admin_scope.state)
+            if admin_scope.district:
                 if scope_type == "district":
-                    queryset = queryset.filter(unique_id=admin_scope.district_id)
+                    queryset = queryset.filter(unique_id=admin_scope.district)
                 else:
-                    queryset = queryset.filter(district_id=admin_scope.district_id)
+                    queryset = queryset.filter(district_id=admin_scope.district)
             scope_relation = config["scope_m2m"]
             if scope_relation:
                 allowed_ids = list(

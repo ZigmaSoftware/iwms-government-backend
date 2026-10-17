@@ -33,6 +33,7 @@ USER_SCREEN_MODELS = {
     "staff-access-dashboard": ("app", "StaffcreationOfficeDetails"),
     "customercreations": ("app", "CustomerCreation"),
     "feedbacks": ("app", "FeedBack"),
+    "customer-notifications": ("app", "CustomerNotification"),
     "tickets": ("app", "ComplaintTicket"),
     "modules": ("app", "ComplaintModule"),
     "categories": ("app", "ComplaintCategory"),
@@ -267,7 +268,7 @@ class PermissionSeeder(BaseSeeder):
             )
 
     def run(self):
-        for action_name in ("view", "export"):
+        for action_name in ("view", "add", "edit", "delete", "export"):
             UserScreenAction.objects.update_or_create(
                 action_name=action_name,
                 defaults={
@@ -386,6 +387,13 @@ class PermissionSeeder(BaseSeeder):
                 "subitems": [
                     ("customercreations", "customercreations", "customercreations", 1, "Customer creation"),
                     ("feedbacks", "feedbacks", "feedbacks", 2, "Feedback"),
+                    (
+                        "customer-notifications",
+                        "customer-notifications",
+                        "customer-notifications",
+                        3,
+                        "Notification",
+                    ),
                 ],
             },
             {

@@ -66,7 +66,9 @@ class TripPlanSeeder(BaseSeeder):
             ).order_by("created_at")
         )
         vehicles = list(
-            VehicleCreation.objects.filter(**{parent_type: parent}, is_deleted=False).order_by("created_at")
+            VehicleCreation.objects.filter(
+                **{f"{parent_type}_id": parent.unique_id}, is_deleted=False
+            ).order_by("created_at")
         )
         # One pair serves two wards, and both collection types within each
         # ward. This deliberately exercises both supported reuse conditions.

@@ -110,9 +110,10 @@ def percent(numerator, denominator):
 class MonthlyWasteComparisonReportViewSet(viewsets.ModelViewSet):
     throttle_scope = "monthly_waste_comparison_report"
     permission_resource = "MonthlyWasteComparisonReport"
-    queryset = MonthlyWeightReport.objects.select_related(
-        "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id"
-    )
+    # corporation/municipality/town_panchayat/panchayat_union/panchayat are
+    # plain unique_id CharFields on this model now (no DB relation) —
+    # waste_type_id is the only real FK left to select_related.
+    queryset = MonthlyWeightReport.objects.select_related("waste_type_id")
     serializer_class = MonthlyWeightReportSerializer
     lookup_field = "unique_id"
 

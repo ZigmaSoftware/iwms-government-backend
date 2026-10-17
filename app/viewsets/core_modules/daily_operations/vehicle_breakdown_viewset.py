@@ -22,9 +22,9 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.base_models import Account
 from app.utils.hierarchy import (
     STAFF_GEO_LEVEL_FIELDS,
+    filter_assignable_staff_by_requester_scope,
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
-    filter_staff_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
 
@@ -38,11 +38,10 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "trip_assignment_id__staff_template_id",
             "trip_assignment_id__staff_template_id__driver_id",
             "trip_assignment_id__staff_template_id__operator_id",
-            "trip_assignment_id__corporation",
-            "trip_assignment_id__municipality",
-            "trip_assignment_id__town_panchayat",
-            "trip_assignment_id__panchayat_union",
-            "trip_assignment_id__panchayat",
+            # corporation/municipality/town_panchayat/panchayat_union/panchayat
+            # are plain unique_id CharFields on DailyTripAssignment now (no DB
+            # relation) and aren't read by the serializer, so there is
+            # nothing to select_related for them.
             "breakdown_vehicle_id",
             "replacement_vehicle_id",
             "replacement_driver_id",
@@ -302,6 +301,36 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             is_deleted=False,
         ).select_related("staff_template_id", "alt_staff_template_id")
 
+        # A crew normally runs several rounds a day (a 06:00 and an 08:00 trip
+        # is the standard pattern here), so "has any trip today" is not a
+        # usable definition of busy — it marks a normally staffed district as
+        # 100% booked and leaves this dropdown permanently empty. Only crews
+        # working the *same slot* as the trip being replaced actually clash,
+        # and the broken-down trip's own crew is free by definition.
+        #
+        # Without `trip_assignment_id` there is no slot to compare against, so
+        # no crew can be proven to clash and nothing is excluded here. A real
+        # double-booking is still refused on save, where the target trip is
+        # known — see VehicleBreakdownSerializer.validate().
+        assignment_id = request.query_params.get("trip_assignment_id")
+        target = (
+            DailyTripAssignment.objects.filter(
+                unique_id=assignment_id, is_deleted=False
+            ).first()
+            if assignment_id
+            else None
+        )
+        if target:
+            active_assignments = active_assignments.exclude(
+                unique_id=target.unique_id
+            )
+            if target.scheduled_time:
+                active_assignments = active_assignments.filter(
+                    scheduled_time=target.scheduled_time
+                )
+        else:
+            active_assignments = active_assignments.none()
+
         busy_driver_ids = set()
         busy_operator_ids = set()
         for a in active_assignments:
@@ -314,11 +343,21 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 busy_operator_ids.add(tmpl.operator_id_id)
 
         # Government staff carry their role on `governmentusertype_id` (e.g.
-        # `govt_panchayat_driver`), not `staffusertype_id` (main-backend
-        # convention) — match either so this endpoint works on both.
+        # `govt_panchayat_driver`/`govt_district_driver`), not
+        # `staffusertype_id` (main-backend convention) — match either so this
+        # endpoint works on both. An exact match against "company_driver"/
+        # "company_operator" (what the web form sends) never matches any
+        # real government role name, so match on the driver/operator
+        # category instead — the same convention already used client-side
+        # (see staffTemplateForm.tsx's role.includes("driver")).
+        match_token = (
+            "driver" if is_driver_role
+            else "operator" if is_operator_role
+            else role_value
+        )
         qs = Staffcreation.objects.filter(
-            Q(governmentusertype_id__name__iexact=role_value)
-            | Q(staffusertype_id__name__iexact=role_value),
+            Q(governmentusertype_id__name__icontains=match_token)
+            | Q(staffusertype_id__name__icontains=match_token),
             is_deleted=False,
             active_status=True,
         )
@@ -328,7 +367,7 @@ class VehicleBreakdownViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         elif is_operator_role:
             qs = qs.exclude(staff_unique_id__in=busy_operator_ids)
 
-        qs = filter_staff_queryset_by_requester_scope(qs, request.user)
+        qs = filter_assignable_staff_by_requester_scope(qs, request.user)
 
         data = [
             {

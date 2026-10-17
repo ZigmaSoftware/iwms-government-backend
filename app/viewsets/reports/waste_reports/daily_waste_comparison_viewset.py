@@ -115,9 +115,10 @@ class DailyWasteComparisonViewSet(viewsets.ModelViewSet):
     throttle_scope = "daily_waste_comparison"
     permission_resource = "DailyWasteComparison"
     # Keep original queryset for retrieve/update/delete operations on the static table
-    queryset = DailyWasteComparison.objects.select_related(
-        "corporation", "municipality", "town_panchayat", "panchayat_union", "panchayat", "waste_type_id"
-    )
+    # corporation/municipality/town_panchayat/panchayat_union/panchayat are
+    # plain unique_id CharFields on this model now (no DB relation) —
+    # waste_type_id is the only real FK left to select_related.
+    queryset = DailyWasteComparison.objects.select_related("waste_type_id")
     serializer_class = DailyWasteComparisonSerializer
     lookup_field = "unique_id"
 

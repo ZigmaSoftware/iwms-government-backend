@@ -199,6 +199,16 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_reason": getattr(stop, "status_reason", None),
         }
 
+    def _customer_panchayat_name(self, customer):
+        panchayat_id = getattr(customer, "panchayat_id", None)
+        if not panchayat_id:
+            return None
+        from app.models.masters.panchayat import Panchayat
+
+        return Panchayat.objects.filter(unique_id=panchayat_id).values_list(
+            "panchayat_name", flat=True
+        ).first()
+
     def _serialize_tracking_household_stop(self, stop):
         customer = stop.customer_id
         return {
@@ -212,7 +222,9 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 "contact_no": getattr(customer, "contact_no", None),
                 "building_no": getattr(customer, "building_no", None),
                 "street": getattr(customer, "street", None),
-                "panchayat_name": getattr(getattr(customer, "panchayat", None), "panchayat_name", None),
+                # customer.panchayat_id is a plain unique_id CharField now
+                # (no DB relation) — resolve it against Panchayat directly.
+                "panchayat_name": self._customer_panchayat_name(customer),
                 "latitude": getattr(customer, "latitude", None),
                 "longitude": getattr(customer, "longitude", None),
             } if customer else None,
@@ -596,10 +608,12 @@ class DailyTripCollectionPointViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 .order_by("sequence")
             )
             household_rows = list(
+                # customer_id__panchayat: customer.panchayat_id is a plain
+                # unique_id CharField now (no DB relation) — resolved
+                # separately in _customer_panchayat_name().
                 DailyTripHouseholdCollection.objects.select_related(
                     "trip_assignment_id",
                     "customer_id",
-                    "customer_id__panchayat",
                     "waste_collection_id",
                 )
                 .filter(

@@ -156,9 +156,23 @@ class DailyTripLogViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.order_by(ordering)
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
-        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
-        return qs
+        # `mine=true` → logs for the trips this supervisor is responsible for,
+        # mirroring daily_trip_assignment_viewset. The supervisor app has
+        # always sent this flag for its trip list and home waste graph, but it
+        # was ignored here, so the graph showed whatever the requester's geo
+        # scope happened to cover rather than their own trips — and nothing at
+        # all when their assigned plans sit outside that scope.
+        mine = params.get("mine")
+        if mine and str(mine).lower() in ("1", "true", "yes"):
+            staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
+            if not staff_uid:
+                return qs.none()
+            return qs.filter(
+                trip_assignment_id__trip_plan_id__supervisor_id=staff_uid
+            )
+
+        return filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()

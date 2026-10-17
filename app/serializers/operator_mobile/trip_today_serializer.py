@@ -110,7 +110,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     # This assignment's 1-based position among today's assignments for the
     # same trip plan — 1 normally, 2+ for a Re-Trip continuation.
     trip_count = serializers.SerializerMethodField()
-    panchayat = _PanchayatBriefSerializer()
+    panchayat = serializers.SerializerMethodField()
     # Narrows the panchayat/local-body scope for this trip, when the trip
     # plan (or its per-trip override) has one assigned.
     ward = serializers.SerializerMethodField()
@@ -162,6 +162,20 @@ class MyTripTodaySerializer(serializers.Serializer):
 
     def get_trip_count(self, obj):
         return obj.trip_count()
+
+    def get_panchayat(self, obj):
+        # DailyTripAssignment.panchayat_id is a plain unique_id CharField now
+        # (no DB relation), not a real FK — look the Panchayat row up by id
+        # instead of reading a `.panchayat` attribute that no longer exists.
+        from app.models.masters.panchayat import Panchayat
+
+        panchayat_id = getattr(obj, "panchayat_id", None)
+        if not panchayat_id:
+            return None
+        panchayat = Panchayat.objects.filter(unique_id=panchayat_id).first()
+        if not panchayat:
+            return None
+        return _PanchayatBriefSerializer(panchayat, context=self.context).data
 
     def get_ward(self, obj):
         ward = obj.wards.first()

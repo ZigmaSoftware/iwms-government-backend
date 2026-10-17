@@ -40,6 +40,7 @@ from app.models.masters.ward import Ward
 from app.models.superadmin.common_masters.state import State
 from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
 from app.utils.hierarchy import (
+    _resolve_geo_candidate,
     filter_flat_geo_queryset_by_requester_scope,
     filter_staff_queryset_by_requester_scope,
 )
@@ -1468,7 +1469,7 @@ class DashboardSummaryViewSet(ViewSet):
                         for value in (
                             row.location_text or "",
                             local_body_name or "",
-                            getattr(row.district, "name", "") or "",
+                            getattr(_resolve_geo_candidate(row, "district"), "name", "") or "",
                         )
                         if value
                     ),
