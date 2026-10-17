@@ -99,15 +99,18 @@ def _active(queryset):
 
 
 def _role_name(staff):
+    # *_id columns are plain unique_id strings; resolve through the
+    # same-named properties to get the role row's name.
     for field in (
         "governmentusertype_id",
         "staffusertype_id",
         "contractorusertype_id",
         "user_type_id",
     ):
-        role = getattr(staff, field, None)
-        if role:
-            return getattr(role, "name", None) or str(role)
+        role_id = getattr(staff, field, None)
+        if role_id:
+            role = getattr(staff, field[: -len("_id")], None)
+            return getattr(role, "name", None) or str(role_id)
     return ""
 
 
@@ -286,7 +289,7 @@ class StaffAccessDashboardViewSet(ViewSet):
             resolved_id = scope.district_id
 
         role_name = getattr(
-            getattr(staff, "governmentusertype_id", None),
+            getattr(staff, "governmentusertype", None),
             "name",
             "",
         )

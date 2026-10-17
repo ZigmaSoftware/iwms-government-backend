@@ -471,15 +471,12 @@ def _authenticate_request(request):
 
 
 def _permission_filters_for_user(user):
-    usertype = getattr(user, "user_type_id", None)
-    staffusertype = getattr(user, "staffusertype_id", None)
-    contractorusertype = getattr(user, "contractorusertype_id", None)
-    governmentusertype = getattr(user, "governmentusertype_id", None)
-
-    usertype_unique_id = getattr(usertype, "unique_id", None)
-    staffusertype_unique_id = getattr(staffusertype, "unique_id", None)
-    contractorusertype_unique_id = getattr(contractorusertype, "unique_id", None)
-    governmentusertype_unique_id = getattr(governmentusertype, "unique_id", None)
+    # The *_id columns already hold the user-type unique_ids (plain strings,
+    # no DB relation) — read them directly.
+    usertype_unique_id = getattr(user, "user_type_id", None) or None
+    staffusertype_unique_id = getattr(user, "staffusertype_id", None) or None
+    contractorusertype_unique_id = getattr(user, "contractorusertype_id", None) or None
+    governmentusertype_unique_id = getattr(user, "governmentusertype_id", None) or None
 
     if not usertype_unique_id:
         return None
@@ -492,8 +489,10 @@ def _permission_filters_for_user(user):
     }
 
 
+# The *_id columns are plain unique_id strings; the same-named properties
+# without "_id" resolve them to the user-type rows that carry `name`.
 def _user_role_name(user):
-    for attr in ("governmentusertype_id", "staffusertype_id", "contractorusertype_id"):
+    for attr in ("governmentusertype", "staffusertype", "contractorusertype"):
         name = getattr(getattr(user, attr, None), "name", None)
         if name:
             return name
@@ -501,7 +500,7 @@ def _user_role_name(user):
 
 
 def _user_type_name(user):
-    return getattr(getattr(user, "user_type_id", None), "name", None)
+    return getattr(getattr(user, "user_type", None), "name", None)
 
 
 def _resolve_permissions_for_request(request):
@@ -597,7 +596,7 @@ def _is_oversight_role(user):
     READ operational data across modules even without an explicit per-screen
     grant (the mobile role permissions are not individually seeded); writes still
     require a permission."""
-    for attr in ("staffusertype_id", "governmentusertype_id", "contractorusertype_id"):
+    for attr in ("staffusertype", "governmentusertype", "contractorusertype"):
         name = (getattr(getattr(user, attr, None), "name", "") or "").lower()
         if "supervisor" in name or "admin" in name:
             return True
