@@ -142,6 +142,14 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         child=serializers.DictField(), required=False, allow_empty=True,
     )
 
+    # Customers always use the citizen surface; staff apps are not valid here.
+    app_module = serializers.ChoiceField(
+        choices=[("citizen", "Customer")],
+        required=False,
+        default="citizen",
+        error_messages={"invalid_choice": "Customers can only use the Customer app."},
+    )
+
     group_qr_id = serializers.CharField(read_only=True)
     is_bulkwaste_generator = serializers.BooleanField(required=False)
     qr_code = serializers.ImageField(read_only=True)
@@ -155,6 +163,7 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         fields = [
             "unique_id",
             "customer_name",
+            "app_module",
             "contact_no",
             "building_no",
             "street",
@@ -302,6 +311,9 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         #     Model=CustomerCreation,
         #     name_field="user_name",
         # )(self, attrs)
+
+        # Apply the same invariant on PATCH when the field is omitted.
+        attrs["app_module"] = "citizen"
 
         instance = getattr(self, "instance", None)
 

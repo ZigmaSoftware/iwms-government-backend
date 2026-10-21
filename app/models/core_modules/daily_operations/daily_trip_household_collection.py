@@ -113,6 +113,18 @@ class DailyTripHouseholdCollection(BaseMaster):
     status_longitude = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True
     )
+    # Geotagged photo the driver must take when marking the stop Not
+    # Available (waste/mark-household-status/).
+    status_evidence_image = models.ImageField(
+        upload_to="household_status_evidence/%Y/%m/%d/", null=True, blank=True
+    )
+
+    # Set when the customer taps "I'm home now" in the citizen app after the
+    # driver marked this stop Collect Later (app/services/customer_availability.py).
+    # The driver/crew are pushed, and if the stop still ends Not Available a
+    # Missed Pickup complaint ticket is raised automatically.
+    customer_available_at = models.DateTimeField(null=True, blank=True)
+    customer_available_note = models.CharField(max_length=200, null=True, blank=True)
 
     # Set by retrip_service.approve_retrip() on the SOURCE stop when it is
     # carried over to a continuation trip. Deliberately does not affect
@@ -183,6 +195,39 @@ class DailyTripHouseholdCollection(BaseMaster):
             "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
             self.carried_to_assignment_id,
         )
+
+    def mark_status(
+        self, status, reason=None, latitude=None, longitude=None, evidence_image=None,
+    ):
+        """Mark this household/bulk stop Not Available / Collect Later from
+        the operator app. No WasteCollection is created in that case."""
+        self.status = status
+        self.status_reason = reason
+        self.status_latitude = latitude
+        self.status_longitude = longitude
+        self.status_evidence_image = evidence_image
+        self.is_collected = False
+        self.collected_at = None
+        update_fields = [
+            "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
+            "status_evidence_image",
+            "is_collected",
+            "collected_at",
+            "updated_at",
+        ]
+        if status == self.STATUS_MISSED:
+            self.collected_weight_kg = None
+            update_fields.append("collected_weight_kg")
+        self.save(update_fields=update_fields)
+        if status == self.STATUS_MISSED and self.customer_available_at:
+            # The customer said they were home and it still ended Not
+            # Available: put it on record as a Missed Pickup ticket.
+            from app.services.customer_availability import raise_missed_pickup_ticket
+
+            raise_missed_pickup_ticket(self)
 
     def mark_collected(self, waste_collection, collected_at=None):
         from decimal import Decimal

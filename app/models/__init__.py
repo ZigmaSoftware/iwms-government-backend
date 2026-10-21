@@ -177,6 +177,8 @@ from .core_modules.daily_operations.scheduler_config import SchedulerConfig
 from .core_modules.background_job import BackgroundJob
 from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 from .core_modules.daily_operations.trip_retrip_request import TripRetripRequest
+from .core_modules.daily_operations.trip_delay_report import TripDelayReport
+from .core_modules.daily_operations.daily_service_notice import DailyServiceNotice
 
 
 # ============================================================
@@ -295,4 +297,6 @@ __all__ = [
     "DailyTripCollectionPoint",
     "DailyTripHouseholdCollection",
     "BinCollectionEvent",
+    "TripDelayReport",
+    "DailyServiceNotice",
 ]

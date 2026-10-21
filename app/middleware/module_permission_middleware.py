@@ -374,7 +374,10 @@ def _route_resource_from_path(path, module):
         return None
 
     resource = parts[module_index + 1]
-    if resource and not resource.startswith("v"):
+    # This segment follows the module, so it is a resource, including
+    # vehicle-breakdowns / vehicle-creations. API versions were handled
+    # while finding the module; a leading "v" does not make a version.
+    if resource:
         return resource
     return None
 

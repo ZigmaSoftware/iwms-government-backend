@@ -270,8 +270,8 @@ class TestSchedulerToleratesRetripDuplicateAssignment:
         vehicle = VehicleCreation.objects.create(vehicle_no="TN-TEST-01")
         return TripPlan.objects.create(
             display_code="PLAN-TEST-01",
-            staff_template_id=template,
-            vehicle_id=vehicle,
+            staff_template_id=template.unique_id,
+            vehicle_id=vehicle.unique_id,
             scheduled_time="06:30",
             is_auto_assign=True,
             repeat_days=list(range(7)),
@@ -290,14 +290,14 @@ class TestSchedulerToleratesRetripDuplicateAssignment:
         # Simulate the state right after a Re-Trip approval: two assignments
         # for the SAME plan and date (source + continuation).
         DailyTripAssignment.objects.create(
-            trip_plan_id=trip_plan, trip_date=today,
+            trip_plan_id=trip_plan.unique_id, trip_date=today,
             staff_template_id=trip_plan.staff_template_id,
             vehicle_id=trip_plan.vehicle_id,
             scheduled_time=trip_plan.scheduled_time,
             status=DailyTripAssignment.STATUS_COMPLETED,
         )
         DailyTripAssignment.objects.create(
-            trip_plan_id=trip_plan, trip_date=today,
+            trip_plan_id=trip_plan.unique_id, trip_date=today,
             staff_template_id=trip_plan.staff_template_id,
             vehicle_id=trip_plan.vehicle_id,
             scheduled_time=timezone.localtime().time(),
@@ -305,7 +305,7 @@ class TestSchedulerToleratesRetripDuplicateAssignment:
             remarks="Re-Trip continuation",
         )
         assert DailyTripAssignment.objects.filter(
-            trip_plan_id=trip_plan, trip_date=today,
+            trip_plan_id=trip_plan.unique_id, trip_date=today,
         ).count() == 2
 
         # Must not raise MultipleObjectsReturned.
@@ -314,7 +314,7 @@ class TestSchedulerToleratesRetripDuplicateAssignment:
 
         # And must not have created a THIRD row.
         assert DailyTripAssignment.objects.filter(
-            trip_plan_id=trip_plan, trip_date=today,
+            trip_plan_id=trip_plan.unique_id, trip_date=today,
         ).count() == 2
 
 

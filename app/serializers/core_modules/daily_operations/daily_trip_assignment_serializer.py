@@ -1,3 +1,4 @@
+from app.serializers.evidence_image import absolute_image_url
 from rest_framework import serializers
 
 from app.utils.plain_ref import ref_id
@@ -171,7 +172,7 @@ class DailyTripAssignmentListSerializer(serializers.ListSerializer):
 
 class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     # Plain unique_id references (no DB relation); checked in validate_*.
-    trip_plan_id = serializers.CharField(write_only=True)
+    trip_plan_id = serializers.CharField()
     staff_template_id = serializers.CharField(write_only=True, required=False, allow_null=True)
     state_id = serializers.CharField(required=False, allow_null=True)
     district_id = serializers.CharField(required=False, allow_null=True)
@@ -232,6 +233,11 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
     effective_staff = serializers.SerializerMethodField(read_only=True)
     collection_points = serializers.SerializerMethodField(read_only=True)
     household_collection_points = serializers.SerializerMethodField(read_only=True)
+    service_notice = serializers.SerializerMethodField(read_only=True)
+    trip_events = serializers.SerializerMethodField(read_only=True)
+    trip_log_summary = serializers.SerializerMethodField(read_only=True)
+    actual_start_at = serializers.DateTimeField(read_only=True)
+    actual_end_at = serializers.DateTimeField(read_only=True)
     breakdown_info = serializers.SerializerMethodField(read_only=True)
     # A vehicle breakdown and a Re-Trip are unrelated events — a breakdown
     # swaps the vehicle/crew mid-trip, a Re-Trip closes the trip early and
@@ -279,10 +285,74 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "town_panchayat", "panchayat_union", "panchayat", "vehicle", "collection_types",
             "collection_points", "household_collection_points", "breakdown_info", "retrip_info",
             "trip_date", "scheduled_time", "actual_start_time", "actual_end_time",
-            "total_trip_time_seconds", "trip_count",
+            "total_trip_time_seconds", "trip_count", "service_notice", "trip_events", "trip_log_summary", "actual_start_at", "actual_end_at",
             "status", "approval_status", "remarks", "created_at", "updated_at",
         ]
         read_only_fields = ["unique_id", "actual_start_time", "actual_end_time", "approval_status", "created_at", "updated_at"]
+
+    def get_service_notice(self, obj):
+        from app.services.daily_service_notice import (
+            active_notice_for_plan,
+            serialize_notice,
+        )
+
+        return serialize_notice(
+            active_notice_for_plan(obj.trip_plan_id, obj.trip_date)
+        )
+
+    def get_trip_events(self, obj):
+        from app.models.core_modules.daily_operations.trip_delay_report import TripDelayReport
+        from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
+
+        events = []
+        for report in TripDelayReport.objects.filter(
+            trip_assignment_id=obj.unique_id, is_deleted=False
+        ):
+            # unique_id + image let the supervisor app open this exact
+            # report (photo, acknowledge/resolve) from the trip card alerts.
+            events.append({"label": "Delay: " + report.get_delay_reason_display(),
+                           "detail": report.delay_remarks, "at": report.created_at,
+                           "status": report.status, "kind": "delay",
+                           "unique_id": report.unique_id,
+                           "image": absolute_image_url(self, report.evidence_image)})
+        for request in TripRetripRequest.objects.filter(assignment_id=obj.unique_id):
+            if request.is_deleted:
+                continue
+            events.append({"label": "Re-Trip requested", "detail": request.reason,
+                           "at": request.created_at, "status": request.status,
+                           "actor": getattr(request.requested_by, "employee_name", None)})
+            if request.reviewed_at:
+                events.append({"label": "Re-Trip " + request.status.lower(),
+                               "detail": request.review_remarks, "at": request.reviewed_at,
+                               "actor": getattr(request.reviewed_by, "employee_name", None),
+                               "related_trip_id": request.new_assignment_id})
+        for source in TripRetripRequest.objects.filter(new_assignment_id=obj.unique_id):
+            if not source.is_deleted:
+                events.append({"label": "Continuation of " + str(source.assignment_id),
+                               "detail": source.review_remarks, "at": source.reviewed_at,
+                               "related_trip_id": source.assignment_id})
+        return sorted(events, key=lambda event: str(event.get("at") or ""))
+
+    def get_trip_log_summary(self, obj):
+        from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
+
+        log = DailyTripLog.objects.filter(
+            trip_assignment_id=obj.unique_id, is_deleted=False,
+        ).first()
+        if not log:
+            return None
+        return {
+            "unique_id": log.unique_id,
+            "status": log.log_status,
+            "verified_at": log.verified_at,
+            "verified_by": str(log.verified_by) if log.verified_by else None,
+            "bin_weight_kg": log.collected_weight_kg,
+            "customer_weight_kg": log.household_collected_weight_kg,
+            "driver": getattr(log.driver, "employee_name", None),
+            "operator": getattr(log.operator, "employee_name", None),
+            "vehicle_no": getattr(log.vehicle, "vehicle_no", None),
+            "remarks": log.remarks,
+        }
 
     def get_total_trip_time_seconds(self, obj):
         duration = obj.total_trip_time
@@ -482,6 +552,9 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "dry_waste": getattr(stop.waste_collection, "dry_waste", None),
             "mixed_waste": getattr(stop.waste_collection, "mixed_waste", None),
             "sanitary_waste": getattr(stop.waste_collection, "sanitary_waste", None),
+            "customer_available_at": stop.customer_available_at,
+            "customer_available_note": stop.customer_available_note,
+            "status_evidence_image_url": absolute_image_url(self, stop.status_evidence_image),
             "status": stop.status,
             "status_reason": getattr(stop, "status_reason", None),
         } for stop in stops]
@@ -504,6 +577,8 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "replacement_vehicle_no": getattr(bd.replacement_vehicle, "vehicle_no", None),
             "replacement_driver": getattr(bd.replacement_driver, "employee_name", None),
             "replacement_operator": getattr(bd.replacement_operator, "employee_name", None),
+            "new_assignment_id": bd.new_assignment_id,
+            "photos": [url for photo in bd.photos.all() if (url := absolute_image_url(self, photo.photo))],
         }
 
     def get_retrip_info(self, obj):
@@ -519,6 +594,7 @@ class DailyTripAssignmentSerializer(serializers.ModelSerializer):
             "reason": retrip.reason,
             "review_remarks": retrip.review_remarks,
             "new_assignment_id": retrip.new_assignment_id,
+            "expires_at": retrip.expires_at,
             "pending_bin_count": retrip.pending_bin_count,
             "pending_household_count": retrip.pending_household_count,
         }

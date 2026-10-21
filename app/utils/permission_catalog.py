@@ -366,6 +366,12 @@ SECTIONS = (
                 routes=("vehicle-breakdowns",), legacy=("vehicle-breakdowns",),
                 model=("app", "VehicleBreakdown"),
             ),
+            screen(
+                "trip-delay-reports", "Trip Delay Reports",
+                routes=("trip-delay-reports",),
+                model=("app", "TripDelayReport"),
+                inherits_grants_from="daily-trip-plan",
+            ),
             # retrip-requests / staff-notifications are auth-only routes (see
             # AUTH_ONLY_SUFFIXES); these screens gate the pages and app tabs.
             screen(

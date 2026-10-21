@@ -166,6 +166,8 @@ API_THROTTLE_RATES = {
     "bin_collection_event": REALTIME_MOBILE,
     "trip_retrip_request": REALTIME_MOBILE,
     "vehicle_breakdown": REALTIME_MOBILE,
+    "trip_delay_report": REALTIME_MOBILE,
+    "citizen_pickup": REALTIME_MOBILE,
     "daily_attendance_reg": REALTIME_MOBILE,
     "attendance_records": REALTIME_MOBILE,
     "staff_profile": REALTIME_MOBILE,
