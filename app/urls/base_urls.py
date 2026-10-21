@@ -42,8 +42,8 @@ from ..viewsets.superadmin.screen_management.app_module_viewset import AppModule
 from ..viewsets.masters.customer_masters.customer_access_configuration_viewset import (
     CustomerAccessConfigurationViewSet,
 )
-from ..viewsets.superadmin.screen_management.companyuserscreenpermission_viewset import UserScreenPermissionViewSet
-from ..viewsets.superadmin.screen_management.companyuserscreencolumnpermission_viewset import CompanyUserScreenColumnPermissionViewSet
+from ..viewsets.superadmin.screen_management.userscreenpermission_viewset import UserScreenPermissionViewSet
+from ..viewsets.superadmin.screen_management.userscreencolumnpermission_viewset import UserScreenColumnPermissionViewSet
 from ..viewsets.superadmin.screen_management.dashboardwidgetpermission_viewset import DashboardWidgetPermissionViewSet
 from ..viewsets.superadmin.screen_management.permission_api_views import (
     PermissionAssignAPIView,
@@ -56,6 +56,7 @@ from ..viewsets.superadmin.role_management.usertype_viewset import UserTypeViewS
 from ..viewsets.superadmin.role_management.staffusertype_viewset import StaffUserTypeViewSet
 from ..viewsets.superadmin.role_management.contractorusertype_viewset import ContractorUserTypeViewSet
 from ..viewsets.superadmin.role_management.governmentstaffusertype_viewset import GovernmentStaffUserTypeViewSet
+from ..viewsets.superadmin.role_management.staffhierarchy_viewset import StaffHierarchyViewSet
 
 # User creations
 from ..viewsets.superadmin.staff_management.staff_viewset import StaffViewSet
@@ -80,6 +81,7 @@ from ..viewsets.auth.change_password_viewset import (
 
 # Customer modules
 from ..viewsets.masters.customer_masters.customercreation_viewset import CustomerCreationViewSet
+from ..viewsets.masters.customer_masters.customer_notification_viewset import CustomerNotificationViewSet
 from ..viewsets.core_modules.daily_operations.waste_collection_viewset import WasteCollectionViewSet
 from ..viewsets.masters.customer_masters.feedback_viewset import FeedBackViewSet
 from ..viewsets.masters.customer_masters.userchargerule_viewset import UserChargeRuleViewSet
@@ -90,7 +92,6 @@ from ..viewsets.core_modules.complaint_management.master_viewsets import (
     ComplaintLanguageViewSet,
     ComplaintPriorityViewSet,
     ComplaintStatusViewSet,
-    ComplaintTeamViewSet,
     ComplaintModuleViewSet,
     ComplaintCategoryViewSet,
     ComplaintSubcategoryViewSet,
@@ -102,12 +103,14 @@ from ..viewsets.core_modules.complaint_management.citizen_viewset import (
     PublicGrievanceViewSet,
 )
 from ..viewsets.core_modules.complaint_management.address_change_viewset import ComplaintAddressChangeViewSet
+from ..viewsets.core_modules.complaint_management.citizen_pickup_viewset import CitizenPickupViewSet
 from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintRoutingRuleViewSet,
     ComplaintFeedbackViewSet,
     ComplaintReopenHistoryViewSet,
 )
 from ..viewsets.core_modules.complaint_management.notification_viewset import ComplaintNotificationViewSet
+from ..viewsets.reports.complaint_reports.complaints_report_viewset import ComplaintsReportViewSet
 from ..viewsets.core_modules.notifications.staff_notification_viewset import StaffNotificationViewSet
 
 # Transport masters
@@ -127,6 +130,7 @@ from ..viewsets.core_modules.daily_operations.daily_trip_household_collection_vi
 from ..viewsets.core_modules.daily_operations.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
 from ..viewsets.core_modules.daily_operations.vehicle_breakdown_viewset import VehicleBreakdownViewSet
 from ..viewsets.core_modules.daily_operations.trip_retrip_viewset import TripRetripRequestViewSet
+from ..viewsets.core_modules.daily_operations.trip_delay_report_viewset import TripDelayReportViewSet
 from ..viewsets.core_modules.daily_operations.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.reports.waste_reports.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet
 from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import DailyWasteComparisonViewSet
@@ -134,21 +138,33 @@ from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import Dail
 # Audits
 from ..viewsets.superadmin.audits.login_audit_viewset import LoginAuditViewSet
 from ..viewsets.superadmin.audits.common_audit_viewset import CommonAuditViewSet
-from ..viewsets.superadmin.audits.staff_audit_viewset import StaffAuditViewSet
+from ..viewsets.superadmin.audits.permission_audit_viewset import PermissionAuditLogViewSet
+from ..viewsets.superadmin.audits.complaint_audit_viewset import ComplaintAuditViewSet
+from ..viewsets.superadmin.audits.audit_dashboard_viewset import AuditDashboardViewSet
 
 # Localbody
 from ..viewsets.localbody.localbody_dashboard_viewset import LocalBodyDashboardViewSet
 
 # Districtbody
 from ..viewsets.districtbody.districtbody_dashboard_viewset import DistrictBodyDashboardViewSet
+from ..viewsets.districtbody.districtbody_map_viewset import (
+    DistrictBodyDailyComparisonViewSet,
+    DistrictBodyMapViewSet,
+    DistrictBodyMonthlyComparisonViewSet,
+    DistrictBodySummaryViewSet,
+)
 
 # Statebody
 from ..viewsets.statebody.statebody_dashboard_viewset import StateBodyDashboardViewSet
+from ..viewsets.statebody.statebody_map_viewset import StateBodyMapViewSet, StateBodySummaryViewSet
 from ..viewsets.statebody.statebody_waste_comparison_viewset import (
     StateMonthlyWasteComparisonViewSet,
     StateDailyWasteComparisonViewSet,
 )
 from ..viewsets.dashboard_summary_viewset import DashboardSummaryViewSet
+from ..viewsets.admin_overview_viewset import AdminOverviewViewSet
+from ..viewsets.dashboard_admin_viewset import AdminDashboardViewSet
+from ..viewsets.dashboard_superadmin_viewset import SuperadminDashboardViewSet
 
 # Operator mobile
 from ..viewsets.operator_mobile.my_trip_today_viewset import (
@@ -164,6 +180,7 @@ from ..viewsets.operator_mobile.trip_lifecycle_viewset import TripLifecycleViewS
 from ..viewsets.waste_collection_bluetooth.waste_bluetooth_viewset import WasteCollectionBluetoothViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_sub_viewset import WasteCollectionSubViewSet
 from ..viewsets.waste_collection_bluetooth.waste_collection_main_viewset import WasteCollectionMainViewSet
+from ..viewsets.core_modules.background_job_viewset import BackgroundJobStatusView, ExcelExportView
 
 router = GroupedRouter()
 
@@ -218,7 +235,7 @@ router.register_group(
     UserScreenPermissionViewSet,
     basename="screen-managements-companywisescreenpermissions-legacy",
 )
-router.register_group("screen-managements", "column-permissions", CompanyUserScreenColumnPermissionViewSet)
+router.register_group("screen-managements", "column-permissions", UserScreenColumnPermissionViewSet)
 router.register_group("screen-managements", "dashboard-widget-permissions", DashboardWidgetPermissionViewSet)
 router.register_group("screen-managements", "app-modules", AppModuleViewSet)
 
@@ -232,6 +249,7 @@ router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeV
 router.register_group("role-assigns", "contractorusertypes", ContractorUserTypeViewSet, basename="contractorusertype-roletype")
 router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet)
 router.register_group("role-assigns", "governmentusertypes", GovernmentStaffUserTypeViewSet, basename="governmentusertype-roletype")
+router.register_group("role-assigns", "staff-hierarchy",     StaffHierarchyViewSet)
 
 # ============================================================
 # GROUP: USER CREATION
@@ -264,6 +282,7 @@ router.register_group("customer-masters", "user-charge-rules", UserChargeRuleVie
 router.register_group(
     "customer-masters", "customer-access-configuration", CustomerAccessConfigurationViewSet
 )
+router.register_group("customer-masters", "customer-notifications", CustomerNotificationViewSet)
 
 # ============================================================
 # GROUP: COMPLAINT TICKETING
@@ -276,13 +295,13 @@ router.register_group("complaint-ticket", "priorities", ComplaintPriorityViewSet
 router.register_group("complaint-ticket", "statuses", ComplaintStatusViewSet)
 router.register_group("complaint-ticket", "sources", ComplaintSourceViewSet)
 router.register_group("complaint-ticket", "languages", ComplaintLanguageViewSet)
-router.register_group("complaint-ticket", "teams", ComplaintTeamViewSet)
 router.register_group("complaint-ticket", "sla-rules", ComplaintSlaRuleViewSet)
 router.register_group("complaint-ticket", "routing-rules", ComplaintRoutingRuleViewSet)
 router.register_group("complaint-ticket", "feedback", ComplaintFeedbackViewSet)
 router.register_group("complaint-ticket", "reopen-history", ComplaintReopenHistoryViewSet)
 router.register_group("complaint-ticket", "notifications", ComplaintNotificationViewSet, basename="complaint-notifications")
 router.register_group("complaint-ticket", "address-change", ComplaintAddressChangeViewSet)
+router.register_group("complaint-ticket", "complaints-report", ComplaintsReportViewSet, basename="complaints-report")
 
 # ============================================================
 # GROUP: CITIZEN (mobile app, auth-only — no module permission check)
@@ -293,6 +312,7 @@ router.register_group(
     CitizenComplaintTicketViewSet,
     basename="citizen-complaint-tickets",
 )
+router.register_group("citizen", "my-pickup-today", CitizenPickupViewSet, basename="citizen-my-pickup-today")
 router.register_group(
     "public",
     "publicgrievance" ,
@@ -327,6 +347,12 @@ router.register_group("schedule-operations", "bin-collection-events", BinCollect
 router.register_group("schedule-operations", "vehicle-breakdowns", VehicleBreakdownViewSet)
 router.register_group(
     "schedule-operations",
+    "trip-delay-reports",
+    TripDelayReportViewSet,
+    basename="trip-delay-reports",
+)
+router.register_group(
+    "schedule-operations",
     "retrip-requests",
     TripRetripRequestViewSet,
     basename="retrip-requests",
@@ -352,7 +378,9 @@ router.register_group("reports", "daily-waste-comparisons", DailyWasteComparison
 # ============================================================
 router.register_group("audits", "login-audit", LoginAuditViewSet)
 router.register_group("audits", "common-audit", CommonAuditViewSet)
-router.register_group("audits", "staff-audit", StaffAuditViewSet)
+router.register_group("audits", "permission-audit", PermissionAuditLogViewSet)
+router.register_group("audits", "complaint-audit", ComplaintAuditViewSet, basename="complaint-audit")
+router.register_group("audits", "audit-dashboard", AuditDashboardViewSet, basename="audit-dashboard")
 
 # ============================================================
 # GROUP: LOCALBODY (panchayat leader portal — auth-only, no module permission check)
@@ -363,11 +391,17 @@ router.register_group("localbody", "dashboard", LocalBodyDashboardViewSet, basen
 # GROUP: DISTRICTBODY (district leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("districtbody", "dashboard", DistrictBodyDashboardViewSet, basename="districtbody-dashboard")
+router.register_group("districtbody", "map", DistrictBodyMapViewSet, basename="districtbody-map")
+router.register_group("districtbody", "summary", DistrictBodySummaryViewSet, basename="districtbody-summary")
+router.register_group("districtbody", "monthly-waste-comparison", DistrictBodyMonthlyComparisonViewSet, basename="districtbody-monthly-waste-comparison")
+router.register_group("districtbody", "daily-waste-comparison", DistrictBodyDailyComparisonViewSet, basename="districtbody-daily-waste-comparison")
 
 # ============================================================
 # GROUP: STATEBODY (state leader portal — auth-only, no module permission check)
 # ============================================================
 router.register_group("statebody", "dashboard", StateBodyDashboardViewSet, basename="statebody-dashboard")
+router.register_group("statebody", "map", StateBodyMapViewSet, basename="statebody-map")
+router.register_group("statebody", "summary", StateBodySummaryViewSet, basename="statebody-summary")
 router.register_group("statebody", "monthly-waste-comparison", StateMonthlyWasteComparisonViewSet, basename="statebody-monthly-waste-comparison")
 router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComparisonViewSet, basename="statebody-daily-waste-comparison")
 
@@ -375,6 +409,9 @@ router.register_group("statebody", "daily-waste-comparison", StateDailyWasteComp
 # GROUP: DASHBOARD (operations dashboard aggregates)
 # ============================================================
 router.register_group("dashboard", "summary", DashboardSummaryViewSet, basename="dashboard-summary")
+router.register_group("dashboard", "admin-overview", AdminOverviewViewSet, basename="dashboard-admin-overview")
+router.register_group("dashboard", "admin", AdminDashboardViewSet, basename="dashboard-admin")
+router.register_group("dashboard", "superadmin", SuperadminDashboardViewSet, basename="dashboard-superadmin")
 
 # ============================================================
 # GROUP: OPERATOR MOBILE
@@ -445,6 +482,10 @@ router.register_group(
 # URLS
 # ============================================================
 urlpatterns = [
+    # Bulk upload status (Celery jobs) and one-request Excel export
+    path("jobs/<str:job_id>/", BackgroundJobStatusView.as_view(), name="jobs-status"),
+    path("exports/excel/", ExcelExportView.as_view(), name="exports-excel"),
+
     # Password reset flow (public — no authentication required)
     path("auth/forgot-password/", ForgotPasswordView.as_view(), name="auth-forgot-password"),
     path("auth/verify-otp/", VerifyOTPView.as_view(), name="auth-verify-otp"),

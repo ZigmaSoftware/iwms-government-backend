@@ -3,7 +3,7 @@ Generic, declarative cascade-soft-delete for BaseMaster subclasses.
 
 Each model that should sweep child rows when it is soft-deleted declares a
 CASCADE_SOFT_DELETE class attribute - a tuple of reverse-relation accessor
-names (the related_name used on the child FK/M2M, exactly as you'd write
+names (the related_name used on the child relation/M2M, exactly as you'd write
 `instance.<related_name>`). The child model's own CASCADE_SOFT_DELETE (if
 any) is walked transitively by the same function, so a model only needs to
 list its OWN direct children, not its whole descendant tree.
@@ -15,7 +15,7 @@ Usage:
         ...
 
 Models that are NOT soft-deletable (no is_deleted field, e.g. TripAttendance,
-AlternativeStaffTemplate, StaffAudit) must never appear in a
+AlternativeStaffTemplate, CommonAudit) must never appear in a
 CASCADE_SOFT_DELETE tuple - there is nothing for the cascade to flip, and
 those tables are intentionally left untouched (audit/log-shaped tables in
 particular are meant to be permanent).
@@ -26,14 +26,20 @@ M2M link doesn't make sense - unlinking is a different, smaller operation
 and is out of scope here.
 
 Geo-hierarchy relations (child rows that reference a parent via a plain
-`<field>_id` unique_id string rather than a real ForeignKey - Corporation,
+`<field>_id` unique_id string rather than a real DB relation - Corporation,
 State, District, AreaType and friends were all converted this way) have no
 real reverse accessor for `getattr`/`_meta.get_field` to find. Those relation
-names are declared instead in `STRING_FK_CASCADE_RELATIONS` below and
+names are declared instead in `STRING_REF_CASCADE_RELATIONS` below and
 resolved through that registry as a fallback.
 """
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
+from django.utils import timezone
+from app.utils.delete_reason import (
+    DELETE_REASON_MAX_LENGTH,
+    cascaded_delete_reason,
+    get_current_delete_reason,
+)
 
 
 def _lazy_model(dotted_path):
@@ -47,15 +53,15 @@ def _lazy_model(dotted_path):
 
 # {(dotted declaring-model path, relation_name): (dotted child-model path, filter_field)}
 # Populated for every CASCADE_SOFT_DELETE relation name that used to be a
-# real reverse-FK/OneToOne accessor before the child's own field was
-# converted from ForeignKey to a plain `<field>_id` CharField holding the
+# real reverse relation/OneToOne accessor before the child's own field was
+# converted to a plain `<field>_id` CharField holding the
 # parent's unique_id. See app/utils/hierarchy.py's geo-hierarchy conversion
 # for the full list of converted models.
-STRING_FK_CASCADE_RELATIONS = {}
+STRING_REF_CASCADE_RELATIONS = {}
 
 
 def _register(declaring_path, relation_name, child_path, filter_field):
-    STRING_FK_CASCADE_RELATIONS[(declaring_path, relation_name)] = (child_path, filter_field)
+    STRING_REF_CASCADE_RELATIONS[(declaring_path, relation_name)] = (child_path, filter_field)
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +163,8 @@ _register(_STATE, "leader_logins", "app.models.masters.leader_management.state_l
 
 # scoped_staff / screen-permission scoping: declared on District/AreaType/State only.
 _STAFF_DATA_SCOPE = "app.models.superadmin.staff_management.staff_data_scope.StaffDataScope"
-_USER_SCREEN_PERMISSION = "app.models.superadmin.screen_management.companyuserscreenpermission.UserScreenPermission"
-_COLUMN_PERMISSION = "app.models.superadmin.screen_management.companyuserscreencolumnpermission.CompanyUserScreenColumnPermission"
+_USER_SCREEN_PERMISSION = "app.models.superadmin.screen_management.userscreenpermission.UserScreenPermission"
+_COLUMN_PERMISSION = "app.models.superadmin.screen_management.userscreencolumnpermission.UserScreenColumnPermission"
 _DASHBOARD_WIDGET_PERMISSION = "app.models.superadmin.screen_management.dashboardwidgetpermission.DashboardWidgetPermission"
 for _parent, _scope_field in ((_STATE, "state"), (_DISTRICT, "district"), (_AREA_TYPE, "area_type")):
     _register(_parent, "scoped_staff", _STAFF_DATA_SCOPE, _scope_field)
@@ -170,14 +176,48 @@ for _parent, _scope_field in ((_STATE, "state"), (_DISTRICT, "district"), (_AREA
 # users_district: District only.
 _register(_DISTRICT, "users_district", "app.models.superadmin_masters.auth_user.User", "district_id")
 
+# StaffTemplate -> TripPlan (TripPlan.staff_template_id is a plain unique_id).
+_register(
+    "app.models.core_modules.schedule_setup.staff_template.StaffTemplate",
+    "trip_plans",
+    "app.models.core_modules.schedule_setup.trip_plan.TripPlan",
+    "staff_template_id",
+)
+
+# StaffTemplate -> DailyTripAssignment (plain staff_template_id).
+_register(
+    "app.models.core_modules.schedule_setup.staff_template.StaffTemplate",
+    "daily_trip_assignments",
+    "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+    "staff_template_id",
+)
+
+# StaffAccessConfiguration keeps its geography as plain JSON id lists
+# (`<level>_ids`), so the geo models' "staff_access_configurations" relation
+# is a JSON-contains match on the matching list.
+_STAFF_ACCESS_CONFIGURATION = "app.models.superadmin.staff_management.staff_access_configuration.StaffAccessConfiguration"
+_WARD = "app.models.masters.ward.Ward"
+for _parent, _ids_field in (
+    (_STATE, "state_ids"),
+    (_DISTRICT, "district_ids"),
+    (_AREA_TYPE, "area_type_ids"),
+    (_CORPORATION, "corporation_ids"),
+    (_MUNICIPALITY, "municipality_ids"),
+    (_TOWN_PANCHAYAT, "town_panchayat_ids"),
+    (_PANCHAYAT_UNION, "panchayat_union_ids"),
+    (_PANCHAYAT, "panchayat_ids"),
+    (_WARD, "ward_ids"),
+):
+    _register(_parent, "staff_access_configurations", _STAFF_ACCESS_CONFIGURATION, f"{_ids_field}__contains")
+
 # departments: Corporation only.
 _register(_CORPORATION, "departments", "app.models.masters.department.Department", "corporation_id")
 
 
 def _resolve_related_manager(model, obj, rel_name):
     """Return an object with `.all()` (an iterable of children) for
-    `obj.<rel_name>`, whether that's a real Django reverse-FK/M2M/OneToOne
-    accessor or a registered string-FK cascade relation. Returns None if
+    `obj.<rel_name>`, whether that's a real Django reverse-relation/M2M/OneToOne
+    accessor or a registered string-reference cascade relation. Returns None if
     neither resolves."""
     try:
         related = getattr(obj, rel_name, None)
@@ -187,7 +227,7 @@ def _resolve_related_manager(model, obj, rel_name):
     if related is not None:
         return related
 
-    entry = STRING_FK_CASCADE_RELATIONS.get((_model_path(model), rel_name))
+    entry = STRING_REF_CASCADE_RELATIONS.get((_model_path(model), rel_name))
     if entry is None:
         return None
     child_path, filter_field = entry
@@ -199,7 +239,30 @@ def _model_path(model):
     return f"{model.__module__}.{model.__qualname__}"
 
 
-def cascade_soft_delete(instance, updated_by=None):
+def _model_has_field(model, field_name):
+    return any(f.name == field_name for f in model._meta.fields)
+
+
+def _stamp_actor(update_fields, model, field_name, actor):
+    """Stamp an actor id (`updated_by`/`deleted_by`, each either a real
+    relation or a plain-string account-id column) into a bulk-update dict."""
+    if actor is None:
+        return
+    try:
+        field = model._meta.get_field(field_name)
+        update_fields[field_name] = (
+            actor if getattr(field, "is_relation", False) else actor.pk
+        )
+    except Exception:
+        # Plain-string `<field>_id` variant (e.g. CustomerCreation).
+        try:
+            model._meta.get_field(f"{field_name}_id")
+            update_fields[f"{field_name}_id"] = actor.pk
+        except Exception:
+            pass
+
+
+def cascade_soft_delete(instance, updated_by=None, delete_reason=None, deleted_by=None):
     """
     Soft-delete `instance` and, transitively, every row reachable via the
     reverse relations named in `type(instance).CASCADE_SOFT_DELETE` (and in
@@ -215,6 +278,10 @@ def cascade_soft_delete(instance, updated_by=None):
       every row's `updated_by` field in the same bulk update, on every
       model that declares that field - so cascaded rows record who
       triggered the delete, not just the top-level instance.
+    - `deleted_by` defaults to `updated_by`: who deleted the row is tracked
+      separately from who last updated it.
+    - Every touched row also gets `deleted_at`/`updated_at` stamped (bulk
+      `.update()` bypasses `auto_now`, so they are set explicitly).
     - Wrapped in a single transaction.atomic() so a partial cascade can
       never be left half-applied.
 
@@ -227,7 +294,19 @@ def cascade_soft_delete(instance, updated_by=None):
     (e.g. in a pre_save signal keyed off an is_deleted transition) rather
     than relying on delete() being called per-instance, since this cascade
     bypasses it.
+
+    delete_reason defaults to the reason sent with the current DELETE
+    request. instance gets it verbatim; cascaded rows get it tagged with
+    the parent that removed them.
     """
+    if delete_reason is None:
+        delete_reason = get_current_delete_reason()
+    if delete_reason:
+        delete_reason = str(delete_reason)[:DELETE_REASON_MAX_LENGTH]
+    if deleted_by is None:
+        deleted_by = updated_by
+    now = timezone.now()
+
     visited: dict[type, set] = {}
 
     def _walk(obj):
@@ -242,7 +321,7 @@ def cascade_soft_delete(instance, updated_by=None):
             if related is None:
                 continue
             if hasattr(related, "all"):
-                # Reverse FK / M2M manager, or our registry QuerySet.
+                # Reverse relation / M2M manager, or our registry QuerySet.
                 for child in related.all().iterator():
                     _walk(child)
             else:
@@ -254,13 +333,59 @@ def cascade_soft_delete(instance, updated_by=None):
     with transaction.atomic():
         for model, pks in visited.items():
             update_fields = {"is_deleted": True, "is_active": False}
-            if updated_by is not None:
+            _stamp_actor(update_fields, model, "updated_by", updated_by)
+            _stamp_actor(update_fields, model, "deleted_by", deleted_by)
+            if _model_has_field(model, "deleted_at"):
+                update_fields["deleted_at"] = now
+            if _model_has_field(model, "updated_at"):
+                update_fields["updated_at"] = now
+            rows = model.objects.filter(pk__in=pks, is_deleted=False)
+            if delete_reason and _model_has_field(model, "delete_reason"):
+                # Cascaded children are tagged with the parent that removed
+                # them; instance's own row gets the plain reason below.
+                child_pks = pks - {instance.pk} if model is type(instance) else pks
+                rows.filter(pk__in=child_pks).update(
+                    **update_fields,
+                    delete_reason=cascaded_delete_reason(delete_reason, instance),
+                )
+                rows = rows.exclude(pk__in=child_pks)
+            rows.update(**update_fields)
+
+        instance.is_deleted = True
+        instance.is_active = False
+        if _model_has_field(type(instance), "is_active"):
+            instance.is_active = False
+        if _model_has_field(type(instance), "deleted_at"):
+            instance.deleted_at = now
+        if _model_has_field(type(instance), "updated_at"):
+            instance.updated_at = now
+        if updated_by is not None:
+            try:
+                field = type(instance)._meta.get_field("updated_by")
+                setattr(
+                    instance,
+                    "updated_by",
+                    updated_by if getattr(field, "is_relation", False) else updated_by.pk,
+                )
+            except Exception:
                 try:
-                    model._meta.get_field("updated_by")
-                    update_fields["updated_by"] = updated_by
+                    type(instance)._meta.get_field("updated_by_id")
+                    instance.updated_by_id = updated_by.pk
                 except Exception:
                     pass
-            model.objects.filter(pk__in=pks, is_deleted=False).update(**update_fields)
+        if deleted_by is not None and _model_has_field(type(instance), "deleted_by"):
+            try:
+                field = type(instance)._meta.get_field("deleted_by")
+                setattr(
+                    instance,
+                    "deleted_by",
+                    deleted_by if getattr(field, "is_relation", False) else deleted_by.pk,
+                )
+            except Exception:
+                pass
+        if delete_reason and _model_has_field(type(instance), "delete_reason"):
+            type(instance)._base_manager.filter(pk=instance.pk).update(delete_reason=delete_reason)
+            instance.delete_reason = delete_reason
 
 
 def collect_cascade_cache_scopes(instance):
@@ -294,7 +419,7 @@ def collect_cascade_cache_scopes(instance):
         related_model = getattr(rel, "related_model", None) if rel else None
         if related_model is not None:
             return related_model
-        entry = STRING_FK_CASCADE_RELATIONS.get((_model_path(model), rel_name))
+        entry = STRING_REF_CASCADE_RELATIONS.get((_model_path(model), rel_name))
         if entry is None:
             return None
         return _lazy_model(entry[0])

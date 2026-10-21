@@ -4,6 +4,7 @@ from app.models.masters.district import District
 from app.models.superadmin.common_masters.state import State
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils import ref_cache
 
 
 class AreaTypeSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
@@ -13,10 +14,10 @@ class AreaTypeSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializ
     area_type_name = serializers.CharField(source="name", required=False)
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     class Meta:
         model = AreaType

@@ -12,7 +12,10 @@ from app.models.masters.customer_masters.customercreation import CustomerCreatio
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
 from app.models.masters.leader_management.state_leader_login import StateLeaderLogin
+from app.services.login_session import validate_session
 from app.utils.hierarchy import local_body_scope_for_staff
+from app.utils.permission_catalog import ROUTE_MODULES, ROUTE_OWNERS
+from app.utils.screen_dependencies import INCLUDED_BY, LOOKUP_FOR
 from app.utils.permission_response import (
     apply_staff_access_configuration,
     resolve_intersected_permission_payload,
@@ -105,6 +108,10 @@ COMMON_AUDIT_CREATE_PATHS = tuple(
 # ============================================================
 # MODULE → RESOURCE ALLOWLIST
 # (THIS MUST MATCH ViewSet.permission_resource)
+#
+# Routes a screen owns in app/utils/permission_catalog.py, and routes a screen
+# depends on in app/utils/screen_dependencies.py, are allowed without being
+# listed here. New screens go in the catalog first.
 # ============================================================
 
 MODULE_RESOURCE_ALLOWLIST = {
@@ -141,7 +148,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "UserScreen",
         "UserScreenAction",
         "UserScreenPermission",
-        "CompanyUserScreenPermission",
+        "UserScreenPermission",
         "userscreenpermissions",
         "companywisescreenpermissions",
         "column-permissions",
@@ -153,6 +160,7 @@ MODULE_RESOURCE_ALLOWLIST = {
         "StaffUserType",
         "ContractorUserType",
         "GovernmentStaffUserType",
+        "StaffHierarchy",
     },
     "user-creations": {
         "UsersCreation",
@@ -166,10 +174,11 @@ MODULE_RESOURCE_ALLOWLIST = {
     "process-items": set(),
     "customer-masters": {
         "CustomerCreation",
-        "WasteCollection",
+        "HouseholdCollectionEvent",
         "FeedBack",
         "UserChargeRule",
         "CustomerAccessConfiguration",
+        "CustomerNotification",
     },
     "complaint-ticket": {
         "ComplaintTicket",
@@ -180,12 +189,12 @@ MODULE_RESOURCE_ALLOWLIST = {
         "ComplaintStatus",
         "ComplaintSource",
         "ComplaintLanguage",
-        "ComplaintTeam",
         "ComplaintSlaRule",
         "ComplaintRoutingRule",
         "ComplaintFeedback",
         "ComplaintReopenHistory",
         "ComplaintAddressChange",
+        "ComplaintsReport",
     },
     "transport-masters": {
         "VehicleTypeCreation",
@@ -204,13 +213,13 @@ MODULE_RESOURCE_ALLOWLIST = {
         "DailyTripAssignment",
         "DailyTripCollectionPoint",
         "DailyTripHouseholdCollection",
-        "BinCollectionEvent",
+        "SecondaryBinCollectionEvent",
         "VehicleBreakdown",
         "DailyTripLog",
         # Registered in base_urls.py and called by the mobile app, but never
         # listed here — so every request to them was refused with
         # "Resource not allowed" regardless of what the role was granted.
-        "WasteCollection",
+        "HouseholdCollectionEvent",
         "TripRetripRequest",
         "StaffNotification",
     },
@@ -218,20 +227,23 @@ MODULE_RESOURCE_ALLOWLIST = {
         "DailyWasteComparison",
         "MonthlyWasteComparisonReport",
     },
+    # Same audit resources as iwms-private (less its static route audit).
     "audits": {
-        "VehicleTripAudit",
-        "TripExceptionLog",
-        "StaffTemplateAuditLog",
         "LoginAudit",
         "CommonAudit",
-        "StaffAudit",
+        "PermissionAudit",
+        "ComplaintAudit",
+        "AuditDashboard",
     },
     "attendance": {
         "DailyAttendanceReg",
     },
 }
 
-PROTECTED_MODULES = tuple(MODULE_RESOURCE_ALLOWLIST.keys())
+# Every URL group the allowlist or the permission catalog names.
+PROTECTED_MODULES = tuple(
+    dict.fromkeys([*MODULE_RESOURCE_ALLOWLIST, *sorted(ROUTE_MODULES)])
+)
 
 MODULE_PERMISSION_ALIASES = {
     "customer-masters": "customers",
@@ -262,27 +274,31 @@ RESOURCE_PERMISSION_ALIASES = {
     "StaffUserType": ("staff-user-type",),
     "ContractorUserType": ("contractorusertypes",),
     "GovernmentStaffUserType": ("governmentusertypes",),
+    "StaffHierarchy": ("staff-hierarchy",),
     "Department": ("departments", "department-masters"),
     "Designation": ("designations", "designation-masters"),
     "StaffCreation": ("staffcreation",),
     "StaffAccessConfiguration": ("staff-access-configuration",),
     "StaffAccessDashboard": ("staff-access-dashboard",),
     "CustomerCreation": ("customercreations",),
-    "WasteCollection": ("wastecollections",),
+    "HouseholdCollectionEvent": ("householdcollection-events", "wastecollections"),
     "TripRetripRequest": ("retrip-requests",),
     "StaffNotification": ("staff-notifications",),
     "AppModule": ("app-modules",),
     "CustomerAccessConfiguration": ("customer-access-configuration",),
+    "CustomerNotification": ("customer-notifications",),
     "FeedBack": ("feedbacks", "feedback"),
-    "ComplaintTicket": ("tickets",),
+    # "My Tasks" is a separate screen over the same ticket API, so a grant on
+    # it alone must still authorize the tickets it lists.
+    "ComplaintTicket": ("tickets", "my-tasks"),
     "ComplaintModule": ("modules",),
     "ComplaintCategory": ("categories",),
     "ComplaintSubcategory": ("subcategories",),
     "ComplaintPriority": ("priorities",),
     "ComplaintStatus": ("statuses",),
     "ComplaintSource": ("sources",),
-    "ComplaintTeam": ("teams",),
     "ComplaintSlaRule": ("sla-rules",),
+    "ComplaintsReport": ("complaints-report",),
     "ComplaintFeedback": ("feedback",),
     "VehicleTypeCreation": ("vehicle-type", "vehicle-types"),
     "VehicleCreation": ("vehicle-creation", "vehicles"),
@@ -301,25 +317,31 @@ RESOURCE_PERMISSION_ALIASES = {
         "daily-trip-household-collections",
         "householdcollection-events",
     ),
-    "BinCollectionEvent": (
+    "SecondaryBinCollectionEvent": (
+        "secondary-bin-collection-events",
         "bin-collection-events",
         "bin-collection-event",
-        "secondary-bin-collection-events",
     ),
     "VehicleBreakdown": ("vehicle-breakdowns",),
     "DailyTripLog": ("daily-trip-logs",),
     "DailyWasteComparison": ("daily-waste-comparisons",),
     "MonthlyWasteComparisonReport": ("MonthlyWasteComparison", "monthly-waste-comparison"),
-    "CommonAudit": ("common-audit",),
-    "StaffAudit": ("staff-audit",),
+    # "staff-audit" is included so a user granted view access under the old,
+    # separate "Collection Audit" screen still unlocks the merged Transaction
+    # Audit screen (same CommonAuditViewSet, now the single UI for both) —
+    # _resolve_allowed_actions tries "common-audit" first and only falls
+    # back to this alias if that specific grant is absent, so it purely adds
+    # coverage without changing behavior for anyone who already holds the
+    # "common-audit" grant directly.
+    "CommonAudit": ("common-audit", "staff-audit"),
     "LoginAudit": ("login-audit",),
+    "PermissionAudit": ("permission-audit",),
+    "ComplaintAudit": ("complaint-audit",),
+    "AuditDashboard": ("audit-dashboard",),
     "DailyAttendanceReg": ("attendance", "records", "daily-attendance"),
-    "userscreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
-    "companywisescreenpermissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
-    "column-permissions": ("UserScreenPermission", "CompanyUserScreenPermission"),
+    "userscreenpermissions": ("UserScreenPermission", "UserScreenPermission"),
     "DashboardWidgetPermission": ("userscreenpermissions", "dashboard-widget-permissions"),
 }
-
 
 # ============================================================
 # HELPERS
@@ -352,7 +374,10 @@ def _route_resource_from_path(path, module):
         return None
 
     resource = parts[module_index + 1]
-    if resource and not resource.startswith("v"):
+    # This segment follows the module, so it is a resource, including
+    # vehicle-breakdowns / vehicle-creations. API versions were handled
+    # while finding the module; a leading "v" does not make a version.
+    if resource:
         return resource
     return None
 
@@ -384,6 +409,12 @@ def _authenticate_request(request):
         return JsonResponse({"detail": "Token expired"}, status=401)
     except jwt.InvalidTokenError:
         return JsonResponse({"detail": "Invalid token"}, status=401)
+
+    session_error = validate_session(payload)
+    if session_error:
+        return JsonResponse(
+            {"detail": session_error, "code": "session_ended"}, status=401
+        )
 
     unique_id = payload.get("unique_id")
     if not unique_id:
@@ -443,15 +474,12 @@ def _authenticate_request(request):
 
 
 def _permission_filters_for_user(user):
-    usertype = getattr(user, "user_type_id", None)
-    staffusertype = getattr(user, "staffusertype_id", None)
-    contractorusertype = getattr(user, "contractorusertype_id", None)
-    governmentusertype = getattr(user, "governmentusertype_id", None)
-
-    usertype_unique_id = getattr(usertype, "unique_id", None)
-    staffusertype_unique_id = getattr(staffusertype, "unique_id", None)
-    contractorusertype_unique_id = getattr(contractorusertype, "unique_id", None)
-    governmentusertype_unique_id = getattr(governmentusertype, "unique_id", None)
+    # The *_id columns already hold the user-type unique_ids (plain strings,
+    # no DB relation) — read them directly.
+    usertype_unique_id = getattr(user, "user_type_id", None) or None
+    staffusertype_unique_id = getattr(user, "staffusertype_id", None) or None
+    contractorusertype_unique_id = getattr(user, "contractorusertype_id", None) or None
+    governmentusertype_unique_id = getattr(user, "governmentusertype_id", None) or None
 
     if not usertype_unique_id:
         return None
@@ -464,8 +492,10 @@ def _permission_filters_for_user(user):
     }
 
 
+# The *_id columns are plain unique_id strings; the same-named properties
+# without "_id" resolve them to the user-type rows that carry `name`.
 def _user_role_name(user):
-    for attr in ("governmentusertype_id", "staffusertype_id", "contractorusertype_id"):
+    for attr in ("governmentusertype", "staffusertype", "contractorusertype"):
         name = getattr(getattr(user, attr, None), "name", None)
         if name:
             return name
@@ -473,7 +503,7 @@ def _user_role_name(user):
 
 
 def _user_type_name(user):
-    return getattr(getattr(user, "user_type_id", None), "name", None)
+    return getattr(getattr(user, "user_type", None), "name", None)
 
 
 def _resolve_permissions_for_request(request):
@@ -569,7 +599,7 @@ def _is_oversight_role(user):
     READ operational data across modules even without an explicit per-screen
     grant (the mobile role permissions are not individually seeded); writes still
     require a permission."""
-    for attr in ("staffusertype_id", "governmentusertype_id", "contractorusertype_id"):
+    for attr in ("staffusertype", "governmentusertype", "contractorusertype"):
         name = (getattr(getattr(user, attr, None), "name", "") or "").lower()
         if "supervisor" in name or "admin" in name:
             return True
@@ -643,9 +673,19 @@ class ModulePermissionMiddleware(MiddlewareMixin):
             permission_resource,
             route_resource,
         )
-        resource_allowed = any(
-            self._normalize_permission_key(candidate) in allowed_resource_keys
-            for candidate in resource_candidates
+        # The screen the permission catalog says owns this route. It is the
+        # primary answer; the allowlist + name matching below covers routes
+        # the catalog leaves to SCREEN_DEPENDENCIES and legacy grant names.
+        route_key = f"{module}/{route_resource}" if route_resource else None
+        route_owner = ROUTE_OWNERS.get(route_key)
+        resource_allowed = (
+            route_owner is not None
+            or route_key in INCLUDED_BY
+            or route_key in LOOKUP_FOR
+            or any(
+                self._normalize_permission_key(candidate) in allowed_resource_keys
+                for candidate in resource_candidates
+            )
         )
 
         if not resource_allowed:
@@ -664,6 +704,13 @@ class ModulePermissionMiddleware(MiddlewareMixin):
         if not action:
             return JsonResponse({"detail": "Invalid HTTP method"}, status=405)
 
+        # Bulk upload needs BOTH grants: "add" (writing records) and the
+        # dedicated "import" (uploading a file). Either one alone is not
+        # enough — revoking either blocks the upload.
+        required_actions = [action]
+        if request.method == "POST" and request.path.rstrip("/").endswith("/bulk-upload"):
+            required_actions = ["import", "add"]
+
         # Oversight roles (supervisor / admin): read operational data anywhere,
         # and fully manage complaints (their core duty — status / assign /
         # escalate / resolve / comment) without an explicit per-screen grant.
@@ -676,19 +723,38 @@ class ModulePermissionMiddleware(MiddlewareMixin):
 
         permissions = _resolve_permissions_for_request(request)
         permission_module = MODULE_PERMISSION_ALIASES.get(module, module)
-        allowed_actions = self._resolve_allowed_actions(
-            self._lookup_module_permissions(permissions, permission_module),
-            permission_resource,
-            route_resource,
-        )
+        # The owning screen's grant (e.g. "daily-trip-plan" for all three
+        # daily trip tables), merged with any grant stored under the route's
+        # own resource name — role defaults and older grants use those.
+        allowed_actions = list(dict.fromkeys([
+            *(self._owner_actions(permissions, *route_owner) if route_owner else []),
+            *self._resolve_allowed_actions(
+                self._lookup_module_permissions(permissions, permission_module),
+                permission_resource,
+                route_resource,
+            ),
+        ]))
 
-        if action not in allowed_actions:
+        missing_actions = [a for a in required_actions if a not in allowed_actions]
+        if (
+            missing_actions
+            and len(required_actions) == 1
+            and missing_actions[0]
+            in self._dependency_actions(permissions, route_key, missing_actions[0])
+        ):
+            # The resource belongs to another screen's page — a child its
+            # form saves through, or a dropdown it fills
+            # (app/utils/screen_dependencies.py).
+            return None
+
+        if missing_actions:
             return JsonResponse(
                 {
                     "detail": "Permission denied",
                     "module": module,
                     "resource": permission_resource,
-                    "action": action,
+                    "action": missing_actions[0],
+                    "required_actions": required_actions,
                 },
                 status=403,
             )
@@ -715,6 +781,35 @@ class ModulePermissionMiddleware(MiddlewareMixin):
                 return value
 
         return {}
+
+    def _owner_actions(self, permissions, owner_module, owner_screen):
+        """Actions granted on a catalog screen, matched by its name."""
+        screens = self._lookup_module_permissions(permissions, owner_module)
+        if owner_screen in screens:
+            return list(screens[owner_screen] or [])
+        target = self._normalize_permission_key(owner_screen)
+        for key, granted in screens.items():
+            if self._normalize_permission_key(key) == target:
+                return list(granted or [])
+        return []
+
+    def _dependency_actions(self, permissions, route_key, action):
+        """Actions a request earns from the screens that depend on its route."""
+        if not route_key:
+            return []
+
+        granted = set()
+        for owner_module, owner_screen in INCLUDED_BY.get(route_key, ()):
+            granted.update(self._owner_actions(permissions, owner_module, owner_screen))
+
+        # Lookups are read-only: any grant on the owner allows the read.
+        if action == "view":
+            for owner_module, owner_screen in LOOKUP_FOR.get(route_key, ()):
+                if self._owner_actions(permissions, owner_module, owner_screen):
+                    granted.add("view")
+                    break
+
+        return sorted(granted)
 
     def _resolve_allowed_actions(self, permissions_map, resource_name, route_resource=None):
         if not permissions_map:

@@ -29,7 +29,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
     def run(self):
         templates = StaffTemplate.objects.filter(
             is_deleted=False, status=StaffTemplate.Status.ACTIVE
-        ).select_related("driver_id", "operator_id").order_by("created_at")
+        ).order_by("created_at")
 
         if not templates.exists():
             self.log("No StaffTemplates found — run StaffTemplateSeeder first.")
@@ -42,7 +42,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
             # driver_id.district_id is a plain unique_id string now (no DB
             # relation) — resolve the District row separately for filtering
             # candidates and for the log message.
-            district_id = template.driver_id.district_id if template.driver_id_id else None
+            district_id = template.driver.district_id if template.driver else None
             district = (
                 District.objects.filter(unique_id=district_id).first()
                 if district_id
@@ -56,7 +56,7 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 StaffcreationOfficeDetails.objects.filter(
                     district_id=district_id, is_deleted=False
                 )
-                .exclude(staff_unique_id__in=[template.driver_id_id, template.operator_id_id])
+                .exclude(staff_unique_id__in=[template.driver_id, template.operator_id])
                 .order_by("staff_unique_id")
             )
             if len(candidates) < 2:
@@ -73,19 +73,16 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 f"{field}_id": getattr(template, f"{field}_id", None)
                 for field in FLAT_GEO_FIELDS
             }
-            approver = template.approved_by
 
-            existing = AlternativeStaffTemplate.objects.filter(staff_template=template).first()
+            existing = AlternativeStaffTemplate.objects.filter(staff_template_id=template.unique_id).first()
             if existing:
-                existing.driver_id = alt_driver
-                existing.operator_id = alt_operator
+                existing.driver_id = alt_driver.staff_unique_id
+                existing.operator_id = alt_operator.staff_unique_id
                 existing.extra_operator_id = [extra_operator.staff_unique_id]
                 existing.change_reason = reason
                 existing.change_remarks = remarks
-                existing.approved_by = approver
                 existing.from_date = existing.from_date or from_date
                 existing.to_date = existing.to_date or to_date
-                existing.approval_status = "APPROVED"
                 for field, value in geo_defaults.items():
                     setattr(existing, field, value)
                 existing.save()
@@ -94,16 +91,14 @@ class AlternativeStaffTemplateSeeder(BaseSeeder):
                 continue
 
             AlternativeStaffTemplate.objects.create(
-                staff_template=template,
-                driver_id=alt_driver,
-                operator_id=alt_operator,
+                staff_template_id=template.unique_id,
+                driver_id=alt_driver.staff_unique_id,
+                operator_id=alt_operator.staff_unique_id,
                 extra_operator_id=[extra_operator.staff_unique_id],
                 from_date=from_date,
                 to_date=to_date,
                 change_reason=reason,
                 change_remarks=remarks,
-                approved_by=approver,
-                approval_status="APPROVED",
                 **geo_defaults,
             )
             count += 1

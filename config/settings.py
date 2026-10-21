@@ -15,7 +15,14 @@ warnings.filterwarnings(
 )
 
 load_dotenv()
-pymysql.install_as_MySQLdb()
+
+# Prefer the C driver (mysqlclient) — several times faster than pure-Python
+# PyMySQL at decoding result rows. Fall back to PyMySQL where mysqlclient
+# isn't installed (it needs libmysqlclient-dev to build).
+try:
+    import MySQLdb  # noqa: F401
+except ImportError:
+    pymysql.install_as_MySQLdb()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 from django.conf import settings
@@ -101,6 +108,8 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    # Request-scoped cache for plain unique_id reference lookups (no FKs).
+    'app.utils.ref_cache.RefCacheMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -141,6 +150,11 @@ DATABASES = {
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         },
+        # Reuse each worker's connection across requests instead of opening
+        # a new one per request; the health check reconnects if MySQL dropped
+        # it (wait_timeout, restart).
+        'CONN_MAX_AGE': int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
@@ -210,14 +224,15 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": None,
 
-    # Global defaults: per-IP for anonymous requests, per-user for
-    # authenticated ones, plus each view's own individual scope rate above.
+    # Global defaults plus each view's own individual scope rate above, all
+    # counted per person: per-user for authenticated requests, and per
+    # username/email/emp_id/phone/... for anonymous ones (IP only when the
+    # request names nobody) — see app/utils/throttling.py.
     # MethodScopedRateThrottle is a drop-in replacement for DRF's
     # ScopedRateThrottle that additionally supports per-HTTP-method rates
-    # (see app/utils/throttling.py) — existing plain-string scopes in
-    # API_THROTTLE_RATES behave exactly as before.
+    # — existing plain-string scopes in API_THROTTLE_RATES behave as before.
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
+        'app.utils.throttling.PersonAnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
         'app.utils.throttling.MethodScopedRateThrottle',
     ],
@@ -232,6 +247,9 @@ REST_FRAMEWORK = {
 # CORS SETTINGS
 # -------------------------------------------------------
 CORS_ALLOW_CREDENTIALS = True
+# Read by the frontend after an Excel export (app/viewsets/core_modules/
+# background_job_viewset.py ExcelExportView).
+CORS_EXPOSE_HEADERS = ["Content-Disposition", "X-Row-Count", "X-Archived-File-Url"]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$",
@@ -273,7 +291,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 # Dedicated DB for the app-level response cache (app/cache/), kept
 # separate from CACHES["default"] above (throttling counters, db 0) and
-# from any future Celery broker/result-backend so they never collide or
+# from the Celery broker (CELERY_BROKER_URL, db 2) so they never collide or
 # get flushed together. See app/cache/service.py.
 REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", "redis://127.0.0.1:6379/1")
 
@@ -315,6 +333,83 @@ LOGGING = {
         },
     },
 }
+
+# -------------------------------------------------------
+# Celery (background tasks + periodic jobs) — see config/celery.py
+# -------------------------------------------------------
+# Own Redis DB (2), apart from throttling (0) and the app cache (1).
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/2")
+# Tasks are fire-and-forget; nothing reads a task's return value.
+CELERY_TASK_IGNORE_RESULT = True
+# Local dev without a worker: CELERY_TASK_ALWAYS_EAGER=true in .env runs
+# every task inline in the request. Never enable it in production.
+CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+# Re-deliver a task if the worker dies mid-run, and take one task at a time
+# so a long trip-generation run doesn't sit on queued notifications.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Fail fast when Redis is down so a request never hangs on .delay();
+# app.tasks.enqueue() then runs the task inline instead.
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_connect_timeout": 3,
+    "visibility_timeout": 3600,
+}
+CELERY_TASK_PUBLISH_RETRY_POLICY = {
+    "max_retries": 2,
+    "interval_start": 0,
+    "interval_step": 0.5,
+    "interval_max": 1,
+}
+
+# Bulk uploads and Excel exports wait this long for the Celery worker before
+# answering 202 + job id (the UI then polls). Keep it below gunicorn's
+# --timeout (Dockerfile) and any proxy read timeout.
+JOB_WAIT_SECONDS = float(os.getenv("JOB_WAIT_SECONDS", 50))
+# A job no worker has started after this long is run in the web request
+# (no worker running) - see app/services/background_jobs.py wait_for_job.
+JOB_PICKUP_SECONDS = float(os.getenv("JOB_PICKUP_SECONDS", 10))
+
+COMPLAINT_ESCALATION_INTERVAL_SECONDS = max(
+    float(os.getenv("COMPLAINT_ESCALATION_INTERVAL_SECONDS", 30)), 10
+)
+
+CELERY_BEAT_SCHEDULE = {
+    # Checks SchedulerConfig every minute and runs the daily trip generation
+    # once per day after its configured run_time, so a time change made on
+    # the scheduler-config screen applies without restarting beat.
+    "daily-trip-generation": {
+        "task": "iwms.daily_trip_generation_tick",
+        "schedule": 60.0,
+        "options": {"expires": 55},
+    },
+    # Auto-escalates complaint tickets past their SLA deadline.
+    "complaint-sla-sweep": {
+        "task": "iwms.complaint_sla_sweep",
+        "schedule": COMPLAINT_ESCALATION_INTERVAL_SECONDS,
+        "options": {"expires": COMPLAINT_ESCALATION_INTERVAL_SECONDS},
+    },
+    # Closes login sessions nobody logged out of, so the login audit's
+    # logout time / used hours stay correct (app/services/login_session.py).
+    "close-idle-login-sessions": {
+        "task": "iwms.close_idle_login_sessions",
+        "schedule": 300.0,
+        "options": {"expires": 290},
+    },
+    # Re-Trip requests: supervisor reminder / escalation, then expiry once
+    # the decision window (RETRIP_EXPIRY_MINUTES) passes.
+    "retrip-timeouts": {
+        "task": "iwms.process_retrip_timeouts",
+        "schedule": 60.0,
+        "options": {"expires": 55},
+    },
+}
+
+# Web sessions log out automatically after this much inactivity.
+LOGIN_IDLE_TIMEOUT_SECONDS = int(os.getenv("LOGIN_IDLE_TIMEOUT_SECONDS", str(40 * 60)))
 
 # -------------------------------------------------------
 # Custom User Model

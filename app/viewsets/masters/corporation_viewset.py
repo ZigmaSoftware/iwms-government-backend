@@ -9,6 +9,7 @@ from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.lite_serializer_mixin import LiteListMixin, make_lite_serializer
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.plain_ref_search import PlainRefSearchFilter
 
 CORPORATION_CACHE_SCOPES = ("corporation_list", "corporation_detail")
 
@@ -21,9 +22,17 @@ class CorporationViewSet(LiteListMixin, AuditViewSetMixin, viewsets.ModelViewSet
     )
     lookup_field = "unique_id"
     permission_resource = "Corporation"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["corporation_name"]
+    # The list's search box matches what the table shows: corporation plus
+    # its state/district names (plain unique_id columns, no join).
+    search_fields = [
+        "corporation_name",
+        "unique_id",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "district_id=app.models.masters.district.District.name",
+        "area_type_id=app.models.masters.areatype.AreaType.name",
+    ]
     ordering_fields = ["corporation_name", "is_active"]
 
     AUDIT_MODULE = "masters"

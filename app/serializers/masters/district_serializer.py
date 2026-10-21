@@ -5,6 +5,7 @@ from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.validators.unique_name_validator import unique_name_validator
+from app.utils import ref_cache
 
 class DistrictSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     continent_id = serializers.CharField(required=False, allow_null=True)
@@ -17,13 +18,13 @@ class DistrictSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializ
     name = serializers.CharField(required=False)
 
     def get_continent_name(self, obj):
-        return Continent.objects.filter(unique_id=obj.continent_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Continent, obj.continent_id, "unique_id"), "name", None)
 
     def get_country_name(self, obj):
-        return Country.objects.filter(unique_id=obj.country_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(Country, obj.country_id, "unique_id"), "name", None)
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     class Meta:
         model = District

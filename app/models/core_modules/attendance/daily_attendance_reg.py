@@ -1,6 +1,5 @@
 from django.db import models
 
-from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.utils.comfun import generate_unique_id
 
 
@@ -17,12 +16,10 @@ class DailyAttendanceReg(models.Model):
         default=generate_daily_attendance_reg_id,
         editable=False,
     )
-    staff = models.ForeignKey(
-        Staffcreation,
-        on_delete=models.PROTECT,
-        to_field="staff_unique_id",
+    staff_id = models.CharField(
+        max_length=30,
         db_column="staff_id",
-        related_name="daily_attendance_regs",
+        db_index=True,
     )
     emp_id = models.CharField(max_length=10)
     emp_id_raw = models.CharField(max_length=50, null=True, blank=True)
@@ -42,6 +39,6 @@ class DailyAttendanceReg(models.Model):
         ordering = ["-records"]
         indexes = [
             models.Index(fields=["emp_id"]),
-            models.Index(fields=["staff"]),
+            models.Index(fields=["staff_id"]),
             models.Index(fields=["recognition_date", "punch_type"]),
         ]

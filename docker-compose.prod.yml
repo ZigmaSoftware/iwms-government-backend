@@ -48,3 +48,22 @@ services:
       # without tracking them in git.
       - ./app/migrations:/app/app/migrations
     restart: always
+
+  # Celery worker + beat (see config/celery.py). Same image and .env as
+  # backend; they reach the host Redis through the host network, using
+  # CELERY_BROKER_URL (default redis://127.0.0.1:6379/2). Run ONE beat only.
+  celery-worker:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    env_file: .env
+    network_mode: host
+    command: celery -A config worker -l info --concurrency 2
+    volumes:
+      - ./media:/app/media
+    restart: always
+
+  celery-beat:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    env_file: .env
+    network_mode: host
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    restart: always

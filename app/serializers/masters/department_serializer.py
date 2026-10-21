@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from app.models.masters.corporation import Corporation
 from app.models.masters.department import Department
+from app.utils import ref_cache
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -15,11 +16,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
     corporation_name = serializers.SerializerMethodField(read_only=True)
 
     def get_corporation_name(self, obj):
-        return (
-            Corporation.objects.filter(unique_id=obj.corporation_id)
-            .values_list("corporation_name", flat=True)
-            .first()
-        )
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     class Meta:
         model = Department

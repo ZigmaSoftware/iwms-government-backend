@@ -1,17 +1,24 @@
 from datetime import datetime, time as datetime_time, timedelta
 
+from django.db import transaction
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.utils.plain_ref import json_contains_any, ref_q
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from app.management.commands.generate_daily_trips import run_for_date
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.scheduler_config import SchedulerConfig
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.models.core_modules.daily_operations.daily_service_notice import DailyServiceNotice
+from app.services.daily_service_notice import (active_notice_for_plan, serialize_notice, declare_no_collection, revoke_no_collection, DailyServiceNoticeError)
+from app.services.daily_trip_generation import generate_assignment_for_plan
 from app.services import retrip_service
 from app.services.daily_trip_scheduler import (
-    notify_scheduler_config_changed,
     run_daily_trip_job,
     scheduler_status as get_scheduler_status,
 )
@@ -22,15 +29,17 @@ from app.serializers.core_modules.daily_operations.daily_trip_assignment_seriali
 )
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import (
+    flat_geo_display,
     filter_flat_geo_queryset_by_params,
     filter_flat_geo_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
-from app.utils.roles import can_manage_trips
+from app.utils.roles import can_manage_trips, is_supervisor_role
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DailyTripAssignmentViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     """
     CRUD + state-machine actions for daily trip assignments.
 
@@ -40,24 +49,45 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     """
     throttle_scope = "daily_trip_assignment"
 
-    queryset = DailyTripAssignment.objects.select_related(
-        "trip_plan_id",
-        "trip_plan_id__vehicle_id",
-        "staff_template_id",
-        "staff_template_id__driver_id",
-        "staff_template_id__operator_id",
-        "alt_staff_template_id",
-        "alt_staff_template_id__driver_id",
-        "alt_staff_template_id__operator_id",
-        "vehicle_id",
-    ).prefetch_related("trip_plan_id__waste_types", "waste_types").filter(is_deleted=False)
+    queryset = DailyTripAssignment.objects.filter(is_deleted=False)
 
     serializer_class = DailyTripAssignmentSerializer
     lookup_field = "unique_id"
     permission_resource = "DailyTripAssignment"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    # Supervisor-app day planning. Each action enforces its own gate —
+    # supervisor/admin role (`_has_approval_role`) AND only plans the caller
+    # supervises (or, for admins, their geo scope) via `_owned_plans` — so
+    # the generic screen grant ("add" on daily-trip-plan, which supervisors'
+    # role template does not carry) must not block them.
+    permission_exempt_actions = (
+        "today_plan_options",
+        "generate_selected",
+        "no_collection",
+        "revoke_service_notice",
+    )
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "vehicle_id__vehicle_no", "staff_template_id__driver_id__employee_name"]
+    search_fields = [
+        "unique_id",
+        "status",
+        "approval_status",
+        "vehicle_id=app.models.masters.transport_masters.vehicleCreation.VehicleCreation.vehicle_no",
+        "trip_plan_id=app.models.core_modules.schedule_setup.trip_plan.TripPlan.display_code",
+        "trip_plan_id=app.models.core_modules.schedule_setup.trip_plan.TripPlan.collection_type",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.display_code",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.driver_id"
+        "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "staff_template_id=app.models.core_modules.schedule_setup.staff_template.StaffTemplate.operator_id"
+        "=app.models.superadmin.staff_management.staffcreation.StaffcreationOfficeDetails.employee_name",
+        "state_id=app.models.superadmin.common_masters.state.State.name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+        "ward_ids[]=app.models.masters.ward.Ward.ward_name",
+    ]
     ordering_fields = ["trip_date", "scheduled_time", "status", "approval_status"]
 
     AUDIT_MODULE = "trip-assignments"
@@ -114,22 +144,70 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(status=trip_status)
 
         if waste_type:
-            qs = qs.filter(waste_types__unique_id=waste_type).distinct()
+            qs = qs.filter(json_contains_any("waste_type_ids", [waste_type]))
         if ward_id:
-            qs = qs.filter(wards__unique_id=ward_id).distinct()
+            qs = qs.filter(json_contains_any("ward_ids", [ward_id]))
 
         qs = filter_flat_geo_queryset_by_params(qs, params)
-        qs = filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
 
         # `mine=true` → only trips this supervisor is responsible for
         # (TripPlan.supervisor_id == the requesting staff). Used by the
         # supervisor mobile app to list the trips it owns.
+        #
+        # Being named supervisor on a trip plan is an explicit, per-plan
+        # grant, and supervisors are routinely given plans outside their own
+        # geo branch (a panchayat supervisor scoped to a corporation, say).
+        # ANDing that grant with the geo scope silently returned nothing in
+        # exactly that case, so an assigned supervisor saw an empty trip list
+        # — and with it empty Trips/Vehicles/Teams counts. The filter matches
+        # only the requester's own staff id, so it is self-scoping already and
+        # needs no geo narrowing on top.
         mine = params.get("mine")
         if mine and str(mine).lower() in ("1", "true", "yes"):
             staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
-            qs = qs.filter(trip_plan_id__supervisor_id=staff_uid) if staff_uid else qs.none()
+            if not staff_uid:
+                return qs.none()
+            return qs.filter(ref_q("trip_plan_id", TripPlan, supervisor_id=staff_uid))
 
-        return qs
+        return filter_flat_geo_queryset_by_requester_scope(qs, self.request.user)
+
+    def get_object(self):
+        """
+        Detail-level access (retrieve/update/destroy, and the `status`/
+        `approval` actions below) must not depend on the caller remembering
+        to pass `?mine=true` the way the list endpoint does. Being named
+        supervisor on a trip's plan is an explicit, standing grant — the
+        supervisor app substitutes staff, starts/ends trips, and approves
+        stops on assignments it owns via a single-object PATCH, with no
+        listing step in between where a `mine` flag would even apply. A
+        supervisor whose broader geo scope doesn't cover this one trip
+        would otherwise get a 404 on every one of those actions despite
+        genuinely owning the trip. Fall back to trip-plan ownership whenever
+        the default (geo-scoped) queryset doesn't contain the object; this
+        only ever widens access to trips the requester was explicitly
+        assigned, never sideways to unrelated ones.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+
+        obj = queryset.filter(**filter_kwargs).first()
+        if obj is None:
+            staff_uid = getattr(getattr(self.request, "user", None), "staff_unique_id", None)
+            if staff_uid:
+                obj = DailyTripAssignment.objects.filter(
+                    ref_q("trip_plan_id", TripPlan, supervisor_id=staff_uid),
+                    is_deleted=False,
+                    **filter_kwargs,
+                ).first()
+
+        if obj is None:
+            from django.http import Http404
+
+            raise Http404("No DailyTripAssignment matches the given query.")
+
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     # ----------------------------------------------------------
     # UPDATE — only allowed when Scheduled
@@ -159,7 +237,7 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "status", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
 
@@ -371,7 +449,6 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 )
             config.is_enabled = parsed_enabled
         config.save()
-        notify_scheduler_config_changed()
         return Response(
             self._scheduler_config_payload(config),
             status=status.HTTP_200_OK,
@@ -394,6 +471,8 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     {"date": "Use YYYY-MM-DD format."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+        if is_supervisor_role(request.user):
+            return Response({"detail": "Use generate-selected for your own Trip Plans."}, status=status.HTTP_400_BAD_REQUEST)
         result = run_daily_trip_job(target_date=target_date, force=True)
         return Response(result, status=status.HTTP_200_OK)
 
@@ -428,6 +507,8 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        if is_supervisor_role(request.user):
+            return Response({"detail": "Use generate-selected for your own Trip Plans."}, status=status.HTTP_400_BAD_REQUEST)
         summary = run_for_date(target_date=target_date)
 
         return Response(
@@ -444,6 +525,229 @@ class DailyTripAssignmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # ----------------------------------------------------------
     # HELPERS
     # ----------------------------------------------------------
+
+    def _service_date(self, raw_date):
+        if not raw_date:
+            return timezone.localdate()
+        try:
+            return timezone.datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValidationError({"date": "Use YYYY-MM-DD."})
+
+    def _owned_plans(self, ids=None):
+        plans = TripPlan.objects.filter(is_deleted=False)
+        if is_supervisor_role(self.request.user):
+            plans = plans.filter(supervisor_id=self.request.user.staff_unique_id)
+        else:
+            plans = filter_flat_geo_queryset_by_requester_scope(plans, self.request.user)
+        if ids is not None:
+            plans = plans.filter(unique_id__in=ids)
+        return plans
+
+    def _team_members(self, template):
+        """Driver, operator and extra operators of the plan's team with their
+        photos, for the avatar stack on the supervisor app's plan card."""
+        if template is None:
+            return []
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
+        from app.utils.crew import crew_payload
+
+        crew = crew_payload(template, None, timezone.localdate(), request=self.request)
+        return [member for member in [crew["driver"], crew["operator"], *crew["extra_operators"]] if member]
+
+    def _plan_option(self, plan, service_date):
+        assignments = DailyTripAssignment.objects.filter(
+            trip_plan_id=plan.unique_id,
+            trip_date=service_date,
+            is_deleted=False,
+        ).order_by("created_at")
+        notice = active_notice_for_plan(plan.unique_id, service_date)
+        repeat_days = plan.repeat_days or []
+        scheduled_today = not repeat_days or service_date.weekday() in {
+            int(value) for value in repeat_days if str(value).isdigit()
+        }
+        blocking_reason = None
+        state = "NEEDS_ASSIGNMENT"
+        # A plan can hold several trips today (a cancelled run, a Re-Trip
+        # continuation). Report the one that is live, not simply the oldest
+        # row, so the supervisor's card follows the trip being collected.
+        rank = {
+            DailyTripAssignment.STATUS_IN_PROGRESS: 0,
+            DailyTripAssignment.STATUS_SCHEDULED: 1,
+            DailyTripAssignment.STATUS_COMPLETED: 2,
+        }
+        assignment = min(
+            assignments,
+            key=lambda a: (rank.get(a.status, 3), -a.created_at.timestamp()),
+            default=None,
+        )
+        if notice:
+            state = "NO_COLLECTION"
+        elif assignment:
+            state = assignment.status
+        elif plan.status != TripPlan.Status.ACTIVE:
+            state, blocking_reason = "BLOCKED", "Trip Plan is inactive"
+        elif plan.approval_status != TripPlan.ApprovalStatus.APPROVED:
+            state, blocking_reason = "BLOCKED", "Trip Plan is awaiting approval"
+        elif not scheduled_today:
+            state, blocking_reason = "NOT_SCHEDULED", "Trip Plan does not run today"
+        elif not plan.staff_template_id:
+            state, blocking_reason = "BLOCKED", "Assign a team before creating this trip"
+        elif not plan.vehicle_id:
+            state, blocking_reason = "BLOCKED", "Assign a vehicle before creating this trip"
+
+        template = plan.staff_template
+        vehicle = plan.vehicle
+        return {
+            "trip_plan_id": plan.unique_id,
+            "display_code": plan.display_code,
+            "collection_type": plan.collection_type,
+            "scheduled_time": plan.scheduled_time.strftime("%H:%M") if plan.scheduled_time else None,
+            "state": state,
+            "blocking_reason": blocking_reason,
+            "assignment_id": getattr(assignment, "unique_id", None),
+            "assignment_status": getattr(assignment, "status", None),
+            "vehicle_no": getattr(vehicle, "vehicle_no", None),
+            "team_code": getattr(template, "display_code", None),
+            "driver_name": getattr(getattr(template, "driver", None), "employee_name", None),
+            "operator_name": getattr(getattr(template, "operator", None), "employee_name", None),
+            "team_members": self._team_members(template),
+            # Government geography in place of private's zone name: the
+            # plan's most specific local body (falls back to district/state).
+            "local_body_name": flat_geo_display(plan)[0],
+            "ward_names": [getattr(ward, "ward_name", str(ward)) for ward in plan.wards.all()],
+            "notice": serialize_notice(notice),
+        }
+
+    @action(detail=False, methods=["get"], url_path="today-plan-options")
+    def today_plan_options(self, request):
+        if not self._has_approval_role(request):
+            return Response({"detail": "Supervisor access is required."}, status=status.HTTP_403_FORBIDDEN)
+        service_date = self._service_date(request.query_params.get("date"))
+        plans = self._owned_plans().order_by("scheduled_time", "display_code")
+        options = [
+            option
+            for plan in plans
+            if (option := self._plan_option(plan, service_date))["state"]
+            != "NOT_SCHEDULED"
+        ]
+        return Response({
+            "service_date": service_date.isoformat(),
+            "results": options,
+            "summary": {
+                "total": len(options),
+                "needs_assignment": sum(item["state"] == "NEEDS_ASSIGNMENT" for item in options),
+                "assigned": sum(item["state"] in {"Scheduled", "In Progress", "Completed"} for item in options),
+                "no_collection": sum(item["state"] == "NO_COLLECTION" for item in options),
+                "blocked": sum(item["state"] in {"BLOCKED", "NOT_SCHEDULED"} for item in options),
+            },
+        })
+
+    @action(detail=False, methods=["post"], url_path="generate-selected")
+    def generate_selected(self, request):
+        if not self._has_approval_role(request):
+            return Response({"detail": "Supervisor access is required."}, status=status.HTTP_403_FORBIDDEN)
+        service_date = self._service_date(request.data.get("date"))
+        if is_supervisor_role(self.request.user) and service_date != timezone.localdate():
+            return Response({"detail": "Supervisors can assign trips for today only."}, status=status.HTTP_400_BAD_REQUEST)
+        raw_ids = request.data.get("trip_plan_ids")
+        if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 50:
+            return Response({"trip_plan_ids": "Choose between 1 and 50 Trip Plans."}, status=status.HTTP_400_BAD_REQUEST)
+        ids = list(dict.fromkeys(str(value) for value in raw_ids))
+        plans = list(self._owned_plans(ids))
+        if len(plans) != len(ids):
+            return Response({"detail": "One or more Trip Plans are unavailable or outside your responsibility."}, status=status.HTTP_403_FORBIDDEN)
+
+        created = []
+        existing = []
+        blocked = []
+        with transaction.atomic():
+            for plan in plans:
+                # Serialize simultaneous mobile taps for the same plan. The
+                # assignment table deliberately permits multiple same-day
+                # rows for Re-Trips, so its database schema cannot provide
+                # ordinary generation with a unique constraint.
+                plan = TripPlan.objects.select_for_update().get(
+                    unique_id=plan.unique_id
+                )
+                reason = None
+                if plan.status != TripPlan.Status.ACTIVE:
+                    reason = "Trip Plan is inactive"
+                elif plan.approval_status != TripPlan.ApprovalStatus.APPROVED:
+                    reason = "Trip Plan is not approved"
+                elif not plan.staff_template_id or not plan.vehicle_id:
+                    reason = "A team and vehicle are required"
+                elif active_notice_for_plan(plan.unique_id, service_date):
+                    reason = "No collection has been declared for this date"
+                repeat_days = plan.repeat_days or []
+                if not reason and repeat_days and service_date.weekday() not in {int(value) for value in repeat_days if str(value).isdigit()}:
+                    reason = "Trip Plan is not scheduled for this weekday"
+                if reason:
+                    blocked.append({"trip_plan_id": plan.unique_id, "reason": reason})
+                    continue
+                assignment, was_created, _ = generate_assignment_for_plan(
+                    plan, service_date, created_by=self._account_for_request_user()
+                )
+                (created if was_created else existing).append(assignment.unique_id)
+        return Response({
+            "service_date": service_date.isoformat(),
+            "created": created,
+            "existing": existing,
+            "blocked": blocked,
+        })
+
+    @action(detail=False, methods=["post"], url_path="no-collection")
+    def no_collection(self, request):
+        if not self._has_approval_role(request):
+            return Response({"detail": "Supervisor access is required."}, status=status.HTTP_403_FORBIDDEN)
+        service_date = self._service_date(request.data.get("date"))
+        if is_supervisor_role(self.request.user) and service_date != timezone.localdate():
+            return Response({"detail": "Supervisors can change today's service only."}, status=status.HTTP_400_BAD_REQUEST)
+        raw_ids = request.data.get("trip_plan_ids")
+        if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 50:
+            return Response({"trip_plan_ids": "Choose between 1 and 50 Trip Plans."}, status=status.HTTP_400_BAD_REQUEST)
+        ids = list(dict.fromkeys(str(value) for value in raw_ids))
+        plans = list(self._owned_plans(ids))
+        if len(plans) != len(ids):
+            return Response({"detail": "One or more Trip Plans are outside your responsibility."}, status=status.HTTP_403_FORBIDDEN)
+        account = self._account_for_request_user()
+        try:
+            with transaction.atomic():
+                notices = [
+                    declare_no_collection(
+                        plan,
+                        service_date,
+                        str(request.data.get("reason_code") or ""),
+                        str(request.data.get("reason_text") or ""),
+                        actor_id=getattr(account, "pk", None),
+                    )
+                    for plan in plans
+                ]
+        except DailyServiceNoticeError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        for notice in notices:
+            self.log_audit(request, instance=notice, new_data=self._serialize_instance(notice))
+        return Response({"results": [serialize_notice(notice) for notice in notices]}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="revoke-no-collection")
+    def revoke_service_notice(self, request):
+        if not self._has_approval_role(request):
+            return Response({"detail": "Supervisor access is required."}, status=status.HTTP_403_FORBIDDEN)
+        notice = DailyServiceNotice.objects.filter(
+            unique_id=request.data.get("notice_id"), is_deleted=False
+        ).first()
+        if not notice or not self._owned_plans([notice.trip_plan_id]).exists():
+            return Response({"detail": "Service notice not found."}, status=status.HTTP_404_NOT_FOUND)
+        if is_supervisor_role(request.user) and notice.service_date != timezone.localdate():
+            return Response({"detail": "Supervisors can change today's service only."}, status=status.HTTP_400_BAD_REQUEST)
+        previous_data = self._serialize_instance(notice)
+        account = self._account_for_request_user()
+        try:
+            notice = revoke_no_collection(notice, getattr(account, "pk", None), request.data.get("reason"))
+        except DailyServiceNoticeError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        self.log_audit(request, instance=notice, previous_data=previous_data, new_data=self._serialize_instance(notice))
+        return Response({"notice": serialize_notice(notice)})
 
     def _has_approval_role(self, request) -> bool:
         """Returns True if the requesting user holds supervisor or admin role.

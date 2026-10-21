@@ -3,11 +3,12 @@
 from rest_framework import serializers
 from app.models.masters.areatype import AreaType
 from app.models.masters.hierarchy import AdministrativeHierarchy
+from app.utils import ref_cache
 
 
 class AdministrativeHierarchySerializer(serializers.ModelSerializer):
 
-    # area_type is a plain unique_id string (no ForeignKey/DB relation) —
+    # area_type is a plain unique_id string (no DB relation) —
     # see docs/geo_hierarchy_fk_removal.md — so its display name is looked
     # up explicitly instead of traversed via a dotted `source`.
     area_type_name = serializers.SerializerMethodField(read_only=True)
@@ -25,8 +26,4 @@ class AdministrativeHierarchySerializer(serializers.ModelSerializer):
         read_only_fields = ("unique_id",)
 
     def get_area_type_name(self, obj):
-        return (
-            AreaType.objects.filter(unique_id=obj.area_type)
-            .values_list("name", flat=True)
-            .first()
-        )
+        return getattr(ref_cache.get(AreaType, obj.area_type, "unique_id"), "name", None)

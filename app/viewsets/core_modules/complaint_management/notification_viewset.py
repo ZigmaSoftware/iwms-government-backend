@@ -22,13 +22,11 @@ class ComplaintNotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = getattr(self.request, "user", None)
-        qs = ComplaintNotification.objects.filter(is_deleted=False).select_related(
-            "ticket", "ticket__status"
-        )
+        qs = ComplaintNotification.objects.filter(is_deleted=False)
         if hasattr(user, "staff_unique_id"):
-            qs = qs.filter(recipient_staff=user)
+            qs = qs.filter(recipient_staff_id=user.staff_unique_id)
         elif getattr(user, "is_authenticated", False):
-            qs = qs.filter(recipient_user=user)
+            qs = qs.filter(recipient_user_id=getattr(user, "unique_id", None))
         else:
             qs = qs.none()
         return qs.order_by("-created_at")

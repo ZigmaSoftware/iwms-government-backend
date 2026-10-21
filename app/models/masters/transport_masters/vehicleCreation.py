@@ -3,10 +3,15 @@ from django.db import models
 from app.models.masters.transport_masters.fuel import Fuel
 from .vehicleTypeCreation import VehicleTypeCreation
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 def generate_vehicle_creation_id():
     return f"VEHCRE-{generate_unique_id()}"
+
+
+def generate_vehicle_document_history_id():
+    return f"VEHDOC-{generate_unique_id()}"
 
 
 def vehicle_rc_upload_path(instance, filename):
@@ -31,12 +36,26 @@ class VehicleCreation(models.Model):
         editable=False,
     )
 
-    fuel_type = models.ForeignKey(
-        Fuel, on_delete=models.SET_NULL, null=True, blank=True
+    # Plain Fuel / VehicleTypeCreation unique_ids (no DB relation); the
+    # `fuel_type` / `vehicle_type` properties below resolve them.
+    fuel_type_id = models.CharField(
+        max_length=40, null=True, blank=True, db_column="fuel_type_id", db_index=True
     )
-    vehicle_type = models.ForeignKey(
-        VehicleTypeCreation, on_delete=models.SET_NULL, null=True, blank=True
+    vehicle_type_id = models.CharField(
+        max_length=30, null=True, blank=True, db_column="vehicle_type_id", db_index=True
     )
+
+    @property
+    def fuel_type(self):
+        if not self.fuel_type_id:
+            return None
+        return ref_cache.get(Fuel, self.fuel_type_id)
+
+    @property
+    def vehicle_type(self):
+        if not self.vehicle_type_id:
+            return None
+        return ref_cache.get(VehicleTypeCreation, self.vehicle_type_id)
 
     # Government hierarchy the vehicle belongs to (mirrors Collection_point's
     # flat geo block — see app/models/core_modules/schedule_setup/collection_point.py).
@@ -68,6 +87,7 @@ class VehicleCreation(models.Model):
     fuel_tank_capacity = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    rc_expiry_date = models.DateField(blank=True, null=True)
     rc_upload = models.FileField(
         upload_to=vehicle_rc_upload_path, null=True, blank=True
     )
@@ -92,3 +112,40 @@ class VehicleCreation(models.Model):
         self.is_deleted = True
         self.is_active = False
         self.save(update_fields=["is_deleted", "is_active"])
+
+
+class VehicleDocumentHistory(models.Model):
+    class DocumentType(models.TextChoices):
+        RC = "RC", "Registration Certificate"
+        INSURANCE = "INSURANCE", "Insurance"
+
+    unique_id = models.CharField(
+        max_length=40,
+        primary_key=True,
+        default=generate_vehicle_document_history_id,
+        editable=False,
+    )
+    vehicle_id = models.CharField(max_length=40, db_index=True)
+    vehicle_no = models.CharField(max_length=50, db_index=True)
+    document_type = models.CharField(max_length=20, choices=DocumentType.choices)
+    previous_document_number = models.CharField(max_length=100, blank=True, null=True)
+    new_document_number = models.CharField(max_length=100, blank=True, null=True)
+    previous_expiry_date = models.DateField(blank=True, null=True)
+    new_expiry_date = models.DateField(blank=True, null=True)
+    previous_file = models.CharField(max_length=255, blank=True, null=True)
+    new_file = models.CharField(max_length=255, blank=True, null=True)
+    changed_by_id = models.CharField(max_length=50, blank=True, null=True)
+    changed_by_name = models.CharField(max_length=150, blank=True, null=True)
+    changed_by_type = models.CharField(max_length=50, blank=True, null=True)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at"]
+        verbose_name = "Vehicle Document History"
+        verbose_name_plural = "Vehicle Document Histories"
+        indexes = [
+            models.Index(fields=["vehicle_id", "document_type", "-changed_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.vehicle_no} - {self.document_type} - {self.changed_at}"

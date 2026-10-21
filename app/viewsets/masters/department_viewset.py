@@ -1,5 +1,6 @@
 from rest_framework import filters
 
+from app.utils.list_filters import ListParamFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.department import Department
@@ -7,17 +8,18 @@ from app.serializers.masters.department_serializer import DepartmentSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 DEPARTMENT_CACHE_SCOPES = ("department_list", "department_detail")
 
 
-class DepartmentViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DepartmentViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "department"
     queryset = Department.objects.filter(is_deleted=False)
     serializer_class = DepartmentSerializer
     lookup_field = "unique_id"
     permission_resource = "Department"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["department_name", "department_code", "description"]
     ordering_fields = ["department_name", "department_code", "created_at"]

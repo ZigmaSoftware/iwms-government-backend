@@ -26,8 +26,6 @@ class Department(BaseMaster):
     department_name = models.CharField(max_length=150)
     department_code = models.CharField(max_length=30)
     description = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["department_name"]

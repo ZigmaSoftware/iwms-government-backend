@@ -3,6 +3,8 @@ import hashlib
 from django.core.cache import cache
 from rest_framework import serializers
 
+from app.serializers.evidence_image import absolute_image_url
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
@@ -78,12 +80,21 @@ class TripCollectionPointSerializer(serializers.Serializer):
     is_collected = serializers.BooleanField()
     status = serializers.CharField()
     status_reason = serializers.CharField(allow_null=True, required=False)
+    status_evidence_image_url = serializers.SerializerMethodField()
     collected_at = serializers.DateTimeField(allow_null=True)
     collected_weight_kg = serializers.DecimalField(
         max_digits=10, decimal_places=2, allow_null=True
     )
-    collection_point = _CollectionPointBriefSerializer(source="collection_point_id")
-    bin = _BinBriefSerializer(source="bin_id")
+    collection_point = _CollectionPointBriefSerializer()
+    bin = _BinBriefSerializer()
+
+
+    def get_status_evidence_image_url(self, obj):
+        event = BinCollectionEvent.objects.filter(
+            trip_assignment_id=obj.trip_assignment_id, bin_id=obj.bin_id,
+            collection_point_id=obj.collection_point_id, is_deleted=False,
+        ).order_by("-created_at").first()
+        return absolute_image_url(self, event.status_evidence_image) if event else None
 
 
 class MyTripTodaySerializer(serializers.Serializer):
@@ -110,12 +121,12 @@ class MyTripTodaySerializer(serializers.Serializer):
     # This assignment's 1-based position among today's assignments for the
     # same trip plan — 1 normally, 2+ for a Re-Trip continuation.
     trip_count = serializers.SerializerMethodField()
-    panchayat = _PanchayatBriefSerializer()
+    panchayat = serializers.SerializerMethodField()
     # Narrows the panchayat/local-body scope for this trip, when the trip
     # plan (or its per-trip override) has one assigned.
     ward = serializers.SerializerMethodField()
     waste_types = _WasteTypeBriefSerializer(many=True)
-    vehicle = _VehicleBriefSerializer(source="vehicle_id", allow_null=True)
+    vehicle = _VehicleBriefSerializer(allow_null=True)
     progress = serializers.SerializerMethodField()
     distance_meters = serializers.SerializerMethodField()
     duration_seconds = serializers.SerializerMethodField()
@@ -132,7 +143,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     _HOUSEHOLD_TYPES = ("household_collection", "bulk_waste_collection")
 
     def get_collection_type(self, obj):
-        plan = getattr(obj, "trip_plan_id", None)
+        plan = getattr(obj, "trip_plan", None)
         return getattr(plan, "collection_type", None)
 
     def get_retrip_request(self, obj):
@@ -154,6 +165,7 @@ class MyTripTodaySerializer(serializers.Serializer):
             "pending_bin_count": retrip.pending_bin_count,
             "pending_household_count": retrip.pending_household_count,
             "created_at": retrip.created_at.isoformat() if retrip.created_at else None,
+            "expires_at": retrip.expires_at.isoformat() if retrip.expires_at else None,
         }
 
     def get_total_trip_time_seconds(self, obj):
@@ -162,6 +174,20 @@ class MyTripTodaySerializer(serializers.Serializer):
 
     def get_trip_count(self, obj):
         return obj.trip_count()
+
+    def get_panchayat(self, obj):
+        # DailyTripAssignment.panchayat_id is a plain unique_id CharField now
+        # (no DB relation), not a real FK — look the Panchayat row up by id
+        # instead of reading a `.panchayat` attribute that no longer exists.
+        from app.models.masters.panchayat import Panchayat
+
+        panchayat_id = getattr(obj, "panchayat_id", None)
+        if not panchayat_id:
+            return None
+        panchayat = Panchayat.objects.filter(unique_id=panchayat_id).first()
+        if not panchayat:
+            return None
+        return _PanchayatBriefSerializer(panchayat, context=self.context).data
 
     def get_ward(self, obj):
         ward = obj.wards.first()
@@ -175,8 +201,8 @@ class MyTripTodaySerializer(serializers.Serializer):
             presence_cache = CrewPresenceCache()
             self._presence_cache = presence_cache
         return crew_payload(
-            obj.staff_template_id,
-            obj.alt_staff_template_id,
+            obj.staff_template,
+            obj.alt_staff_template,
             obj.trip_date,
             request=self.context.get("request"),
             presence_cache=presence_cache,
@@ -189,8 +215,7 @@ class MyTripTodaySerializer(serializers.Serializer):
 
         return list(
             DailyTripHouseholdCollection.objects
-            .filter(trip_assignment_id=obj, is_deleted=False)
-            .select_related("customer_id")
+            .filter(trip_assignment_id=obj.unique_id, is_deleted=False)
             .order_by("sequence")
         )
 
@@ -262,7 +287,7 @@ class MyTripTodaySerializer(serializers.Serializer):
         rows = self._household_rows(obj)
         result = []
         for hh in rows:
-            customer = hh.customer_id
+            customer = hh.customer
             result.append({
                 "unique_id": hh.unique_id,
                 "sequence": hh.sequence,
@@ -281,12 +306,20 @@ class MyTripTodaySerializer(serializers.Serializer):
                 # Dry Waste 1.2 kg" instead of only the single combined
                 # collected_weight_kg total.
                 "waste_breakdown": self._waste_breakdown(hh),
+                # Customer tapped "I'm home now" after a Collect Later — the
+                # app shows an "Available now" badge and moves the stop up.
+                "customer_available_at": (
+                    hh.customer_available_at.isoformat()
+                    if hh.customer_available_at else None
+                ),
+                "customer_available_note": hh.customer_available_note,
+                "status_evidence_image_url": absolute_image_url(self, hh.status_evidence_image),
             })
         return result
 
     @staticmethod
     def _waste_breakdown(hh):
-        if not hh.is_collected or not hh.trip_assignment_id_id or not hh.customer_id_id:
+        if not hh.is_collected or not hh.trip_assignment_id or not hh.customer_id:
             return []
 
         from app.models.core_modules.daily_operations.waste_collection import (
@@ -301,8 +334,8 @@ class MyTripTodaySerializer(serializers.Serializer):
         record = (
             WasteCollection.objects
             .filter(
-                trip_assignment_id_id=hh.trip_assignment_id_id,
-                customer_id=hh.customer_id_id,
+                trip_assignment_id=ref_id(hh.trip_assignment_id),
+                customer_id=hh.customer_id,
                 is_deleted=False,
             )
             # collection_time is auto_now_add — the closest thing this model
@@ -356,7 +389,6 @@ class MyTripTodaySerializer(serializers.Serializer):
         children = (
             obj.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id", "bin_id")
             .order_by("sequence")
         )
         return TripCollectionPointSerializer(
@@ -386,12 +418,11 @@ class MyTripTodaySerializer(serializers.Serializer):
         stops = list(
             obj.trip_collection_points
             .filter(is_deleted=False)
-            .select_related("collection_point_id")
             .order_by("sequence")
         )
         route_input = []
         for stop in stops:
-            cp = stop.collection_point_id
+            cp = stop.collection_point
             if not cp or cp.latitude is None or cp.longitude is None:
                 continue
             route_input.append({
@@ -406,8 +437,8 @@ class MyTripTodaySerializer(serializers.Serializer):
                 str(vehicle_start),
                 *[
                     f"{stop.unique_id}:{stop.sequence}:"
-                    f"{getattr(stop.collection_point_id, 'latitude', None)}:"
-                    f"{getattr(stop.collection_point_id, 'longitude', None)}"
+                    f"{getattr(stop.collection_point, 'latitude', None)}:"
+                    f"{getattr(stop.collection_point, 'longitude', None)}"
                     for stop in stops
                 ],
             ]
@@ -427,7 +458,7 @@ class MyTripTodaySerializer(serializers.Serializer):
     def _latest_vehicle_start(self, assignment):
         latest_event = (
             BinCollectionEvent.objects
-            .filter(trip_assignment_id=assignment)
+            .filter(trip_assignment_id=ref_id(assignment))
             .exclude(driver_latitude=None)
             .exclude(driver_longitude=None)
             .order_by("-created_at")

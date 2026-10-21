@@ -73,14 +73,14 @@ class CorporationAccessSeeder(BaseSeeder):
 
                 defaults = {
                     "employee_name": employee_name,
-                    "user_type_id": government_type,
-                    "governmentusertype_id": role,
+                    "user_type_id": government_type.unique_id,
+                    "governmentusertype_id": role.unique_id,
                     # Geo captured directly on the staff record (matches the finer
                     # StaffDataScope below); inclusive-downward from the corporation.
                     # StaffcreationOfficeDetails' own state/district/area_type/
                     # corporation columns are plain unique_id CharFields now (no
                     # DB relation), so assign the corporation's own unique_id
-                    # strings directly instead of resolving FK instances.
+                    # strings directly instead of resolving related instances.
                     "state_id": corporation.state_id,
                     "district_id": corporation.district_id,
                     "area_type_id": corporation.area_type_id,
@@ -110,20 +110,22 @@ class CorporationAccessSeeder(BaseSeeder):
                 # StaffDataScope scoped to this Corporation (state/district/
                 # area_type/corporation) — the enforced access boundary.
                 scope, _ = StaffDataScope.objects.update_or_create(
-                    staff=staff,
+                    staff_id=staff.staff_unique_id,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id,
-                        "district_id": corporation.district_id,
-                        "area_type_id": corporation.area_type_id,
+                        # StaffDataScope's plain-id fields are named without
+                        # the `_id` suffix (db_column carries it).
+                        "state": corporation.state_id,
+                        "district": corporation.district_id,
+                        "area_type": corporation.area_type_id,
                         "is_active": True,
+                        "corporation_ids": [corporation.unique_id],
+                        "municipality_ids": [],
+                        "town_panchayat_ids": [],
+                        "panchayat_union_ids": [],
+                        "panchayat_ids": [],
                     },
                 )
-                scope.corporations.set([corporation.unique_id])
-                scope.municipalities.clear()
-                scope.town_panchayats.clear()
-                scope.panchayat_unions.clear()
-                scope.panchayats.clear()
 
             corporation_admin = StaffcreationOfficeDetails.objects.filter(
                 username=f"{code}.corp.admin",
@@ -151,20 +153,22 @@ class CorporationAccessSeeder(BaseSeeder):
                     update_fields=["staff_head_id", "staff_head", "updated_at"]
                 )
                 scope, _ = StaffDataScope.objects.update_or_create(
-                    staff=staff,
+                    staff_id=staff.staff_unique_id,
                     is_deleted=False,
                     defaults={
-                        "state_id": corporation.state_id,
-                        "district_id": corporation.district_id,
-                        "area_type_id": corporation.area_type_id,
+                        # StaffDataScope's plain-id fields are named without
+                        # the `_id` suffix (db_column carries it).
+                        "state": corporation.state_id,
+                        "district": corporation.district_id,
+                        "area_type": corporation.area_type_id,
                         "is_active": True,
+                        "corporation_ids": [corporation.unique_id],
+                        "municipality_ids": [],
+                        "town_panchayat_ids": [],
+                        "panchayat_union_ids": [],
+                        "panchayat_ids": [],
                     },
                 )
-                scope.corporations.set([corporation.unique_id])
-                scope.municipalities.clear()
-                scope.town_panchayats.clear()
-                scope.panchayat_unions.clear()
-                scope.panchayats.clear()
                 linked += 1
             corporation_admin.staff_head_id = None
             corporation_admin.staff_head = None

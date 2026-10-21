@@ -5,19 +5,20 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.models.superadmin.screen_management.companyuserscreencolumnpermission import (
-    CompanyUserScreenColumnPermission,
+from app.models.superadmin.screen_management.userscreencolumnpermission import (
+    UserScreenColumnPermission,
 )
-from app.models.superadmin.screen_management.companyuserscreenpermission import UserScreenPermission
+from app.models.superadmin.screen_management.userscreenpermission import UserScreenPermission
 from app.models.superadmin.screen_management.userscreen import UserScreen
 from app.models.superadmin.screen_management.userscreencolumn import UserScreenColumn
-from app.serializers.superadmin.screen_management.companyuserscreenpermission_serializer import (
+from app.serializers.superadmin.screen_management.userscreenpermission_serializer import (
     UserScreenPermissionMultiScreenSerializer,
 )
 from app.serializers.superadmin.screen_management.userscreencolumn_serializer import (
     UserScreenColumnSerializer,
 )
 from app.services.schema_sync_service import sync_userscreen_schema
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
 class UserScreenColumnsAPIView(APIView):
@@ -39,7 +40,7 @@ class UserScreenColumnsAPIView(APIView):
         return Response(UserScreenColumnSerializer(columns, many=True).data)
 
 
-class PermissionAssignAPIView(APIView):
+class PermissionAssignAPIView(PermissionSnapshotAuditMixin, APIView):
     throttle_scope = "permission_assign_api"
     @transaction.atomic
     def post(self, request):
@@ -110,21 +111,21 @@ class UserPermissionsAPIView(APIView):
         action_qs = UserScreenPermission.objects.filter(
             is_active=True,
             is_deleted=False,
-        ).select_related("mainscreen_id", "userscreen_id", "userscreenaction_id")
-        column_qs = CompanyUserScreenColumnPermission.objects.filter(
+        )
+        column_qs = UserScreenColumnPermission.objects.filter(
             is_active=True,
             is_deleted=False,
-        ).select_related("userscreen_id", "column_id")
+        )
 
         if staffusertype_id:
-            action_qs = action_qs.filter(staffusertype_id_id=staffusertype_id)
-            column_qs = column_qs.filter(staffusertype_id_id=staffusertype_id)
+            action_qs = action_qs.filter(staffusertype_id=staffusertype_id)
+            column_qs = column_qs.filter(staffusertype_id=staffusertype_id)
         if contractorusertype_id:
-            action_qs = action_qs.filter(contractorusertype_id_id=contractorusertype_id)
-            column_qs = column_qs.filter(contractorusertype_id_id=contractorusertype_id)
+            action_qs = action_qs.filter(contractorusertype_id=contractorusertype_id)
+            column_qs = column_qs.filter(contractorusertype_id=contractorusertype_id)
         if usertype_id:
-            action_qs = action_qs.filter(usertype_id_id=usertype_id)
-            column_qs = column_qs.filter(usertype_id_id=usertype_id)
+            action_qs = action_qs.filter(usertype_id=usertype_id)
+            column_qs = column_qs.filter(usertype_id=usertype_id)
 
         action_map = defaultdict(lambda: {
             "view": False,
@@ -133,23 +134,25 @@ class UserPermissionsAPIView(APIView):
             "delete": False,
         })
         for permission in action_qs:
-            action = (permission.userscreenaction_id.variable_name or permission.userscreenaction_id.action_name).lower()
-            if action in action_map[permission.userscreen_id_id]:
-                action_map[permission.userscreen_id_id][action] = True
+            action = permission.userscreenaction
+            action_name = (action.variable_name or action.action_name).lower() if action else None
+            if action_name and action_name in action_map[permission.userscreen_id]:
+                action_map[permission.userscreen_id][action_name] = True
 
         column_map = defaultdict(list)
         for permission in column_qs:
-            column = permission.column_id
-            column_map[permission.userscreen_id_id].append({
-                "id": column.unique_id,
-                "fieldName": column.field_name,
-                "displayName": column.display_name,
-                "dataType": column.data_type,
-                "dbColumn": column.db_column,
-                "canView": permission.can_view,
-                "isRequired": column.is_required,
-                "orderNo": permission.order_no,
-            })
+            column = permission.column
+            if column:
+                column_map[permission.userscreen_id].append({
+                    "id": column.unique_id,
+                    "fieldName": column.field_name,
+                    "displayName": column.display_name,
+                    "dataType": column.data_type,
+                    "dbColumn": column.db_column,
+                    "canView": permission.can_view,
+                    "isRequired": column.is_required,
+                    "orderNo": permission.order_no,
+                })
 
         userscreen_ids = set(action_map.keys()) | set(column_map.keys())
         screens = UserScreen.objects.filter(

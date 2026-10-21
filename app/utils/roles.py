@@ -2,7 +2,7 @@
 Central resolution of a user's effective business role across the three role
 axes and the semantic predicates the gating code needs.
 
-A `Staffcreation` carries three nullable role FKs — `staffusertype_id`
+A `Staffcreation` carries three nullable role fields — `staffusertype_id`
 (company roles), `contractorusertype_id`, and `governmentusertype_id`
 (government roles, e.g. ``govt_corporation_admin`` / ``govt_corporation_supervisor``).
 Exactly one is set for a given staff member.
@@ -18,7 +18,7 @@ at all three axes and match by role *shape* so both the company roles
 (``govt_<level>_admin`` / ``govt_<level>_supervisor``) are recognised.
 """
 
-ROLE_FK_ATTRS = (
+ROLE_ATTRS = (
     "staffusertype_id",
     "contractorusertype_id",
     "governmentusertype_id",
@@ -32,12 +32,19 @@ SUPERVISOR_ROLE_NAMES = {"supervisor", "company_supervisor", "company supervisor
 
 
 def effective_role_name(user):
-    """Return the lowercased role name from whichever role FK is populated on
+    """Return the lowercased role name from whichever role field is populated on
     `user`, or "" if none. Order: staff → contractor → government."""
     if not user:
         return ""
-    for attr in ROLE_FK_ATTRS:
-        name = getattr(getattr(user, attr, None), "name", None)
+    for attr in ROLE_ATTRS:
+        # The *_id columns are plain unique_id strings since the FK removal;
+        # the same-named property without "_id" resolves the user-type row.
+        # Fall back to the *_id attribute for objects that still carry a
+        # relation there (tests / legacy callers).
+        row = getattr(user, attr[: -len("_id")], None)
+        if row is None or isinstance(row, str):
+            row = getattr(user, attr, None)
+        name = getattr(row, "name", None)
         if name:
             return name.strip().lower()
     return ""
@@ -67,6 +74,15 @@ def is_supervisor_role(user):
     if role in SUPERVISOR_ROLE_NAMES:
         return True
     return role.startswith("govt_") and role.endswith("_supervisor")
+
+
+def is_admin_portal_role(role):
+    """True when a login `role` name opens the web admin portal: superadmin or
+    any admin-shaped role (``company_admin``, ``company_project_admin``,
+    ``contractor_admin``, ``govt_<level>_admin``). Sent to the frontend as
+    ``is_admin`` at login so it never keeps its own list of admin roles."""
+    role = (role or "").strip().lower()
+    return role == "superadmin" or "admin" in role
 
 
 def can_manage_trips(user):

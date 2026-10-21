@@ -50,7 +50,7 @@ class CustomerCreationSeeder(BaseSeeder):
         ).first()
         sub_property = (
             SubProperty.objects.filter(
-                property_id=property_obj,
+                property_id=property_obj.unique_id,
                 sub_property_name="Individual House",
                 is_deleted=False,
             ).first()
@@ -109,13 +109,14 @@ class CustomerCreationSeeder(BaseSeeder):
                         "building_no": building_no,
                         "street": street,
                         "area": area,
-                        "ward": location["ward"],
+                        "ward_id": location["ward"].unique_id,
                         "pincode": location["pincode"],
                         "latitude": f"{lat:.6f}",
                         "longitude": f"{lon:.6f}",
                         "id_proof_type": id_proof_type,
-                        "property_ref": property_obj,
-                        "sub_property": sub_property,
+                        "property_id": property_obj.unique_id,
+                        "sub_property_id": sub_property.unique_id,
+                        "waste_type_ids": [wt.unique_id for wt in waste_types],
                         "is_bulkwaste_generator": False,
                         "apartment_name": None,
                         "block_no": None,
@@ -140,7 +141,6 @@ class CustomerCreationSeeder(BaseSeeder):
                         id_no=id_no,
                         defaults=defaults,
                     )
-                    customer.waste_types.set(waste_types)
 
                     if created:
                         created_count += 1

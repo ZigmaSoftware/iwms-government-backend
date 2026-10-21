@@ -137,6 +137,10 @@ class TripLifecycleViewSet(viewsets.ViewSet):
             status=TripRetripRequest.STATUS_PENDING
         ).first()
         if existing is not None:
+            # A request past its decision window no longer blocks the driver.
+            retrip_service.expire_retrip_if_due(existing)
+            existing.refresh_from_db()
+        if existing is not None and existing.is_pending:
             return Response(
                 {
                     "code": "RETRIP_PENDING",
@@ -193,6 +197,7 @@ def _serialize_request(retrip):
         "pending_bin_count": retrip.pending_bin_count,
         "pending_household_count": retrip.pending_household_count,
         "created_at": retrip.created_at.isoformat() if retrip.created_at else None,
+        "expires_at": retrip.expires_at.isoformat() if retrip.expires_at else None,
         "reviewed_at": retrip.reviewed_at.isoformat() if retrip.reviewed_at else None,
         "review_remarks": retrip.review_remarks,
         "new_assignment_id": retrip.new_assignment_id,

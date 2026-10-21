@@ -84,9 +84,11 @@ class LoginSerializer(serializers.Serializer):
     def _format_permissions(self, queryset):
         permissions = {}
         for perm in queryset.order_by("order_no"):
-            main_name = perm.mainscreen_id.mainscreen_name
-            screen_name = perm.userscreen_id.userscreen_name
-            action_name = perm.userscreenaction_id.action_name
+            main_name = getattr(perm.mainscreen, "mainscreen_name", "")
+            screen_name = getattr(perm.userscreen, "userscreen_name", "")
+            action_name = getattr(perm.userscreenaction, "action_name", None)
+            if not action_name:
+                continue
 
             screen_map = permissions.setdefault(main_name, {})
             actions = screen_map.setdefault(screen_name, [])
@@ -144,7 +146,17 @@ class LoginSerializer(serializers.Serializer):
             )
             raise serializers.ValidationError("Login is disabled for this user")
 
-        user_type = staff_record.user_type_id or getattr(login_user, "user_type_id", None)
+        user_type_id = staff_record.user_type_id or getattr(login_user, "user_type_id", None)
+        if not user_type_id:
+            raise serializers.ValidationError("Invalid user type")
+
+        from app.utils import ref_cache
+        from app.models.superadmin.role_management.userType import UserType
+        from app.models.superadmin.role_management.staffUserType import StaffUserType
+        from app.models.superadmin.role_management.contractorUserType import ContractorUserType
+        from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+        
+        user_type = ref_cache.get(UserType, user_type_id)
         if not user_type:
             raise serializers.ValidationError("Invalid user type")
 
@@ -153,9 +165,14 @@ class LoginSerializer(serializers.Serializer):
         if user_type.name.lower() not in allowed_roles:
             raise serializers.ValidationError("Unsupported user role type")
 
-        staff_usertype = getattr(staff_record, "staffusertype_id", None) or getattr(login_user, "staffusertype_id", None)
-        contractor_usertype = getattr(staff_record, "contractorusertype_id", None) or getattr(login_user, "contractorusertype_id", None)
-        government_usertype = getattr(staff_record, "governmentusertype_id", None) or getattr(login_user, "governmentusertype_id", None)
+        staff_usertype_id = getattr(staff_record, "staffusertype_id", None) or getattr(login_user, "staffusertype_id", None)
+        contractor_usertype_id = getattr(staff_record, "contractorusertype_id", None) or getattr(login_user, "contractorusertype_id", None)
+        government_usertype_id = getattr(staff_record, "governmentusertype_id", None) or getattr(login_user, "governmentusertype_id", None)
+        
+        staff_usertype = ref_cache.get(StaffUserType, staff_usertype_id) if staff_usertype_id else None
+        contractor_usertype = ref_cache.get(ContractorUserType, contractor_usertype_id) if contractor_usertype_id else None
+        government_usertype = ref_cache.get(GovernmentStaffUserType, government_usertype_id) if government_usertype_id else None
+        
         role_usertype = staff_usertype or contractor_usertype or government_usertype
 
         local_body_scope = local_body_scope_for_staff(login_user)
@@ -210,14 +227,9 @@ class LoginSerializer(serializers.Serializer):
             )
         permissions = permission_payload["permissions"]
 
-        if not permissions:
-            permissions = self._apply_role_defaults(permissions, role_name)
-            permission_payload = finalize_permission_payload(
-                permission_payload,
-                permissions=permissions,
-                role_name=role_name,
-                user_type=resolved_user_type,
-            )
+        # Web permissions never include role defaults (app-only baseline).
+        # An unconfigured staff member simply resolves to whatever explicit
+        # grants exist — possibly nothing — instead of default modules.
 
         # Mobile layer. Applied here rather than inside each of the three
         # resolution branches above so every path — local-body intersected,
@@ -231,12 +243,15 @@ class LoginSerializer(serializers.Serializer):
         app_modules = staff_app_modules(access_config)
         app_module = getattr(staff_record, "app_module", None)
 
+        # Role defaults feed the mobile screens only — the web `permissions`
+        # map above stays limited to explicit grants.
+        app_defaulted = self._apply_role_defaults(permissions, role_name)
         permission_payload = finalize_permission_payload(
             {
                 **permission_payload,
                 "permissions": permissions,
                 "app_modules": app_modules,
-                "app_screens": build_app_screens(permissions, app_modules),
+                "app_screens": build_app_screens(app_defaulted, app_modules),
                 "strict_permissions": bool(
                     getattr(access_config, "enforce_strict_permissions", False)
                 ),
@@ -293,26 +308,29 @@ class LoginSerializer(serializers.Serializer):
         access_config = (
             CustomerAccessConfiguration.objects
             .filter(
-                customer_id_id=customer_record.unique_id,
+                customer_id=customer_record.unique_id,
                 is_deleted=False,
                 is_active=True,
             )
-            .prefetch_related("app_modules", "app_screens")
             .first()
         )
-        app_modules = (
-            list(
+        if access_config:
+            app_modules = list(
                 access_config.app_modules.filter(is_active=True, is_deleted=False)
                 .values_list("surface_key", flat=True)
             )
-            if access_config else []
-        )
+        else:
+            # Older/customer-creation-only records still carry the intended
+            # citizen app access on the customer row. Keep them login-capable
+            # while the dedicated Customer Access Configuration row catches up.
+            legacy_module = getattr(customer_record, "app_module", None)
+            app_modules = [legacy_module] if legacy_module and legacy_module != "none" else []
         citizen_screens = (
             set(
                 access_config.app_screens.filter(is_active=True, is_deleted=False)
                 .values_list("userscreen_name", flat=True)
             )
-            if access_config else set()
+            if access_config else None
         )
 
         permission_payload = finalize_permission_payload(
@@ -377,7 +395,7 @@ class LoginSerializer(serializers.Serializer):
             "permission_version": permission_payload["permission_version"],
             "generated_at": permission_payload["generated_at"],
             "user_type": "platform",
-            "staffusertype_id": getattr(getattr(user, "staffusertype_id", None), "unique_id", None),
+            "staffusertype_id": getattr(user, "staffusertype_id", None),
         }
 
     def _authenticate_customer(self, username, password):
@@ -408,7 +426,6 @@ class LoginSerializer(serializers.Serializer):
 
         queryset = (
             Staffcreation.objects
-            .select_related("user_type_id", "staffusertype_id", "contractorusertype_id", "governmentusertype_id", "personal_details")
             .filter(is_active=True, is_deleted=False)
             .filter(lookup_filters)
         )
@@ -437,14 +454,6 @@ class LoginSerializer(serializers.Serializer):
     def _authenticate_platform(self, username, password):
         user = (
             User.objects
-            .select_related(
-                "staff_id__user_type_id",
-                "staff_id__staffusertype_id",
-                "staff_id__contractorusertype_id",
-                "staff_id__governmentusertype_id",
-                "user_type_id",
-                "staffusertype_id",
-            )
             .filter(username__iexact=username, is_active=True, is_deleted=False)
             .first()
         )

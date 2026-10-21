@@ -9,6 +9,31 @@ def coordinates(*points):
     ]
 
 
+def centroid(geo_coordinates):
+    """(lat, lon) centre of a master's `coordinates` list — the area
+    centroid for a boundary polygon, the point itself for a single pin,
+    None when empty. Use this instead of coordinates[0], which on a real
+    boundary is just a vertex on its edge."""
+    points = [(c["latitude"], c["longitude"]) for c in geo_coordinates or []]
+    if len(points) > 1 and points[0] == points[-1]:
+        points = points[:-1]
+    if not points:
+        return None
+    if len(points) >= 3:
+        area = cx = cy = 0.0
+        for (y0, x0), (y1, x1) in zip(points, points[1:] + points[:1]):
+            cross = x0 * y1 - x1 * y0
+            area += cross
+            cx += (x0 + x1) * cross
+            cy += (y0 + y1) * cross
+        if abs(area) > 1e-12:
+            return round(cy / (3 * area), 6), round(cx / (3 * area), 6)
+    return (
+        round(sum(p[0] for p in points) / len(points), 6),
+        round(sum(p[1] for p in points) / len(points), 6),
+    )
+
+
 def spread_points(center_lat, center_lon, count, radius_km=1.0):
     """`count` deterministic points spread around (center_lat, center_lon)
     within `radius_km`, derived purely from each point's index (no

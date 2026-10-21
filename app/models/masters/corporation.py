@@ -45,8 +45,6 @@ class Corporation(BaseMaster):
     area_type_id = models.CharField(max_length=30)
     corporation_name = models.CharField(max_length=100)
     coordinates = models.JSONField(default=list, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["corporation_name"]
@@ -58,7 +56,7 @@ class Corporation(BaseMaster):
     @property
     def wards(self):
         """Wards under this corporation. Ward.corporation_id is a plain
-        unique_id string (no DB relation), so this replaces the reverse FK
+        unique_id string (no DB relation), so this replaces the reverse
         accessor `cascade_soft_delete()` (see CASCADE_SOFT_DELETE above) and
         other callers expect; returns a QuerySet, so `.all()`/`.filter()`/
         `.first()` etc. all still work the same as before."""

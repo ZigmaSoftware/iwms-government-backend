@@ -3,6 +3,7 @@ from django.contrib.auth.hashers import make_password
 
 from app.models.masters.leader_management.panchayat_leader_login import PanchayatLeaderLogin
 from app.models.masters.panchayat import Panchayat
+from app.utils import ref_cache
 
 
 class PanchayatLeaderLoginSerializer(serializers.ModelSerializer):
@@ -11,11 +12,7 @@ class PanchayatLeaderLoginSerializer(serializers.ModelSerializer):
     panchayat_name = serializers.SerializerMethodField(read_only=True)
 
     def get_panchayat_name(self, obj):
-        return (
-            Panchayat.objects.filter(unique_id=obj.panchayat_id)
-            .values_list("panchayat_name", flat=True)
-            .first()
-        )
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
     def validate_panchayat_id(self, value):
         """Must reference a real panchayat, and one panchayat can have at

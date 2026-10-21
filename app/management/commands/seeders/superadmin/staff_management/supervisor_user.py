@@ -1,8 +1,8 @@
 from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
+from app.models.core_modules.schedule_setup.staff_template import StaffTemplate
 from app.management.commands.seeders.base import BaseSeeder
-from app.models.core_modules.complaint_management.team_master import ComplaintTeam
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
 from app.models.superadmin.role_management.userType import UserType
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
@@ -37,7 +37,7 @@ class SupervisorUserSeeder(BaseSeeder):
 
         role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.ROLE_NAME,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
@@ -53,7 +53,9 @@ class SupervisorUserSeeder(BaseSeeder):
             DailyTripAssignment.objects.filter(
                 trip_date=today,
                 is_deleted=False,
-                staff_template_id__driver_id=driver,
+                staff_template_id__in=StaffTemplate.objects.filter(
+                    driver_id=driver.staff_unique_id
+                ).values("unique_id"),
             )
         )
         if not assignments:
@@ -66,8 +68,8 @@ class SupervisorUserSeeder(BaseSeeder):
             defaults={
                 "employee_name": "Supervisor User",
                 "password": make_password(self.PASSWORD),
-                "user_type_id": user_type,
-                "governmentusertype_id": role,
+                "user_type_id": user_type.unique_id,
+                "governmentusertype_id": role.unique_id,
                 "is_active": True,
                 "is_deleted": False,
                 "is_superuser": False,
@@ -77,8 +79,8 @@ class SupervisorUserSeeder(BaseSeeder):
         if not created:
             supervisor.employee_name = "Supervisor User"
             supervisor.password = make_password(self.PASSWORD)
-            supervisor.user_type_id = user_type
-            supervisor.governmentusertype_id = role
+            supervisor.user_type_id = user_type.unique_id
+            supervisor.governmentusertype_id = role.unique_id
             supervisor.staffusertype_id = None
             supervisor.is_active = True
             supervisor.is_deleted = False
@@ -98,21 +100,13 @@ class SupervisorUserSeeder(BaseSeeder):
 
         # Make this supervisor responsible for the trip plan(s) behind
         # driver_user's assignments today.
-        plan_ids = {a.trip_plan_id_id for a in assignments if a.trip_plan_id_id}
+        plan_ids = {a.trip_plan_id for a in assignments if a.trip_plan_id}
         updated = TripPlan.objects.filter(unique_id__in=plan_ids).update(
-            supervisor_id=supervisor
-        )
-
-        # Make the supervisor lead every complaint team so complaints routed to
-        # those teams surface in the supervisor grievance view (the ticket
-        # queryset scopes to assigned_staff / team lead / department).
-        teams = ComplaintTeam.objects.filter(is_deleted=False).update(
-            lead_staff=supervisor
+            supervisor_id=supervisor.staff_unique_id
         )
 
         self.log(
             f"{'Created' if created else 'Updated'} supervisor login: "
             f"{self.USERNAME} / {self.PASSWORD} — owns {updated} trip plan(s) "
-            f"covering {len(assignments)} of driver_user's trips today; "
-            f"leads {teams} complaint team(s)."
+            f"covering {len(assignments)} of driver_user's trips today."
         )

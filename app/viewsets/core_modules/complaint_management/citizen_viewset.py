@@ -44,7 +44,7 @@ from app.serializers.core_modules.complaint_management.transaction_serializers i
     ComplaintTicketDetailSerializer,
     ComplaintFeedbackSerializer,
 )
-from app.utils.complaint_ticket_routing import apply_routing_and_sla, _add_business_minutes
+from app.utils.complaint_ticket_routing import apply_routing_and_sla
 from app.utils.email_utils import send_grievance_confirmation_email
 
 # Public grievance duplicate-submission cooldown: after this window has
@@ -63,7 +63,7 @@ LOCAL_BODY_SOURCES = (
     ("panchayat", Panchayat, "panchayat_name"),
 )
 
-# Flat geo FK field names copied from a customer onto their ticket.
+# Flat geo field names copied from a customer onto their ticket.
 CUSTOMER_GEO_FIELDS = (
     "state", "district", "corporation", "municipality",
     "town_panchayat", "panchayat_union", "panchayat",
@@ -98,16 +98,6 @@ def _multi_values(data, key):
     return [str(value).strip()] if value else []
 
 
-def _sla_strictness_key(waste_type):
-    """Sort key so the most time-sensitive waste type (smallest due window)
-    wins when several are selected on one ticket."""
-    if waste_type.resolve_within_minutes is not None:
-        return waste_type.resolve_within_minutes
-    if waste_type.assign_within_minutes is not None:
-        return waste_type.assign_within_minutes
-    return float("inf")
-
-
 class CitizenComplaintTicketViewSet(viewsets.ViewSet):
     """My-tickets API for citizens (mobile app)."""
     throttle_scope = "citizen_complaint_ticket"
@@ -118,12 +108,7 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
     def _scoped_qs(self, customer):
         return (
             ComplaintTicket.objects.filter(is_deleted=False)
-            .select_related(
-                "category", "subcategory", "priority", "status", "source",
-                "assigned_team", "assigned_team__department", "assigned_staff",
-            )
-            .prefetch_related("status_history", "status_history__to_status", "attachments")
-            .filter(Q(customer=customer) | Q(wa_phone=customer.contact_no))
+            .filter(Q(customer_id=customer.unique_id) | Q(wa_phone=customer.contact_no))
             .order_by("-created")
         )
 
@@ -190,12 +175,12 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             for field in CUSTOMER_GEO_FIELDS
         }
         ticket = ComplaintTicket.objects.create(
-            customer=customer,
-            category=category,
-            subcategory=subcategory,
-            priority=priority,
-            status=status_obj,
-            source=source,
+            customer_id=customer.unique_id,
+            category_id=category.unique_id,
+            subcategory_id=subcategory.unique_id if subcategory else None,
+            priority_id=priority.unique_id,
+            status_id=status_obj.unique_id,
+            source_id=source.unique_id if source else None,
             title=(description or category.category_name)[:120],
             description=description,
             location_text=str(data.get("location_text") or ""),
@@ -204,15 +189,15 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
             **customer_geo,
         )
         ComplaintStatusHistory.objects.create(
-            ticket=ticket,
-            from_status=None,
-            to_status=status_obj,
-            changed_by_customer=customer,
+            ticket_id=ticket.unique_id,
+            from_status_id=None,
+            to_status_id=status_obj.unique_id,
+            changed_by_customer_id=customer.unique_id,
             changed_by_system=False,
             remarks="Raised via mobile app",
             visible_to_citizen=True,
         )
-        # Derive routing (team + responsible staff) + SLA
+        # Derive routing (entry-level staff) + SLA + escalation clock
         apply_routing_and_sla(ticket, save=True)
 
         return Response(
@@ -244,9 +229,9 @@ class CitizenComplaintTicketViewSet(viewsets.ViewSet):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
         feedback, _ = ComplaintFeedback.objects.update_or_create(
-            ticket=ticket,
+            ticket_id=ticket.unique_id,
             defaults={
-                "customer": customer,
+                "customer_id": customer.unique_id,
                 "rating": request.data.get("rating"),
                 "feedback_text": request.data.get("feedback_text"),
                 "is_issue_solved": bool(request.data.get("is_issue_solved", False)),
@@ -300,8 +285,10 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
     def meta(self, request):
         waste_types = WasteType.objects.filter(is_deleted=False, is_active=True).order_by("waste_type_name")
         categories = ComplaintCategory.objects.filter(is_deleted=False, is_active=True).order_by("sort_order")
+        # category_id is a plain unique_id string (no DB relation), so filter
+        # through the live categories instead of a category__ join.
         subcategories = ComplaintSubcategory.objects.filter(
-            is_deleted=False, is_active=True, category__is_deleted=False, category__is_active=True
+            is_deleted=False, is_active=True, category_id__in=categories.values("unique_id")
         ).order_by("sort_order")
         return Response({
             "waste_types": [
@@ -355,6 +342,88 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             )
         options.sort(key=lambda item: (item["name"] or "").lower())
         return Response(options)
+
+    # ---- GET /publicgrievance/map/?state=<id> | ?district=<id> ----
+    # Public complaint map (see app/utils/public_grievance_map.py): the
+    # state's districts, or with `district` that district's ULBs/RLBs with
+    # their geofences. Defaults to Tamil Nadu.
+    @action(detail=False, methods=["get"])
+    def map(self, request):
+        from app.utils import public_grievance_map as gmap
+
+        district_id = request.query_params.get("district")
+        if district_id:
+            district = District.objects.filter(unique_id=district_id, is_deleted=False).first()
+            if not district:
+                return Response({"detail": "District not found."}, status=http_status.HTTP_404_NOT_FOUND)
+            return Response(gmap.build_district(district))
+
+        state_id = request.query_params.get("state")
+        state = (
+            State.objects.filter(unique_id=state_id, is_deleted=False).first()
+            if state_id else gmap.default_state()
+        )
+        if not state:
+            return Response({"detail": "State not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response(gmap.build_state(state))
+
+    # ---- GET /publicgrievance/map-area/?type=corporation&id=<id> ----
+    # One ULB/RLB: its geofence, complaint counts, escalation hierarchy and pins.
+    @action(detail=False, methods=["get"], url_path="map-area")
+    def map_area(self, request):
+        from app.utils import public_grievance_map as gmap
+
+        entry, obj = gmap.find_local_body(request.query_params.get("type"), request.query_params.get("id"))
+        if not obj:
+            return Response({"detail": "Local body not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response(gmap.build_local_body(entry, obj, request))
+
+    # ---- POST /publicgrievance/map-ticket/<ticket_no>/seen/ ----
+    # "I saw this too" on a map pin. One per browser (enforced client-side).
+    @action(detail=False, methods=["post"], url_path=r"map-ticket/(?P<ticket_no>[^/]+)/seen")
+    def map_ticket_seen(self, request, ticket_no=None):
+        from app.utils import public_grievance_map as gmap
+
+        ticket = gmap.find_public_ticket(ticket_no)
+        if not ticket:
+            return Response({"detail": "Complaint not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response({"seen_count": gmap.mark_seen(ticket)})
+
+    # ---- POST /publicgrievance/map-ticket/<ticket_no>/verify-cleanup/ ----
+    # multipart: photo (required image), note (optional). Waits as a pending
+    # cleanup report for the officer handling the ticket — approving it
+    # closes the ticket (app/services/complaint_cleanup.py).
+    @action(detail=False, methods=["post"], url_path=r"map-ticket/(?P<ticket_no>[^/]+)/verify-cleanup")
+    def map_ticket_verify_cleanup(self, request, ticket_no=None):
+        from app.services import complaint_cleanup
+        from app.utils import public_grievance_map as gmap
+
+        ticket = gmap.find_public_ticket(ticket_no)
+        if not ticket:
+            return Response({"detail": "Complaint not found."}, status=http_status.HTTP_404_NOT_FOUND)
+        if not gmap.is_open(ticket):
+            return Response({"detail": "This complaint is already closed."}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        photo = request.FILES.get("photo")
+        if not photo:
+            return Response({"photo": "Add a photo of the cleaned spot."}, status=http_status.HTTP_400_BAD_REQUEST)
+        if not str(getattr(photo, "content_type", "") or "").startswith("image/"):
+            return Response({"photo": "Only image files are allowed."}, status=http_status.HTTP_400_BAD_REQUEST)
+        if photo.size > gmap.CLEANUP_MAX_BYTES:
+            return Response({"photo": "The photo must be 8 MB or smaller."}, status=http_status.HTTP_400_BAD_REQUEST)
+        note = str(request.data.get("note") or "").strip()[: gmap.CLEANUP_NOTE_MAX]
+
+        try:
+            report = complaint_cleanup.submit(ticket, photo, note)
+        except complaint_cleanup.CleanupError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_409_CONFLICT)
+        return Response(
+            {
+                "message": "Thanks! The officer handling this complaint will check your photo.",
+                "photo": request.build_absolute_uri(report.attachment.file.url),
+            },
+            status=http_status.HTTP_201_CREATED,
+        )
 
     @transaction.atomic
     def create(self, request):
@@ -444,17 +513,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             )
 
         # With multiple waste types selected, the most urgent default
-        # priority wins and the first configured default team is used -
-        # a ticket can only have one team/priority regardless of how many
-        # waste types it covers.
+        # priority wins - a ticket can only have one priority regardless of
+        # how many waste types it covers. Who handles it comes from the
+        # Staff Hierarchy (apply_routing_and_sla below).
         priority_candidates = [w.default_priority for w in waste_types if w.default_priority_id]
         waste_type_priority = min(priority_candidates, key=lambda p: p.sort_order) if priority_candidates else None
-        assigned_team = next((w.default_team for w in waste_types if w.default_team_id), None)
-        sla_source = min(
-            (w for w in waste_types if w.assign_within_minutes or w.resolve_within_minutes),
-            key=_sla_strictness_key,
-            default=None,
-        )
 
         priority = (
             waste_type_priority
@@ -496,11 +559,11 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             defaults={"source_name": "Public Grievance", "is_active": True, "is_deleted": False},
         )
         ticket = ComplaintTicket.objects.create(
-            source=source,
-            category=category,
-            subcategory=subcategory,
-            priority=priority,
-            status=status_obj,
+            source_id=source.unique_id if source else None,
+            category_id=category.unique_id,
+            subcategory_id=subcategory.unique_id if subcategory else None,
+            priority_id=priority.unique_id if priority else None,
+            status_id=status_obj.unique_id,
             profile_name=person_name,
             wa_phone=phone or None,
             email=email or None,
@@ -513,14 +576,13 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
             state_id=state_id,
             district_id=district_id,
             idempotency_key=idempotency_key,
-            assigned_team=assigned_team,
+            waste_type_ids=[w.unique_id for w in waste_types],
             **local_body_fields,
         )
-        ticket.waste_types.set(waste_types)
         ComplaintStatusHistory.objects.create(
-            ticket=ticket,
-            from_status=None,
-            to_status=status_obj,
+            ticket_id=ticket.unique_id,
+            from_status_id=None,
+            to_status_id=status_obj.unique_id,
             changed_by_system=True,
             remarks="Raised via public grievance form",
             visible_to_citizen=True,
@@ -529,31 +591,13 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
         photo = request.FILES.get("photo") or request.FILES.get("file")
         if photo:
             ComplaintAttachment.objects.create(
-                ticket=ticket,
+                ticket_id=ticket.unique_id,
                 file=photo,
                 file_name=getattr(photo, "name", None),
                 file_type="photo",
                 mime_type=getattr(photo, "content_type", None),
                 file_size=getattr(photo, "size", None),
             )
-
-        # The most time-sensitive selected waste type drives SLA timing
-        # directly when configured; anything left empty (no waste type here
-        # has a resolve/assign SLA configured) falls back to the
-        # category-based routing/SLA engine below.
-        if sla_source:
-            now = timezone.now()
-            add_minutes = _add_business_minutes if sla_source.working_hours_only else (
-                lambda start, minutes: start + timedelta(minutes=minutes)
-            )
-            sla_fields = []
-            if sla_source.assign_within_minutes:
-                ticket.first_response_due_at = add_minutes(now, sla_source.assign_within_minutes)
-                sla_fields.append("first_response_due_at")
-            if sla_source.resolve_within_minutes:
-                ticket.sla_due_at = add_minutes(now, sla_source.resolve_within_minutes)
-                sla_fields.append("sla_due_at")
-            ticket.save(update_fields=sla_fields)
 
         apply_routing_and_sla(ticket, save=True)
 
@@ -584,10 +628,10 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
 
         qs = (
             ComplaintTicket.objects.filter(is_deleted=False)
-            .select_related("status", "category", "subcategory")
-            .prefetch_related("status_history", "status_history__to_status")
         )
         qs = qs.filter(ticket_no__iexact=ticket_no) if ticket_no else qs.filter(wa_phone=mobile)
+        from app.utils import public_grievance_map as gmap
+
         tickets = list(qs.order_by("-created")[:20])
         if not tickets:
             return Response({"detail": "No grievance found."}, status=http_status.HTTP_404_NOT_FOUND)
@@ -616,6 +660,8 @@ class PublicGrievanceViewSet(viewsets.ViewSet):
                 "location_text": t.location_text,
                 "created": t.created,
                 "timeline": timeline_for(t),
+                # opens this complaint on the public complaint map
+                "map": gmap.ticket_map_link(t),
             }
             for t in tickets
         ])

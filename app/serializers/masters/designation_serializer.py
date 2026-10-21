@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from app.models.masters.department import Department
 from app.models.masters.designation import Designation
+from app.utils import ref_cache
 
 
 class DesignationSerializer(serializers.ModelSerializer):
@@ -11,11 +12,8 @@ class DesignationSerializer(serializers.ModelSerializer):
         required=False,
     )
     status_label = serializers.SerializerMethodField(read_only=True)
-    department_id = serializers.PrimaryKeyRelatedField(
-        queryset=Department.objects.filter(is_deleted=False),
-        required=False,
-        allow_null=True,
-    )
+    # Plain Department unique_id (no DB relation).
+    department_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     department_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -40,9 +38,16 @@ class DesignationSerializer(serializers.ModelSerializer):
         return "active" if obj.is_active else "inactive"
 
     def get_department_name(self, obj):
-        if obj.department_id:
-            return obj.department_id.department_name
-        return None
+        if not obj.department_id:
+            return None
+        return getattr(ref_cache.get(Department, obj.department_id), "department_name", None)
+
+    def validate_department_id(self, value):
+        if not value:
+            return None
+        if not Department.objects.filter(pk=value, is_deleted=False).exists():
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
 
     def validate(self, attrs):
         status = attrs.pop("status", None)

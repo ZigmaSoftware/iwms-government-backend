@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -6,6 +6,8 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
+from app.utils.plain_ref import ref_id
 from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
     WasteCollectionMain,
     WasteCollectionSub,
@@ -15,6 +17,7 @@ from app.models.waste_collection_bluetooth.waste_collection_bluetooth import (
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.utils.audit_mixin import serialize_instance_for_audit, log_common_audit
+from app.serializers.evidence_image import EvidenceImageField
 
 
 
@@ -66,8 +69,19 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         reason = str(
             request.data.get("reason") or request.data.get("status_reason") or ""
         ).strip()
-        latitude = request.data.get("latitude")
-        longitude = request.data.get("longitude")
+        def _coordinate(raw):
+            # Older apps send "NaN" for a household with no saved location;
+            # treat anything that isn't a finite number as not provided.
+            try:
+                value = Decimal(str(raw).strip())
+            except (InvalidOperation, ValueError, TypeError):
+                return None
+            if not value.is_finite():
+                return None
+            return value.quantize(Decimal("0.000001"))
+
+        latitude = _coordinate(request.data.get("latitude"))
+        longitude = _coordinate(request.data.get("longitude"))
 
         status_aliases = {
             # "Not available" from the app → canonical "Not Available".
@@ -98,6 +112,27 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 {"status": "error", "message": "reason is required"}, status=400
             )
 
+        # "Not Available" must be backed by a geotagged photo of the spot.
+        evidence_image = None
+        if normalized_status == DailyTripHouseholdCollection.STATUS_MISSED:
+            evidence_errors = {}
+            raw_evidence = request.FILES.get("evidence_image")
+            if not raw_evidence:
+                evidence_errors["evidence_image"] = (
+                    "A geotagged evidence image is required."
+                )
+            else:
+                try:
+                    evidence_image = EvidenceImageField().run_validation(raw_evidence)
+                except serializers.ValidationError as exc:
+                    evidence_errors["evidence_image"] = exc.detail
+            if latitude is None:
+                evidence_errors["latitude"] = "Capture latitude is required."
+            if longitude is None:
+                evidence_errors["longitude"] = "Capture longitude is required."
+            if evidence_errors:
+                return Response(evidence_errors, status=status.HTTP_400_BAD_REQUEST)
+
         from app.models.core_modules.daily_operations.daily_trip_assignment import (
             DailyTripAssignment,
         )
@@ -118,6 +153,13 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 ).first()
             if assignment is None:
                 assignment = find_active_assignment_for_operator(staff)
+            if assignment_id:
+                from app.viewsets.operator_mobile.helpers import effective_crew_q, _effective_extra_operator_ids
+                owns_trip = DailyTripAssignment.objects.filter(pk=assignment.pk).filter(
+                    effective_crew_q(staff.staff_unique_id)
+                ).exists() or staff.staff_unique_id in _effective_extra_operator_ids(assignment)
+                if assignment.unique_id != assignment_id or not owns_trip:
+                    return Response({"detail": "This trip is outside your responsibility."}, status=403)
             require_trip_started(assignment)
         except OperatorFlowError as exc:
             return Response(
@@ -138,8 +180,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         dthc = (
             DailyTripHouseholdCollection.objects
             .filter(
-                trip_assignment_id=assignment,
-                customer_id=customer,
+                trip_assignment_id=assignment.unique_id,
+                customer_id=customer.unique_id,
                 is_deleted=False,
             )
             .first()
@@ -147,14 +189,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         if dthc is None:
             last_seq = (
                 DailyTripHouseholdCollection.objects
-                .filter(trip_assignment_id=assignment)
+                .filter(trip_assignment_id=assignment.unique_id)
                 .order_by("-sequence")
                 .values_list("sequence", flat=True)
                 .first()
             )
             dthc = DailyTripHouseholdCollection.objects.create(
-                trip_assignment_id=assignment,
-                customer_id=customer,
+                trip_assignment_id=assignment.unique_id,
+                customer_id=customer.unique_id,
                 collection_type=DailyTripHouseholdCollection.COLLECTION_TYPE_HOUSEHOLD,
                 sequence=(last_seq or 0) + 1,
                 status=DailyTripHouseholdCollection.STATUS_PENDING,
@@ -170,19 +212,15 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
         previous_data = serialize_instance_for_audit(dthc)
 
-        dthc.status = normalized_status
-        dthc.status_reason = reason
-        dthc.status_latitude = latitude or None
-        dthc.status_longitude = longitude or None
-        dthc.is_collected = False
-        dthc.save(update_fields=[
-            "status",
-            "status_reason",
-            "status_latitude",
-            "status_longitude",
-            "is_collected",
-            "updated_at",
-        ])
+        # mark_status() also raises the automatic Missed Pickup ticket when
+        # the customer had said "I'm home now" (customer_available_at).
+        dthc.mark_status(
+            normalized_status,
+            reason=reason,
+            latitude=latitude,
+            longitude=longitude,
+            evidence_image=evidence_image,
+        )
 
         log_common_audit(
             request,
@@ -202,21 +240,26 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
             title, body = "Collection update", "Your waste will be collected later today."
         if reason:
             body += f' ("{reason}")'
+        if normalized_status == DailyTripHouseholdCollection.STATUS_COLLECT_LATER:
+            body += " At home now? Tap \"I'm home now\" in the app to tell the crew."
         send_push_to_customer(
-            dthc.customer_id,
+            dthc.customer,
             title,
             body,
-            data={"event": "household_status", "status": dthc.status, "trip_assignment_id": str(dthc.trip_assignment_id_id)},
+            data={"event": "household_status", "status": dthc.status, "trip_assignment_id": str(dthc.trip_assignment_id)},
         )
 
         return Response({
             "status": "success",
             "data": {
                 "unique_id": dthc.unique_id,
-                "customer_id": dthc.customer_id_id,
-                "trip_assignment_id": dthc.trip_assignment_id_id,
+                "customer_id": dthc.customer_id,
+                "trip_assignment_id": dthc.trip_assignment_id,
                 "collection_status": dthc.status,
                 "reason": dthc.status_reason,
+                "evidence_image_url": request.build_absolute_uri(
+                    dthc.status_evidence_image.url
+                ) if dthc.status_evidence_image else None,
             },
         })
 
@@ -353,6 +396,20 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         customer = CustomerCreation.objects.filter(
             unique_id=customer_id, is_deleted=False
         ).first()
+        if customer is None:
+            return Response({"status": "error", "message": "Customer not found."}, status=404)
+        if assignment_id:
+            from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+            from app.viewsets.operator_mobile.helpers import effective_crew_q, _effective_extra_operator_ids
+            explicit = DailyTripAssignment.objects.filter(unique_id=assignment_id, is_deleted=False).first()
+            staff_id = getattr(request.user, "staff_unique_id", None)
+            if explicit is None:
+                return Response({"status": "error", "message": "Trip assignment not found."}, status=404)
+            if staff_id and not (
+                DailyTripAssignment.objects.filter(pk=explicit.pk).filter(effective_crew_q(staff_id)).exists()
+                or staff_id in _effective_extra_operator_ids(explicit)
+            ):
+                return Response({"status": "error", "message": "This trip is outside your responsibility."}, status=403)
         if customer is not None:
             from app.viewsets.operator_mobile.helpers import (
                 OperatorFlowError,
@@ -379,59 +436,50 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         total = collection_rows.aggregate(total=Sum("weight"))["total"] or 0
 
         if float(total) <= 0:
-            return Response({"status": "error", "message": "No waste records found"})
+            return Response({"status": "error", "message": "No waste records found"}, status=400)
 
         main_id = generate_unique_id("wcm-")
         now = timezone.now()
 
-        # 1) Legacy aggregate (unchanged): keep writing WasteCollectionMain and
-        #    linking the captured sub-rows to it so anything still reading the
-        #    old bluetooth tables (desktop CRUD, citizen-summary) does not
-        #    regress.
-        with transaction.atomic():
-            WasteCollectionMain.objects.create(
-                unique_id=main_id,
-                screen_unique_id=screen_id,
-                collected_time=now,
-                created=now,
-                total_waste_collected=float(total),
-                entry_type=entry_type,
-                customer_id=customer_id,
-                is_deleted=False,
-            )
-            collection_rows.update(form_unique_id=main_id)
+        # A successful visit must update both the capture aggregate and the
+        # canonical household stop. Roll back both writes if either fails.
+        try:
+            with transaction.atomic():
+                WasteCollectionMain.objects.create(
+                    unique_id=main_id,
+                    screen_unique_id=screen_id,
+                    collected_time=now,
+                    created=now,
+                    total_waste_collected=float(total),
+                    entry_type=entry_type,
+                    customer_id=customer_id,
+                    is_deleted=False,
+                )
+                collection_rows.update(form_unique_id=main_id)
+                waste_collection = self._mirror_to_waste_collection(
+                    customer_id=customer_id,
+                    collection_rows=collection_rows,
+                    request=request,
+                    assignment_id=assignment_id,
+                )
+                if waste_collection is None:
+                    raise ValueError("Customer not found.")
+        except Exception:
+            import logging
 
-        response = {
+            logging.getLogger(__name__).exception("finalize-waste: collection could not be saved")
+            return Response(
+                {"status": "error", "message": "Collection could not be saved. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({
             "status": "success",
             "main_unique_id": main_id,
             "total_weight": float(total),
             "collected_time": now,
-        }
-
-        # 2) New web backend: mirror the same collection into the canonical
-        #    WasteCollection table (wet/dry/mixed split). Saving it with a
-        #    trip_assignment fires sync_household_collection_on_waste_save, which
-        #    marks the household stop collected and syncs the trip log/dashboards.
-        #    Guarded in its own block so a failure here can never break the app's
-        #    finalize (the legacy record above is already committed).
-        try:
-            waste_collection = self._mirror_to_waste_collection(
-                customer_id=customer_id,
-                collection_rows=collection_rows,
-                request=request,
-                assignment_id=str(request.data.get("assignment_id") or "").strip(),
-            )
-            if waste_collection is not None:
-                response["waste_collection_unique_id"] = waste_collection.unique_id
-        except Exception as exc:  # noqa: BLE001 — never regress the app flow
-            import logging
-
-            logging.getLogger(__name__).exception(
-                "finalize-waste: mirroring to WasteCollection failed"
-            )
-            response["waste_collection_error"] = str(exc)
-
-        return Response(response)
+            "waste_collection_unique_id": waste_collection.unique_id,
+        })
 
     # ----- helpers for the WasteCollection mirror (new web backend) -----
     def _split_waste_by_type(self, collection_rows):
@@ -480,18 +528,22 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         dthc = (
             DailyTripHouseholdCollection.objects
             .filter(
-                customer_id=customer,
+                customer_id=customer.unique_id,
                 is_deleted=False,
-                trip_assignment_id__trip_date=today,
-                trip_assignment_id__is_deleted=False,
             )
-            .exclude(trip_assignment_id__status=DailyTripAssignment.STATUS_CANCELLED)
-            .select_related("trip_assignment_id")
+            .filter(
+                trip_assignment_id__in=DailyTripAssignment.objects.filter(
+                    is_deleted=False,
+                    trip_date=today,
+                ).exclude(status=DailyTripAssignment.STATUS_CANCELLED).values("unique_id")
+            )
             .order_by("is_collected", "trip_assignment_id")  # prefer a pending stop
             .first()
         )
         if dthc:
-            return dthc.trip_assignment_id
+            return DailyTripAssignment.objects.filter(
+                unique_id=dthc.trip_assignment_id, is_deleted=False
+            ).first()
 
         try:
             from app.viewsets.operator_mobile.helpers import (
@@ -528,10 +580,10 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         # (or same day, when there is no trip) rather than piling up rows that
         # would double-count in the trip-log aggregate.
         existing_qs = WasteCollection.objects.filter(
-            customer=customer, is_deleted=False
+            customer_id=ref_id(customer), is_deleted=False
         )
         if trip_assignment is not None:
-            existing_qs = existing_qs.filter(trip_assignment_id=trip_assignment)
+            existing_qs = existing_qs.filter(trip_assignment_id=ref_id(trip_assignment))
         else:
             existing_qs = existing_qs.filter(collection_date=timezone.localdate())
         waste_collection = existing_qs.order_by(
@@ -540,13 +592,14 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
 
         if waste_collection is None:
             waste_collection = WasteCollection(
-                customer=customer, collection_date=timezone.localdate()
+                customer_id=customer.unique_id, collection_date=timezone.localdate()
             )
-        waste_collection.trip_assignment_id = trip_assignment
+        waste_collection.trip_assignment_id = ref_id(trip_assignment)
         waste_collection.wet_waste = wet
         waste_collection.dry_waste = dry
         waste_collection.mixed_waste = mixed
         waste_collection.sanitary_waste = sanitary
+        waste_collection.status = WasteCollection.STATUS_COLLECTED
         waste_collection.is_deleted = False
         waste_collection.is_active = True
         # save() auto-calculates total_quantity + inherits geo; the post_save
@@ -626,7 +679,21 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
         start = self._make_aware(start)
         end = self._make_aware(end)
 
+        # A citizen sees only their own collections (these rows hold the
+        # customer's unique_id — the capture flow sends it). Staff callers may
+        # narrow to one
+        # household with ?customer_id=; without it they keep the area-wide
+        # totals this endpoint has always returned to them.
+        customer_keys = self._summary_customer_keys(request)
+        if customer_keys == []:
+            return Response(
+                {"status": "error", "message": "Customer not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         rows = WasteCollectionSub.objects.filter(is_deleted=False)
+        if customer_keys is not None:
+            rows = rows.filter(customer_id__in=customer_keys)
         if start and end:
             rows = rows.filter(date_time__gte=start, date_time__lt=end)
 
@@ -650,6 +717,8 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 weights["mixed"] += total_value
 
         trips = WasteCollectionMain.objects.filter(is_deleted=False)
+        if customer_keys is not None:
+            trips = trips.filter(customer_id__in=customer_keys)
         if start and end:
             trips = trips.filter(collected_time__gte=start, collected_time__lt=end)
 
@@ -674,6 +743,27 @@ class WasteCollectionBluetoothViewSet(viewsets.ViewSet):
                 },
             }
         )
+
+    @staticmethod
+    def _summary_customer_keys(request):
+        """customer_id values the citizen summary is limited to.
+
+        None  -> no restriction (staff caller without ?customer_id=).
+        []    -> a customer filter was asked for but resolves to nobody.
+        """
+        user = getattr(request, "user", None)
+        if isinstance(user, CustomerCreation):
+            customer = user
+        else:
+            requested = str(request.query_params.get("customer_id") or "").strip()
+            if not requested:
+                return None
+            customer = CustomerCreation.objects.filter(
+                unique_id=requested, is_deleted=False
+            ).first()
+            if customer is None:
+                return []
+        return [customer.unique_id]
 
     @staticmethod
     def _to_float(value):

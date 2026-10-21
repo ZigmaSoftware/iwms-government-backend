@@ -12,10 +12,13 @@ Carry-over rules differ by collection type, per the product spec:
                 dropped for the day.
 """
 
+from datetime import timedelta
+
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.core_modules.daily_operations.daily_trip_collection_point import (
     DailyTripCollectionPoint,
@@ -26,6 +29,15 @@ from app.models.core_modules.daily_operations.daily_trip_household_collection im
 from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 from app.models.core_modules.notifications.staff_notification import StaffNotification
 from app.services.staff_notification_service import notify_staff
+from app.services.retrip_timeout_service import (
+    deadline_for,
+    expire_retrip_if_due,
+    timeout_minutes,
+)
+
+
+class RetripRequestUnavailable(ValueError):
+    """The request was decided (or expired) before this decision landed."""
 
 
 def build_pending_snapshot(assignment):
@@ -35,35 +47,35 @@ def build_pending_snapshot(assignment):
             "unique_id": stop.unique_id,
             "sequence": stop.sequence,
             "status": stop.status,
-            "collection_point_id": stop.collection_point_id_id,
-            "name": getattr(stop.collection_point_id, "cp_name", None),
-            "bin_id": stop.bin_id_id,
+            "collection_point_id": stop.collection_point_id,
+            "name": getattr(stop.collection_point, "cp_name", None),
+            "bin_id": stop.bin_id,
         }
-        for stop in assignment.pending_bin_stops().select_related("collection_point_id")
+        for stop in assignment.pending_bin_stops()
     ]
     households = [
         {
             "unique_id": stop.unique_id,
             "sequence": stop.sequence,
             "status": stop.status,
-            "customer_id": stop.customer_id_id,
-            "name": getattr(stop.customer_id, "customer_name", None),
+            "customer_id": stop.customer_id,
+            "name": getattr(stop.customer, "customer_name", None),
         }
-        for stop in assignment.pending_household_stops().select_related("customer_id")
+        for stop in assignment.pending_household_stops()
     ]
     return {"collection_points": bins, "households": households}
 
 
 def _crew_of(assignment):
     """Driver + operator on the effective (possibly substituted) template."""
-    template = assignment.alt_staff_template_id or assignment.staff_template_id
+    template = assignment.effective_template
     if template is None:
         return []
     return [
         staff
         for staff in (
-            getattr(template, "driver_id", None),
-            getattr(template, "operator_id", None),
+            getattr(template, "driver", None),
+            getattr(template, "operator", None),
         )
         if staff is not None
     ]
@@ -76,8 +88,8 @@ def _supervisors_for(assignment):
     with `?mine=true` (daily_trip_assignment_viewset.py:141), so notifying it
     guarantees the request lands in the list the approver is already watching.
     """
-    plan = assignment.trip_plan_id
-    supervisor = getattr(plan, "supervisor_id", None) if plan else None
+    plan = assignment.trip_plan
+    supervisor = getattr(plan, "supervisor", None) if plan else None
     return [supervisor] if supervisor is not None else []
 
 
@@ -87,12 +99,14 @@ def request_retrip(assignment, *, requested_by, reason):
     snapshot = build_pending_snapshot(assignment)
 
     request = TripRetripRequest.objects.create(
-        assignment=assignment,
-        requested_by=requested_by,
+        assignment_id=assignment.unique_id,
+        requested_by_id=ref_id(requested_by),
         reason=reason,
         pending_bin_count=len(snapshot["collection_points"]),
         pending_household_count=len(snapshot["households"]),
         pending_snapshot=snapshot,
+        # The supervisor's decision window (retrip_timeout_service).
+        expires_at=timezone.now() + timedelta(minutes=timeout_minutes()),
     )
 
     pending_total = request.pending_bin_count + request.pending_household_count
@@ -133,8 +147,8 @@ def _create_continuation_assignment(
     continuation = DailyTripAssignment(
         trip_plan_id=source.trip_plan_id,
         staff_template_id=source.staff_template_id,
-        alt_staff_template_id=alt_staff_template_id or source.alt_staff_template_id,
-        vehicle_id=vehicle_id or source.vehicle_id,
+        alt_staff_template_id=ref_id(alt_staff_template_id) or source.alt_staff_template_id,
+        vehicle_id=ref_id(vehicle_id) or source.vehicle_id,
         trip_date=source.trip_date,
         # Continuation starts now, not at the original slot.
         scheduled_time=timezone.localtime().time(),
@@ -145,9 +159,9 @@ def _create_continuation_assignment(
     # Carry the SOURCE trip's waste types and wards, which may be narrower than
     # the plan's. `save()` only falls back to the plan's when these are empty,
     # so setting them first keeps the continuation scoped like its parent.
+    continuation.waste_type_ids = list(source.waste_type_ids or [])
+    continuation.ward_ids = list(source.ward_ids or [])
     continuation.save()
-    continuation.waste_types.set(source.waste_types.all())
-    continuation.wards.set(source.wards.all())
     return continuation
 
 
@@ -179,9 +193,9 @@ def create_breakdown_continuation(
         raise ValueError("There are no pending stops to carry over.")
 
     carry_bin_keys = {
-        (stop.collection_point_id_id, stop.bin_id_id) for stop in pending_bins
+        (stop.collection_point_id, stop.bin_id) for stop in pending_bins
     }
-    carry_customer_ids = {stop.customer_id_id for stop in pending_households}
+    carry_customer_ids = {stop.customer_id for stop in pending_households}
 
     continuation = _create_continuation_assignment(
         source,
@@ -190,7 +204,7 @@ def create_breakdown_continuation(
         remarks=f"Vehicle Breakdown continuation of {source.unique_id}",
     )
 
-    cloned_bins = DailyTripCollectionPoint.objects.filter(trip_assignment_id=continuation)
+    cloned_bins = DailyTripCollectionPoint.objects.filter(trip_assignment_id=ref_id(continuation))
     if carry_bin_keys:
         keep = Q()
         for cp_id, bin_id in carry_bin_keys:
@@ -200,7 +214,7 @@ def create_breakdown_continuation(
         cloned_bins.delete()
 
     cloned_households = DailyTripHouseholdCollection.objects.filter(
-        trip_assignment_id=continuation
+        trip_assignment_id=ref_id(continuation)
     )
     if carry_customer_ids:
         cloned_households.exclude(customer_id__in=carry_customer_ids).delete()
@@ -209,10 +223,10 @@ def create_breakdown_continuation(
 
     DailyTripCollectionPoint.objects.filter(
         unique_id__in=[stop.unique_id for stop in pending_bins]
-    ).update(carried_to_assignment=continuation)
+    ).update(carried_to_assignment_id=ref_id(continuation))
     DailyTripHouseholdCollection.objects.filter(
         unique_id__in=[stop.unique_id for stop in pending_households]
-    ).update(carried_to_assignment=continuation)
+    ).update(carried_to_assignment_id=ref_id(continuation))
 
     for staff in _crew_of(source):
         notify_staff(
@@ -231,14 +245,44 @@ def create_breakdown_continuation(
     return continuation
 
 
+def _ensure_live_continuation_stops(continuation, bins, households):
+    """Carry live stops even when they were added after the plan was made."""
+    from app.utils.hierarchy import copy_flat_geo
+
+    for model, stops, keys in (
+        (DailyTripCollectionPoint, bins, ("collection_point_id", "bin_id")),
+        (DailyTripHouseholdCollection, households, ("customer_id", "collection_type")),
+    ):
+        for source_stop in stops:
+            values = {key: getattr(source_stop, key) for key in keys}
+            row, created = model.objects.get_or_create(
+                trip_assignment_id=continuation.unique_id,
+                **values,
+                defaults={"sequence": source_stop.sequence},
+            )
+            if created:
+                copy_flat_geo(row, source_stop)
+                row.save()
+
+
 @transaction.atomic
 def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=None):
     """Supervisor approves: end the old trip, open a continuation trip.
 
-    `collection_point_ids` are `DailyTripCollectionPoint.unique_id`s the
-    supervisor ticked. Ignored for a household trip, where everything carries.
-    Returns the new assignment.
+    `collection_point_ids` are selected pending bin or household stop ids the supervisor ticked.
+    Returns the new assignment, or None when the request's decision window
+    had already passed (it is expired instead — the caller answers 409).
     """
+    if expire_retrip_if_due(request):
+        return None
+    request = TripRetripRequest.objects.select_for_update().get(pk=request.pk)
+    if not request.is_pending:
+        raise RetripRequestUnavailable(
+            f"This request was already {request.status.lower()}."
+        )
+    if timezone.now() >= deadline_for(request):
+        expire_retrip_if_due(request)
+        return None
     source = request.assignment
 
     # Resolve what carries over from LIVE data, not the snapshot — a stop may
@@ -248,16 +292,23 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
 
     if collection_point_ids is not None:
         selected = set(collection_point_ids)
+        pending_ids = {stop.unique_id for stop in [*pending_bins, *pending_households]}
+        if selected - pending_ids:
+            raise ValueError("Selected stop is not pending on this trip.")
         pending_bins = [stop for stop in pending_bins if stop.unique_id in selected]
+        pending_households = [stop for stop in pending_households if stop.unique_id in selected]
+    if not pending_bins and not pending_households:
+        raise ValueError("Continuation trip would have no collection points.")
 
     # A bin stop is identified by the (collection point, bin) PAIR — one
     # collection point can hold several bins, each its own stop.
     carry_bin_keys = {
-        (stop.collection_point_id_id, stop.bin_id_id) for stop in pending_bins
+        (stop.collection_point_id, stop.bin_id) for stop in pending_bins
     }
-    carry_customer_ids = {stop.customer_id_id for stop in pending_households}
+    carry_customer_ids = {stop.customer_id for stop in pending_households}
 
     continuation = _create_continuation_assignment(source)
+    _ensure_live_continuation_stops(continuation, pending_bins, pending_households)
 
     # Prune the auto-cloned stops down to only what was carried over.
     #
@@ -266,7 +317,7 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
     # over: exclude() negates the AND of its lookups, so a stop that shares a
     # bin with a carried stop but a different collection point would survive;
     # and `__in` never matches a NULL bin_id, so bin-less stops would leak too.
-    cloned_bins = DailyTripCollectionPoint.objects.filter(trip_assignment_id=continuation)
+    cloned_bins = DailyTripCollectionPoint.objects.filter(trip_assignment_id=ref_id(continuation))
     if carry_bin_keys:
         keep = Q()
         for cp_id, bin_id in carry_bin_keys:
@@ -276,12 +327,22 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
         cloned_bins.delete()
 
     cloned_households = DailyTripHouseholdCollection.objects.filter(
-        trip_assignment_id=continuation
+        trip_assignment_id=ref_id(continuation)
     )
     if carry_customer_ids:
         cloned_households.exclude(customer_id__in=carry_customer_ids).delete()
     else:
         cloned_households.delete()
+
+    # A customer who said "I'm home now" is still waiting — the continuation
+    # crew must see it, and a miss there still raises the Missed Pickup
+    # ticket (DailyTripHouseholdCollection.mark_status).
+    for stop in pending_households:
+        if stop.customer_available_at:
+            cloned_households.filter(customer_id=stop.customer_id).update(
+                customer_available_at=stop.customer_available_at,
+                customer_available_note=stop.customer_available_note,
+            )
 
     # Point the SOURCE stops that carried over at the continuation, so the
     # Daily Trip Plan / Daily Trip Log screens can show "Assigned to Next
@@ -289,10 +350,10 @@ def approve_retrip(request, *, reviewed_by, collection_point_ids=None, remarks=N
     # not `.save()` per instance — so it doesn't touch `status`/`updated_at`.
     DailyTripCollectionPoint.objects.filter(
         unique_id__in=[stop.unique_id for stop in pending_bins]
-    ).update(carried_to_assignment=continuation)
+    ).update(carried_to_assignment_id=ref_id(continuation))
     DailyTripHouseholdCollection.objects.filter(
         unique_id__in=[stop.unique_id for stop in pending_households]
-    ).update(carried_to_assignment=continuation)
+    ).update(carried_to_assignment_id=ref_id(continuation))
 
     # The original trip is done. Its stops are deliberately left exactly as
     # they are — most stay Pending, since a carried-over stop was genuinely
@@ -372,7 +433,23 @@ def proceed_to_next_trip(assignment, *, actor, collection_point_ids=None, remark
 
 @transaction.atomic
 def reject_retrip(request, *, reviewed_by, remarks=None):
-    """Supervisor declines: the trip stays open and the driver keeps going."""
+    """Supervisor declines: the trip stays open and the driver keeps going.
+
+    A request whose decision window already passed is expired instead and
+    returned with status Expired (the caller answers 409).
+    """
+    if expire_retrip_if_due(request):
+        request.refresh_from_db()
+        return request
+    request = TripRetripRequest.objects.select_for_update().get(pk=request.pk)
+    if not request.is_pending:
+        raise RetripRequestUnavailable(
+            f"This request was already {request.status.lower()}."
+        )
+    if timezone.now() >= deadline_for(request):
+        expire_retrip_if_due(request)
+        request.refresh_from_db()
+        return request
     request.mark_reviewed(
         status=TripRetripRequest.STATUS_REJECTED,
         by=reviewed_by,

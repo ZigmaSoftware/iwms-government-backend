@@ -2,7 +2,6 @@ from .priority_seeder import ComplaintPrioritySeeder
 from .status_seeder import ComplaintStatusSeeder
 from .source_seeder import ComplaintSourceSeeder
 from .language_seeder import ComplaintLanguageSeeder
-from .team_seeder import ComplaintTeamSeeder
 from .module_seeder import ComplaintModuleSeeder
 from .category_seeder import ComplaintCategorySeeder
 from .subcategory_seeder import ComplaintSubcategorySeeder
@@ -17,7 +16,6 @@ COMPLAINT_TICKET_SEEDERS = [
     ComplaintStatusSeeder,
     ComplaintSourceSeeder,
     ComplaintLanguageSeeder,
-    ComplaintTeamSeeder,
     ComplaintModuleSeeder,
     ComplaintCategorySeeder,
     ComplaintSubcategorySeeder,

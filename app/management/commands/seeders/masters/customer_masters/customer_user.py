@@ -37,7 +37,7 @@ class CustomerUserSeeder(BaseSeeder):
         ).first()
         sub_property = (
             SubProperty.objects.filter(
-                property_id=property_obj,
+                property_id=property_obj.unique_id,
                 sub_property_name="Individual House",
                 is_deleted=False,
             ).first()
@@ -73,8 +73,8 @@ class CustomerUserSeeder(BaseSeeder):
                 "longitude": "77.7032",
                 "id_proof_type": "AADHAAR",
                 "id_no": "SAMEER-CUST-0001",
-                "property_ref": property_obj,
-                "sub_property": sub_property,
+                "property_id": property_obj.unique_id,
+                "sub_property_id": sub_property.unique_id,
                 "password": make_password(self.PASSWORD),
                 "is_active": True,
                 "is_deleted": False,
@@ -87,8 +87,8 @@ class CustomerUserSeeder(BaseSeeder):
             customer.district_id = panchayat.district_id
             customer.area_type_id = panchayat.area_type_id
             customer.panchayat_id = panchayat.unique_id
-            customer.property_ref = property_obj
-            customer.sub_property = sub_property
+            customer.property_id = property_obj.unique_id
+            customer.sub_property_id = sub_property.unique_id
             customer.is_bulkwaste_generator = False
             customer.apartment_name = None
             customer.block_no = None

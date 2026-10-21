@@ -4,14 +4,17 @@ from app.models.waste_collection_bluetooth.waste_collection_bluetooth import Was
 from app.serializers.waste_collection_bluetooth.waste_collection_sub_serializer import (
     WasteCollectionSubSerializer,
 )
+from app.utils.audit_mixin import AuditViewSetMixin
 
 
-class WasteCollectionSubViewSet(viewsets.ModelViewSet):
+class WasteCollectionSubViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "waste_collection_sub"
     queryset = WasteCollectionSub.objects.filter(is_deleted=False)
     serializer_class = WasteCollectionSubSerializer
     lookup_field = "unique_id"
     permission_resource = "WasteCollectionSub"
+    AUDIT_MODULE = "waste-collection-bluetooth"
+    AUDIT_ENDPOINT = "waste-collection-sub"
 
     def perform_destroy(self, instance):
         instance.is_deleted = True

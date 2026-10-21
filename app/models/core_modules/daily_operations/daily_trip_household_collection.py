@@ -1,12 +1,10 @@
 from django.db import models
 from django.utils import timezone
 
-from app.models.masters.customer_masters.customercreation import CustomerCreation
-from app.models.core_modules.daily_operations.waste_collection import WasteCollection
-from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
 from app.utils.hierarchy import copy_flat_geo
+from app.utils import ref_cache
 
 
 def generate_dthc_id():
@@ -56,21 +54,9 @@ class DailyTripHouseholdCollection(BaseMaster):
     )
 
 
-    trip_assignment_id = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.CASCADE,
-        db_column="trip_assignment_id",
-        to_field="unique_id",
-        related_name="trip_household_collections",
-    )
+    trip_assignment_id = models.CharField(max_length=50)
 
-    customer_id = models.ForeignKey(
-        CustomerCreation,
-        on_delete=models.PROTECT,
-        db_column="customer_id",
-        to_field="unique_id",
-        related_name="daily_trip_household_collections",
-    )
+    customer_id = models.CharField(max_length=30, db_index=True)
 
     collection_type = models.CharField(
         max_length=30,
@@ -80,23 +66,22 @@ class DailyTripHouseholdCollection(BaseMaster):
     )
 
     # Filled when the WasteCollection record is saved for this customer + trip
-    waste_collection_id = models.ForeignKey(
-        WasteCollection,
-        on_delete=models.SET_NULL,
-        db_column="waste_collection_id",
-        related_name="daily_trip_household_collections",
+    # — WasteCollection.unique_id as a plain string (no DB relation).
+    waste_collection_id = models.CharField(
+        max_length=30,
         null=True,
         blank=True,
+        db_index=True,
     )
 
     state_id = models.CharField(max_length=30, null=True, blank=True)
-    district_id = models.CharField(max_length=30, null=True, blank=True)
+    district_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
     area_type_id = models.CharField(max_length=30, null=True, blank=True)
-    corporation_id = models.CharField(max_length=30, null=True, blank=True)
-    municipality_id = models.CharField(max_length=30, null=True, blank=True)
-    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True)
-    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True)
-    panchayat_id = models.CharField(max_length=30, null=True, blank=True)
+    corporation_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    municipality_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    town_panchayat_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    panchayat_union_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
+    panchayat_id = models.CharField(max_length=30, null=True, blank=True, db_index=True)
 
     sequence = models.PositiveIntegerField(default=1)
 
@@ -128,23 +113,30 @@ class DailyTripHouseholdCollection(BaseMaster):
     status_longitude = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True
     )
+    # Geotagged photo the driver must take when marking the stop Not
+    # Available (waste/mark-household-status/).
+    status_evidence_image = models.ImageField(
+        upload_to="household_status_evidence/%Y/%m/%d/", null=True, blank=True
+    )
+
+    # Set when the customer taps "I'm home now" in the citizen app after the
+    # driver marked this stop Collect Later (app/services/customer_availability.py).
+    # The driver/crew are pushed, and if the stop still ends Not Available a
+    # Missed Pickup complaint ticket is raised automatically.
+    customer_available_at = models.DateTimeField(null=True, blank=True)
+    customer_available_note = models.CharField(max_length=200, null=True, blank=True)
 
     # Set by retrip_service.approve_retrip() on the SOURCE stop when it is
     # carried over to a continuation trip. Deliberately does not affect
     # `status` (still Pending/etc.) — see the comment in approve_retrip for
     # why the completion-percentage math depends on that.
-    carried_to_assignment = models.ForeignKey(
-        DailyTripAssignment,
-        on_delete=models.SET_NULL,
+    # DailyTripAssignment.unique_id as a plain string (no DB relation).
+    carried_to_assignment_id = models.CharField(
+        max_length=50,
         null=True,
         blank=True,
-        to_field="unique_id",
-        db_column="carried_to_assignment_id",
-        related_name="carried_over_household_collections",
+        db_index=True,
     )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["trip_assignment_id", "sequence"]
@@ -160,16 +152,88 @@ class DailyTripHouseholdCollection(BaseMaster):
         ]
 
     def save(self, *args, **kwargs):
-        if self.customer_id_id:
-            copy_flat_geo(self, self.customer_id)
+        if self.customer_id:
+            copy_flat_geo(self, self.customer)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.trip_assignment_id_id}:customer:{self.customer_id_id}:{self.collection_type}"
+        return f"{self.trip_assignment_id}:customer:{self.customer_id}:{self.collection_type}"
+
+    def _lookup(self, model_path, value, field="unique_id"):
+        if not value:
+            return None
+        import importlib
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        model = getattr(importlib.import_module(module_path), class_name)
+        return ref_cache.get(model, value, field)
+
+    @property
+    def trip_assignment(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+            self.trip_assignment_id,
+        )
+
+    @property
+    def customer(self):
+        return self._lookup(
+            "app.models.masters.customer_masters.customercreation.CustomerCreation",
+            self.customer_id,
+        )
+
+    @property
+    def waste_collection(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.waste_collection.WasteCollection",
+            self.waste_collection_id,
+        )
+
+    @property
+    def carried_to_assignment(self):
+        return self._lookup(
+            "app.models.core_modules.daily_operations.daily_trip_assignment.DailyTripAssignment",
+            self.carried_to_assignment_id,
+        )
+
+    def mark_status(
+        self, status, reason=None, latitude=None, longitude=None, evidence_image=None,
+    ):
+        """Mark this household/bulk stop Not Available / Collect Later from
+        the operator app. No WasteCollection is created in that case."""
+        self.status = status
+        self.status_reason = reason
+        self.status_latitude = latitude
+        self.status_longitude = longitude
+        self.status_evidence_image = evidence_image
+        self.is_collected = False
+        self.collected_at = None
+        update_fields = [
+            "status",
+            "status_reason",
+            "status_latitude",
+            "status_longitude",
+            "status_evidence_image",
+            "is_collected",
+            "collected_at",
+            "updated_at",
+        ]
+        if status == self.STATUS_MISSED:
+            self.collected_weight_kg = None
+            update_fields.append("collected_weight_kg")
+        self.save(update_fields=update_fields)
+        if status == self.STATUS_MISSED and self.customer_available_at:
+            # The customer said they were home and it still ended Not
+            # Available: put it on record as a Missed Pickup ticket.
+            from app.services.customer_availability import raise_missed_pickup_ticket
+
+            raise_missed_pickup_ticket(self)
 
     def mark_collected(self, waste_collection, collected_at=None):
         from decimal import Decimal
-        self.waste_collection_id = waste_collection
+        self.waste_collection_id = getattr(
+            waste_collection, "unique_id", waste_collection
+        )
         self.collected_weight_kg = Decimal(str(waste_collection.total_quantity or 0))
         self.collected_at = collected_at or timezone.now()
         self.is_collected = True

@@ -1,10 +1,26 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
+from app.models.core_modules.schedule_setup.collection_point import Collection_point
+from app.models.core_modules.schedule_setup.trip_plan import TripPlan
+from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
+from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.waste_masters.bins import Bins
+from app.models.masters.waste_masters.wastetype import WasteType
+from app.models.superadmin.common_masters.state import State
+from app.models.masters.district import District
+from app.models.masters.areatype import AreaType
+from app.models.masters.corporation import Corporation
+from app.models.masters.municipality import Municipality
+from app.models.masters.town_panchayat import TownPanchayat
+from app.models.masters.panchayat_union import PanchayatUnion
+from app.models.masters.panchayat import Panchayat
+from app.models.masters.ward import Ward
 from app.models.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.core_modules.daily_operations.daily_trip_log import DailyTripLog
 from app.serializers.core_modules.daily_operations.secondary_bin_collection_event_serializer import (
@@ -13,22 +29,28 @@ from app.serializers.core_modules.daily_operations.secondary_bin_collection_even
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import (
     filter_flat_geo_queryset_by_params,
-    filter_queryset_by_requester_scope,
+    filter_flat_geo_queryset_by_requester_scope,
 )
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class BinCollectionEventViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "bin_collection_event"
     serializer_class = BinCollectionEventSerializer
     lookup_field = "unique_id"
-    permission_resource = "BinCollectionEvent"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    permission_resource = "SecondaryBinCollectionEvent"
+    # No SearchFilter here — the list's search box matches what the table
+    # shows (trip plan, collection point, local body, bin, waste type,
+    # vehicle, status, reason), most of which are plain unique_id columns
+    # with no DB join. Resolved manually in get_queryset (same pattern as
+    # vehicle_breakdown_viewset); adding DRF's SearchFilter on top would AND
+    # a narrower condition and hide legitimate matches.
+    filter_backends = [filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["unique_id", "bin_id__bin_name"]
     ordering_fields = ["collection_date", "status"]
 
     AUDIT_MODULE = "transport-masters"
@@ -36,32 +58,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = (
-            BinCollectionEvent.objects.select_related(
-                "trip_assignment_id",
-                "trip_assignment_id__trip_plan_id",
-                "trip_assignment_id__trip_plan_id__vehicle_id",
-                "trip_assignment_id__vehicle_id",
-                "trip_assignment_id__state",
-                "trip_assignment_id__district",
-                "trip_assignment_id__area_type",
-                "trip_assignment_id__corporation",
-                "trip_assignment_id__municipality",
-                "trip_assignment_id__town_panchayat",
-                "trip_assignment_id__panchayat_union",
-                "trip_assignment_id__panchayat",
-                "trip_assignment_id__staff_template_id",
-                "trip_assignment_id__staff_template_id__driver_id",
-                "trip_assignment_id__staff_template_id__operator_id",
-                "trip_assignment_id__alt_staff_template_id",
-                "trip_assignment_id__alt_staff_template_id__driver_id",
-                "trip_assignment_id__alt_staff_template_id__operator_id",
-                "trip_assignment_id__alt_staff_template_id__approved_by",
-                "trip_collection_point_id",
-                "collection_point_id",
-                "bin_id",
-                "bin_id__wastetype_id",
-                "location_node",
-            )
+            BinCollectionEvent.objects
             .filter(is_deleted=False)
         )
 
@@ -69,7 +66,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         trip_assignment = params.get("trip_assignment_id")
         trip_collection_point = params.get("trip_collection_point_id")
         bin_id = params.get("bin_id")
-        panchayat = params.get("panchayat_id")
         collection_date = params.get("collection_date") or params.get("date")
         date_from = params.get("date_from")
         date_to = params.get("date_to")
@@ -81,8 +77,6 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(trip_collection_point_id=trip_collection_point)
         if bin_id:
             queryset = queryset.filter(bin_id=bin_id)
-        if panchayat:
-            queryset = queryset.filter(location_node__unique_id=panchayat)
         if collection_date:
             queryset = queryset.filter(collection_date=collection_date)
         if date_from:
@@ -90,14 +84,56 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if date_to:
             queryset = queryset.filter(collection_date__lte=date_to)
         if ward_id:
-            queryset = queryset.filter(ward__unique_id=ward_id)
+            queryset = queryset.filter(ward_id=ward_id)
 
-        queryset = filter_flat_geo_queryset_by_params(
-            queryset,
-            params,
-            prefix="trip_assignment_id__",
-        )
-        queryset = filter_queryset_by_requester_scope(queryset, self.request.user)
+        # NOTE: trip_assignment_id stores DailyTripAssignment.unique_id
+        # while that model's pk is an auto int id, so hops through the
+        # assignment (trip plan code, vehicle) go through explicit
+        # unique_id subqueries (not PlainRefSearchFilter).
+        search = (params.get("search") or params.get("q") or "").strip()
+        if search:
+            plan_ids = TripPlan.objects.filter(
+                Q(display_code__icontains=search) | Q(unique_id__icontains=search)
+            ).values("unique_id")
+            vehicle_ids = VehicleCreation.objects.filter(
+                vehicle_no__icontains=search
+            ).values("unique_id")
+            assignment_ids = DailyTripAssignment.objects.filter(
+                Q(unique_id__icontains=search)
+                | Q(trip_plan_id__in=plan_ids)
+                | Q(vehicle_id__in=vehicle_ids)
+            ).values("unique_id")
+            queryset = queryset.filter(
+                Q(unique_id__icontains=search)
+                | Q(trip_assignment_id__icontains=search)
+                | Q(trip_assignment_id__in=assignment_ids)
+                | Q(collection_point_id__in=Collection_point.objects.filter(
+                    Q(cp_name__icontains=search) | Q(unique_id__icontains=search)
+                ).values("unique_id"))
+                | Q(bin_id__in=Bins.objects.filter(
+                    Q(bin_name__icontains=search) | Q(unique_id__icontains=search)
+                ).values("unique_id"))
+                | Q(waste_type_id__in=WasteType.objects.filter(
+                    waste_type_name__icontains=search
+                ).values("unique_id"))
+                | Q(vehicle_id__in=vehicle_ids)
+                | Q(status__icontains=search)
+                | Q(status_reason__icontains=search)
+                | Q(ward_id__in=Ward.objects.filter(ward_name__icontains=search).values("unique_id"))
+                | Q(state_id__in=State.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(district_id__in=District.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(area_type_id__in=AreaType.objects.filter(name__icontains=search).values("unique_id"))
+                | Q(corporation_id__in=Corporation.objects.filter(corporation_name__icontains=search).values("unique_id"))
+                | Q(municipality_id__in=Municipality.objects.filter(municipality_name__icontains=search).values("unique_id"))
+                | Q(town_panchayat_id__in=TownPanchayat.objects.filter(town_panchayat_name__icontains=search).values("unique_id"))
+                | Q(panchayat_union_id__in=PanchayatUnion.objects.filter(union_name__icontains=search).values("unique_id"))
+                | Q(panchayat_id__in=Panchayat.objects.filter(panchayat_name__icontains=search).values("unique_id"))
+            )
+
+        # Events carry their own flat geo columns (copied from the assignment
+        # on save), so filter on those directly — no join to the assignment.
+        queryset = filter_flat_geo_queryset_by_params(queryset, params)
+        queryset = filter_flat_geo_queryset_by_requester_scope(queryset, self.request.user)
 
         return queryset
 
@@ -148,8 +184,8 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             ]
         ).exists()
         total_weight = children.aggregate(total=Sum("collected_weight_kg"))["total"] or 0
-        vehicle_capacity = getattr(getattr(assignment, "vehicle_id", None), "capacity", None)
-        trip_capacity = getattr(getattr(assignment, "trip_plan_id", None), "max_vehicle_capacity_kg", None)
+        vehicle_capacity = getattr(getattr(assignment, "vehicle", None), "capacity", None)
+        trip_capacity = getattr(getattr(assignment, "trip_plan", None), "max_vehicle_capacity_kg", None)
         capacity = vehicle_capacity or trip_capacity
         exceeds_capacity = (
             bool(capacity)
@@ -169,7 +205,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         )
 
         log, created = DailyTripLog.objects.get_or_create(
-            trip_assignment_id=assignment,
+            trip_assignment_id=ref_id(assignment),
             defaults={
                 "collected_weight_kg": stored_weight,
                 "log_status": log_status,
@@ -210,21 +246,21 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         Sync the linked DailyTripCollectionPoint whenever a BinCollectionEvent is saved.
 
         Always overwrites weight and marks Collected so the DTCP reflects the latest BCE data.
-        Falls back to get_or_create by (assignment, collection_point) if the direct FK isn't
+        Falls back to get_or_create by (assignment, collection_point) if the direct link isn't
         resolved (defensive — trip_collection_point_id is NOT NULL in the model).
         """
-        trip_cp = getattr(event, "trip_collection_point_id", None)
+        trip_cp = event.trip_collection_point
 
         if not trip_cp:
-            assignment = getattr(event, "trip_assignment_id", None)
-            collection_point = getattr(event, "collection_point_id", None)
+            assignment = event.trip_assignment
+            collection_point = event.collection_point
             if not assignment or not collection_point:
                 return
             trip_cp, _ = DailyTripCollectionPoint.objects.get_or_create(
-                trip_assignment_id=assignment,
-                collection_point_id=collection_point,
+                trip_assignment_id=ref_id(assignment),
+                collection_point_id=ref_id(collection_point),
                 defaults={
-                    "bin_id": getattr(event, "bin_id", None),
+                    "bin_id": ref_id(getattr(event, "bin_id", None)),
                 },
             )
 
@@ -242,7 +278,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_longitude",
             "updated_at",
         ])
-        assignment = trip_cp.trip_assignment_id
+        assignment = trip_cp.trip_assignment
         assignment.mark_completed_if_all_cps_collected()
         self._upsert_trip_log_for_assignment(assignment)
 
@@ -260,7 +296,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         latest_remaining = (
             BinCollectionEvent.objects.filter(
-                trip_collection_point_id=trip_cp, is_deleted=False
+                trip_collection_point_id=ref_id(trip_cp), is_deleted=False
             )
             .order_by("-created_at")
             .first()
@@ -284,7 +320,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             "status_longitude",
             "updated_at",
         ])
-        assignment = trip_cp.trip_assignment_id
+        assignment = trip_cp.trip_assignment
         assignment.mark_completed_if_all_cps_collected()
         self._upsert_trip_log_for_assignment(assignment)
 
@@ -310,7 +346,7 @@ class BinCollectionEventViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         account = self._account_for_request_user()
         update_fields = ["is_deleted", "is_active", "updated_at"]
         if account is not None:
-            instance.updated_by = account
+            instance.updated_by = account.pk
             update_fields.append("updated_by")
         instance.save(update_fields=update_fields)
         self.log_audit(

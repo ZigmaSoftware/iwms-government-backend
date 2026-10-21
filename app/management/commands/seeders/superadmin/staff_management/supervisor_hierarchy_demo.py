@@ -72,19 +72,19 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
 
         driver_role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.DRIVER_ROLE,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
         operator_role, _ = GovernmentStaffUserType.objects.get_or_create(
             name=self.OPERATOR_ROLE,
-            usertype_id=user_type,
+            usertype_id=user_type.unique_id,
             defaults={"level": "panchayat", "is_active": True, "is_deleted": False},
         )
 
         # StaffTemplate/AlternativeStaffTemplate/Staffcreation all carry the
         # flat-geo block as plain "<field>_id" CharFields now (unique_id
         # strings, no DB relation) — read straight off the supervisor's own
-        # attnames rather than resolving FK objects.
+        # attnames rather than resolving related objects.
         geo = {
             f"{field}_id": getattr(supervisor, f"{field}_id", None)
             for field in FLAT_GEO_FIELDS
@@ -114,15 +114,14 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
 
         today = timezone.localdate()
         alt, created = AlternativeStaffTemplate.objects.get_or_create(
-            staff_template=templates[0],
+            staff_template_id=templates[0].unique_id,
             defaults={
-                "driver_id": drivers[1],
-                "operator_id": operators[1],
+                "driver_id": drivers[1].staff_unique_id,
+                "operator_id": operators[1].staff_unique_id,
                 "from_date": today,
                 "to_date": today + timedelta(days=30),
                 "change_reason": "Demo substitution",
                 "change_remarks": "Seeded for supervisor app testing.",
-                "approval_status": AlternativeStaffTemplate.APPROVAL_STATUS_CHOICES[1][0],
                 **geo,
             },
         )
@@ -142,8 +141,8 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             defaults={
                 "employee_name": name,
                 "password": make_password(password),
-                "user_type_id": user_type,
-                "governmentusertype_id": role,
+                "user_type_id": user_type.unique_id,
+                "governmentusertype_id": role.unique_id,
                 "is_active": True,
                 "is_deleted": False,
                 "is_superuser": False,
@@ -154,8 +153,8 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
         if not created:
             staff.employee_name = name
             staff.password = make_password(password)
-            staff.user_type_id = user_type
-            staff.governmentusertype_id = role
+            staff.user_type_id = user_type.unique_id
+            staff.governmentusertype_id = role.unique_id
             staff.staffusertype_id = None
             staff.is_active = True
             staff.is_deleted = False
@@ -183,8 +182,8 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
             _, was_created = VehicleCreation.objects.get_or_create(
                 vehicle_no=vehicle_no,
                 defaults={
-                    "vehicle_type": vehicle_type,
-                    "fuel_type": fuel_type,
+                    "vehicle_type_id": vehicle_type.unique_id,
+                    "fuel_type_id": fuel_type.unique_id,
                     "capacity": capacity,
                     "vehicle_condition": "NEW",
                     "is_active": True,
@@ -198,13 +197,12 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
 
     def _get_or_create_template(self, driver, operator, geo):
         template = StaffTemplate.objects.filter(
-            driver_id=driver, operator_id=operator, is_deleted=False
+            driver_id=driver.staff_unique_id, operator_id=operator.staff_unique_id, is_deleted=False
         ).first()
         if template is None:
             template = StaffTemplate.objects.create(
-                driver_id=driver,
-                operator_id=operator,
-                approval_status=StaffTemplate.ApprovalStatus.APPROVED,
+                driver_id=driver.staff_unique_id,
+                operator_id=operator.staff_unique_id,
                 status=StaffTemplate.Status.ACTIVE,
                 is_active=True,
                 is_deleted=False,
@@ -213,7 +211,6 @@ class SupervisorHierarchyDemoSeeder(BaseSeeder):
         else:
             for field, value in geo.items():
                 setattr(template, field, value)
-            template.approval_status = StaffTemplate.ApprovalStatus.APPROVED
             template.status = StaffTemplate.Status.ACTIVE
             template.is_active = True
             template.is_deleted = False

@@ -25,7 +25,15 @@ class CommonAudit(models.Model):
 
     object_id = models.CharField(max_length=150, null=True, blank=True)
 
+    # ── Actor ────────────────────────────────────────────────────────────
+    # createdBy stays as-is (existing rows depend on it and it is a
+    # documented search field); the id/name/type triple is added alongside
+    # it so the trail can show a person's name and be filtered by actor.
     createdBy = models.CharField(max_length=150, null=True, blank=True)
+    created_by_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    created_by_name = models.CharField(max_length=200, null=True, blank=True)
+    created_by_type = models.CharField(max_length=50, null=True, blank=True)
+
     createdAt = models.DateTimeField(default=timezone.now)
 
     # Request context + outcome — mirrors LoginAudit's ip_address/user_agent/
@@ -33,8 +41,12 @@ class CommonAudit(models.Model):
     # carries the same "who, from where, did it work, why not" trail.
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
-    success = models.BooleanField(default=True)
+    success = models.BooleanField(default=True, db_index=True)
     reason = models.CharField(max_length=255, null=True, blank=True)
+    # Why the user deleted the record — required on every DELETE (see
+    # DeleteReasonMixin) and kept separate from `reason`, which holds the
+    # error message when a write fails.
+    delete_reason = models.CharField(max_length=500, null=True, blank=True)
 
     # Flat geo scope block — stamped from the audited instance at write time
     # (see AuditViewSetMixin.log_audit / copy_flat_geo) so staff-facing audit
@@ -43,7 +55,7 @@ class CommonAudit(models.Model):
     # Plain CharFields holding each row's unique_id (no DB relation/join) —
     # matches the rest of the geo-hierarchy refactor's convention. db_column
     # kept as "state_id"/etc (the field's own bare name predates the
-    # "_id"-suffixed FK attname convention) so the existing DB columns are
+    # "_id"-suffixed attname convention) so the existing DB columns are
     # preserved unrenamed.
     state = models.CharField(max_length=30, null=True, blank=True, db_column="state_id")
     district = models.CharField(max_length=30, null=True, blank=True, db_column="district_id")
@@ -57,6 +69,10 @@ class CommonAudit(models.Model):
     class Meta:
         db_table = "common_audit"
         ordering = ["-createdAt"]
+        indexes = [
+            models.Index(fields=["module_name", "-createdAt"]),
+            models.Index(fields=["district", "-createdAt"]),
+        ]
 
     def __str__(self):
         return self.uuid

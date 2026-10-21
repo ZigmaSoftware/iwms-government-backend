@@ -68,8 +68,8 @@ class VehicleCreationSeeder(BaseSeeder):
                         vehicle_no=vehicle_no,
                         defaults={
                             **geo_defaults,
-                            "vehicle_type": vehicle_type,
-                            "fuel_type": fuel_type,
+                            "vehicle_type_id": vehicle_type.unique_id,
+                            "fuel_type_id": fuel_type.unique_id,
                             "capacity": capacity,
                             "mileage_per_liter": mileage,
                             "service_record": (

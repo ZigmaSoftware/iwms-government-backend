@@ -67,6 +67,12 @@ CACHES = {
     },
 }
 
+# ── Run Celery tasks inline ─────────────────────────────────────────
+# .delay()/apply_async() execute synchronously in the test process, so no
+# broker or worker is needed and task errors surface in the test.
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+
 # ── Disable rate limiting in tests ──────────────────────────────────
 # Cache/API tests exercise the same endpoint many times in a row; the
 # real per-scope throttle rates (config/throttle_rates.py) would produce

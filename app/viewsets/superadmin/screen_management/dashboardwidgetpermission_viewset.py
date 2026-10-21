@@ -10,9 +10,10 @@ from app.serializers.superadmin.screen_management.dashboardwidgetpermission_seri
     DashboardWidgetPermissionSerializer,
 )
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.permission_snapshot import PermissionSnapshotAuditMixin
 
 
-class DashboardWidgetPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DashboardWidgetPermissionViewSet(PermissionSnapshotAuditMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "dashboard_widget_permission"
     serializer_class = DashboardWidgetPermissionSerializer
     lookup_field = "unique_id"
@@ -28,30 +29,25 @@ class DashboardWidgetPermissionViewSet(AuditViewSetMixin, viewsets.ModelViewSet)
     def get_queryset(self):
         queryset = DashboardWidgetPermission.objects.filter(
             is_deleted=False,
-        ).select_related(
-            "usertype_id",
-            "staffusertype_id",
-            "contractorusertype_id",
-            "governmentusertype_id",
         )
 
         staffusertype_id = self.request.query_params.get("staffusertype_id")
         if staffusertype_id:
-            queryset = queryset.filter(staffusertype_id_id=staffusertype_id)
+            queryset = queryset.filter(staffusertype_id=staffusertype_id)
 
         contractorusertype_id = (
             self.request.query_params.get("contractorusertype_id")
             or self.request.query_params.get("contractorUserTypeId")
         )
         if contractorusertype_id:
-            queryset = queryset.filter(contractorusertype_id_id=contractorusertype_id)
+            queryset = queryset.filter(contractorusertype_id=contractorusertype_id)
 
         governmentusertype_id = (
             self.request.query_params.get("governmentusertype_id")
             or self.request.query_params.get("governmentUserTypeId")
         )
         if governmentusertype_id:
-            queryset = queryset.filter(governmentusertype_id_id=governmentusertype_id)
+            queryset = queryset.filter(governmentusertype_id=governmentusertype_id)
 
         local_body_type = (
             self.request.query_params.get("local_body_type")

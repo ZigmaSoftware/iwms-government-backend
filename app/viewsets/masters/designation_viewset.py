@@ -1,5 +1,6 @@
 from rest_framework import filters
 
+from app.utils.list_filters import ListParamFilter
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
 from app.models.masters.designation import Designation
@@ -7,17 +8,18 @@ from app.serializers.masters.designation_serializer import DesignationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.pagination import LimitOffsetWithPage
 from rest_framework import viewsets
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 DESIGNATION_CACHE_SCOPES = ("designation_list", "designation_detail")
 
 
-class DesignationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
+class DesignationViewSet(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "designation"
     queryset = Designation.objects.filter(is_deleted=False)
     serializer_class = DesignationSerializer
     lookup_field = "unique_id"
     permission_resource = "Designation"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, filters.SearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
     search_fields = ["designation_name", "designation_group", "description"]
     ordering_fields = ["designation_name", "designation_group", "created_at"]

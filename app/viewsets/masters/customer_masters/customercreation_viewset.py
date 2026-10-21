@@ -2,11 +2,14 @@ import re
 import csv
 import io
 
-from django.db.models import Q, Count, Prefetch
+from django.db import transaction
+from django.db.models import Q, Count
 from django.db.models.functions import Upper
 from rest_framework import filters, status
+from app.utils.plain_ref_search import PlainRefSearchFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from app.services.background_jobs import run_in_background
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
@@ -32,6 +35,7 @@ from app.models.masters.town_panchayat import TownPanchayat
 from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.ward import Ward
 from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
+from app.utils.file_archive import archive_bytes
 
 from app.models.masters.customer_masters.customercreation import CustomerCreation
 from app.utils.audit_mixin import AuditViewSetMixin
@@ -126,9 +130,34 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # so it's exempt from the admin module-permission check.
     permission_exempt_actions = ["register_fcm_token"]
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["customer_name", "contact_no", "apartment_name", "flat_no"]
+    # the list's search box matches what the table shows: customer, mobile,
+    # address, property / sub-property, local body, ward and waste types
+    # (ref columns hold unique_ids, so names go through PlainRefSearchFilter)
+    search_fields = [
+        "unique_id",
+        "customer_name",
+        "contact_no",
+        "apartment_name",
+        "flat_no",
+        "block_no",
+        "villa_no",
+        "building_no",
+        "street",
+        "area",
+        "pincode",
+        "property_id=app.models.masters.waste_masters.property.Property.property_name",
+        "sub_property_id=app.models.masters.waste_masters.subproperty.SubProperty.sub_property_name",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+        "ward_id=app.models.masters.ward.Ward.ward_name",
+        "waste_type_ids[]=app.models.masters.waste_masters.wastetype.WasteType.waste_type_name",
+    ]
     ordering_fields = ["customer_name", "is_active"]
 
     AUDIT_MODULE = "customer-masters"
@@ -137,16 +166,6 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = (
         CustomerCreation.objects
         .filter(is_deleted=False)
-        .select_related(
-            "ward",
-            "property_ref", "sub_property",
-        )
-        .prefetch_related(
-            Prefetch(
-                "waste_types",
-                queryset=WasteType.objects.filter(is_deleted=False).order_by("waste_type_name"),
-            )
-        )
         .order_by("customer_name")
     )
 
@@ -168,7 +187,11 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         if waste_type_param:
             waste_type_ids = [v for v in waste_type_param.split(",") if v]
             if waste_type_ids:
-                queryset = queryset.filter(waste_types__unique_id__in=waste_type_ids).distinct()
+                # waste_type_ids is a JSON list; match any of the requested ids.
+                waste_type_filter = Q()
+                for waste_type_id in waste_type_ids:
+                    waste_type_filter |= Q(waste_type_ids__contains=waste_type_id)
+                queryset = queryset.filter(waste_type_filter)
 
         ward_uid = params.get("ward") or params.get("ward_id")
         if ward_uid:
@@ -267,8 +290,18 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         token = (request.data.get("fcm_token") or "").strip()
         if not token:
             return Response({"error": "fcm_token is required"}, status=400)
-        customer.fcm_token = token
-        customer.save(update_fields=["fcm_token"])
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
+
+        # A device token belongs to one signed-in account. Clear it from any
+        # other customer/staff row first, so a shared or re-used phone never
+        # receives the previous user's pushes.
+        with transaction.atomic():
+            CustomerCreation.objects.filter(fcm_token=token).exclude(
+                unique_id=customer.unique_id
+            ).update(fcm_token=None)
+            Staffcreation.objects.filter(fcm_token=token).update(fcm_token=None)
+            customer.fcm_token = token
+            customer.save(update_fields=["fcm_token"])
         return Response({"status": "ok"})
 
     # -----------------------------------------------------
@@ -396,7 +429,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         # ✅ filter by subproperty
         if subproperty_obj:
-            queryset = queryset.filter(sub_property=subproperty_obj)
+            queryset = queryset.filter(sub_property_id=subproperty_obj.unique_id)
 
         # ✅ APPLY DYNAMIC FILTERS (MAIN FIX)
         for param, value in request.query_params.items():
@@ -452,6 +485,7 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # =========================================================
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
+    @run_in_background
     def bulk_upload(self, request):
         file = request.FILES.get("file")
 
@@ -496,7 +530,16 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             return waste_type_ids, invalid_values
 
         try:
-            decoded_file = file.read().decode("utf-8")
+            _upload_content = file.read()
+            decoded_file = _upload_content.decode("utf-8")
+            try:
+                _archived = archive_bytes(
+                    _upload_content,
+                    getattr(file, "name", None) or "customer_bulk_upload.csv",
+                    subdir="bulk_uploads/customers",
+                )
+            except Exception:
+                _archived = {"archived": False}
             io_string = io.StringIO(decoded_file)
             reader = csv.DictReader(io_string)
 
@@ -577,11 +620,11 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
                 # ✅ VALIDATION
                 if not state:
-                    errors.append({"row": index, "error": f"Invalid state"})
+                    errors.append({"row": index, "error": "Invalid state", "data": row})
                     continue
 
                 if not sub_property:
-                    errors.append({"row": index, "error": f"Invalid sub_property"})
+                    errors.append({"row": index, "error": "Invalid sub_property", "data": row})
                     continue
 
                 apartment_name = clean(row.get("apartment_name"))
@@ -592,14 +635,16 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                     if not apartment_name or not block_no:
                         errors.append({
                             "row": index,
-                            "error": "Apartment requires apartment_name and block_no"
+                            "error": "Apartment requires apartment_name and block_no",
+                            "data": row,
                         })
                         continue
 
                 if not district:
                     errors.append({
                         "row": index,
-                        "error": "District is required"
+                        "error": "District is required",
+                        "data": row,
                     })
                     continue
 
@@ -609,18 +654,20 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                         "error": (
                             "Select exactly one valid local body: Corporation, "
                             "Municipality, Town Panchayat, Panchayat Union, or Panchayat"
-                        )
+                        ),
+                        "data": row,
                     })
                     continue
 
                 if not ward:
-                    errors.append({"row": index, "error": "Ward is required"})
+                    errors.append({"row": index, "error": "Ward is required", "data": row})
                     continue
 
                 if invalid_waste_types:
                     errors.append({
                         "row": index,
-                        "error": f"Invalid waste type(s): {', '.join(invalid_waste_types)}"
+                        "error": f"Invalid waste type(s): {', '.join(invalid_waste_types)}",
+                        "data": row,
                     })
                     continue
 
@@ -670,13 +717,18 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 else:
                     errors.append({
                         "row": index,
-                        "error": serializer.errors
+                        "error": serializer.errors,
+                        "data": row,
                     })
 
             return Response({
                 "message": "Bulk upload completed",
                 "success_count": success_count,
-                "errors": errors
+                "error_count": len(errors),
+                "total_count": success_count + len(errors),
+                "errors": errors,
+                "file_name": getattr(file, "name", None),
+                "file_url": _archived.get("file_url") if _archived.get("archived") else None,
             })
 
         except Exception as e:

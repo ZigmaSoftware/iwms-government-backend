@@ -21,9 +21,6 @@ class UserScreenAction(BaseMaster):
     action_name = models.CharField(max_length=50, unique=True)
     variable_name = models.CharField(max_length=50, unique=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         ordering = ["action_name"]
         verbose_name = "User Screen Action"

@@ -4,6 +4,7 @@ from app.models.masters.waste_masters.property import Property
 from app.models.masters.waste_masters.subproperty import SubProperty
 from app.utils.base_models import BaseMaster
 from app.utils.comfun import generate_unique_id
+from app.utils import ref_cache
 
 
 
@@ -20,21 +21,9 @@ class UserChargeRule(BaseMaster):
         editable=False,
     )
 
-    property_id = models.ForeignKey(
-        Property,
-        on_delete=models.PROTECT,
-        related_name="user_charge_rules",
-        to_field="unique_id",
-        db_column="property_id",
-    )
-
-    subproperty_id = models.ForeignKey(
-        SubProperty,
-        on_delete=models.PROTECT,
-        related_name="user_charge_rules",
-        to_field="unique_id",
-        db_column="subproperty_id",
-    )
+    # Plain Property / SubProperty unique_ids (no DB relation).
+    property_id = models.CharField(max_length=40, db_column="property_id", db_index=True)
+    subproperty_id = models.CharField(max_length=40, db_column="subproperty_id", db_index=True)
 
     min_sqmtr_value = models.DecimalField(
         max_digits=10,
@@ -59,6 +48,14 @@ class UserChargeRule(BaseMaster):
         verbose_name = "User Charge Rule"
         verbose_name_plural = "User Charge Rules"
         ordering = ["unique_id"]
+
+    @property
+    def property_ref(self):
+        return ref_cache.get(Property, self.property_id, "unique_id")
+
+    @property
+    def subproperty(self):
+        return ref_cache.get(SubProperty, self.subproperty_id, "unique_id")
 
     def __str__(self):
         if self.is_bulk_waste_generator:

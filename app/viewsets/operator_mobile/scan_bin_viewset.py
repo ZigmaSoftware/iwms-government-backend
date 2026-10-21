@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
@@ -16,7 +17,7 @@ from app.serializers.operator_mobile.scan_serializers import (
     ScanBinRequestSerializer,
 )
 from app.utils.audit_mixin import log_common_audit, serialize_instance_for_audit
-from app.utils.hierarchy import node_for_flat_geo
+from app.utils.plain_ref import ref_id
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
     build_scan_context,
@@ -35,6 +36,8 @@ class ScanBinViewSet(viewsets.ViewSet):
     throttle_scope = "scan_bin"
 
     permission_classes = [IsOperatorRole]
+    # Multipart for the not_available evidence photo; JSON still accepted.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def create(self, request):
         serializer = ScanBinRequestSerializer(data=request.data)
@@ -52,7 +55,7 @@ class ScanBinViewSet(viewsets.ViewSet):
 
         action = payload["action"]
         weight = payload.get("weight_kg")
-        vehicle = ctx.assignment.vehicle_id
+        vehicle = ctx.assignment.vehicle
         # `weight is not None` guard is load-bearing: weight_kg is optional on
         # a collect, and Decimal(None) raises TypeError — without this the
         # whole scan 500s the moment a driver collects without a weight.
@@ -112,6 +115,7 @@ class ScanBinViewSet(viewsets.ViewSet):
                     longitude=payload.get("longitude"),
                     notes=payload.get("notes"),
                     status_reason=status_reason,
+                    evidence_image=payload.get("evidence_image"),
                 )
 
                 log_common_audit(
@@ -138,7 +142,7 @@ class ScanBinViewSet(viewsets.ViewSet):
         return Response(
             {
                 "bin": serialize_bin_brief(ctx.bin, request=request),
-                "collection_point": serialize_cp_brief(ctx.bin.collection_point_id),
+                "collection_point": serialize_cp_brief(ctx.bin.collection_point),
                 "trip_collection_point": serialize_trip_cp_brief(ctx.trip_cp),
                 "assignment": serialize_assignment_brief(ctx.assignment),
                 "trip_progress": progress,
@@ -148,6 +152,9 @@ class ScanBinViewSet(viewsets.ViewSet):
                     "event_type": event.status,
                     "collected_weight_kg": str(event.collected_weight_kg),
                     "status_reason": event.status_reason,
+                    "evidence_image_url": request.build_absolute_uri(
+                        event.status_evidence_image.url
+                    ) if event.status_evidence_image else None,
                 },
             },
             status=status.HTTP_201_CREATED,
@@ -164,27 +171,26 @@ class ScanBinViewSet(viewsets.ViewSet):
         longitude,
         notes,
         status_reason,
+        evidence_image=None,
     ):
         event_notes = notes
         if action != ScanBinRequestSerializer.ACTION_COLLECT and not event_notes:
             event_notes = status_reason
 
         return BinCollectionEvent.objects.create(
-            trip_assignment_id=ctx.assignment,
-            trip_collection_point_id=ctx.trip_cp,
-            collection_point_id=ctx.bin.collection_point_id,
-            bin_id=ctx.bin,
-            # Hierarchy visibility: stamp the audit row with the
-            # collection point's location node so scope filtering works.
-            location_node=node_for_flat_geo(ctx.bin.collection_point_id),
-            waste_type_id=ctx.bin.wastetype_id,
-            vehicle_id=ctx.assignment.vehicle_id,
+            trip_assignment_id=ref_id(ctx.assignment),
+            trip_collection_point_id=ref_id(ctx.trip_cp),
+            collection_point_id=ref_id(ctx.bin.collection_point),
+            bin_id=ref_id(ctx.bin),
+            waste_type_id=ref_id(ctx.bin.wastetype),
+            vehicle_id=ref_id(ctx.assignment.vehicle),
             status=event_status,
             status_reason=status_reason,
             collected_weight_kg=weight,
             driver_latitude=latitude,
             driver_longitude=longitude,
             notes=event_notes,
+            status_evidence_image=evidence_image,
         )
 
     def _upsert_trip_log(self, assignment: DailyTripAssignment, operator):
@@ -193,7 +199,7 @@ class ScanBinViewSet(viewsets.ViewSet):
             (c.collected_weight_kg or Decimal("0")) for c in children
         )
 
-        existing = DailyTripLog.objects.filter(trip_assignment_id=assignment).first()
+        existing = DailyTripLog.objects.filter(trip_assignment_id=ref_id(assignment)).first()
         log_status = (
             DailyTripLog.LOG_STATUS_SUBMITTED
             if total_weight > 0
@@ -215,7 +221,7 @@ class ScanBinViewSet(viewsets.ViewSet):
             return
 
         DailyTripLog.objects.create(
-            trip_assignment_id=assignment,
+            trip_assignment_id=ref_id(assignment),
             collected_weight_kg=total_weight,
             log_status=log_status,
             remarks=remarks,

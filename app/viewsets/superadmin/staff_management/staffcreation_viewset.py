@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
 
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
@@ -8,20 +9,22 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
 from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.models.superadmin.role_management.staffHierarchy import StaffHierarchy
+from app.models.masters.department import Department
+from app.models.masters.designation import Designation
 from app.serializers.superadmin.staff_management.staffcreation_serializer import StaffcreationSerializer
 from app.utils.audit_mixin import AuditViewSetMixin
 from app.utils.hierarchy import filter_staff_queryset_by_requester_scope
+from app.utils.staff_hierarchy import complete_geo, resolve_entry
 from app.utils.pagination import LimitOffsetWithPage
-from rest_framework import viewsets
+from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils import ref_cache
+from app.utils.bulk_upload_mixin import BulkUploadMixin
 
 
-class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
+class StaffcreationViewset(BulkUploadMixin, AuditViewSetMixin, viewsets.ModelViewSet):
     throttle_scope = "staffcreation"
-    queryset = Staffcreation.objects.select_related(
-        "personal_details",
-        "staffusertype_id",
-        "contractorusertype_id",
-    ).all()
+    queryset = Staffcreation.objects.filter(is_deleted=False).all()
     serializer_class = StaffcreationSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     permission_resource = "StaffCreation"
@@ -30,20 +33,27 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
     AUDIT_MODULE = "user-creations"
     AUDIT_ENDPOINT = "staffcreation"
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
+    # The list's search box matches what the table shows: staff/employee
+    # ids, name, contact and staff-type names. Type columns are plain
+    # unique_id columns with no DB join, so names go through
+    # PlainRefSearchFilter.
+    # NOTE: contact phone/email live on the separate StaffPersonalDetails
+    # row, not on this model, so they are not searchable here.
     search_fields = [
         "employee_name",
         "staff_unique_id",
+        "emp_id",
+        "username",
+        "staffusertype_id=app.models.superadmin.role_management.staffUserType.StaffUserType.name",
+        "governmentusertype_id=app.models.superadmin.role_management.governmentStaffUserType.GovernmentStaffUserType.name",
+        "contractorusertype_id=app.models.superadmin.role_management.contractorUserType.ContractorUserType.name",
     ]
     ordering_fields = ["staff_unique_id", "employee_name", "created_at"]
 
     def get_queryset(self):
-        queryset = Staffcreation.objects.filter(is_deleted=False).select_related(
-            "personal_details",
-            "staffusertype_id",
-            "contractorusertype_id",
-        )
+        queryset = Staffcreation.objects.filter(is_deleted=False)
 
         employee_name = self.request.query_params.get("employee_name", None)
         active_status = self.request.query_params.get("active_status", None)
@@ -66,10 +76,10 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(active_status=active_status == "1")
 
         if staffusertype_id:
-            queryset = queryset.filter(staffusertype_id__unique_id=staffusertype_id)
+            queryset = queryset.filter(staffusertype_id=staffusertype_id)
 
         if contractorusertype_id:
-            queryset = queryset.filter(contractorusertype_id__unique_id=contractorusertype_id)
+            queryset = queryset.filter(contractorusertype_id=contractorusertype_id)
 
         if login_enabled in ["0", "1", "true", "false", "True", "False"]:
             queryset = queryset.filter(login_enabled=str(login_enabled).lower() in ["1", "true"])
@@ -100,54 +110,104 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
 
         return queryset.order_by("-created_at")
 
-    # A new staff member's head must be one level up in the same government
-    # role hierarchy, at the same local body: driver/operator -> supervisor,
-    # supervisor -> admin. Admin has no staff-record head — the platform
-    # superadmin (a separate super_admin user, not a Staffcreation row) is
-    # returned as a synthetic option instead (see staff_head_options below).
+    # Fallback head rule for roles that have no Staff Hierarchy row: one level
+    # up in the same government role family, at the same local body —
+    # driver/operator -> supervisor, supervisor -> admin. Admin has no
+    # staff-record head — the platform superadmin (a separate super_admin
+    # user, not a Staffcreation row) is returned as a synthetic option
+    # instead (see staff_head_options below).
     GOVT_HEAD_ROLE_SUFFIX = {
         "driver": "supervisor",
         "operator": "supervisor",
         "supervisor": "admin",
     }
 
+    # Staff geo columns a head is matched on (staff carry no country).
+    HEAD_GEO_FIELDS = (
+        "state_id",
+        "district_id",
+        "area_type_id",
+        "corporation_id",
+        "municipality_id",
+        "town_panchayat_id",
+        "panchayat_union_id",
+        "panchayat_id",
+    )
+
+    @staticmethod
+    def _filter_heads_by_geo(queryset, geo):
+        """A head must cover the new staff member's area: at every geo level
+        the staff member has, the head either sits in the same place or is
+        unscoped there (a broader-level head, e.g. a District Officer over a
+        Panchayat)."""
+        for field in StaffcreationViewset.HEAD_GEO_FIELDS:
+            value = geo.get(field)
+            if not value:
+                continue
+            queryset = queryset.filter(
+                Q(**{field: value}) | Q(**{f"{field}__isnull": True}) | Q(**{field: ""})
+            )
+        return queryset
+
     @action(detail=False, methods=["get"], url_path="staff-head-options")
     def staff_head_options(self, request):
-        queryset = self.filter_queryset(self.get_queryset()).filter(active_status=True)
+        params = request.query_params
+        governmentusertype_id = params.get("governmentusertype_id")
+        # The new staff member's area; a local body/district fills in its
+        # parents (up to country) so area-scoped hierarchy rows can match.
+        geo = complete_geo(params)
 
-        current_id = request.query_params.get("exclude")
+        if not governmentusertype_id:
+            # Staff / contractor roles: unchanged, plain list filters apply.
+            queryset = self.filter_queryset(self.get_queryset()).filter(active_status=True)
+        else:
+            # Government roles: the head is picked by role + covering area,
+            # so skip get_queryset's exact-match geo filters (they would drop
+            # broader-level heads) and keep only the requester's own scope.
+            queryset = filter_staff_queryset_by_requester_scope(
+                Staffcreation.objects.filter(is_deleted=False, active_status=True),
+                request.user,
+            )
+            queryset = self.filter_queryset(queryset)
+            queryset = self._filter_heads_by_geo(queryset, geo)
+
+        current_id = params.get("exclude")
         if current_id:
             queryset = queryset.exclude(staff_unique_id=current_id)
 
-        governmentusertype_id = request.query_params.get("governmentusertype_id")
-        selected_role_name = None
+        include_superadmin = False
         if governmentusertype_id:
-            selected_role_name = (
-                GovernmentStaffUserType.objects.filter(unique_id=governmentusertype_id)
-                .values_list("name", flat=True)
-                .first()
+            hierarchy_entry = resolve_entry(
+                StaffHierarchy.objects.filter(
+                    governmentusertype_id=governmentusertype_id,
+                    is_active=True,
+                    is_deleted=False,
+                ),
+                governmentusertype_id,
+                geo,
             )
 
-        include_superadmin = False
-        if selected_role_name and selected_role_name.startswith("govt_"):
-            level, _, role_suffix = selected_role_name[len("govt_"):].rpartition("_")
-            head_suffix = self.GOVT_HEAD_ROLE_SUFFIX.get(role_suffix)
-            if head_suffix:
+            if hierarchy_entry and hierarchy_entry.reports_to_governmentusertype_id:
                 queryset = queryset.filter(
-                    governmentusertype_id__name=f"govt_{level}_{head_suffix}"
+                    governmentusertype_id=hierarchy_entry.reports_to_governmentusertype_id
                 )
-            elif role_suffix == "admin":
+            elif hierarchy_entry:
+                # Top of the configured chain — headed by the super admin.
                 queryset = queryset.none()
                 include_superadmin = True
+            else:
+                queryset, include_superadmin = self._legacy_head_filter(
+                    queryset, governmentusertype_id
+                )
 
         data = [
             {
                 "unique_id": staff.staff_unique_id,
                 "employee_name": staff.employee_name,
-                "department_id": getattr(staff.department_id, "unique_id", None),
-                "department_name": getattr(staff.department_id, "department_name", None),
-                "staffusertype_id": getattr(staff.staffusertype_id, "unique_id", None),
-                "contractorusertype_id": getattr(staff.contractorusertype_id, "unique_id", None),
+                "department_id": staff.department_id,
+                "department_name": getattr(staff.department_ref, "department_name", None),
+                "staffusertype_id": staff.staffusertype_id,
+                "contractorusertype_id": staff.contractorusertype_id,
             }
             for staff in queryset[:200]
         ]
@@ -169,6 +229,29 @@ class StaffcreationViewset(AuditViewSetMixin, viewsets.ModelViewSet):
                 })
 
         return Response(data, status=status.HTTP_200_OK)
+
+    def _legacy_head_filter(self, queryset, governmentusertype_id):
+        """GOVT_HEAD_ROLE_SUFFIX rule, for roles not yet configured in Staff
+        Hierarchy. Returns (queryset, include_superadmin)."""
+        role_name = (
+            GovernmentStaffUserType.objects.filter(unique_id=governmentusertype_id)
+            .values_list("name", flat=True)
+            .first()
+        )
+        if not role_name or not role_name.startswith("govt_"):
+            return queryset, False
+
+        level, _, role_suffix = role_name[len("govt_"):].rpartition("_")
+        head_suffix = self.GOVT_HEAD_ROLE_SUFFIX.get(role_suffix)
+        if head_suffix:
+            return queryset.filter(
+                governmentusertype_id=GovernmentStaffUserType.objects.filter(
+                    name=f"govt_{level}_{head_suffix}"
+                ).values_list("unique_id", flat=True).first()
+            ), False
+        if role_suffix == "admin":
+            return queryset.none(), True
+        return queryset, False
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

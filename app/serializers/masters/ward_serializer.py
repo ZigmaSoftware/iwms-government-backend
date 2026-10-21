@@ -11,6 +11,7 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.serializers.masters.geofence import GeoCoordinateSerializerMixin
 from app.utils.hierarchy import BARE_TO_ID_GEO_FIELDS, normalize_flat_geo_attrs
+from app.utils import ref_cache
 
 
 class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
@@ -52,28 +53,28 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
     )
 
     def get_state_name(self, obj):
-        return State.objects.filter(unique_id=obj.state_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(State, obj.state_id, "unique_id"), "name", None)
 
     def get_district_name(self, obj):
-        return District.objects.filter(unique_id=obj.district_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(District, obj.district_id, "unique_id"), "name", None)
 
     def get_area_type_name(self, obj):
-        return AreaType.objects.filter(unique_id=obj.area_type_id).values_list("name", flat=True).first()
+        return getattr(ref_cache.get(AreaType, obj.area_type_id, "unique_id"), "name", None)
 
     def get_corporation_name(self, obj):
-        return Corporation.objects.filter(unique_id=obj.corporation_id).values_list("corporation_name", flat=True).first()
+        return getattr(ref_cache.get(Corporation, obj.corporation_id, "unique_id"), "corporation_name", None)
 
     def get_municipality_name(self, obj):
-        return Municipality.objects.filter(unique_id=obj.municipality_id).values_list("municipality_name", flat=True).first()
+        return getattr(ref_cache.get(Municipality, obj.municipality_id, "unique_id"), "municipality_name", None)
 
     def get_town_panchayat_name(self, obj):
-        return TownPanchayat.objects.filter(unique_id=obj.town_panchayat_id).values_list("town_panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(TownPanchayat, obj.town_panchayat_id, "unique_id"), "town_panchayat_name", None)
 
     def get_panchayat_union_name(self, obj):
-        return PanchayatUnion.objects.filter(unique_id=obj.panchayat_union_id).values_list("union_name", flat=True).first()
+        return getattr(ref_cache.get(PanchayatUnion, obj.panchayat_union_id, "unique_id"), "union_name", None)
 
     def get_panchayat_name(self, obj):
-        return Panchayat.objects.filter(unique_id=obj.panchayat_id).values_list("panchayat_name", flat=True).first()
+        return getattr(ref_cache.get(Panchayat, obj.panchayat_id, "unique_id"), "panchayat_name", None)
 
     _LOCAL_BODY_MODELS = {
         "corporation_id": (Corporation, "corporation_name"),
@@ -94,7 +95,7 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
             value = getattr(obj, attname, None)
             if value:
                 model, name_attr = self._LOCAL_BODY_MODELS[attname]
-                return model.objects.filter(unique_id=value).values_list(name_attr, flat=True).first()
+                return getattr(ref_cache.get(model, value, "unique_id"), name_attr, None)
         return None
 
     def get_local_body_id(self, obj):
@@ -139,9 +140,9 @@ class WardSerializer(GeoCoordinateSerializerMixin, serializers.ModelSerializer):
         validators = []
 
     def validate(self, attrs):
-        # `normalize_flat_geo_attrs` is shared with still-FK-based callers
-        # (StaffTemplate/TripPlan) and works in terms of the bare geo-level
-        # names ("state", "corporation", ...) both for reading `attrs`/
+        # `normalize_flat_geo_attrs` is shared with callers that use the bare
+        # geo-level attribute names (StaffTemplate/TripPlan: "state", "corporation",
+        # ...) both for reading `attrs`/
         # `instance` and for the keys it writes back. Ward's own model fields
         # are the "_id"-suffixed plain CharFields, so translate both ways
         # around the call: bare-keyed alias in, "_id"-suffixed attrs out.

@@ -27,7 +27,7 @@ class StaffNotificationViewSet(viewsets.ReadOnlyModelViewSet):
             return StaffNotification.objects.none()
         return (
             StaffNotification.objects.filter(
-                recipient_staff=user, is_deleted=False
+                recipient_staff_id=user.staff_unique_id, is_deleted=False
             )
             .order_by("-created_at")
         )

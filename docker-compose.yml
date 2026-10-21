@@ -59,13 +59,14 @@ services:
     image: ghcr.io/zigmasoftware/iwms-government-backend:latest
     build: .
     env_file: .env
-    environment:
+    environment: &app-environment
       # Always target the compose-managed db/redis containers, regardless of
       # whatever DB_HOST/REDIS_URL happen to be set to in .env.
       DB_HOST: db
       DB_PORT: 3306
       REDIS_URL: redis://redis:6379/0
       REDIS_CACHE_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/2
     depends_on:
       db:
         condition: service_healthy
@@ -84,6 +85,34 @@ services:
       # Mounting the host's real migration files makes migrate work in any
       # container, CI-built or locally built, without tracking them in git.
       - ./app/migrations:/app/app/migrations
+    restart: always
+
+  # Celery worker: runs queued tasks (push notifications, emails) and the
+  # periodic jobs beat enqueues. See config/celery.py.
+  celery-worker:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    env_file: .env
+    environment: *app-environment
+    command: celery -A config worker -l info --concurrency 2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./media:/app/media
+    restart: always
+
+  # Celery beat: the single scheduler (daily trip generation, complaint SLA
+  # sweep — CELERY_BEAT_SCHEDULE in config/settings.py). Never run two.
+  celery-beat:
+    image: ghcr.io/zigmasoftware/iwms-government-backend:latest
+    env_file: .env
+    environment: *app-environment
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: always
 
 volumes:

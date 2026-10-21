@@ -28,7 +28,7 @@ class SubPropertySeeder(BaseSeeder):
 
             for sub_name in sub_names:
                 obj, created = SubProperty.objects.get_or_create(
-                    property_id=property_obj,
+                    property_id=property_obj.unique_id,
                     sub_property_name=sub_name,
                     defaults={"is_active": True, "is_deleted": False},
                 )

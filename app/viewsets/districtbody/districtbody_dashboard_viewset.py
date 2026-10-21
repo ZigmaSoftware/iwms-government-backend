@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from app.models.masters.leader_management.district_leader_login import DistrictLeaderLogin
+from app.models.masters.district import District
 from app.models.masters.panchayat import Panchayat
 
 
@@ -60,8 +61,10 @@ class DistrictBodyDashboardViewSet(ViewSet):
                 {"detail": "District not found for this leader."}, status=403
             )
 
-        district_uid  = district.unique_id
-        district_name = getattr(district, "name", "") or ""
+        # leader.district_id is a plain unique_id string since the FK removal
+        district_uid  = district
+        district_obj  = District.objects.filter(unique_id=district_uid).first()
+        district_name = getattr(district_obj, "name", "") or ""
 
         panchayats = Panchayat.objects.filter(
             district_id=district_uid,

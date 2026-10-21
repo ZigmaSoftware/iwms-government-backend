@@ -40,9 +40,6 @@ class StaffTemplateSeeder(BaseSeeder):
                     district_id=district_uid, designation="Waste Collector", is_deleted=False,
                 ).order_by("staff_unique_id")
             )
-            approver = StaffcreationOfficeDetails.objects.filter(
-                district_id=district_uid, designation="Field Supervisor", is_deleted=False,
-            ).first()
             local_bodies = local_bodies_for_district(district_name)
             if not drivers or not operators or not local_bodies:
                 self.log(f"Missing drivers/operators/local bodies for '{district_name}' — skipping.")
@@ -70,13 +67,11 @@ class StaffTemplateSeeder(BaseSeeder):
                     extra_operator = operators[combo_idx % len(operators)]
 
                     _, created = StaffTemplate.objects.update_or_create(
-                        driver_id=driver,
-                        operator_id=operator,
+                        driver_id=driver.staff_unique_id,
+                        operator_id=operator.staff_unique_id,
                         defaults={
                             **geo_defaults,
                             "extra_operator_id": [extra_operator.staff_unique_id],
-                            "approved_by": approver,
-                            "approval_status": StaffTemplate.ApprovalStatus.APPROVED,
                             "status": StaffTemplate.Status.ACTIVE,
                             "is_active": True,
                             "is_deleted": False,

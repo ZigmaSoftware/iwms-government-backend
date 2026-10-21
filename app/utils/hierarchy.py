@@ -1,88 +1,12 @@
-from app.models.masters.hierarchy_tree import HierarchyClosure, HierarchyNode
 from django.db.models import Q
+from app.utils import ref_cache
 from app.models.superadmin.staff_management.staff_data_scope import StaffDataScope
+from app.models.superadmin.staff_management.staffcreation import StaffcreationOfficeDetails
+from app.models.superadmin.role_management.governmentStaffUserType import GovernmentStaffUserType
+from app.utils.plain_ref import json_contains_any
 from app.models.superadmin.common_masters.state import State
 from app.models.masters.district import District
 from app.models.masters.areatype import AreaType
-
-# NOTE: The Hierarchy Tree/Level/Assignment admin UI and management API have
-# been removed. HierarchyNode/HierarchyClosure themselves — and the helpers
-# below that still query them — remain only because Collection_point and a
-# handful of other masters still carry a live `location_node` FK to
-# HierarchyNode. Migrating those remaining dependents onto flat geo FKs
-# (like DailyTripLog/DailyWasteComparison/MonthlyWeightReport already are)
-# is tracked as separate follow-up work; once done, this entire node-based
-# section can be deleted along with the HierarchyNode/HierarchyLevel/
-# HierarchyClosure models.
-
-LOCATION_FIELD = "location_node"
-LOCATION_QUERY_PARAMS = (
-    "location_node",
-    "location_node_id",
-    "hierarchy_node",
-    "hierarchy_node_id",
-)
-
-
-def _node_id(node_or_id):
-    return getattr(node_or_id, "unique_id", node_or_id)
-
-
-def descendant_ids(node_or_id):
-    node_id = _node_id(node_or_id)
-    if not node_id:
-        return []
-    return list(
-        HierarchyClosure.objects.filter(
-            ancestor_id=node_id,
-            is_deleted=False,
-            descendant__is_deleted=False,
-        ).values_list("descendant_id", flat=True)
-    )
-
-
-def filter_queryset_by_hierarchy(queryset, params, field=LOCATION_FIELD):
-    node_id = next((params.get(param) for param in LOCATION_QUERY_PARAMS if params.get(param)), None)
-    if not node_id:
-        return queryset
-    ids = descendant_ids(node_id)
-    if not ids:
-        return queryset.none()
-    return queryset.filter(**{f"{field}_id__in": ids})
-
-
-def hierarchy_payload(obj):
-    node = getattr(obj, LOCATION_FIELD, None)
-    if not node:
-        return {
-            "location_node_id": None,
-            "location_node_name": None,
-            "location_level": None,
-        }
-    level = getattr(node, "level", None)
-    return {
-        "location_node_id": node.unique_id,
-        "location_node_name": node.name,
-        "location_level": getattr(level, "name", None),
-    }
-
-
-def requester_scope_node(user):
-    """
-    The hierarchy node a logged-in staff/government user is scoped to: their
-    own ``location_node`` if set, else the node of their government role
-    (``governmentusertype_id.location_node``). Returns None for identities
-    with no location (e.g. platform super admins), meaning "unscoped".
-    """
-    if user is None or not getattr(user, "is_authenticated", False):
-        return None
-
-    node = getattr(user, "location_node", None)
-    if node:
-        return node
-
-    govt_type = getattr(user, "governmentusertype_id", None)
-    return getattr(govt_type, "location_node", None) if govt_type else None
 
 
 def _is_staff_user(user):
@@ -127,15 +51,6 @@ def _staff_scope(user):
             is_active=True,
             is_deleted=False,
         )
-        .prefetch_related(
-            "location_nodes",
-            "corporations",
-            "municipalities",
-            "town_panchayats",
-            "panchayat_unions",
-            "panchayats",
-            "wards",
-        )
         .first()
     )
 
@@ -151,10 +66,10 @@ FLAT_GEO_LEVEL_CANDIDATES = (
 )
 
 # Model each flat-geo field resolves against, for callers whose OWN field is
-# a plain unique_id string rather than a live FK object (Ward, CustomerCreation,
+# a plain unique_id string rather than a live related object (Ward, CustomerCreation,
 # and every other model converted in this pass — see `_as_geo_instance` for
 # state/district/area_type; local-body levels are added here too since
-# `flat_geo_display`/`node_ids_for_flat_geo` need to resolve those as well).
+# `flat_geo_display` needs to resolve those as well).
 _GEO_FIELD_MODELS = {
     "state": "app.models.superadmin.common_masters.state.State",
     "district": "app.models.masters.district.District",
@@ -176,12 +91,12 @@ def _geo_model(field):
 
 def _geo_attr_value(obj, field):
     """Read `obj`'s value for a flat-geo `field`, whether `obj`'s own column
-    is a live FK named `field` (StaffTemplate/TripPlan, attname `field_id`
+    is a live relation named `field` (legacy shape: attname `field_id`
     resolves to an object via `field`), or an already-converted plain
     CharField literally named `field_id` (Ward, CustomerCreation, and every
     other model converted in this refactor — matching Corporation/District/.../
     Panchayat's own `state_id`/`district_id`/`area_type_id` convention).
-    Tries the FK-style bare name first, then the plain-string `_id` name."""
+    Tries the relation-style bare name first, then the plain-string `_id` name."""
     value = getattr(obj, field, None)
     if value is not None:
         return value
@@ -190,15 +105,17 @@ def _geo_attr_value(obj, field):
 
 def _resolve_geo_candidate(obj, field):
     """Return the resolved parent/local-body instance for `obj`'s `field`,
-    whether that field is still a live FK (an object is already there) or a
+    whether that field is still a live relation (an object is already there) or a
     plain unique_id string (already-converted models like Ward/
-    CustomerCreation) — lets `flat_geo_display`/`node_ids_for_flat_geo` keep
-    working unmodified for both kinds of caller."""
+    CustomerCreation) — lets `flat_geo_display` keep working unmodified for
+    both kinds of caller."""
     value = _geo_attr_value(obj, field)
     if not value:
         return None
     if isinstance(value, str):
-        return _geo_model(field).objects.filter(unique_id=value).first()
+        # Request-cached: list pages resolve the same few local bodies on
+        # every row.
+        return ref_cache.get(_geo_model(field), value, "unique_id")
     return value
 
 
@@ -217,62 +134,6 @@ def flat_geo_display(obj):
         if name:
             return name, level_label
     return None, None
-
-
-def node_ids_for_flat_geo(obj):
-    """Resolve HierarchyNode unique_ids matching the most specific populated
-    geo field on `obj` (an object with state/district/area_type/corporation/
-    municipality/town_panchayat/panchayat_union/panchayat FKs, e.g. a
-    StaffDataScope or CustomerCreation row) by name lookup against the
-    mirrored hierarchy tree. Returns [] if nothing resolves."""
-    if not obj:
-        return []
-
-    candidates = [
-        (_resolve_geo_candidate(obj, "panchayat"), "panchayat_name"),
-        (_resolve_geo_candidate(obj, "panchayat_union"), "union_name"),
-        (_resolve_geo_candidate(obj, "town_panchayat"), "town_panchayat_name"),
-        (_resolve_geo_candidate(obj, "municipality"), "municipality_name"),
-        (_resolve_geo_candidate(obj, "corporation"), "corporation_name"),
-        (_resolve_geo_candidate(obj, "district"), "name"),
-        (_resolve_geo_candidate(obj, "state"), "name"),
-    ]
-    for candidate, name_attr in candidates:
-        if not candidate:
-            continue
-        name = getattr(candidate, name_attr, None)
-        if not name:
-            continue
-        node_ids = list(
-            HierarchyNode.objects.filter(
-                name__iexact=name,
-                is_deleted=False,
-            ).values_list("unique_id", flat=True)
-        )
-        if node_ids:
-            return node_ids
-    return []
-
-
-def node_for_flat_geo(obj):
-    """Single best-matching HierarchyNode for `obj`'s most specific populated
-    geo field (see `node_ids_for_flat_geo`), or None."""
-    node_ids = node_ids_for_flat_geo(obj)
-    if not node_ids:
-        return None
-    return HierarchyNode.objects.filter(unique_id__in=node_ids, is_deleted=False).first()
-
-
-FLAT_GEO_SOURCE_TYPE_FIELDS = {
-    "state": "state",
-    "district": "district",
-    "areatype": "area_type",
-    "corporation": "corporation",
-    "municipality": "municipality",
-    "town_panchayat": "town_panchayat",
-    "panchayat_union": "panchayat_union",
-    "panchayat": "panchayat",
-}
 
 
 FLAT_GEO_FIELDS = (
@@ -306,7 +167,7 @@ LOCAL_BODY_FIELDS = (
 
 # `StaffDataScope`'s local-body levels are many-to-many (a staff can be
 # scoped to several corporations/municipalities/etc at once). Each tuple is
-# (level name, single-value FK field name as carried by other flat-geo
+# (level name, single-value field name as carried by other flat-geo
 # models like TripPlan/CustomerCreation, the M2M attribute on StaffDataScope).
 STAFF_LOCAL_BODY_M2M_LEVELS = (
     ("corporation", "corporation_id", "corporations"),
@@ -350,7 +211,7 @@ def validate_wards_for_flat_geo(wards, attrs, instance=None):
 def filter_flat_geo_queryset_by_params(queryset, params, prefix=""):
     """
     Apply explicit state/district/area_type/local-body query params to a
-    queryset that has flat geo FK columns. `prefix` supports related models,
+    queryset that has flat geo reference columns. `prefix` supports related models,
     e.g. prefix="trip_assignment_id__" for VehicleBreakdown.
     """
     for field in FLAT_GEO_QUERY_FIELDS:
@@ -370,7 +231,7 @@ def _object_pk(value):
     return getattr(value, "pk", value)
 
 
-def _same_fk(left, right):
+def _same_ref(left, right):
     return _object_pk(left) == _object_pk(right)
 
 
@@ -390,8 +251,8 @@ _GEO_PARENT_MODELS = {
 def _as_geo_instance(parent, value):
     """Some local-body/parent models (e.g. Corporation) store their
     state/district/area_type as a plain unique_id string rather than a
-    ForeignKey; resolve those into real instances so callers that assign
-    onto a still-FK attrs field (e.g. Ward.state) get an object, not a bare
+    relation field; resolve those into real instances so callers that assign
+    onto a bare-name attrs field (e.g. Ward.state) get an object, not a bare
     string."""
     if value is None or not isinstance(value, str):
         return value
@@ -407,9 +268,8 @@ def _as_geo_local_body_instance(field, value):
     .../panchayat) rather than state/district/area_type — needed so
     `normalize_flat_geo_attrs` can read a local body's own state_id/
     district_id/area_type_id regardless of whether the CALLER's local-body
-    attrs value is already a plain unique_id string (Ward/CustomerCreation,
-    post-conversion) or a live FK object (StaffTemplate/TripPlan, not yet
-    converted)."""
+    attrs value is already a plain unique_id string (the normal case for
+    every converted model) or a live related object."""
     if value is None or isinstance(value, str):
         return _geo_model(field).objects.filter(unique_id=value).first() if value else None
     return value
@@ -417,7 +277,7 @@ def _as_geo_local_body_instance(field, value):
 
 def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings=False):
     """
-    Normalize serializer attrs carrying flat geo FKs. If a corporation/
+    Normalize serializer attrs carrying flat geo references. If a corporation/
     municipality/town_panchayat/panchayat_union/panchayat is selected, copy
     its state, district, and area_type onto the attrs and reject contradictory
     parent selections. Returns an error dict; an empty dict means attrs were
@@ -425,15 +285,13 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings
 
     `as_strings`: pass True when the CALLING model's own state/district/
     area_type/local-body columns are plain CharFields holding a unique_id
-    (Ward, CustomerCreation, and the other models converted in this same
-    FK-to-plain-string refactor pass) rather than live ForeignKeys. Every
-    value this function assigns into `attrs` is then a plain unique_id
+    (Ward, CustomerCreation, StaffTemplate, TripPlan, and the other models
+    converted in this same refactor pass) rather than live related objects.
+    Every value this function assigns into `attrs` is then a plain unique_id
     string instead of a model instance, matching what the model's `.save()`
     expects. Values already present in `attrs`/`instance` are still read
     transparently either way (resolved to an object internally when needed
     to walk .state_id/.district_id/.area_type_id, e.g. off a local body).
-    Other callers (StaffTemplate, TripPlan, ... — still FK-based) must NOT
-    pass this, so they keep getting real objects as before.
     """
     selected_local_bodies = [
         field for field in LOCAL_BODY_FIELDS
@@ -476,7 +334,7 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings
                 continue
 
             current = attrs.get(parent)
-            if parent in attrs and current and not _same_fk(current, parent_obj):
+            if parent in attrs and current and not _same_ref(current, parent_obj):
                 return {
                     f"{parent}_id": (
                         f"Selected {parent.replace('_', ' ')} does not match "
@@ -515,23 +373,21 @@ def normalize_flat_geo_attrs(attrs, instance=None, require_geo=False, as_strings
 
 
 def copy_flat_geo(target, source, only_empty=False):
-    """Copy state/district/area_type/.../panchayat FKs from `source` onto
-    `target`. Both models are expected to carry the same flat geo FK set
+    """Copy state/district/area_type/.../panchayat references from `source` onto
+    `target`. Both models are expected to carry the same flat geo field set
     (e.g. CustomerCreation -> TripPlan, or any two models in the
-    Staff/Customer/TripPlan family). If `source` doesn't have these fields
-    but has a `location_node` instead (e.g. Collection_point, which keeps
-    a real HierarchyNode), the fields are derived from that node's mirrored
-    ancestry via `flat_geo_fields_for_node`. Clears every field on `target`
-    first unless `only_empty` is set and `target` already has a district.
+    Staff/Customer/TripPlan family). If `source` doesn't have these fields,
+    every field on `target` is cleared. Does nothing if `only_empty` is set
+    and `target` already has a district.
     """
     if only_empty and getattr(target, "district_id", None):
         return
 
     if any(hasattr(source, field) or hasattr(source, f"{field}_id") for field in FLAT_GEO_FIELDS):
-        # `source`'s own flat-geo columns may still be live FKs (bare name
+        # `source`'s own flat-geo columns may be a live relation (bare name
         # "<field>", Django attname "<field>_id" resolving to an object via
-        # "<field>", e.g. TripPlan) or, for already-converted models (Ward,
-        # CustomerCreation, ...), plain CharFields literally named
+        # "<field>") or, for already-converted models (Ward,
+        # CustomerCreation, TripPlan, ...), plain CharFields literally named
         # "<field>_id" holding a unique_id string. Resolve to a plain
         # unique_id string either way.
         values = {}
@@ -541,9 +397,7 @@ def copy_flat_geo(target, source, only_empty=False):
                 value = getattr(value, "unique_id", None)
             values[field] = value
     else:
-        node = getattr(source, LOCATION_FIELD, None)
         values = {field: None for field in FLAT_GEO_FIELDS}
-        values.update(flat_geo_fields_for_node(node))
 
     for field, value in values.items():
         setattr(target, f"{field}_id", value)
@@ -560,91 +414,36 @@ def sync_staff_data_scope(staff, source):
     same flat geo their trip carries restores visibility while keeping the
     corporation/district boundary intact. Idempotent (update_or_create).
 
-    `source` is any model carrying the flat geo FK block (a DailyTripAssignment,
+    `source` is any model carrying the flat geo field block (a DailyTripAssignment,
     TripPlan, etc.). `staff` must expose `staff_unique_id`.
     """
     scope, created = StaffDataScope.objects.update_or_create(
         staff_id=staff.staff_unique_id,
         is_deleted=False,
         defaults={
-            "state_id": getattr(source, "state_id", None),
-            "district_id": getattr(source, "district_id", None),
-            "area_type_id": getattr(source, "area_type_id", None),
+            # StaffDataScope's plain-id fields are named without the `_id`
+            # suffix (db_column carries it).
+            "state": getattr(source, "state_id", None),
+            "district": getattr(source, "district_id", None),
+            "area_type": getattr(source, "area_type_id", None),
             "is_active": True,
         },
     )
-    for _, source_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+    # Local-body / ward scope are plain JSON id lists (`<level>_ids`).
+    for level, source_field, _ in STAFF_LOCAL_BODY_M2M_LEVELS:
         value = getattr(source, source_field, None)
-        getattr(scope, m2m_field).set([value] if value else [])
+        setattr(scope, f"{level}_ids", [value] if value else [])
     source_wards = getattr(source, "wards", None)
-    scope.wards.set(source_wards.all() if source_wards is not None else [])
+    scope.ward_ids = (
+        list(source_wards.values_list("unique_id", flat=True))
+        if source_wards is not None
+        else []
+    )
+    scope.save(update_fields=[
+        *(f"{level}_ids" for level, _, _ in STAFF_LOCAL_BODY_M2M_LEVELS),
+        "ward_ids",
+    ])
     return scope, created
-
-
-def flat_geo_fields_for_node(node):
-    """Reverse of `node_for_flat_geo`: given a HierarchyNode mirrored from a
-    legacy geo master, walk its full ancestor chain (self included) and
-    return a dict of every state/district/area_type/.../panchayat FK value
-    mirrored along that chain, e.g. a panchayat node resolves state, district,
-    area_type, AND panchayat together - not just the node's own level. Suitable
-    for assigning directly onto a model with matching FK fields:
-    `for field, value in flat_geo_fields_for_node(node).items():
-        setattr(customer, f"{field}_id", value)`
-    Returns {} for nodes with no mirrored ancestry (e.g. manually-created nodes).
-    """
-    if not node:
-        return {}
-    node_id = _node_id(node)
-    links = HierarchyClosure.objects.filter(
-        descendant_id=node_id, is_deleted=False
-    ).select_related("ancestor")
-
-    fields = {}
-    for link in links:
-        ancestor = link.ancestor
-        if not ancestor or ancestor.is_deleted:
-            continue
-        props = getattr(ancestor, "custom_properties", None) or {}
-        source_type = props.get("source_type")
-        source_id = props.get("source_id")
-        field = FLAT_GEO_SOURCE_TYPE_FIELDS.get(source_type)
-        if field and source_id:
-            fields[field] = source_id
-    return fields
-
-
-def _node_ids_for_geo_scope(scope):
-    if not scope:
-        return []
-
-    direct_ids = list(scope.location_nodes.values_list("unique_id", flat=True))
-    if direct_ids:
-        return direct_ids
-
-    return node_ids_for_flat_geo(scope)
-
-
-def filter_queryset_by_requester_scope(queryset, user, field=LOCATION_FIELD):
-    """
-    Auto-scope a queryset to the requester's own node + descendants. Users
-    with no resolvable scope node (e.g. super admins) see everything.
-    """
-    scope_node_ids = _node_ids_for_geo_scope(_staff_scope(user))
-    if scope_node_ids:
-        ids = set()
-        for node_id in scope_node_ids:
-            ids.update(descendant_ids(node_id))
-        if not ids:
-            return queryset.none()
-        return queryset.filter(**{f"{field}_id__in": list(ids)})
-
-    node = requester_scope_node(user)
-    if not node:
-        return _unscoped_result(queryset, user)
-    ids = descendant_ids(node)
-    if not ids:
-        return queryset.none()
-    return queryset.filter(**{f"{field}_id__in": ids})
 
 
 STAFF_GEO_LEVEL_FIELDS = (
@@ -663,10 +462,8 @@ def filter_staff_queryset_by_requester_scope(queryset, user):
     """
     Auto-scope a `StaffcreationOfficeDetails` queryset to the requester's own
     geo scope (state/district/area_type/local-body, from their `StaffDataScope`
-    row) plus everything beneath it. Mirrors `filter_queryset_by_requester_scope`
-    but compares against the target staff rows' own state/district/.../panchayat
-    columns instead of a shared `location_node`, since staff no longer carries
-    a hierarchy node reference.
+    row) plus everything beneath it, compared against the target staff rows'
+    own state/district/.../panchayat columns.
     """
     return filter_flat_geo_queryset_by_requester_scope(queryset, user)
 
@@ -685,7 +482,8 @@ def _narrow_by_ward(queryset, scope):
     extra narrowing on top of the local-body/district scope, never a
     widening, so it's safe to apply speculatively across every scoped
     queryset in the app. Detects both conventions in use: a singular `ward`
-    FK (Bins, CustomerCreation, ...) and a plural `wards` M2M (TripPlan).
+    relation field, a plain-string `ward_id` column (CustomerCreation, Bins, ...)
+    and a plural `wards` M2M (TripPlan).
     """
     ward_ids = list(scope.wards.values_list("unique_id", flat=True))
     if not ward_ids:
@@ -696,21 +494,38 @@ def _narrow_by_ward(queryset, scope):
         field = model._meta.get_field("ward")
     except Exception:
         field = None
+    if field is None:
+        # Plain-string `ward_id` column (CustomerCreation).
+        try:
+            model._meta.get_field("ward_id")
+            return queryset.filter(ward_id__in=ward_ids)
+        except Exception:
+            pass
     if field is not None:
         if field.many_to_many:
             return queryset.filter(ward__unique_id__in=ward_ids).distinct()
         return queryset.filter(ward_id__in=ward_ids)
 
     try:
-        model._meta.get_field("wards")
+        wards_field = model._meta.get_field("wards")
+    except Exception:
+        wards_field = None
+    if wards_field is not None:
+        return queryset.filter(wards__unique_id__in=ward_ids).distinct()
+
+    # Plain JSON list of ward unique_ids (Collection_point, ...).
+    try:
+        model._meta.get_field("ward_ids")
     except Exception:
         return queryset
-    return queryset.filter(wards__unique_id__in=ward_ids).distinct()
+    from app.utils.plain_ref import json_contains_any
+
+    return queryset.filter(json_contains_any("ward_ids", ward_ids))
 
 
 def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
     """
-    Auto-scope a queryset whose model carries its own flat geo FKs (e.g.
+    Auto-scope a queryset whose model carries its own flat geo fields (e.g.
     Corporation/Municipality/.../Panchayat, or any model with matching
     state_id/district_id/.../panchayat_id columns) to the requester's
     `StaffDataScope`. A staff scoped to one or more specific local bodies
@@ -730,28 +545,6 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
         return _unscoped_result(queryset, user)
 
     fields = field_map or {f: f for f in STAFF_GEO_LEVEL_FIELDS}
-    direct_node_ids = list(scope.location_nodes.values_list("unique_id", flat=True))
-    if direct_node_ids:
-        combined_filter = Q()
-        for node_id in direct_node_ids:
-            node = HierarchyNode.objects.filter(unique_id=node_id, is_deleted=False).first()
-            node_fields = flat_geo_fields_for_node(node)
-            if not node_fields:
-                continue
-            node_filter = Q()
-            has_filter = False
-            for scope_field, queryset_field in fields.items():
-                flat_field = scope_field[:-3] if scope_field.endswith("_id") else scope_field
-                value = node_fields.get(flat_field)
-                if value:
-                    node_filter &= Q(**{queryset_field: value})
-                    has_filter = True
-            if has_filter:
-                combined_filter |= node_filter
-        if combined_filter:
-            return _narrow_by_ward(queryset.filter(combined_filter), scope)
-        return queryset.none()
-
     local_body_filter = Q()
     has_local_body_filter = False
     for scope_field, queryset_field in fields.items():
@@ -779,6 +572,59 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
             return _narrow_by_ward(queryset.filter(**{queryset_field: value}), scope)
 
     return _narrow_by_ward(queryset, scope)
+
+
+def filter_assignable_staff_by_requester_scope(queryset, user):
+    """
+    Scope a staff queryset for "who may I assign to this trip?" pickers.
+
+    `filter_staff_queryset_by_requester_scope` answers a different question —
+    "whose records may I read?" — so it matches the requester's local body
+    exactly. That is too narrow for an assignment dropdown: a
+    `govt_district_driver` carries a district but no local body because they
+    work anywhere in that district, so a Corporation supervisor sitting
+    inside that district must still be able to pull them onto a replacement
+    trip. Without this, every local-body supervisor sees an empty driver and
+    operator list.
+
+    Staff belonging to a *different* local body, or to another district
+    entirely, are still excluded — this widens the scope upwards along the
+    requester's own hierarchy branch only, never sideways.
+    """
+    scope = _staff_scope(user)
+    if not scope:
+        return _unscoped_result(queryset, user)
+
+    combined = Q()
+    matched = False
+
+    # At or below the requester: the local bodies they were granted.
+    for _, scope_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+        ids = list(getattr(scope, f"{scope_field}s", None) or [])
+        if ids:
+            combined |= Q(**{f"{scope_field}__in": ids})
+            matched = True
+
+    # Above the requester: staff with no local body of their own, whose
+    # district (or state) covers the requester's area.
+    no_local_body = Q()
+    for _, scope_field, _m2m in STAFF_LOCAL_BODY_M2M_LEVELS:
+        no_local_body &= Q(**{f"{scope_field}__isnull": True}) | Q(**{scope_field: ""})
+
+    if scope.district:
+        combined |= no_local_body & Q(district_id=scope.district)
+        matched = True
+    if scope.state:
+        combined |= (
+            no_local_body
+            & (Q(district_id__isnull=True) | Q(district_id=""))
+            & Q(state_id=scope.state)
+        )
+        matched = True
+
+    if not matched:
+        return _narrow_by_ward(queryset, scope)
+    return _narrow_by_ward(queryset.filter(combined).distinct(), scope)
 
 
 def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):
@@ -818,13 +664,12 @@ def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):
 
     assignment_ids = (
         DailyTripAssignment.objects.filter(
-            wards__unique_id__in=effective_ward_ids,
+            json_contains_any("ward_ids", effective_ward_ids),
             is_deleted=False,
         )
         .values("unique_id")
-        .distinct()
     )
-    return queryset.filter(trip_assignment_id_id__in=assignment_ids)
+    return queryset.filter(trip_assignment_id__in=assignment_ids)
 
 
 def _single_local_body(scope):
@@ -928,10 +773,6 @@ def staff_scope_payload(user):
         "panchayat_unions": local_body_lists["panchayat_unions"],
         "panchayats": local_body_lists["panchayats"],
         "wards": [_ref(ward, "ward_name") for ward in scope.wards.all()],
-        "location_nodes": [
-            {"unique_id": node.unique_id, "name": node.name}
-            for node in scope.location_nodes.all()
-        ],
         # --- Scope expansion (login feature) -------------------------------
         # The level at which the scope was granted (most-specific field set)
         # plus the full geo subtree beneath it, so the frontend knows which
@@ -963,7 +804,7 @@ def _local_body_ids_by_level(scope):
         manager = getattr(scope, m2m_field, None)
         if manager is None:
             # Keep this helper usable with lightweight scope stand-ins used by
-            # tests and older callers that only expose the legacy FK fields.
+            # tests and older callers that only expose the legacy singular fields.
             legacy_id = getattr(scope, f"{level}_id", None)
             ids = [legacy_id] if legacy_id else []
         else:
@@ -984,7 +825,7 @@ def _granted_scope_level(scope):
     wards = getattr(scope, "wards", None)
     if wards is not None and wards.exists():
         return "ward"
-    # Legacy/plain scope objects may expose only singular FK fields. Preserve
+    # Legacy/plain scope objects may expose only singular fields. Preserve
     # their precise level when no local-body M2M managers are available.
     if not any(
         getattr(scope, m2m_field, None) is not None
@@ -1174,29 +1015,43 @@ def _expanded_descendants(scope):
     for level, ids in lb_ids_by_level_seen.items():
         if not ids:
             continue
-        m2m_field = next(f for lvl, _, f in STAFF_LOCAL_BODY_M2M_LEVELS if lvl == level)
-        rows = (
+        # `<level>_ids` is a plain JSON id list; staff are resolved in bulk.
+        ids_field = f"{level}_ids"
+        wanted = set(ids)
+        scope_rows = list(
             StaffDataScope.objects.filter(
+                json_contains_any(ids_field, list(wanted)),
                 is_active=True,
                 is_deleted=False,
-                **{f"{m2m_field}__unique_id__in": ids},
-            ).values(
-                f"{m2m_field}__unique_id",
-                "staff_id",
-                "staff__employee_name",
-                "staff__staff_config_name",
-                "staff__governmentusertype_id__name",
-            )
+            ).values_list(ids_field, "staff_id")
         )
-        for row in rows:
-            staff_by_lb.setdefault(row[f"{m2m_field}__unique_id"], []).append(
-                {
-                    "staff_unique_id": row["staff_id"],
-                    "employee_name": row["staff__employee_name"],
-                    "role": row["staff__governmentusertype_id__name"],
-                    "staff_config_name": row["staff__staff_config_name"],
-                }
+        staff_info = {
+            row["staff_unique_id"]: row
+            for row in StaffcreationOfficeDetails.objects.filter(
+                staff_unique_id__in={staff_id for _, staff_id in scope_rows}
+            ).values(
+                "staff_unique_id",
+                "employee_name",
+                "staff_config_name",
+                "governmentusertype_id",
             )
+        }
+        role_names = dict(
+            GovernmentStaffUserType.objects.filter(
+                unique_id__in={row["governmentusertype_id"] for row in staff_info.values()}
+            ).values_list("unique_id", "name")
+        )
+        for lb_ids, staff_id in scope_rows:
+            info = staff_info.get(staff_id, {})
+            for lb_id in wanted.intersection(lb_ids or []):
+                staff_by_lb.setdefault(lb_id, []).append(
+                    {
+                        "staff_unique_id": staff_id,
+                        "employee_name": info.get("employee_name"),
+                        "role": role_names.get(info.get("governmentusertype_id")),
+                        "staff_config_name": info.get("staff_config_name"),
+                    }
+                )
 
     district_names = dict(
         District.objects.filter(unique_id__in=district_ids).values_list(
@@ -1248,42 +1103,3 @@ def expanded_scope_payload(user):
     }
 
 
-CITY_LEVEL_NAMES = {"Corporation", "Municipality", "Town Panchayat", "Panchayat Union", "Panchayat"}
-
-
-def district_and_city_for_node(node_id, cache=None):
-    """Resolve the District ancestor and the city/local-body ancestor of a node.
-
-    Walks the closure table once (including the self row at depth 0) so a
-    node that IS the District (or the city) resolves to itself. Returns
-    ``{"district_id", "district_name", "city_id", "city_name"}`` - values are
-    None if the node has no such ancestor. Pass a dict as `cache` to reuse
-    lookups across many nodes that share the same district/city (e.g. a page
-    of tickets) within a single request.
-    """
-    empty = {"district_id": None, "district_name": None, "city_id": None, "city_name": None}
-    if not node_id:
-        return empty
-    if cache is not None and node_id in cache:
-        return cache[node_id]
-
-    links = HierarchyClosure.objects.filter(
-        descendant_id=node_id, is_deleted=False
-    ).select_related("ancestor", "ancestor__level")
-
-    result = dict(empty)
-    for link in links:
-        ancestor = link.ancestor
-        if not ancestor or ancestor.is_deleted or not ancestor.level_id:
-            continue
-        level_name = ancestor.level.name
-        if level_name == "District":
-            result["district_id"] = ancestor.unique_id
-            result["district_name"] = ancestor.name
-        elif level_name in CITY_LEVEL_NAMES:
-            result["city_id"] = ancestor.unique_id
-            result["city_name"] = ancestor.name
-
-    if cache is not None:
-        cache[node_id] = result
-    return result

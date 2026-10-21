@@ -2,14 +2,19 @@
 import csv
 import io
 
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from app.services.background_jobs import run_in_background
 
-from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
+from app.models.masters.transport_masters.vehicleCreation import (
+    VehicleCreation,
+    VehicleDocumentHistory,
+)
 from app.models.masters.transport_masters.vehicleTypeCreation import VehicleTypeCreation
 from app.models.masters.transport_masters.fuel import Fuel
 from app.models.superadmin.common_masters.country import Country
@@ -23,10 +28,17 @@ from app.models.masters.panchayat_union import PanchayatUnion
 from app.models.masters.panchayat import Panchayat
 from app.cache.decorators import cache_api
 from app.cache.invalidation import invalidate_on_commit
-from app.serializers.masters.transport_masters.vehicleCreation_serializer import VehicleCreationSerializer
+from app.serializers.masters.transport_masters.vehicleCreation_serializer import (
+    VehicleCreationSerializer,
+    VehicleDocumentHistorySerializer,
+)
 from app.utils.audit_mixin import AuditViewSetMixin
+from app.utils.audit_context import resolve_actor
 from app.utils.hierarchy import filter_flat_geo_queryset_by_params
 from app.utils.pagination import LimitOffsetWithPage
+from app.utils.list_filters import ListParamFilter
+from app.utils.plain_ref_search import PlainRefSearchFilter
+from app.utils.file_archive import archive_bytes
 
 VEHICLE_CREATION_CACHE_SCOPES = ("vehicle_creation_list", "vehicle_creation_detail")
 
@@ -36,9 +48,23 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     queryset = VehicleCreation.objects.filter(is_deleted=False)
     serializer_class = VehicleCreationSerializer
     lookup_field = "unique_id"
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [ListParamFilter, PlainRefSearchFilter, filters.OrderingFilter]
     pagination_class = LimitOffsetWithPage
-    search_fields = ["vehicle_no"]
+    # the list's search box matches what the table shows: number, type,
+    # fuel, district and local body (ref columns hold unique_ids, so names
+    # are matched through PlainRefSearchFilter subqueries)
+    search_fields = [
+        "vehicle_no",
+        "vehicle_condition",
+        "vehicle_type_id=app.models.masters.transport_masters.vehicleTypeCreation.VehicleTypeCreation.vehicleType",
+        "fuel_type_id=app.models.masters.transport_masters.fuel.Fuel.fuel_type",
+        "district_id=app.models.masters.district.District.name",
+        "corporation_id=app.models.masters.corporation.Corporation.corporation_name",
+        "municipality_id=app.models.masters.municipality.Municipality.municipality_name",
+        "town_panchayat_id=app.models.masters.town_panchayat.TownPanchayat.town_panchayat_name",
+        "panchayat_union_id=app.models.masters.panchayat_union.PanchayatUnion.union_name",
+        "panchayat_id=app.models.masters.panchayat.Panchayat.panchayat_name",
+    ]
     ordering_fields = ["vehicle_no", "is_active"]
 
     AUDIT_MODULE = "transport-masters"
@@ -95,7 +121,13 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
 
     def perform_update(self, serializer):
-        super().perform_update(serializer)
+        previous_documents = self._document_snapshot(serializer.instance)
+        with transaction.atomic():
+            super().perform_update(serializer)
+            self._record_document_history(
+                previous_documents,
+                self._document_snapshot(serializer.instance),
+            )
         invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
 
     def perform_destroy(self, instance):
@@ -114,6 +146,90 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             self.get_queryset().filter(is_active=True), request.query_params
         )
         serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @staticmethod
+    def _file_name(value):
+        return getattr(value, "name", None) or str(value or "") or None
+
+    def _document_snapshot(self, vehicle):
+        return {
+            "vehicle_id": vehicle.unique_id,
+            "vehicle_no": vehicle.vehicle_no,
+            "rc": {
+                "document_number": vehicle.vehicle_no,
+                "expiry_date": getattr(vehicle, "rc_expiry_date", None),
+                "file": self._file_name(vehicle.rc_upload),
+            },
+            "insurance": {
+                "document_number": vehicle.vehicle_insurance,
+                "expiry_date": vehicle.insurance_expiry_date,
+                "file": self._file_name(vehicle.vehicle_insurance_file),
+            },
+        }
+
+    @staticmethod
+    def _document_changed(previous, current, *, include_document_number=True):
+        if include_document_number and previous["document_number"] != current["document_number"]:
+            return True
+        return previous["expiry_date"] != current["expiry_date"] or previous["file"] != current["file"]
+
+    @staticmethod
+    def _has_document_data(snapshot):
+        return bool(
+            snapshot["document_number"]
+            or snapshot["expiry_date"]
+            or snapshot["file"]
+        )
+
+    def _record_document_history(self, previous, current):
+        actor_id, actor_name, actor_type = resolve_actor(getattr(self.request, "user", None))
+        rows = []
+        document_map = (
+            ("rc", VehicleDocumentHistory.DocumentType.RC, False),
+            ("insurance", VehicleDocumentHistory.DocumentType.INSURANCE, True),
+        )
+
+        for key, document_type, include_document_number in document_map:
+            previous_doc = previous[key]
+            current_doc = current[key]
+            if not self._document_changed(
+                previous_doc,
+                current_doc,
+                include_document_number=include_document_number,
+            ):
+                continue
+            if not (self._has_document_data(previous_doc) or self._has_document_data(current_doc)):
+                continue
+
+            rows.append(
+                VehicleDocumentHistory(
+                    vehicle_id=current["vehicle_id"],
+                    vehicle_no=current["vehicle_no"],
+                    document_type=document_type,
+                    previous_document_number=previous_doc["document_number"],
+                    new_document_number=current_doc["document_number"],
+                    previous_expiry_date=previous_doc["expiry_date"],
+                    new_expiry_date=current_doc["expiry_date"],
+                    previous_file=previous_doc["file"],
+                    new_file=current_doc["file"],
+                    changed_by_id=actor_id,
+                    changed_by_name=actor_name,
+                    changed_by_type=actor_type,
+                )
+            )
+
+        if rows:
+            VehicleDocumentHistory.objects.bulk_create(rows)
+
+    @action(detail=True, methods=["get"], url_path="document-history")
+    def document_history(self, request, unique_id=None):
+        vehicle = self.get_object()
+        queryset = VehicleDocumentHistory.objects.filter(vehicle_id=vehicle.unique_id)
+        document_type = request.query_params.get("document_type")
+        if document_type:
+            queryset = queryset.filter(document_type=document_type.upper())
+        serializer = VehicleDocumentHistorySerializer(queryset, many=True)
         return Response(serializer.data)
 
     def _find_location(self, model, raw_value: str | None):
@@ -153,6 +269,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
     # =========================================================
 
     @action(detail=False, methods=["post"], url_path="bulk-upload")
+    @run_in_background
     def bulk_upload(self, request):
         file = request.FILES.get("file")
 
@@ -161,9 +278,20 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
 
         decoded_file = None
         try:
-            decoded_file = file.read().decode("utf-8")
+            _upload_content = file.read()
+            decoded_file = _upload_content.decode("utf-8")
         except Exception as exc:
             return Response({"error": "Unable to decode CSV file", "detail": str(exc)}, status=400)
+
+        # Server-side copy for audit reference (never blocks the import).
+        try:
+            _archived = archive_bytes(
+                _upload_content,
+                getattr(file, "name", None) or "vehicle_bulk_upload.csv",
+                subdir="bulk_uploads/vehicles",
+            )
+        except Exception:
+            _archived = {"archived": False}
 
         io_string = io.StringIO(decoded_file)
         reader = csv.DictReader(io_string)
@@ -175,23 +303,23 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
             vehicle_no = (row.get("vehicle_no") or "").strip()
 
             if not vehicle_no:
-                errors.append({"row": index, "error": "vehicle_no is required"})
+                errors.append({"row": index, "error": "vehicle_no is required", "data": row})
                 continue
 
             vehicle_type = self._find_vehicle_type(row.get("vehicle_type"))
             if row.get("vehicle_type") and not vehicle_type:
-                errors.append({"row": index, "error": f"Invalid vehicle_type: {row.get('vehicle_type')}"})
+                errors.append({"row": index, "error": f"Invalid vehicle_type: {row.get('vehicle_type')}", "data": row})
                 continue
 
             fuel = self._find_fuel(row.get("fuel_type"))
             if row.get("fuel_type") and not fuel:
-                errors.append({"row": index, "error": f"Invalid fuel_type: {row.get('fuel_type')}"})
+                errors.append({"row": index, "error": f"Invalid fuel_type: {row.get('fuel_type')}", "data": row})
                 continue
 
             condition_value = (row.get("vehicle_condition") or "").strip().upper()
             if condition_value and condition_value not in VehicleCreation.ConditionChoices.values:
                 allowed = ", ".join(VehicleCreation.ConditionChoices.values)
-                errors.append({"row": index, "error": f"vehicle_condition must be one of: {allowed}"})
+                errors.append({"row": index, "error": f"vehicle_condition must be one of: {allowed}", "data": row})
                 continue
 
             country = self._find_location(Country, row.get("country_id"))
@@ -235,7 +363,7 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
                 serializer.save()
                 success_count += 1
             else:
-                errors.append({"row": index, "error": serializer.errors})
+                errors.append({"row": index, "error": serializer.errors, "data": row})
 
         if success_count:
             invalidate_on_commit(*VEHICLE_CREATION_CACHE_SCOPES)
@@ -243,5 +371,9 @@ class VehicleCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         return Response({
             "message": "Vehicle bulk upload completed",
             "success_count": success_count,
+            "error_count": len(errors),
+            "total_count": success_count + len(errors),
             "errors": errors,
+            "file_name": getattr(file, "name", None),
+            "file_url": _archived.get("file_url") if _archived.get("archived") else None,
         })

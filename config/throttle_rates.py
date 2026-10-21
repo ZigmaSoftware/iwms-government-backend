@@ -124,6 +124,9 @@ API_THROTTLE_RATES = {
     "admin_change_password": AUTH_SENSITIVE,
     "platform_login": AUTH_SENSITIVE,
     "refresh_token": AUTH_SENSITIVE,
+    # Logout + activity heartbeat (about one a minute while a user works) —
+    # not a credential check, so not held to the login limits.
+    "login_session": REALTIME_MOBILE,
     "district_leader_login": AUTH_SENSITIVE,
     "panchayat_leader_login": AUTH_SENSITIVE,
     "state_leader_login": AUTH_SENSITIVE,
@@ -132,6 +135,7 @@ API_THROTTLE_RATES = {
 
     # ── Dashboards — read-heavy summary/aggregation screens ────────
     "dashboard_summary": DASHBOARD,
+    "admin_overview": DASHBOARD,
     "district_body_dashboard": DASHBOARD,
     "state_body_dashboard": DASHBOARD,
     "local_body_dashboard": DASHBOARD,
@@ -140,9 +144,9 @@ API_THROTTLE_RATES = {
 
     # ── Audit / log trails — read-heavy, admin investigation use ───
     "audit_log": AUDIT_LOG,
-    "staff_audit": AUDIT_LOG,
     "common_audit": AUDIT_LOG,
     "login_audit": AUDIT_LOG,
+    "permission_audit": AUDIT_LOG,
 
     # ── Operator/field mobile app — frequent polling by design ─────
     "trip_history": REALTIME_MOBILE,
@@ -162,6 +166,8 @@ API_THROTTLE_RATES = {
     "bin_collection_event": REALTIME_MOBILE,
     "trip_retrip_request": REALTIME_MOBILE,
     "vehicle_breakdown": REALTIME_MOBILE,
+    "trip_delay_report": REALTIME_MOBILE,
+    "citizen_pickup": REALTIME_MOBILE,
     "daily_attendance_reg": REALTIME_MOBILE,
     "attendance_records": REALTIME_MOBILE,
     "staff_profile": REALTIME_MOBILE,
@@ -191,7 +197,6 @@ API_THROTTLE_RATES = {
     "complaint_source": READ_MASTER_DATA,
     "complaint_status": READ_MASTER_DATA,
     "complaint_subcategory": READ_MASTER_DATA,
-    "complaint_team": READ_MASTER_DATA,
     "complaint_ticket": READ_MASTER_DATA,
     "continent": READ_MASTER_DATA,
     "contractor_user_type": READ_MASTER_DATA,
@@ -199,6 +204,7 @@ API_THROTTLE_RATES = {
     "country": READ_MASTER_DATA,
     "customer_access_configuration": READ_MASTER_DATA,
     "customer_creation": {**READ_MASTER_DATA, "GET": "120/minute"},
+    "customer_notification": READ_MASTER_DATA,
     "daily_waste_comparison": READ_MASTER_DATA,
     "department": READ_MASTER_DATA,
     "designation": READ_MASTER_DATA,
@@ -206,6 +212,7 @@ API_THROTTLE_RATES = {
     "feed_back": READ_MASTER_DATA,
     "fuel": READ_MASTER_DATA,
     "government_staff_user_type": READ_MASTER_DATA,
+    "staff_hierarchy": READ_MASTER_DATA,
     "main_screen": READ_MASTER_DATA,
     "main_screen_type": READ_MASTER_DATA,
     "monthly_waste_comparison_report": READ_MASTER_DATA,

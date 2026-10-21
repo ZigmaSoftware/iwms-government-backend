@@ -5,6 +5,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 
+from app.services.login_session import SESSION_CLAIMS, validate_session
+
 # Identity claims minted onto both the access and refresh token at login
 # (see login_viewset.py) — copied verbatim onto the newly minted access
 # token so a refresh behaves exactly like the original login for anything
@@ -51,8 +53,16 @@ class RefreshTokenViewSet(ViewSet):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # A session ended by logout or idle timeout must not be renewed.
+        session_error = validate_session(refresh.payload)
+        if session_error:
+            return Response(
+                {"detail": session_error, "code": "session_ended"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         access = AccessToken()
-        for claim in IDENTITY_CLAIMS:
+        for claim in (*IDENTITY_CLAIMS, *SESSION_CLAIMS):
             if claim in refresh:
                 access[claim] = refresh[claim]
 

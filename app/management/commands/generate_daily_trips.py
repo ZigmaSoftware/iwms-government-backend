@@ -1,14 +1,16 @@
 from django.core.management.base import BaseCommand
-from django.db import transaction
 from django.utils import timezone
 
+from app.utils.plain_ref import ref_id
 from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
-from app.models.core_modules.schedule_setup.trip_plan_collection_point import TripPlanCollectionPoint
 from app.models.core_modules.daily_operations.daily_trip_collection_point import DailyTripCollectionPoint
 from app.models.core_modules.daily_operations.daily_trip_household_collection import DailyTripHouseholdCollection
-from app.signals.trip_plan_signals import _create_daily_household_collections
-from app.utils.hierarchy import FLAT_GEO_FIELDS
+from app.models.core_modules.daily_operations.daily_service_notice import DailyServiceNotice
+from app.services.daily_trip_generation import (
+    existing_assignment_for_plan,
+    generate_assignment_for_plan,
+)
 
 
 def run_for_date(target_date=None, logger=None, force=False):
@@ -74,102 +76,61 @@ def run_for_date(target_date=None, logger=None, force=False):
                 skipped_count += 1
                 continue
 
-        defaults = {
-            "staff_template_id": plan.staff_template_id,
-            "vehicle_id": plan.vehicle_id,
-            "scheduled_time": plan.scheduled_time,
-        }
-        for field in FLAT_GEO_FIELDS:
-            defaults[f"{field}_id"] = getattr(plan, f"{field}_id", None)
+        if DailyServiceNotice.objects.filter(
+            trip_plan_id=plan.unique_id,
+            service_date=today,
+            status=DailyServiceNotice.STATUS_ACTIVE,
+            is_deleted=False,
+        ).exists():
+            # A supervisor declared "no collection today" for this plan.
+            log(f"TripPlan {plan.unique_id} skipped: no-collection notice exists")
+            skipped_count += 1
+            continue
 
-        with transaction.atomic():
-            # NOT a plain get_or_create: a Re-Trip approval
-            # (`app/services/retrip_service.approve_retrip`) can already have
-            # created a SECOND assignment on this same (trip_plan, trip_date) —
-            # the continuation trip that carries a cut-short shift's leftover
-            # stops. `get()` would then raise MultipleObjectsReturned and take
-            # the whole nightly job down. The scheduler's job is just "make
-            # sure today has an assignment for this plan" — if a Re-Trip
-            # continuation already covers today, that satisfies it; don't
-            # create a competing second one.
-            existing = (
-                DailyTripAssignment.objects
-                .filter(trip_plan_id=plan, trip_date=today)
-                .order_by("created_at")
-                .first()
-            )
-            if existing is not None:
-                log(f"Assignment already exists for plan {plan.unique_id} on {today}")
-                continue
+        # NOT a plain get_or_create: a Re-Trip approval
+        # (`app/services/retrip_service.approve_retrip`) can already have
+        # created a SECOND assignment on this same (trip_plan, trip_date) — the
+        # continuation trip that carries a cut-short shift's leftover stops.
+        # The scheduler's job is just "make sure today has an assignment for
+        # this plan" — if one already covers today, that satisfies it.
+        if existing_assignment_for_plan(plan, today) is not None:
+            log(f"Assignment already exists for plan {plan.unique_id} on {today}")
+            continue
 
-            assignment = DailyTripAssignment.objects.create(
-                trip_plan_id=plan,
-                trip_date=today,
-                **defaults,
-            )
+        # Creates the assignment and clones the plan's stops (the post_save
+        # signal already clones them; generate_assignment_for_plan tops up
+        # anything it skipped — both use get_or_create, so nothing is ever
+        # duplicated).
+        from app.services.daily_service_notice import DailyServiceNoticeError
+        try:
+            assignment, created, _ = generate_assignment_for_plan(plan, today)
+        except DailyServiceNoticeError:
+            skipped_count += 1
+            continue
+        if not created:
+            continue
+        created_count += 1
 
-            if not assignment.waste_types.exists():
-                assignment.waste_types.set(plan.waste_types.all())
+        # Count the actual child rows now present for this assignment.
+        cp_created = DailyTripCollectionPoint.objects.filter(
+            trip_assignment_id=ref_id(assignment), is_deleted=False
+        ).count()
+        hh_created = DailyTripHouseholdCollection.objects.filter(
+            trip_assignment_id=ref_id(assignment), is_deleted=False
+        ).count()
 
-            created_count += 1
-            # Build the operational child records from the master stop list.
-            #
-            # NOTE: a post_save signal on DailyTripAssignment
-            # (copy_trip_plan_stops_to_daily_assignment) already clones the
-            # stops the moment the assignment is created above. The loop below
-            # is a safety net for any stop the signal skipped — both paths use
-            # get_or_create, so nothing is ever duplicated. We report the TRUE
-            # number of child rows that now exist (not just the ones this loop
-            # inserted), so the summary is accurate regardless of which path won.
-            stops = (
-                TripPlanCollectionPoint.objects
-                .filter(
-                    trip_plan_id=plan,
-                    collection_type=plan.collection_type,
-                    is_active=True,
-                    is_deleted=False,
-                )
-                .order_by("sequence")
-            )
-            for stop in stops:
-                if stop.collection_type == TripPlanCollectionPoint.COLLECTION_TYPE_BIN:
-                    if not stop.collection_point_id_id:
-                        continue
-                    DailyTripCollectionPoint.objects.get_or_create(
-                        trip_assignment_id=assignment,
-                        collection_point_id=stop.collection_point_id,
-                        bin_id=stop.bin_id,
-                        defaults={
-                            "sequence": stop.sequence,
-                            "status": DailyTripCollectionPoint.STATUS_PENDING,
-                        },
-                    )
-                elif stop.collection_type in {
-                    TripPlanCollectionPoint.COLLECTION_TYPE_HOUSEHOLD,
-                    TripPlanCollectionPoint.COLLECTION_TYPE_BULK,
-                }:
-                    _create_daily_household_collections(assignment, stop)
-
-            # Count the actual child rows now present for this assignment.
-            cp_created = DailyTripCollectionPoint.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
-            ).count()
-            hh_created = DailyTripHouseholdCollection.objects.filter(
-                trip_assignment_id=assignment, is_deleted=False
-            ).count()
-
-            details.append(
-                {
-                    "trip_plan_id": plan.unique_id,
-                    "assignment_id": assignment.unique_id,
-                    "daily_trip_points": cp_created,
-                    "household_points": hh_created,
-                }
-            )
-            log(
-                f"Created assignment {assignment.unique_id} with {cp_created} "
-                f"daily trip points and {hh_created} household points for plan {plan.unique_id}"
-            )
+        details.append(
+            {
+                "trip_plan_id": plan.unique_id,
+                "assignment_id": assignment.unique_id,
+                "daily_trip_points": cp_created,
+                "household_points": hh_created,
+            }
+        )
+        log(
+            f"Created assignment {assignment.unique_id} with {cp_created} "
+            f"daily trip points and {hh_created} household points for plan {plan.unique_id}"
+        )
 
     summary = {
         "date": str(today),
