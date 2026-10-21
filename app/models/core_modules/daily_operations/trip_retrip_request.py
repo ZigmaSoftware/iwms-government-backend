@@ -39,11 +39,15 @@ class TripRetripRequest(BaseMaster):
     STATUS_PENDING = "Pending"
     STATUS_APPROVED = "Approved"
     STATUS_REJECTED = "Rejected"
+    # Set by app/services/retrip_timeout_service.py when no supervisor decided
+    # within the decision window (RETRIP_EXPIRY_MINUTES).
+    STATUS_EXPIRED = "Expired"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_APPROVED, "Approved"),
         (STATUS_REJECTED, "Rejected"),
+        (STATUS_EXPIRED, "Expired"),
     ]
 
     unique_id = models.CharField(
@@ -90,6 +94,13 @@ class TripRetripRequest(BaseMaster):
     new_assignment_id = models.CharField(
         max_length=50, db_column="new_assignment_id", null=True, blank=True, db_index=True
     )  # DailyTripAssignment.unique_id
+
+    # A pending request is intentionally short-lived. These persisted fields
+    # make reminders and expiry idempotent even when several Celery workers
+    # run the timeout sweep (app/services/retrip_timeout_service.py).
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    escalated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -81,6 +81,7 @@ from ..viewsets.auth.change_password_viewset import (
 
 # Customer modules
 from ..viewsets.masters.customer_masters.customercreation_viewset import CustomerCreationViewSet
+from ..viewsets.masters.customer_masters.customer_notification_viewset import CustomerNotificationViewSet
 from ..viewsets.core_modules.daily_operations.waste_collection_viewset import WasteCollectionViewSet
 from ..viewsets.masters.customer_masters.feedback_viewset import FeedBackViewSet
 from ..viewsets.masters.customer_masters.userchargerule_viewset import UserChargeRuleViewSet
@@ -102,6 +103,7 @@ from ..viewsets.core_modules.complaint_management.citizen_viewset import (
     PublicGrievanceViewSet,
 )
 from ..viewsets.core_modules.complaint_management.address_change_viewset import ComplaintAddressChangeViewSet
+from ..viewsets.core_modules.complaint_management.citizen_pickup_viewset import CitizenPickupViewSet
 from ..viewsets.core_modules.complaint_management.secondary_viewsets import (
     ComplaintRoutingRuleViewSet,
     ComplaintFeedbackViewSet,
@@ -128,6 +130,7 @@ from ..viewsets.core_modules.daily_operations.daily_trip_household_collection_vi
 from ..viewsets.core_modules.daily_operations.secondary_bin_collection_event_viewset import BinCollectionEventViewSet
 from ..viewsets.core_modules.daily_operations.vehicle_breakdown_viewset import VehicleBreakdownViewSet
 from ..viewsets.core_modules.daily_operations.trip_retrip_viewset import TripRetripRequestViewSet
+from ..viewsets.core_modules.daily_operations.trip_delay_report_viewset import TripDelayReportViewSet
 from ..viewsets.core_modules.daily_operations.daily_trip_log_viewset import DailyTripLogViewSet
 from ..viewsets.reports.waste_reports.monthly_waste_comparison_viewset import MonthlyWasteComparisonReportViewSet
 from ..viewsets.reports.waste_reports.daily_waste_comparison_viewset import DailyWasteComparisonViewSet
@@ -279,6 +282,7 @@ router.register_group("customer-masters", "user-charge-rules", UserChargeRuleVie
 router.register_group(
     "customer-masters", "customer-access-configuration", CustomerAccessConfigurationViewSet
 )
+router.register_group("customer-masters", "customer-notifications", CustomerNotificationViewSet)
 
 # ============================================================
 # GROUP: COMPLAINT TICKETING
@@ -308,6 +312,7 @@ router.register_group(
     CitizenComplaintTicketViewSet,
     basename="citizen-complaint-tickets",
 )
+router.register_group("citizen", "my-pickup-today", CitizenPickupViewSet, basename="citizen-my-pickup-today")
 router.register_group(
     "public",
     "publicgrievance" ,
@@ -340,6 +345,12 @@ router.register_group("schedule-operations", "daily-trip-collection-points", Dai
 router.register_group("schedule-operations", "daily-trip-household-collections", DailyTripHouseholdCollectionViewSet)
 router.register_group("schedule-operations", "bin-collection-events", BinCollectionEventViewSet)
 router.register_group("schedule-operations", "vehicle-breakdowns", VehicleBreakdownViewSet)
+router.register_group(
+    "schedule-operations",
+    "trip-delay-reports",
+    TripDelayReportViewSet,
+    basename="trip-delay-reports",
+)
 router.register_group(
     "schedule-operations",
     "retrip-requests",

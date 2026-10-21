@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from app.serializers.evidence_image import EvidenceImageField
+
 
 class ValidateBinQrRequestSerializer(serializers.Serializer):
     bin_qr = serializers.CharField(max_length=100, allow_blank=False)
@@ -43,6 +45,8 @@ class ScanBinRequestSerializer(serializers.Serializer):
         allow_blank=True,
         allow_null=True,
     )
+    # Geotagged photo — mandatory for action=not_available (multipart).
+    evidence_image = EvidenceImageField(required=False, allow_null=True)
 
     def validate(self, attrs):
         action = attrs.get("action") or self.ACTION_COLLECT
@@ -59,6 +63,16 @@ class ScanBinRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 "status_reason": "status_reason is required for this action.",
             })
+        if action == self.ACTION_NOT_AVAILABLE:
+            errors = {}
+            if not attrs.get("evidence_image"):
+                errors["evidence_image"] = "A geotagged evidence image is required."
+            if attrs.get("latitude") is None:
+                errors["latitude"] = "Capture latitude is required."
+            if attrs.get("longitude") is None:
+                errors["longitude"] = "Capture longitude is required."
+            if errors:
+                raise serializers.ValidationError(errors)
         attrs["action"] = action
         attrs["status_reason"] = reason or None
         return attrs

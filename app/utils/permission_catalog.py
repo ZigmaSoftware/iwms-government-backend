@@ -288,6 +288,11 @@ SECTIONS = (
                 routes=(), inherits_grants_from="customer-creation",
             ),
             screen("customer-access-configuration", "Customer Access Configuration"),
+            # Test-push list (CustomerNotificationViewSet).
+            screen(
+                "customer-notifications", "Notification",
+                model=("app", "CustomerNotification"),
+            ),
         ), icon="groups", description="Customer master screens", legacy=("customers",)),
         # The leader logins route under the "masters" group.
         module("leader-management", "Leader Management", (
@@ -360,6 +365,12 @@ SECTIONS = (
                 "vehicle-breakdown", "Vehicle Breakdown",
                 routes=("vehicle-breakdowns",), legacy=("vehicle-breakdowns",),
                 model=("app", "VehicleBreakdown"),
+            ),
+            screen(
+                "trip-delay-reports", "Trip Delay Reports",
+                routes=("trip-delay-reports",),
+                model=("app", "TripDelayReport"),
+                inherits_grants_from="daily-trip-plan",
             ),
             # retrip-requests / staff-notifications are auth-only routes (see
             # AUTH_ONLY_SUFFIXES); these screens gate the pages and app tabs.

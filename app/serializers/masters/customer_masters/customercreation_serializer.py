@@ -33,6 +33,22 @@ PASSWORD_RULE_MESSAGE = (
 )
 
 
+class _BlankableIntegerField(serializers.IntegerField):
+    """An IntegerField that accepts "" as None, like DecimalField already does.
+
+    See `DecimalField.validate_empty_values` in DRF: it special-cases a blank
+    string to None when the field allows null. `IntegerField` has no such
+    override, so an optional integer left empty on a form that otherwise
+    submits "" for every unset optional field 400s where the equivalent
+    decimal field silently accepts it.
+    """
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and data.strip() == "" and self.allow_null:
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class CustomerCreationSerializer(serializers.ModelSerializer):
 
     # ---- geography: state/district/area type/local body -------------------
@@ -120,9 +136,18 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
     industry_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     industry_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
-    member_count = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    # "" from a blank form field means "not set" (see _BlankableIntegerField).
+    member_count = _BlankableIntegerField(required=False, allow_null=True, min_value=0)
     family_members = serializers.ListField(
         child=serializers.DictField(), required=False, allow_empty=True,
+    )
+
+    # Customers always use the citizen surface; staff apps are not valid here.
+    app_module = serializers.ChoiceField(
+        choices=[("citizen", "Customer")],
+        required=False,
+        default="citizen",
+        error_messages={"invalid_choice": "Customers can only use the Customer app."},
     )
 
     group_qr_id = serializers.CharField(read_only=True)
@@ -138,6 +163,7 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         fields = [
             "unique_id",
             "customer_name",
+            "app_module",
             "contact_no",
             "building_no",
             "street",
@@ -285,6 +311,9 @@ class CustomerCreationSerializer(serializers.ModelSerializer):
         #     Model=CustomerCreation,
         #     name_field="user_name",
         # )(self, attrs)
+
+        # Apply the same invariant on PATCH when the field is omitted.
+        attrs["app_module"] = "citizen"
 
         instance = getattr(self, "instance", None)
 

@@ -2,6 +2,7 @@ import re
 import csv
 import io
 
+from django.db import transaction
 from django.db.models import Q, Count
 from django.db.models.functions import Upper
 from rest_framework import filters, status
@@ -289,8 +290,18 @@ class CustomerCreationViewSet(AuditViewSetMixin, viewsets.ModelViewSet):
         token = (request.data.get("fcm_token") or "").strip()
         if not token:
             return Response({"error": "fcm_token is required"}, status=400)
-        customer.fcm_token = token
-        customer.save(update_fields=["fcm_token"])
+        from app.models.superadmin.staff_management.staffcreation import Staffcreation
+
+        # A device token belongs to one signed-in account. Clear it from any
+        # other customer/staff row first, so a shared or re-used phone never
+        # receives the previous user's pushes.
+        with transaction.atomic():
+            CustomerCreation.objects.filter(fcm_token=token).exclude(
+                unique_id=customer.unique_id
+            ).update(fcm_token=None)
+            Staffcreation.objects.filter(fcm_token=token).update(fcm_token=None)
+            customer.fcm_token = token
+            customer.save(update_fields=["fcm_token"])
         return Response({"status": "ok"})
 
     # -----------------------------------------------------

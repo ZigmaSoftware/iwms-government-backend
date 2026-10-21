@@ -15,21 +15,7 @@ class IsOperatorRole(BasePermission):
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return False
-        # Roles may live on the generic staff role or the government-staff role
-        # (e.g. "govt_panchayat_driver"). Match either as long as it names a
-        # field-collection role.
-        role_names = []
-        for attr in (
-            "staffusertype_id",
-            "governmentusertype_id",
-            "contractorusertype_id",
-        ):
-            role_obj = getattr(user, attr, None)
-            name = (getattr(role_obj, "name", "") or "").lower()
-            if name:
-                role_names.append(name)
-        field_role_markers = ("driver", "operator", "field")
-        return any(
-            any(marker in role_name for marker in field_role_markers)
-            for role_name in role_names
-        )
+        from app.utils.roles import effective_role_name
+
+        role_name = effective_role_name(user)
+        return any(marker in role_name for marker in ("driver", "operator", "field"))

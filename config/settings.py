@@ -399,6 +399,13 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 300.0,
         "options": {"expires": 290},
     },
+    # Re-Trip requests: supervisor reminder / escalation, then expiry once
+    # the decision window (RETRIP_EXPIRY_MINUTES) passes.
+    "retrip-timeouts": {
+        "task": "iwms.process_retrip_timeouts",
+        "schedule": 60.0,
+        "options": {"expires": 55},
+    },
 }
 
 # Web sessions log out automatically after this much inactivity.

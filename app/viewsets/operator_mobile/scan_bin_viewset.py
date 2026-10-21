@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from app.models.core_modules.daily_operations.secondary_bin_collection_event import BinCollectionEvent
@@ -35,6 +36,8 @@ class ScanBinViewSet(viewsets.ViewSet):
     throttle_scope = "scan_bin"
 
     permission_classes = [IsOperatorRole]
+    # Multipart for the not_available evidence photo; JSON still accepted.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def create(self, request):
         serializer = ScanBinRequestSerializer(data=request.data)
@@ -112,6 +115,7 @@ class ScanBinViewSet(viewsets.ViewSet):
                     longitude=payload.get("longitude"),
                     notes=payload.get("notes"),
                     status_reason=status_reason,
+                    evidence_image=payload.get("evidence_image"),
                 )
 
                 log_common_audit(
@@ -148,6 +152,9 @@ class ScanBinViewSet(viewsets.ViewSet):
                     "event_type": event.status,
                     "collected_weight_kg": str(event.collected_weight_kg),
                     "status_reason": event.status_reason,
+                    "evidence_image_url": request.build_absolute_uri(
+                        event.status_evidence_image.url
+                    ) if event.status_evidence_image else None,
                 },
             },
             status=status.HTTP_201_CREATED,
@@ -164,6 +171,7 @@ class ScanBinViewSet(viewsets.ViewSet):
         longitude,
         notes,
         status_reason,
+        evidence_image=None,
     ):
         event_notes = notes
         if action != ScanBinRequestSerializer.ACTION_COLLECT and not event_notes:
@@ -182,6 +190,7 @@ class ScanBinViewSet(viewsets.ViewSet):
             driver_latitude=latitude,
             driver_longitude=longitude,
             notes=event_notes,
+            status_evidence_image=evidence_image,
         )
 
     def _upsert_trip_log(self, assignment: DailyTripAssignment, operator):

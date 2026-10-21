@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
@@ -5,6 +6,7 @@ from app.permissions.operator_permission import IsOperatorRole
 from app.serializers.operator_mobile.trip_today_serializer import (
     MyTripTodaySerializer,
 )
+from app.services.daily_service_notice import notices_for_staff, serialize_notice
 from app.viewsets.operator_mobile.helpers import (
     OperatorFlowError,
     find_active_assignment_for_operator,
@@ -55,4 +57,13 @@ class MyTripsTodayViewSet(viewsets.ViewSet):
         data = MyTripTodaySerializer(
             assignments, many=True, context={"request": request}
         ).data
-        return Response({"results": data}, status=status.HTTP_200_OK)
+        # "No collection today" notices the operator was told about, so the
+        # app can explain an empty / cancelled day.
+        notices = [
+            serialize_notice(notice)
+            for notice in notices_for_staff(operator, timezone.localdate())
+        ]
+        return Response(
+            {"results": data, "service_notices": notices},
+            status=status.HTTP_200_OK,
+        )
