@@ -33,3 +33,15 @@ def close_idle_login_sessions():
     closed = close_stale_sessions()
     if closed:
         logger.info("Closed %s stale login session(s)", closed)
+
+
+@shared_task(name="iwms.process_retrip_timeouts")
+def process_retrip_timeouts():
+    """Re-Trip decision window: remind / escalate to the supervisor, then
+    expire requests nobody decided (app/services/retrip_timeout_service.py)."""
+    from app.services.retrip_timeout_service import process_retrip_timeouts as run
+
+    result = run()
+    if any(result.values()):
+        logger.info("Re-Trip timeouts: %s", result)
+    return result

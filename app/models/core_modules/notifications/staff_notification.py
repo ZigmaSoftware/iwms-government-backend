@@ -29,6 +29,17 @@ class StaffNotification(BaseMaster):
     TYPE_RETRIP_REQUESTED = "RETRIP_REQUESTED"
     TYPE_RETRIP_APPROVED = "RETRIP_APPROVED"
     TYPE_RETRIP_REJECTED = "RETRIP_REJECTED"
+    # Re-Trip decision window (app/services/retrip_timeout_service.py).
+    TYPE_RETRIP_REMINDER = "RETRIP_REMINDER"
+    TYPE_RETRIP_ESCALATED = "RETRIP_ESCALATED"
+    TYPE_RETRIP_EXPIRED = "RETRIP_EXPIRED"
+    # Driver reported a (non-breakdown) trip delay.
+    TYPE_TRIP_DELAY_REPORTED = "TRIP_DELAY_REPORTED"
+    # Citizen tapped "I'm home now" on a Collect Later household stop.
+    TYPE_CUSTOMER_AVAILABLE = "CUSTOMER_AVAILABLE"
+    # Supervisor declared / withdrew "no collection today" for a trip plan.
+    TYPE_NO_COLLECTION_TODAY = "NO_COLLECTION_TODAY"
+    TYPE_COLLECTION_RESTORED = "COLLECTION_RESTORED"
 
     TYPE_CHOICES = [
         (TYPE_VEHICLE_BREAKDOWN_REPORTED, "Vehicle Breakdown Reported"),
@@ -39,6 +50,13 @@ class StaffNotification(BaseMaster):
         (TYPE_RETRIP_REQUESTED, "Re-Trip Requested"),
         (TYPE_RETRIP_APPROVED, "Re-Trip Approved"),
         (TYPE_RETRIP_REJECTED, "Re-Trip Rejected"),
+        (TYPE_RETRIP_REMINDER, "Re-Trip Reminder"),
+        (TYPE_RETRIP_ESCALATED, "Re-Trip Escalated"),
+        (TYPE_RETRIP_EXPIRED, "Re-Trip Expired"),
+        (TYPE_TRIP_DELAY_REPORTED, "Trip Delay Reported"),
+        (TYPE_CUSTOMER_AVAILABLE, "Customer Available"),
+        (TYPE_NO_COLLECTION_TODAY, "No Collection Today"),
+        (TYPE_COLLECTION_RESTORED, "Collection Restored"),
     ]
 
     unique_id = models.CharField(

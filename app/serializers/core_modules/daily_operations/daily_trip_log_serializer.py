@@ -1,6 +1,7 @@
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
+from app.serializers.evidence_image import absolute_image_url
 
 from app.models.masters.waste_masters.wastetype import WasteType
 from app.utils import ref_cache
@@ -519,6 +520,8 @@ class DailyTripLogSerializer(serializers.ModelSerializer):
                 "waste_type_breakdown": waste_type_breakdown,
                 "collected_at": hh.collected_at.isoformat() if hh.collected_at else None,
                 "status": hh.status,
+                "status_reason": hh.status_reason,
+                "status_evidence_image_url": absolute_image_url(self, hh.status_evidence_image),
                 "carried_to_assignment": hh.carried_to_assignment_id,
                 "carried_to_assignment_remarks": retrip_remarks.get(hh.carried_to_assignment_id),
             })

@@ -1,7 +1,9 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
 from app.services.retrip_service import build_pending_snapshot
+from app.services.retrip_timeout_service import deadline_for
 
 
 class TripRetripRequestSerializer(serializers.ModelSerializer):
@@ -24,6 +26,10 @@ class TripRetripRequestSerializer(serializers.ModelSerializer):
     )
     reviewed_by_name = serializers.CharField(source="reviewed_by.employee_name", read_only=True)
     live_pending = serializers.SerializerMethodField()
+    # Decision window (expires_at / reminder_sent_at / escalated_at come from
+    # the model itself).
+    time_remaining_seconds = serializers.SerializerMethodField()
+    urgency = serializers.SerializerMethodField()
     # Plain id columns, exposed under their original API names.
     assignment = serializers.CharField(source="assignment_id", read_only=True)
     requested_by = serializers.CharField(source="requested_by_id", read_only=True)
@@ -55,3 +61,18 @@ class TripRetripRequestSerializer(serializers.ModelSerializer):
 
     def get_live_pending(self, obj):
         return build_pending_snapshot(obj.assignment)
+
+    def get_time_remaining_seconds(self, obj):
+        if not obj.is_pending:
+            return 0
+        return max(0, int((deadline_for(obj) - timezone.now()).total_seconds()))
+
+    def get_urgency(self, obj):
+        if not obj.is_pending:
+            return "expired" if obj.status == obj.STATUS_EXPIRED else "decided"
+        seconds = self.get_time_remaining_seconds(obj)
+        if seconds <= 10 * 60:
+            return "urgent"
+        if seconds <= 20 * 60:
+            return "reminder"
+        return "normal"

@@ -104,6 +104,7 @@ from .masters.customer_masters.customercreation import CustomerCreation
 from .masters.customer_masters.customer_access_configuration import (
     CustomerAccessConfiguration,
 )
+from .masters.customer_masters.customer_notification import CustomerNotification
 from .core_modules.daily_operations.waste_collection import WasteCollection
 from .masters.customer_masters.feedback import FeedBack
 from .masters.customer_masters.userchargerule import UserChargeRule
@@ -176,6 +177,8 @@ from .core_modules.daily_operations.scheduler_config import SchedulerConfig
 from .core_modules.background_job import BackgroundJob
 from .core_modules.daily_operations.vehicle_breakdown import VehicleBreakdown
 from .core_modules.daily_operations.trip_retrip_request import TripRetripRequest
+from .core_modules.daily_operations.trip_delay_report import TripDelayReport
+from .core_modules.daily_operations.daily_service_notice import DailyServiceNotice
 
 
 # ============================================================
@@ -294,4 +297,6 @@ __all__ = [
     "DailyTripCollectionPoint",
     "DailyTripHouseholdCollection",
     "BinCollectionEvent",
+    "TripDelayReport",
+    "DailyServiceNotice",
 ]

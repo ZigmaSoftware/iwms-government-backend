@@ -574,6 +574,59 @@ def filter_flat_geo_queryset_by_requester_scope(queryset, user, field_map=None):
     return _narrow_by_ward(queryset, scope)
 
 
+def filter_assignable_staff_by_requester_scope(queryset, user):
+    """
+    Scope a staff queryset for "who may I assign to this trip?" pickers.
+
+    `filter_staff_queryset_by_requester_scope` answers a different question —
+    "whose records may I read?" — so it matches the requester's local body
+    exactly. That is too narrow for an assignment dropdown: a
+    `govt_district_driver` carries a district but no local body because they
+    work anywhere in that district, so a Corporation supervisor sitting
+    inside that district must still be able to pull them onto a replacement
+    trip. Without this, every local-body supervisor sees an empty driver and
+    operator list.
+
+    Staff belonging to a *different* local body, or to another district
+    entirely, are still excluded — this widens the scope upwards along the
+    requester's own hierarchy branch only, never sideways.
+    """
+    scope = _staff_scope(user)
+    if not scope:
+        return _unscoped_result(queryset, user)
+
+    combined = Q()
+    matched = False
+
+    # At or below the requester: the local bodies they were granted.
+    for _, scope_field, m2m_field in STAFF_LOCAL_BODY_M2M_LEVELS:
+        ids = list(getattr(scope, f"{scope_field}s", None) or [])
+        if ids:
+            combined |= Q(**{f"{scope_field}__in": ids})
+            matched = True
+
+    # Above the requester: staff with no local body of their own, whose
+    # district (or state) covers the requester's area.
+    no_local_body = Q()
+    for _, scope_field, _m2m in STAFF_LOCAL_BODY_M2M_LEVELS:
+        no_local_body &= Q(**{f"{scope_field}__isnull": True}) | Q(**{scope_field: ""})
+
+    if scope.district:
+        combined |= no_local_body & Q(district_id=scope.district)
+        matched = True
+    if scope.state:
+        combined |= (
+            no_local_body
+            & (Q(district_id__isnull=True) | Q(district_id=""))
+            & Q(state_id=scope.state)
+        )
+        matched = True
+
+    if not matched:
+        return _narrow_by_ward(queryset, scope)
+    return _narrow_by_ward(queryset.filter(combined).distinct(), scope)
+
+
 def filter_daily_trip_logs_by_ward_scope(queryset, user, ward_id=None):
     """
     Restrict DailyTripLog rows through their DailyTripAssignment.wards M2M.

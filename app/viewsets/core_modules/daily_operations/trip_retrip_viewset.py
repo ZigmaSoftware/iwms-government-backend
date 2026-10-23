@@ -5,9 +5,7 @@
     POST /api/v1/schedule-operations/retrip-requests/{id}/reject/
 
 `approve` is where the continuation trip is born — see
-`app/services/retrip_service.approve_retrip`. For a bin trip the supervisor
-sends `collection_point_ids` (the stops they ticked); for a household trip
-every remaining household carries over automatically.
+`app/services/retrip_service.approve_retrip`. The supervisor sends `collection_point_ids` for the selected pending bin or household stops.
 """
 
 from rest_framework import status as http_status
@@ -21,6 +19,8 @@ from app.models.core_modules.schedule_setup.trip_plan import TripPlan
 from app.models.core_modules.daily_operations.daily_trip_assignment import DailyTripAssignment
 from app.models.masters.transport_masters.vehicleCreation import VehicleCreation
 from app.models.superadmin.staff_management.staffcreation import Staffcreation
+from app.utils.roles import can_manage_trips, is_supervisor_role
+from app.utils.hierarchy import filter_flat_geo_queryset_by_requester_scope
 from app.utils.plain_ref import ref_q
 from app.utils.hierarchy import FLAT_GEO_QUERY_FIELDS, filter_flat_geo_queryset_by_params
 from app.models.core_modules.daily_operations.trip_retrip_request import TripRetripRequest
@@ -101,11 +101,25 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
                 else qs.none()
             )
 
-        return qs
+        user = self.request.user
+        if getattr(user, "is_superuser", False):
+            return qs
+        staff_id = getattr(user, "staff_unique_id", None)
+        owned_trips = DailyTripAssignment.objects.filter(
+            trip_plan_id__in=TripPlan.objects.filter(supervisor_id=staff_id).values("unique_id")
+        ).values("unique_id") if staff_id else []
+        if is_supervisor_role(user):
+            return qs.filter(assignment_id__in=owned_trips)
+        if can_manage_trips(user):
+            visible = filter_flat_geo_queryset_by_requester_scope(DailyTripAssignment.objects.all(), user)
+            return qs.filter(Q(assignment_id__in=owned_trips) | Q(assignment_id__in=visible.values("unique_id")))
+        return qs.filter(requested_by_id=staff_id) if staff_id else qs.none()
 
     # ------------------------------------------------------------------
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request, unique_id=None):
+        if not can_manage_trips(request.user):
+            return Response({"detail": "Supervisor access is required."}, status=http_status.HTTP_403_FORBIDDEN)
         retrip = self.get_object()
         if not retrip.is_pending:
             return Response(
@@ -124,12 +138,24 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
             collection_point_ids = [str(value) for value in raw_ids]
 
         reviewer = getattr(request, "user", None)
-        continuation = retrip_service.approve_retrip(
-            retrip,
-            reviewed_by=reviewer if _is_staff_record(reviewer) else None,
-            collection_point_ids=collection_point_ids,
-            remarks=request.data.get("remarks"),
-        )
+        try:
+            continuation = retrip_service.approve_retrip(
+                retrip,
+                reviewed_by=reviewer if _is_staff_record(reviewer) else None,
+                collection_point_ids=collection_point_ids,
+                remarks=request.data.get("remarks"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=http_status.HTTP_400_BAD_REQUEST)
+        except retrip_service.RetripRequestUnavailable as exc:
+            return Response(
+                {"detail": str(exc)}, status=http_status.HTTP_409_CONFLICT
+            )
+        if continuation is None:
+            return Response(
+                {"detail": "This request expired before it could be approved."},
+                status=http_status.HTTP_409_CONFLICT,
+            )
 
         retrip.refresh_from_db()
         return Response(
@@ -143,6 +169,8 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
     # ------------------------------------------------------------------
     @action(detail=True, methods=["post"], url_path="reject")
     def reject(self, request, unique_id=None):
+        if not can_manage_trips(request.user):
+            return Response({"detail": "Supervisor access is required."}, status=http_status.HTTP_403_FORBIDDEN)
         retrip = self.get_object()
         if not retrip.is_pending:
             return Response(
@@ -151,11 +179,21 @@ class TripRetripRequestViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         reviewer = getattr(request, "user", None)
-        retrip_service.reject_retrip(
-            retrip,
-            reviewed_by=reviewer if _is_staff_record(reviewer) else None,
-            remarks=request.data.get("remarks"),
-        )
+        try:
+            decided = retrip_service.reject_retrip(
+                retrip,
+                reviewed_by=reviewer if _is_staff_record(reviewer) else None,
+                remarks=request.data.get("remarks"),
+            )
+        except retrip_service.RetripRequestUnavailable as exc:
+            return Response(
+                {"detail": str(exc)}, status=http_status.HTTP_409_CONFLICT
+            )
+        if decided.status == TripRetripRequest.STATUS_EXPIRED:
+            return Response(
+                {"detail": "This request expired before it could be rejected."},
+                status=http_status.HTTP_409_CONFLICT,
+            )
 
         retrip.refresh_from_db()
         return Response(

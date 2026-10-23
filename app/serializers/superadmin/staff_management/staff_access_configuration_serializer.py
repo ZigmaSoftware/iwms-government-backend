@@ -288,10 +288,13 @@ class StaffAccessConfigurationSerializer(serializers.Serializer):
             })
 
         errors = {}
+        # parent is a StaffDataScope row: its geo fields are named
+        # "state"/"district"/"area_type" (db_column keeps the old "_id"
+        # suffix, the Python attribute does not).
         for child_key, parent_value, label in (
-            ("stateId", parent.state_id, "state"),
-            ("districtId", parent.district_id, "district"),
-            ("areaTypeId", parent.area_type_id, "area type"),
+            ("stateId", parent.state, "state"),
+            ("districtId", parent.district, "district"),
+            ("areaTypeId", parent.area_type, "area type"),
         ):
             if parent_value and child.get(child_key) != parent_value:
                 errors[child_key] = (

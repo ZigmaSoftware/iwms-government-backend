@@ -37,7 +37,14 @@ def effective_role_name(user):
     if not user:
         return ""
     for attr in ROLE_ATTRS:
-        name = getattr(getattr(user, attr, None), "name", None)
+        # The *_id columns are plain unique_id strings since the FK removal;
+        # the same-named property without "_id" resolves the user-type row.
+        # Fall back to the *_id attribute for objects that still carry a
+        # relation there (tests / legacy callers).
+        row = getattr(user, attr[: -len("_id")], None)
+        if row is None or isinstance(row, str):
+            row = getattr(user, attr, None)
+        name = getattr(row, "name", None)
         if name:
             return name.strip().lower()
     return ""
