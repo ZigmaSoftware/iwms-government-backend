@@ -78,6 +78,7 @@ ALLOWED_HOSTS = [
     '10.255.70.197',
     '192.168.6.238',
     '10.128.67.197',
+    '192.168.6.44',
     "aura-haustorial-elayne.ngrok-free.dev",
 ]
 
@@ -280,7 +281,8 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://192\.168\.6\.238(:\d+)?$",
     r"^http://115\.245\.93\.26(:\d+)?$",
     r"^http://10\.128\.67\.197(:\d+)?$",
-    
+    r"^http://192\.168\.6\.44(:\d+)?$",
+
     "https://aura-haustorial-elayne.ngrok-free.dev",
 ]
 

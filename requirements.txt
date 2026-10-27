@@ -36,7 +36,10 @@ firebase-admin>=6.5.0
 #     which surfaces only as "provider unavailable" at runtime.
 insightface>=2.0,<3.0
 onnxruntime>=1.19
-opencv-python-headless>=4.10
+# InsightFace requires this distribution. Installing headless alongside it
+# overwrites the same cv2 files; keep one distribution and install its Linux
+# runtime libraries in Dockerfile.
+opencv-python>=4.10,<5
 numpy>=1.26
 ml_dtypes>=0.5
 python-dotenv>=1.2.2

@@ -189,6 +189,12 @@ jobs:
           sudo /usr/bin/systemctl status iwms-government-backend --no-pager -n 30 || true
           exit 1
 
+      # API authentication can work while attendance registration is broken.
+      # Load the actual configured model as part of deployment verification.
+      - name: Verify attendance face recognition
+        working-directory: /home/admin/localserver/iwmsGovernment/iwms-government-backend
+        run: docker compose -f docker-compose.prod.yml exec -T backend python manage.py check_face_recognition
+
       - name: Prune dangling images
         if: always()
         run: docker image prune -f
