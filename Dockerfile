@@ -8,11 +8,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps needed for mysqlclient/Pillow/cryptography style packages
+# Build dependencies plus OpenCV's Linux runtime libraries (InsightFace).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     default-libmysqlclient-dev \
     pkg-config \
+    libgl1 \
+    libglib2.0-0 \
+    libxcb1 \
+    libxext6 \
+    libxrender1 \
+    libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install deps first for better layer caching
@@ -21,6 +27,10 @@ COPY requirements.txt ./
 # PyPI, so pip's default 15s read-timeout was cutting off large wheel
 # downloads (django, pillow, grpcio) mid-stream.
 RUN pip install --no-cache-dir --timeout=180 --retries=10 -r requirements.txt
+
+# InsightFace depends on OpenCV. Catch missing Linux shared libraries at
+# build time rather than on the first attendance registration in production.
+RUN python -c "import cv2, onnxruntime; from insightface.app import FaceAnalysis"
 
 COPY . .
 

@@ -156,6 +156,28 @@ to the old (abandoned) containerized-DB setup — it should never exist there.
 
 ## Logs
 
+### Attendance face recognition verification
+
+The image build imports OpenCV, ONNX Runtime, and InsightFace so missing
+shared libraries (such as `libxcb.so.1`) fail the build. Keep only the
+`opencv-python` distribution required by InsightFace in the image; installing
+`opencv-python-headless` alongside it overwrites the same `cv2` files.
+
+Deployment also runs this check inside the backend container to load the
+configured provider/model, since a healthy API alone does not prove face
+registration is available:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend python manage.py check_face_recognition
+```
+
+After merging, confirm this workflow step succeeds, then register a real
+selfie and submit a breakdown with a photo from the mobile app. The backend
+accepts full-precision GPS coordinates and stores seven decimal places;
+existing mobile builds benefit from this server-side correction too.
+
+### Service logs
+
 ```bash
 journalctl -u iwms-government-backend.service -f
 docker compose -f docker-compose.prod.yml logs -f backend

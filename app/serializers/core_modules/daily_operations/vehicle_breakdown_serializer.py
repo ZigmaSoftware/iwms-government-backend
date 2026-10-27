@@ -1,3 +1,5 @@
+from decimal import ROUND_HALF_UP
+
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -18,7 +20,27 @@ def _existing_id(model, key, value, message):
     return value
 
 
+class BreakdownCoordinateField(serializers.DecimalField):
+    """Accept phone GPS precision and round to the database's seven places."""
+
+    def validate_precision(self, value):
+        # DecimalField has already rejected NaN/infinity before this hook.
+        # Do not quantize huge invalid inputs (which can overflow context).
+        if abs(value) <= 180:
+            value = self.quantize(value)
+        return super().validate_precision(value)
+
+
 class VehicleBreakdownSerializer(serializers.ModelSerializer):
+
+    breakdown_lat = BreakdownCoordinateField(
+        max_digits=10, decimal_places=7, min_value=-90, max_value=90,
+        rounding=ROUND_HALF_UP, required=False, allow_null=True,
+    )
+    breakdown_lng = BreakdownCoordinateField(
+        max_digits=10, decimal_places=7, min_value=-180, max_value=180,
+        rounding=ROUND_HALF_UP, required=False, allow_null=True,
+    )
 
     # Write fields — plain unique_id strings, existence checked in validate_*.
     trip_assignment_id = serializers.CharField(max_length=50)
